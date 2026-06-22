@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
+import nodemailer from 'nodemailer'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -64,12 +65,17 @@ async function executeCampaign(campaignId: string) {
     let TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
     let sendgridKey = process.env.SENDGRID_API_KEY || ''
     let sendgridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'no-reply@example.com'
+    let emailProvider = 'sendgrid'
+    let smtpHost = ''
+    let smtpPort = 587
+    let smtpEmail = ''
+    let smtpPassword = ''
 
     if (campaign.organization_id) {
       try {
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_host, smtp_port, smtp_email, smtp_password')
           .eq('id', campaign.organization_id)
           .single()
 
@@ -79,6 +85,11 @@ async function executeCampaign(campaignId: string) {
           if (orgData.twilio_whatsapp_number) TWILIO_WHATSAPP_NUMBER = orgData.twilio_whatsapp_number
           if (orgData.sendgrid_api_key) sendgridKey = orgData.sendgrid_api_key
           if (orgData.sendgrid_from_email) sendgridFromEmail = orgData.sendgrid_from_email
+          if (orgData.email_provider) emailProvider = orgData.email_provider
+          if (orgData.smtp_host) smtpHost = orgData.smtp_host
+          if (orgData.smtp_port) smtpPort = orgData.smtp_port
+          if (orgData.smtp_email) smtpEmail = orgData.smtp_email
+          if (orgData.smtp_password) smtpPassword = orgData.smtp_password
         }
       } catch (dbErr) {
         console.error('[Campaign Worker] Error loading database credentials:', dbErr)
@@ -173,16 +184,11 @@ async function executeCampaign(campaignId: string) {
           twilioMessageSid = messageResponse.sid
           sentCount++
         } else if (channel === 'email') {
-          // Email Channel (SendGrid)
           if (!recipientEmail) {
             throw new Error('Recipient email is missing in campaign log')
           }
 
-          if (!sendgridKey) {
-            throw new Error('SendGrid API key (SENDGRID_API_KEY) is not configured in environment')
-          }
-
-          const fromEmail = campaignSender || sendgridFromEmail
+          const fromEmail = campaignSender || (emailProvider === 'smtp' ? smtpEmail : sendgridFromEmail)
           const subjectText = campaignSubject || `Campaign: ${campaign.name}`
 
           // Construct HTML and Plain Text bodies
@@ -208,39 +214,71 @@ async function executeCampaign(campaignId: string) {
 
           const plainTextBody = hasHtmlTags ? body.replace(/<[^>]*>/g, '') : body
 
-          const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${sendgridKey}`
-            },
-            body: JSON.stringify({
-              personalizations: [
-                {
-                  to: [{ email: recipientEmail }]
-                }
-              ],
-              from: { email: fromEmail },
-              subject: subjectText,
-              content: [
-                {
-                  type: 'text/plain',
-                  value: plainTextBody
-                },
-                {
-                  type: 'text/html',
-                  value: htmlBody
-                }
-              ]
+          if (emailProvider === 'smtp') {
+            if (!smtpHost || !smtpEmail || !smtpPassword) {
+              throw new Error('SMTP Host, email username, and password must be configured in settings to run SMTP campaigns')
+            }
+
+            const transporter = nodemailer.createTransport({
+              host: smtpHost,
+              port: smtpPort || 587,
+              secure: smtpPort === 465, // true for 465, false for other ports
+              auth: {
+                user: smtpEmail,
+                pass: smtpPassword
+              }
             })
-          })
 
-          if (!response.ok) {
-            const errText = await response.text()
-            throw new Error(`SendGrid API error: ${response.status} ${errText}`)
+            const mailOptions = {
+              from: fromEmail,
+              to: recipientEmail,
+              subject: subjectText,
+              text: plainTextBody,
+              html: htmlBody
+            }
+
+            const info = await transporter.sendMail(mailOptions)
+            twilioMessageSid = info.messageId || `SMTP_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+          } else {
+            // Email Channel (SendGrid)
+            if (!sendgridKey) {
+              throw new Error('SendGrid API key (SENDGRID_API_KEY) is not configured in environment')
+            }
+
+            const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${sendgridKey}`
+              },
+              body: JSON.stringify({
+                personalizations: [
+                  {
+                    to: [{ email: recipientEmail }]
+                  }
+                ],
+                from: { email: fromEmail },
+                subject: subjectText,
+                content: [
+                  {
+                    type: 'text/plain',
+                    value: plainTextBody
+                  },
+                  {
+                    type: 'text/html',
+                    value: htmlBody
+                  }
+                ]
+              })
+            })
+
+            if (!response.ok) {
+              const errText = await response.text()
+              throw new Error(`SendGrid API error: ${response.status} ${errText}`)
+            }
+
+            twilioMessageSid = `SG_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
           }
-
-          twilioMessageSid = `SG_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
           sentCount++
         } else {
           throw new Error(`Unsupported campaign channel: ${channel}`)

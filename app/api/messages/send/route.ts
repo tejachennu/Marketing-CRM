@@ -112,12 +112,15 @@ export async function POST(request: NextRequest) {
       conversation = conv
     } else if (contactId && orgId) {
       // Create or get conversation for this contact
-      const { data: existingConv } = await supabase
+      const { data: existingConvs } = await supabase
         .from('conversations')
         .select('*')
         .eq('contact_id', contactId)
         .eq('organization_id', orgId)
-        .single()
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+
+      const existingConv = existingConvs?.[0] || null
 
       if (existingConv) {
         conversation = existingConv
@@ -209,11 +212,12 @@ export async function POST(request: NextRequest) {
 
     if (messageError) throw messageError
 
-    // Update conversation
+    // Update conversation and disable auto-reply chatbot on human operator reply
     await supabase
       .from('conversations')
       .update({
         last_message_at: new Date().toISOString(),
+        auto_reply_enabled: false,
       })
       .eq('id', conversation.id)
 

@@ -14,6 +14,12 @@ export interface Organization {
   sendgrid_api_key?: string | null
   sendgrid_from_email?: string | null
   openai_api_key?: string | null
+  chatbot_base_prompt?: string | null
+  email_provider?: 'sendgrid' | 'smtp' | null
+  smtp_host?: string | null
+  smtp_port?: number | null
+  smtp_email?: string | null
+  smtp_password?: string | null
 }
 
 export interface User {
@@ -84,6 +90,7 @@ export interface Conversation {
   last_message_at: string | null
   unread_count: number
   assigned_to: string | null
+  auto_reply_enabled?: boolean | null
   created_at: string
   updated_at: string
 }

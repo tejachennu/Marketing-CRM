@@ -220,13 +220,16 @@ export async function POST(request: NextRequest) {
     // Step 3: Find or create an active conversation for this contact
     let conversation: any = null
 
-    const { data: existingConv } = await supabase
+    const { data: existingConvs } = await supabase
       .from('conversations')
       .select('*')
       .eq('organization_id', orgId)
       .eq('contact_id', contact.id)
       .eq('is_active', true)
-      .maybeSingle()
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+
+    const existingConv = existingConvs?.[0] || null
 
     if (existingConv) {
       conversation = existingConv

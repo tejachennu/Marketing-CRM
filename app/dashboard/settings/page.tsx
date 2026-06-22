@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -20,10 +21,17 @@ export default function SettingsPage() {
   const [sendgridApiKey, setSendgridApiKey] = useState('')
   const [sendgridFromEmail, setSendgridFromEmail] = useState('')
   const [openaiApiKey, setOpenaiApiKey] = useState('')
+  const [chatbotBasePrompt, setChatbotBasePrompt] = useState('')
+  const [emailProvider, setEmailProvider] = useState<'sendgrid' | 'smtp'>('sendgrid')
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState('')
+  const [smtpEmail, setSmtpEmail] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [showTwilioToken, setShowTwilioToken] = useState(false)
   const [showSgKey, setShowSgKey] = useState(false)
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
 
   // RAG Knowledge Base State
   const [activeTab, setActiveTab] = useState<'general' | 'knowledge'>('general')
@@ -32,6 +40,10 @@ export default function SettingsPage() {
   const [manualTitle, setManualTitle] = useState('')
   const [manualContent, setManualContent] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(10)
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'info'
@@ -64,11 +76,113 @@ export default function SettingsPage() {
       const res = await fetch(`/api/knowledge?organizationId=${orgId}`)
       const data = await res.json()
       setArticles(data.articles || [])
+      setCurrentPage(1)
     } catch (err) {
       console.error('Failed to load articles:', err)
     } finally {
       setLoadingArticles(false)
     }
+  }
+
+  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result
+        const wb = XLSX.read(bstr, { type: 'binary' })
+        const wsname = wb.SheetNames[0]
+        const ws = wb.Sheets[wsname]
+        const data = XLSX.utils.sheet_to_json<any>(ws)
+
+        if (data.length === 0) {
+          showNotification('error', 'The uploaded Excel file is empty.', 'Import Failed')
+          return
+        }
+
+        const sampleRow = data[0]
+        let questionCol = ''
+        let answerCol = ''
+
+        const questionHeaders = ['question', 'title', 'faq', 'topic', 'q']
+        const answerHeaders = ['answer', 'content', 'response', 'a', 'description']
+
+        for (const key of Object.keys(sampleRow)) {
+          const lowerKey = key.toLowerCase().trim()
+          if (!questionCol && questionHeaders.some(h => lowerKey.includes(h))) {
+            questionCol = key
+          } else if (!answerCol && answerHeaders.some(h => lowerKey.includes(h))) {
+            answerCol = key
+          }
+        }
+
+        if (!questionCol || !answerCol) {
+          const keys = Object.keys(sampleRow)
+          if (keys.length >= 2) {
+            questionCol = questionCol || keys[0]
+            answerCol = answerCol || keys[1]
+          } else {
+            showNotification('error', 'Could not identify Question and Answer columns. Please ensure your Excel sheet has columns named "Question" and "Answer".', 'Import Failed')
+            return
+          }
+        }
+
+        const parsedItems = data
+          .map(row => ({
+            title: String(row[questionCol] || '').trim(),
+            content: String(row[answerCol] || '').trim()
+          }))
+          .filter(item => item.title && item.content)
+
+        if (parsedItems.length === 0) {
+          showNotification('error', 'No valid FAQ rows found. Make sure questions and answers are not blank.', 'Import Failed')
+          return
+        }
+
+        setImportProgress({ current: 0, total: parsedItems.length })
+        let importedCount = 0
+
+        for (let i = 0; i < parsedItems.length; i++) {
+          const item = parsedItems[i]
+          try {
+            const res = await fetch('/api/knowledge', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                organizationId: user.organization_id,
+                type: 'manual',
+                title: item.title,
+                content: item.content
+              })
+            })
+            if (res.ok) {
+              importedCount++
+            } else {
+              const errData = await res.json().catch(() => ({}))
+              console.error(`Failed to import item ${i + 1}:`, errData.error || res.statusText)
+            }
+          } catch (err) {
+            console.error(`Failed to import item ${i + 1}:`, err)
+          }
+          setImportProgress({ current: i + 1, total: parsedItems.length })
+        }
+
+        showNotification('success', `Successfully imported ${importedCount} of ${parsedItems.length} FAQ items!`, 'Import Complete')
+        await loadArticles(user.organization_id)
+      } catch (err: any) {
+        console.error('Excel parse error:', err)
+        showNotification('error', err.message || 'Failed to read Excel file.', 'Import Failed')
+      } finally {
+        setImportProgress(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
+      }
+    }
+
+    reader.readAsBinaryString(file)
   }
 
   async function handleAddManual() {
@@ -194,6 +308,12 @@ export default function SettingsPage() {
         setSendgridApiKey(orgData.sendgrid_api_key || '')
         setSendgridFromEmail(orgData.sendgrid_from_email || '')
         setOpenaiApiKey(orgData.openai_api_key || '')
+        setChatbotBasePrompt(orgData.chatbot_base_prompt || '')
+        setEmailProvider(orgData.email_provider || 'sendgrid')
+        setSmtpHost(orgData.smtp_host || '')
+        setSmtpPort(orgData.smtp_port ? String(orgData.smtp_port) : '')
+        setSmtpEmail(orgData.smtp_email || '')
+        setSmtpPassword(orgData.smtp_password || '')
 
         // Set organization-specific dynamic webhook URL
         if (typeof window !== 'undefined') {
@@ -222,6 +342,12 @@ export default function SettingsPage() {
           sendgrid_api_key: sendgridApiKey.trim() || null,
           sendgrid_from_email: sendgridFromEmail.trim() || null,
           openai_api_key: openaiApiKey.trim() || null,
+          chatbot_base_prompt: chatbotBasePrompt.trim() || null,
+          email_provider: emailProvider,
+          smtp_host: smtpHost.trim() || null,
+          smtp_port: smtpPort ? parseInt(smtpPort) : null,
+          smtp_email: smtpEmail.trim() || null,
+          smtp_password: smtpPassword.trim() || null,
         })
         .eq('id', organization.id)
 
@@ -235,6 +361,12 @@ export default function SettingsPage() {
         sendgrid_api_key: sendgridApiKey.trim() || null,
         sendgrid_from_email: sendgridFromEmail.trim() || null,
         openai_api_key: openaiApiKey.trim() || null,
+        chatbot_base_prompt: chatbotBasePrompt.trim() || null,
+        email_provider: emailProvider,
+        smtp_host: smtpHost.trim() || null,
+        smtp_port: smtpPort ? parseInt(smtpPort) : null,
+        smtp_email: smtpEmail.trim() || null,
+        smtp_password: smtpPassword.trim() || null,
       })
 
       showNotification('success', 'Organization credentials updated successfully.', 'Credentials Saved')
@@ -247,6 +379,10 @@ export default function SettingsPage() {
     }
   }
 
+  const totalPages = Math.ceil(articles.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedArticles = articles.slice(startIndex, startIndex + itemsPerPage)
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -256,20 +392,20 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 font-sans h-full bg-[#0b141a] text-[#e9edef] overflow-y-auto space-y-6 relative">
+    <div className="p-4 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-6 relative">
       {notification && (
-        <div className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-[#1f2c34] p-4 rounded-xl border border-[#2a3942] shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#00a884' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
+        <div className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#00a884' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
           <div className="flex-1 min-w-0">
             {notification.title && (
-              <h4 className="text-xs font-bold text-white mb-1">{notification.title}</h4>
+              <h4 className="text-xs font-bold text-[#111b21] dark:text-white mb-1">{notification.title}</h4>
             )}
-            <p className="text-[11px] text-[#8696a0] font-semibold leading-relaxed whitespace-pre-line">
+            <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed whitespace-pre-line">
               {notification.message}
             </p>
           </div>
           <button 
             onClick={() => setNotification(null)}
-            className="text-[#8696a0] hover:text-[#e9edef] hover:bg-[#2a3942] p-1 rounded-full cursor-pointer transition-colors"
+            className="text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] p-1 rounded-full cursor-pointer transition-colors"
           >
             <Plus size={14} className="rotate-45" />
           </button>
@@ -277,19 +413,19 @@ export default function SettingsPage() {
       )}
       <div className="mb-6 select-none flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Settings</h1>
-          <p className="text-xs text-[#8696a0] mt-1 font-semibold">Configure your CRM, AI knowledge base, and integrations</p>
+          <h1 className="text-2xl font-bold tracking-tight text-[#111b21] dark:text-white">Settings</h1>
+          <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold">Configure your CRM, AI knowledge base, and integrations</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[#202d36] mb-6">
+      <div className="flex border-b border-[#e9edef] dark:border-[#202d36] mb-6">
         <button
           onClick={() => setActiveTab('general')}
           className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${
             activeTab === 'general'
-              ? 'border-[#00a884] text-[#008069]'
-              : 'border-transparent text-[#8696a0] hover:text-white'
+              ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+              : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
           }`}
         >
           General Settings
@@ -299,8 +435,8 @@ export default function SettingsPage() {
             onClick={() => setActiveTab('knowledge')}
             className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
               activeTab === 'knowledge'
-                ? 'border-[#00a884] text-[#008069]'
-                : 'border-transparent text-[#8696a0] hover:text-white'
+                ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+                : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
             }`}
           >
             <BookOpen size={13} />
@@ -312,52 +448,52 @@ export default function SettingsPage() {
       {activeTab === 'general' && (
         <div className="space-y-6 max-w-4xl">
           {/* Organization Settings */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm">
-            <h2 className="text-base font-bold text-white mb-4">Organization</h2>
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-4">Organization</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Organization Name
                 </label>
                 <input
                   type="text"
                   value={organization?.name || ''}
                   disabled
-                  className="w-full px-3.5 py-2.5 border border-[#202d36] bg-[#0c1317] text-[#8696a0] rounded-lg text-xs font-semibold"
+                  className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] text-[#667781] dark:text-[#8696a0] rounded-lg text-xs font-semibold"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Organization Slug
                 </label>
                 <input
                   type="text"
                   value={organization?.slug || ''}
                   disabled
-                  className="w-full px-3.5 py-2.5 border border-[#202d36] bg-[#0c1317] text-[#8696a0] rounded-lg text-xs font-semibold"
+                  className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] text-[#667781] dark:text-[#8696a0] rounded-lg text-xs font-semibold"
                 />
               </div>
             </div>
           </div>
 
           {/* Global Features Configuration */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm">
-            <h2 className="text-base font-bold text-white mb-2">Global Features Configuration</h2>
-            <p className="text-xs text-[#8696a0] mb-5 font-semibold leading-relaxed">
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-2">Global Features Configuration</h2>
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] mb-5 font-semibold leading-relaxed">
               Enable or disable core functionalities. Disabling a feature hides all related menu items, pages, tabs, and buttons across the workspace in real-time.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* AI Copilot & Knowledge Base */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#2a3942] bg-[#1f2c34]">
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                 <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-bold text-white">AI Copilot & Knowledge Base</span>
-                  <span className="text-[10px] text-[#8696a0] font-semibold leading-relaxed">Suggested conversation replies and scraped article RAG indexing</span>
+                  <span className="text-xs font-bold text-[#111b21] dark:text-white">AI Copilot & Knowledge Base</span>
+                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Suggested conversation replies and scraped article RAG indexing</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_ai', organization?.enable_ai !== false ? false : true)}
                   className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#2a3942]'
+                    organization?.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                   }`}
                 >
                   <span
@@ -369,16 +505,16 @@ export default function SettingsPage() {
               </div>
 
               {/* Messaging (WhatsApp & SMS) */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#2a3942] bg-[#1f2c34]">
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                 <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-bold text-white">Messaging (WhatsApp & SMS)</span>
-                  <span className="text-[10px] text-[#8696a0] font-semibold leading-relaxed">Live chat conversations, SMS broadcasts and approved templates</span>
+                  <span className="text-xs font-bold text-[#111b21] dark:text-white">Messaging (WhatsApp & SMS)</span>
+                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Live chat conversations, SMS broadcasts and approved templates</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_messages', organization?.enable_messages !== false ? false : true)}
                   className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#2a3942]'
+                    organization?.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                   }`}
                 >
                   <span
@@ -390,16 +526,16 @@ export default function SettingsPage() {
               </div>
 
               {/* Email Campaigns */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#2a3942] bg-[#1f2c34]">
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                 <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-bold text-white">Email Campaigns</span>
-                  <span className="text-[10px] text-[#8696a0] font-semibold leading-relaxed">Mass broadcast email marketing and custom message body templates</span>
+                  <span className="text-xs font-bold text-[#111b21] dark:text-white">Email Campaigns</span>
+                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Mass broadcast email marketing and custom message body templates</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_email', organization?.enable_email !== false ? false : true)}
                   className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#2a3942]'
+                    organization?.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                   }`}
                 >
                   <span
@@ -411,16 +547,16 @@ export default function SettingsPage() {
               </div>
 
               {/* Phone Calls & IVR */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#2a3942] bg-[#1f2c34]">
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                 <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="text-xs font-bold text-white">Phone Calls & IVR</span>
-                  <span className="text-[10px] text-[#8696a0] font-semibold leading-relaxed">Dynamic call flows, automated response menus and call logs</span>
+                  <span className="text-xs font-bold text-[#111b21] dark:text-white">Phone Calls & IVR</span>
+                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Dynamic call flows, automated response menus and call logs</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_phone_calls', organization?.enable_phone_calls !== false ? false : true)}
                   className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#2a3942]'
+                    organization?.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                   }`}
                 >
                   <span
@@ -434,51 +570,51 @@ export default function SettingsPage() {
           </div>
 
           {/* Account Settings */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm">
-            <h2 className="text-base font-bold text-white mb-4">Account</h2>
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-4">Account</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Email
                 </label>
                 <input
                   type="email"
                   value={user?.email || ''}
                   disabled
-                  className="w-full px-3.5 py-2.5 border border-[#202d36] bg-[#0c1317] text-[#8696a0] rounded-lg text-xs font-semibold"
+                  className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] text-[#667781] dark:text-[#8696a0] rounded-lg text-xs font-semibold"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Full Name
                 </label>
                 <input
                   type="text"
                   value={user?.full_name || ''}
                   disabled
-                  className="w-full px-3.5 py-2.5 border border-[#202d36] bg-[#0c1317] text-[#8696a0] rounded-lg text-xs font-semibold"
+                  className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] text-[#667781] dark:text-[#8696a0] rounded-lg text-xs font-semibold"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Role
                 </label>
                 <input
                   type="text"
                   value={user?.role || ''}
                   disabled
-                  className="w-full px-3.5 py-2.5 border border-[#202d36] bg-[#0c1317] text-[#8696a0] rounded-lg text-xs font-semibold capitalize"
+                  className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] text-[#667781] dark:text-[#8696a0] rounded-lg text-xs font-semibold capitalize"
                 />
               </div>
             </div>
           </div>
 
           {/* Custom Credentials & Integrations Settings */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-[#202d36] pb-4">
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-[#202d36] pb-4">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[#00a884]" />
-                <h2 className="text-base font-bold text-white">Custom Credentials & Integrations</h2>
+                <h2 className="text-base font-bold text-[#111b21] dark:text-white">Custom Credentials & Integrations</h2>
               </div>
               <button
                 type="button"
@@ -491,34 +627,34 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            <p className="text-xs text-[#8696a0] leading-relaxed font-semibold">
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
               Manage organization-specific credentials for external gateways. If any field is left blank, it will automatically fall back to using default environment configurations.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* WhatsApp & SMS Gateway Section */}
-              <div className="space-y-4 border-b md:border-b-0 md:border-r border-[#202d36] pb-6 md:pb-0 md:pr-6">
+              <div className="space-y-4 border-b md:border-b-0 md:border-r border-[#e9edef] dark:border-[#202d36] pb-6 md:pb-0 md:pr-6">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp & SMS Gateway</h3>
                 
                 {/* Visual Mockup - Chat Inbox */}
-                <div className="bg-[#0b0f19] p-3 rounded-xl border border-[#202d36] select-none text-[10px] space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[8px] text-slate-400 font-bold">
-                    <span className="text-white flex items-center gap-1">💬 Active Chat Session</span>
+                <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                  <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                    <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 Active Chat Session</span>
                     <span className="bg-emerald-500/20 text-[#00a884] px-1.5 py-0.5 rounded font-bold">Live Status</span>
                   </div>
                   <div className="space-y-1.5 max-h-16 overflow-hidden flex flex-col">
-                    <div className="bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[9px] text-slate-300 max-w-[85%] self-start border border-slate-800 leading-normal">
+                    <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[9px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
                       I want to set up automatic responses
                     </div>
-                    <div className="bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[9px] text-white max-w-[85%] ml-auto border border-[#005c4b] text-right leading-normal">
+                    <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[9px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
                       Input your Account details and your gateway starts routing chats instantly!
-                      <span className="text-emerald-300 text-[6px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
+                      <span className="text-emerald-600 dark:text-emerald-300 text-[6px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                     Account SID
                   </label>
                   <input
@@ -526,12 +662,12 @@ export default function SettingsPage() {
                     value={twilioAccountSid}
                     onChange={(e) => setTwilioAccountSid(e.target.value)}
                     placeholder="Gateway Account SID"
-                    className="w-full px-3.5 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                     Auth Token
                   </label>
                   <div className="relative">
@@ -540,12 +676,12 @@ export default function SettingsPage() {
                       value={twilioAuthToken}
                       onChange={(e) => setTwilioAuthToken(e.target.value)}
                       placeholder="Gateway Auth Token"
-                      className="w-full pl-3.5 pr-10 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                     />
                     <button
                       type="button"
                       onClick={() => setShowTwilioToken(!showTwilioToken)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#e9edef] cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
                     >
                       {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
@@ -553,7 +689,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                     WhatsApp Sender Number
                   </label>
                   <input
@@ -561,9 +697,9 @@ export default function SettingsPage() {
                     value={twilioWhatsappNumber}
                     onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
                     placeholder="+14155238886 or whatsapp:+14155238886"
-                    className="w-full px-3.5 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                   />
-                  <p className="text-[10px] text-[#8696a0] font-semibold mt-1">
+                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
                     Include the sender prefix (e.g., whatsapp:+14155238886)
                   </p>
                 </div>
@@ -576,81 +712,179 @@ export default function SettingsPage() {
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h3>
                   
                   {/* Visual Mockup - Email Dispatch */}
-                  <div className="bg-[#0b0f19] p-3 rounded-xl border border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[8px] text-slate-400 font-bold">
-                      <span className="text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
+                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
                       <span className="text-[#00a884] font-bold">99.8% Sent</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-300">
-                      <div className="bg-[#1f2c34] p-1.5 rounded border border-slate-800 font-semibold">
-                        <span className="text-slate-500 block text-[7px] font-bold">Subject</span>
+                    <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-700 dark:text-slate-300">
+                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
+                        <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Subject</span>
                         Summer Sales Campaign
                       </div>
-                      <div className="bg-[#1f2c34] p-1.5 rounded border border-slate-800 font-semibold">
-                        <span className="text-slate-500 block text-[7px] font-bold">Status</span>
+                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
+                        <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Status</span>
                         Dispatched to 1,500 leads
                       </div>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      Email API Key
+                  <div className="flex flex-col gap-2">
+                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                      Email Service Provider
                     </label>
-                    <div className="relative">
-                      <input
-                        type={showSgKey ? 'text' : 'password'}
-                        value={sendgridApiKey}
-                        onChange={(e) => setSendgridApiKey(e.target.value)}
-                        placeholder="Email Gateway API Key"
-                        className="w-full pl-3.5 pr-10 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowSgKey(!showSgKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#e9edef] cursor-pointer"
-                      >
-                        {showSgKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
+                    <div className="flex gap-4 mb-2 select-none">
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="emailProvider"
+                          value="sendgrid"
+                          checked={emailProvider === 'sendgrid'}
+                          onChange={() => setEmailProvider('sendgrid')}
+                          className="accent-[#00a884]"
+                        />
+                        SendGrid API
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="emailProvider"
+                          value="smtp"
+                          checked={emailProvider === 'smtp'}
+                          onChange={() => setEmailProvider('smtp')}
+                          className="accent-[#00a884]"
+                        />
+                        Custom SMTP (Nodemailer)
+                      </label>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      From Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={sendgridFromEmail}
-                      onChange={(e) => setSendgridFromEmail(e.target.value)}
-                      placeholder="no-reply@yourdomain.com"
-                      className="w-full px-3.5 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
-                    />
-                  </div>
+                  {emailProvider === 'sendgrid' ? (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          Email API Key
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showSgKey ? 'text' : 'password'}
+                            value={sendgridApiKey}
+                            onChange={(e) => setSendgridApiKey(e.target.value)}
+                            placeholder="Email Gateway API Key"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSgKey(!showSgKey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                          >
+                            {showSgKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          From Email Address
+                        </label>
+                        <input
+                          type="email"
+                          value={sendgridFromEmail}
+                          onChange={(e) => setSendgridFromEmail(e.target.value)}
+                          placeholder="no-reply@yourdomain.com"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-2">
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            SMTP Host
+                          </label>
+                          <input
+                            type="text"
+                            value={smtpHost}
+                            onChange={(e) => setSmtpHost(e.target.value)}
+                            placeholder="smtp.mailgun.org"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            SMTP Port
+                          </label>
+                          <input
+                            type="text"
+                            value={smtpPort}
+                            onChange={(e) => setSmtpPort(e.target.value)}
+                            placeholder="587"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          SMTP Username / Email
+                        </label>
+                        <input
+                          type="email"
+                          value={smtpEmail}
+                          onChange={(e) => setSmtpEmail(e.target.value)}
+                          placeholder="postmaster@yourdomain.com"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          SMTP Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showSmtpPassword ? 'text' : 'password'}
+                            value={smtpPassword}
+                            onChange={(e) => setSmtpPassword(e.target.value)}
+                            placeholder="SMTP password"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                          >
+                            {showSmtpPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* AI Assistant Engine */}
-                <div className="space-y-4 border-t border-[#202d36] pt-4">
+                <div className="space-y-4 border-t border-[#e9edef] dark:border-[#202d36] pt-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h3>
                   
                   {/* Visual Mockup - AI suggestions */}
-                  <div className="bg-[#0b0f19] p-3 rounded-xl border border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-[8px] text-slate-400 font-bold">
-                      <span className="text-white flex items-center gap-1">🤖 AI Suggested Replies</span>
-                      <span className="text-blue-400 font-bold">Copilot Active</span>
+                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">🤖 AI Suggested Replies</span>
+                      <span className="text-blue-600 dark:text-blue-400 font-bold">Copilot Active</span>
                     </div>
                     <div className="flex gap-1.5 overflow-x-auto py-0.5">
                       <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
                         🤖 AI: Book Consultation Call
                       </div>
-                      <div className="bg-[#1f2c34] border border-slate-800 text-slate-300 text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                      <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
                         AI: Send Pricing FAQ
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                       AI API Key
                     </label>
                     <div className="relative">
@@ -659,43 +893,59 @@ export default function SettingsPage() {
                         value={openaiApiKey}
                         onChange={(e) => setOpenaiApiKey(e.target.value)}
                         placeholder="AI Model API Key"
-                        className="w-full pl-3.5 pr-10 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
+                        className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                       />
                       <button
                         type="button"
                         onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#e9edef] cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
                       >
                         {showOpenaiKey ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                      AI Chatbot Base Prompt (System Prompt)
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={chatbotBasePrompt}
+                      onChange={(e) => setChatbotBasePrompt(e.target.value)}
+                      placeholder="Enter the custom base/system prompt for your chatbot. Leaving this blank will fall back to the default strict customer service prompt."
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
+                    />
+                    <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                      Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your RAG knowledge base.
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Webhook URLs setup block */}
-            <div className="bg-[#1f2c34] border border-[#2a3942] rounded-xl p-4 space-y-4">
-              <h3 className="text-xs font-bold text-white">Dynamic Webhook Configurations</h3>
-              <p className="text-[11px] text-[#8696a0] leading-relaxed font-semibold">
+            <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-4">
+              <h3 className="text-xs font-bold text-[#111b21] dark:text-white">Dynamic Webhook Configurations</h3>
+              <p className="text-[11px] text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
                 Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
               </p>
               
               <div className="space-y-3">
                 <div>
-                  <span className="block text-[10px] font-bold text-[#8696a0] uppercase mb-1">
+                  <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
                     Incoming Message Webhook
                   </span>
-                  <div className="bg-[#111b21] px-3 py-2 rounded-lg border border-[#2a3942] select-all break-all">
+                  <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
                     <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
                   </div>
                 </div>
 
                 <div>
-                  <span className="block text-[10px] font-bold text-[#8696a0] uppercase mb-1">
+                  <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
                     Status Callback Webhook
                   </span>
-                  <div className="bg-[#111b21] px-3 py-2 rounded-lg border border-[#2a3942] select-all break-all">
+                  <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
                     <code className="text-xs text-[#00e676] font-mono">
                       {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
                     </code>
@@ -703,7 +953,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="text-[10px] text-[#8696a0] font-semibold flex items-start gap-1">
+              <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
                 <span className="text-amber-500 font-bold">⚠️</span>
                 <span>Make sure to select HTTP POST in the gateway Sandbox/Numbers configuration screen when saving these webhook links.</span>
               </div>
@@ -711,12 +961,12 @@ export default function SettingsPage() {
           </div>
 
           {/* Support */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm">
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Bell size={20} className="text-[#00a884]" />
-              <h2 className="text-base font-bold text-white">Need Help?</h2>
+              <h2 className="text-base font-bold text-[#111b21] dark:text-white">Need Help?</h2>
             </div>
-            <p className="text-xs text-[#8696a0] mb-4 font-semibold">
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] mb-4 font-semibold">
               Check out the workspace guide or contact our support team for help configuring your custom gateways.
             </p>
             <div className="flex gap-3">
@@ -741,15 +991,15 @@ export default function SettingsPage() {
         <div className="space-y-6 max-w-4xl">
 
           {/* Add FAQ panel */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] p-6 shadow-sm">
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <FileText size={20} className="text-[#00a884]" />
-              <h2 className="text-base font-bold text-white">Add Manual FAQ / Policy</h2>
+              <h2 className="text-base font-bold text-[#111b21] dark:text-white">Add Manual FAQ / Policy</h2>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Question or Title
                 </label>
                 <input
@@ -757,12 +1007,12 @@ export default function SettingsPage() {
                   value={manualTitle}
                   onChange={e => setManualTitle(e.target.value)}
                   placeholder="e.g. What is the fee for passport renewal?"
-                  className="w-full px-3.5 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#8696a0] uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Answer or Content
                 </label>
                 <textarea
@@ -770,7 +1020,7 @@ export default function SettingsPage() {
                   value={manualContent}
                   onChange={e => setManualContent(e.target.value)}
                   placeholder="e.g. The standard passport renewal fee is $130. Expedited processing costs an additional $60."
-                  className="w-full px-3.5 py-2.5 bg-[#1f2c34] border border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] text-white resize-y"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
                 />
               </div>
 
@@ -788,12 +1038,31 @@ export default function SettingsPage() {
           </div>
 
           {/* Indexed Knowledge panel */}
-          <div className="bg-[#111b21] rounded-lg border border-[#202d36] shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#202d36] bg-[#1f2c34] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Indexed Knowledge Base</h3>
-              <span className="text-[10px] font-bold text-[#8696a0] bg-[#111b21] border border-[#2a3942] px-2.5 py-0.5 rounded-full">
-                {articles.length} items
-              </span>
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Indexed Knowledge Base</h3>
+                <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
+                  {articles.length} items
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleExcelImport}
+                  accept=".xlsx, .xls"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importProgress !== null || loadingArticles}
+                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Upload size={12} />
+                  <span>Import Excel</span>
+                </button>
+              </div>
             </div>
 
             {loadingArticles ? (
@@ -801,66 +1070,38 @@ export default function SettingsPage() {
                 <Loader2 size={24} className="animate-spin text-[#00a884]" />
               </div>
             ) : articles.length === 0 ? (
-              <div className="p-12 text-center text-[#8696a0]">
-                <BookOpen size={36} className="text-[#202d36] mx-auto mb-3" />
-                <p className="text-xs font-bold">No articles indexed yet</p>
-                <p className="text-[10px] font-medium mt-1">Start by scraping web pages or adding FAQs above.</p>
+              <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
+                <BookOpen size={36} className="text-[#e9edef] dark:text-[#202d36] mx-auto mb-3" />
+                <p className="text-xs font-bold">No knowledge items added yet</p>
+                <p className="text-[10px] font-medium mt-1">Add your first FAQ item above to build your knowledge base.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-[#2a3942] bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#8696a0]">
-                      <th className="px-6 py-3">Title / Question</th>
-                      <th className="px-6 py-3">Type</th>
-                      <th className="px-6 py-3">Source URL</th>
+                    <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                      <th className="px-6 py-3">Question</th>
+                      <th className="px-6 py-3">Answer Preview</th>
                       <th className="px-6 py-3">Indexed Date</th>
                       <th className="px-6 py-3 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {articles.map((art) => (
-                      <tr key={art.id} className="border-b border-[#202d36] last:border-b-0 hover:bg-[#1f2c34]/50 transition-colors">
-                        <td className="px-6 py-3.5 font-bold text-white max-w-xs">
+                    {paginatedArticles.map((art) => (
+                      <tr key={art.id} className="border-b border-[#e9edef] dark:border-[#202d36] last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors">
+                        <td className="px-6 py-3.5 font-bold text-[#111b21] dark:text-white max-w-xs">
                           <p className="truncate">{art.title}</p>
-                          {art.description && (
-                            <p className="text-[10px] text-[#8696a0] font-medium leading-relaxed mt-0.5 line-clamp-2 max-w-[320px] whitespace-normal font-sans">
-                              {art.description}
-                            </p>
-                          )}
                         </td>
-                        <td className="px-6 py-3.5 text-[#8696a0] font-semibold text-[10px]">
-                          {art.source_url ? (
-                            <span className="px-2 py-0.5 rounded-full bg-[#002a22] text-[#00e676] border border-[#00a884]/20 font-bold text-[9px]">
-                              Scraped
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-[#0b2e4f] text-[#3b82f6] border border-blue-500/20 font-bold text-[9px]">
-                              Manual FAQ
-                            </span>
-                          )}
+                        <td className="px-6 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium text-[10px] max-w-sm">
+                          <p className="line-clamp-2 whitespace-normal">{art.content?.substring(0, 120)}{art.content?.length > 120 ? '...' : ''}</p>
                         </td>
-                        <td className="px-6 py-3.5 text-[#8696a0] max-w-xs truncate font-mono text-[10px]">
-                          {art.source_url ? (
-                            <a
-                              href={art.source_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#00e676] hover:underline"
-                            >
-                              {art.source_url}
-                            </a>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="px-6 py-3.5 text-[#8696a0] font-medium">
+                        <td className="px-6 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium">
                           {new Date(art.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-3.5 text-center">
                           <button
                             onClick={() => handleDeleteArticle(art.id)}
-                            className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#202d36] rounded transition-colors cursor-pointer"
+                            className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 size={14} />
@@ -870,8 +1111,62 @@ export default function SettingsPage() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="px-6 py-4 border-t border-[#e9edef] dark:border-[#202d36]/50 bg-[#f0f2f5] dark:bg-[#1f2c34]/20 flex items-center justify-between select-none text-[11px] text-[#667781] dark:text-[#8696a0]">
+                    <div className="font-semibold">
+                      Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} items
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1.5 border border-[#e9edef] dark:border-[#2a3942] hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 disabled:opacity-50 text-[#111b21] dark:text-white rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-bold"
+                      >
+                        <ChevronLeft size={12} />
+                        <span>Previous</span>
+                      </button>
+                      <span className="font-bold text-[#111b21] dark:text-white px-2">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1.5 border border-[#e9edef] dark:border-[#2a3942] hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 disabled:opacity-50 text-[#111b21] dark:text-white rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-bold"
+                      >
+                        <span>Next</span>
+                        <ChevronRight size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Excel Import Progress Overlay */}
+      {importProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center space-y-4">
+            <Loader2 size={32} className="animate-spin text-[#00a884] mx-auto" />
+            <div>
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Importing FAQ Items</h3>
+              <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold leading-relaxed">
+                Please wait while we generate vector embeddings and index your FAQ items.
+              </p>
+            </div>
+            <div className="bg-[#f0f2f5] dark:bg-[#111b21] h-2 w-full rounded-full overflow-hidden">
+              <div 
+                className="bg-[#00a884] h-full transition-all duration-300"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              />
+            </div>
+            <div className="text-[11px] text-[#667781] dark:text-[#8696a0] font-bold">
+              Processed {importProgress.current} of {importProgress.total} items ({Math.round((importProgress.current / importProgress.total) * 100)}%)
+            </div>
           </div>
         </div>
       )}

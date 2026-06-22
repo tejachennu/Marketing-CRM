@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
     let envWhatsapp = process.env.TWILIO_WHATSAPP_NUMBER || ''
     let sendgridKey = process.env.SENDGRID_API_KEY || ''
     let envEmail = process.env.SENDGRID_FROM_EMAIL || ''
+    let emailProvider = 'sendgrid'
+    let smtpEmail = ''
 
     // Resolve tenant credentials
     if (orgId) {
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
         const supabase = getSupabaseClient()
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_email')
           .eq('id', orgId)
           .single()
 
@@ -38,10 +40,16 @@ export async function GET(request: NextRequest) {
           if (orgData.twilio_whatsapp_number) envWhatsapp = orgData.twilio_whatsapp_number
           if (orgData.sendgrid_api_key) sendgridKey = orgData.sendgrid_api_key
           if (orgData.sendgrid_from_email) envEmail = orgData.sendgrid_from_email
+          if (orgData.email_provider) emailProvider = orgData.email_provider
+          if (orgData.smtp_email) smtpEmail = orgData.smtp_email
         }
       } catch (dbErr) {
         console.error('[Senders API] Error loading database credentials:', dbErr)
       }
+    }
+
+    if (emailProvider === 'smtp' && smtpEmail) {
+      envEmail = smtpEmail
     }
 
     const smsSenders: Array<{ value: string; label: string }> = []
@@ -102,7 +110,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Fetch SendGrid Verified Senders
-    if (sendgridKey) {
+    if (emailProvider !== 'smtp' && sendgridKey) {
       try {
         const sgRes = await fetch('https://api.sendgrid.com/v3/verified_senders', {
           headers: {

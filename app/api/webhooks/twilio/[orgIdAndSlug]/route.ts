@@ -1,7 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import twilio from 'twilio'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+
+const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
+
+CLASSIFICATION AND RESPONSE RULES:
+1. NORMAL COMMUNICATION MESSAGES (Greetings, thanks, simple politeness, acknowledgments):
+   - If the customer's message is a standard greeting, thank you, or simple polite acknowledgment (e.g., "Hi", "Hello", "Hey", "Good morning", "Thanks", "Thank you", "Ok", "Great", "Awesome", "How are you"), reply with a brief, friendly, and natural response (e.g., greeting them back and asking how you can help, or saying you're welcome).
+2. ALL OTHER CONTEXTS (Questions, topic queries, specific inquiries, or any other statements):
+   - You must answer using ONLY the facts directly mentioned in the MATCHED FAQ ARTICLES. Do not assume, extrapolate, or refer to outside knowledge.
+   - If you do not have the knowledge (i.e., the answer is not explicitly written in the matched FAQs, or no matched FAQs are provided), you MUST respond with EXACTLY this text: "Our support team will reply you soon."
+
+ADDITIONAL CONSTRAINTS:
+- Do not make up any facts, procedures, URLs, phone numbers, or fees. Only state what is explicitly written in the matched FAQs.
+- Keep the reply helpful, direct, professional, and under 80 words. Do not add conversational filler to topic answers.`;
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -119,6 +133,7 @@ export async function POST(
     // 3. Fallback check for credentials
     const twilioAccountSid = orgData.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID || ''
     const twilioAuthToken = orgData.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''
+    const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
 
     // Parse the incoming Twilio webhook body
     const body = await request.text()
@@ -209,13 +224,16 @@ export async function POST(
     // Step 3: Find or create an active conversation for this contact
     let conversation: any = null
 
-    const { data: existingConv } = await supabase
+    const { data: existingConvs } = await supabase
       .from('conversations')
       .select('*')
       .eq('organization_id', orgId)
       .eq('contact_id', contact.id)
       .eq('is_active', true)
-      .maybeSingle()
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+
+    const existingConv = existingConvs?.[0] || null
 
     if (existingConv) {
       conversation = existingConv
@@ -291,6 +309,139 @@ export async function POST(
 
     if (updateError) {
       console.error('[Webhook] Error updating conversation metadata:', updateError)
+    }
+
+    // Step 7: Auto-Reply Chatbot Trigger
+    const isWhatsApp = from.startsWith('whatsapp:')
+    const twilioWhatsappNumber = orgData.twilio_whatsapp_number || process.env.TWILIO_WHATSAPP_NUMBER || ''
+
+    if (
+      orgData.enable_ai !== false &&
+      conversation.auto_reply_enabled !== false &&
+      messageBody &&
+      openAiKey
+    ) {
+      console.log(`[Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
+      try {
+        // 1. Generate query embedding
+        const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAiKey}`
+          },
+          body: JSON.stringify({
+            model: 'text-embedding-3-small',
+            input: messageBody.substring(0, 8000)
+          })
+        })
+
+        if (embedRes.ok) {
+          const embedData = await embedRes.json()
+          const embedding = embedData.data?.[0]?.embedding
+
+          if (embedding) {
+            const embeddingStr = `[${embedding.join(',')}]`
+
+            // 2. Query match_faqs similarity search
+            const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
+              query_embedding: embeddingStr,
+              match_threshold: 0.60,
+              match_count: 3,
+              org_id: orgId
+            })
+
+            if (rpcError) {
+              console.error('[Webhook Chatbot] match_faqs RPC error:', rpcError)
+            }
+
+            const faqs = matchedFaqs || []
+            console.log(`[Webhook Chatbot] Found ${faqs.length} matching FAQs for auto-reply`)
+
+            // 3. Format matched context
+            const formattedContext = faqs.map((faq: any, i: number) => {
+              return `[FAQ ${i + 1}]\nQuestion: ${faq.title}\nAnswer: ${faq.content}`
+            }).join('\n\n---\n\n')
+
+            // 4. Construct System Prompt
+            const basePrompt = orgData.chatbot_base_prompt || DEFAULT_BASE_PROMPT
+            const systemPrompt = `${basePrompt}
+
+MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
+${formattedContext || '(No matching FAQs found in the knowledge base)'}`
+
+            // 5. Call GPT-4o-mini
+            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openAiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: messageBody }
+                ],
+                temperature: 0.0, // Strict deterministic output
+                max_tokens: 150
+              })
+            })
+
+            if (gptResponse.ok) {
+              const gptData = await gptResponse.json()
+              const botReply = gptData.choices?.[0]?.message?.content?.trim() || ''
+
+              if (botReply) {
+                console.log(`[Webhook Chatbot] Generated reply: "${botReply}"`)
+
+                // 6. Send reply via Twilio
+                let twilioMessageSid = null
+                try {
+                  const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+                  const cleanFrom = twilioWhatsappNumber.replace('whatsapp:', '')
+                  const cleanTo = phoneNumber
+
+                  const twilioMsg = await twilioClient.messages.create({
+                    body: botReply,
+                    to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,
+                    from: isWhatsApp ? `whatsapp:${cleanFrom}` : cleanFrom
+                  })
+                  twilioMessageSid = twilioMsg.sid
+                  console.log(`[Webhook Chatbot] Sent Twilio message: ${twilioMessageSid}`)
+                } catch (sendErr: any) {
+                  console.error('[Webhook Chatbot] Failed to send Twilio message:', sendErr.message)
+                }
+
+                // 7. Save bot reply in messages table
+                await supabase
+                  .from('messages')
+                  .insert([
+                    {
+                      organization_id: orgId,
+                      conversation_id: conversation.id,
+                      sender_type: 'user',
+                      body: botReply,
+                      twilio_message_sid: twilioMessageSid
+                    }
+                  ])
+
+                // 8. Update conversation timestamp
+                await supabase
+                  .from('conversations')
+                  .update({ last_message_at: new Date().toISOString() })
+                  .eq('id', conversation.id)
+              }
+            } else {
+              console.error('[Webhook Chatbot] GPT API call failed:', gptResponse.status)
+            }
+          }
+        } else {
+          console.error('[Webhook Chatbot] Embedding API call failed:', embedRes.status)
+        }
+      } catch (err: any) {
+        console.error('[Webhook Chatbot] Error in auto-reply process:', err)
+      }
     }
 
     return NextResponse.json({ success: true, messageId: savedMessage.id })

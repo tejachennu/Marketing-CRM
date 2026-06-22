@@ -55,6 +55,7 @@ export default function ConversationsPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [aiSuggestionsError, setAiSuggestionsError] = useState<string | null>(null)
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null)
+  const [showAiPanel, setShowAiPanel] = useState(false)
   const fetchSuggestionsRef = useRef<any>(null)
 
   const [features, setFeatures] = useState({
@@ -437,6 +438,30 @@ export default function ConversationsPage() {
     loadConversations(user.organization_id, nextPage, true)
   }
 
+  const toggleAutoReply = async (convId: string, currentVal: boolean) => {
+    const newVal = !currentVal
+    
+    // Optimistic update of local conversations state
+    setConversations((prev) => 
+      prev.map((c) => c.id === convId ? { ...c, auto_reply_enabled: newVal } : c)
+    )
+
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ auto_reply_enabled: newVal })
+        .eq('id', convId)
+
+      if (error) throw error
+    } catch (err) {
+      console.error('[Dashboard] Failed to toggle auto-reply:', err)
+      // Rollback on error
+      setConversations((prev) => 
+        prev.map((c) => c.id === convId ? { ...c, auto_reply_enabled: currentVal } : c)
+      )
+    }
+  }
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -484,6 +509,8 @@ export default function ConversationsPage() {
     
     setMessageText('')
     setAttachedFile(null)
+    setAiSuggestions([])
+    setShowAiPanel(false)
 
     // Optimistic update
     const optimisticMsg: Message = {
@@ -894,6 +921,41 @@ export default function ConversationsPage() {
                 </p>
               </div>
             </div>
+
+            {/* Auto-Reply Chatbot Toggle Override */}
+            {selectedConversation && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] select-none">
+                  Auto-Reply Chatbot
+                </span>
+                <button
+                  onClick={() => {
+                    const conv = conversations.find((c) => c.id === selectedConversation)
+                    if (conv) {
+                      toggleAutoReply(selectedConversation, conv.auto_reply_enabled !== false)
+                    }
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                      ? 'bg-[#00a884]'
+                      : 'bg-[#2a3942] dark:bg-slate-700'
+                  }`}
+                  title={
+                    conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                      ? 'AI chatbot will automatically reply to customer messages'
+                      : 'Chatbot auto-reply is disabled for this contact'
+                  }
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                        ? 'translate-x-4'
+                        : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Chat Messages */}
@@ -1160,97 +1222,130 @@ export default function ConversationsPage() {
           {/* AI Suggested Replies (RAG) */}
           {features.enable_ai && selectedConversation && (
             <div className="border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] select-none">
-              {/* Header Bar */}
-              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-black text-[#008069] dark:text-[#00e676] shrink-0 mr-1 bg-[#e7f7f4] dark:bg-[#002a22] px-2 py-0.5 rounded-md border border-[#00a884]/15">
-                  <Sparkles size={11} className="text-[#008069] dark:text-[#00e676]" />
-                  <span>AI SUGGESTIONS</span>
-                </div>
-
-                {loadingSuggestions && (
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#667781] dark:text-[#8696a0] py-1">
-                    <Loader2 size={11} className="animate-spin text-[#00a884]" />
-                    <span>Analyzing knowledge base...</span>
-                  </div>
-                )}
-
-                {aiSuggestionsError && (
-                  <span className="text-[10px] font-bold text-rose-500 py-1 truncate max-w-md" title={aiSuggestionsError}>
-                    ⚠️ {aiSuggestionsError}
-                  </span>
-                )}
-
-                {/* Refresh / Generate Button */}
-                <button
-                  onClick={() => fetchSuggestions(selectedConversation)}
-                  className="p-1.5 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
-                  title={aiSuggestions.length > 0 ? 'Refresh Suggestions' : 'Generate Smart Replies'}
+              {!showAiPanel ? (
+                /* Collapsed State Bar */
+                <div 
+                  onClick={() => {
+                    setShowAiPanel(true)
+                    if (aiSuggestions.length === 0) {
+                      fetchSuggestions(selectedConversation)
+                    }
+                  }}
+                  className="px-3 py-1.5 flex items-center justify-between cursor-pointer hover:bg-[#e9edef] dark:hover:bg-[#2a3942] transition-colors"
                 >
-                  <Sparkles size={12} className={loadingSuggestions ? 'animate-spin' : ''} />
-                </button>
-              </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-black text-[#008069] dark:text-[#00e676]">
+                    <Sparkles size={11} className="text-[#008069] dark:text-[#00e676]" />
+                    <span>SHOW AI SUGGESTIONS</span>
+                  </div>
+                  <span className="text-[9px] uppercase font-bold text-[#667781] dark:text-[#8696a0] opacity-75 hover:opacity-100 transition-opacity">
+                    Click to expand
+                  </span>
+                </div>
+              ) : (
+                /* Expanded State Panel */
+                <>
+                  {/* Header Bar */}
+                  <div className="px-3 pt-2 pb-1 flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-[10px] font-black text-[#008069] dark:text-[#00e676] shrink-0 mr-1 bg-[#e7f7f4] dark:bg-[#002a22] px-2 py-0.5 rounded-md border border-[#00a884]/15">
+                      <Sparkles size={11} className="text-[#008069] dark:text-[#00e676]" />
+                      <span>AI SUGGESTIONS</span>
+                    </div>
 
-              {/* Suggestion Cards */}
-              {!loadingSuggestions && aiSuggestions.length > 0 && (
-                <div className="px-3 pb-2 flex flex-col gap-1.5">
-                  {aiSuggestions.map((sug, i) => (
-                    <div
-                      key={i}
-                      className="group relative bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#26353d] border border-[#e9edef] dark:border-[#2a3942] hover:border-[#00a884]/30 rounded-lg transition-all cursor-pointer active:scale-[0.995] shadow-sm hover:shadow"
-                      onClick={() => setMessageText(sug.text)}
+                    {loadingSuggestions && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#667781] dark:text-[#8696a0] py-1">
+                        <Loader2 size={11} className="animate-spin text-[#00a884]" />
+                        <span>Analyzing knowledge base...</span>
+                      </div>
+                    )}
+
+                    {aiSuggestionsError && (
+                      <span className="text-[10px] font-bold text-rose-500 py-1 truncate max-w-md" title={aiSuggestionsError}>
+                        ⚠️ {aiSuggestionsError}
+                      </span>
+                    )}
+
+                    {/* Refresh / Generate Button */}
+                    <button
+                      onClick={() => fetchSuggestions(selectedConversation)}
+                      className="p-1.5 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
+                      title={aiSuggestions.length > 0 ? 'Refresh Suggestions' : 'Generate Smart Replies'}
                     >
-                      {/* Main suggestion text */}
-                      <div className="px-3 py-2 flex items-start gap-2">
-                        <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-[#e7f7f4] dark:bg-[#002a22] flex items-center justify-center text-[10px] font-bold text-[#008069] dark:text-[#00e676]">
-                          {i + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[11.5px] leading-relaxed text-[#111b21] dark:text-slate-200 font-medium">
-                            {sug.text}
-                          </p>
-                          {/* Source article badge */}
-                          {sug.article_title && (
-                            <div className="mt-1.5 flex items-center gap-1.5">
-                              <BookOpen size={10} className="text-[#00a884] shrink-0" />
-                              <span className="text-[9.5px] font-semibold text-[#008069] dark:text-[#00e676] truncate">
-                                {sug.article_title}
-                              </span>
-                              {sug.source_url && (
-                                <a
-                                  href={sug.source_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="shrink-0 flex items-center gap-0.5 text-[9px] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] font-medium underline decoration-dotted"
-                                >
-                                  <ExternalLink size={8} />
-                                  Source
-                                </a>
+                      <Sparkles size={12} className={loadingSuggestions ? 'animate-spin' : ''} />
+                    </button>
+
+                    {/* Close / Dismiss Button */}
+                    <button
+                      onClick={() => setShowAiPanel(false)}
+                      className="p-1.5 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-rose-500 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                      title="Close suggestions"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+
+                  {/* Suggestion Cards */}
+                  {!loadingSuggestions && aiSuggestions.length > 0 && (
+                    <div className="px-3 pb-2 flex flex-col gap-1.5">
+                      {aiSuggestions.map((sug, i) => (
+                        <div
+                          key={i}
+                          className="group relative bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#26353d] border border-[#e9edef] dark:border-[#2a3942] hover:border-[#00a884]/30 rounded-lg transition-all cursor-pointer active:scale-[0.995] shadow-sm hover:shadow"
+                          onClick={() => setMessageText(sug.text)}
+                        >
+                          {/* Main suggestion text */}
+                          <div className="px-3 py-2 flex items-start gap-2">
+                            <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-[#e7f7f4] dark:bg-[#002a22] flex items-center justify-center text-[10px] font-bold text-[#008069] dark:text-[#00e676]">
+                              {i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11.5px] leading-relaxed text-[#111b21] dark:text-slate-200 font-medium">
+                                {sug.text}
+                              </p>
+                              {/* Source article badge */}
+                              {sug.article_title && (
+                                <div className="mt-1.5 flex items-center gap-1.5">
+                                  <BookOpen size={10} className="text-[#00a884] shrink-0" />
+                                  <span className="text-[9.5px] font-semibold text-[#008069] dark:text-[#00e676] truncate">
+                                    {sug.article_title}
+                                  </span>
+                                  {sug.source_url && (
+                                    <a
+                                      href={sug.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="shrink-0 flex items-center gap-0.5 text-[9px] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] font-medium underline decoration-dotted"
+                                    >
+                                      <ExternalLink size={8} />
+                                      Source
+                                    </a>
+                                  )}
+                                </div>
                               )}
                             </div>
-                          )}
+                            {/* Use this reply arrow */}
+                            <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Send size={12} className="text-[#00a884]" />
+                            </div>
+                          </div>
                         </div>
-                        {/* Use this reply arrow */}
-                        <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Send size={12} className="text-[#00a884]" />
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )}
 
-              {/* Empty state: Generate button */}
-              {!loadingSuggestions && aiSuggestions.length === 0 && !aiSuggestionsError && (
-                <div className="px-3 pb-2">
-                  <button
-                    onClick={() => fetchSuggestions(selectedConversation)}
-                    className="px-3 py-1.5 bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-bold text-[#008069] dark:text-[#00e676] cursor-pointer shadow-sm transition-all flex items-center gap-1.5 active:scale-[0.98]"
-                  >
-                    <Sparkles size={11} />
-                    <span>Generate Smart Replies</span>
-                  </button>
-                </div>
+                  {/* Empty state: Generate button */}
+                  {!loadingSuggestions && aiSuggestions.length === 0 && !aiSuggestionsError && (
+                    <div className="px-3 pb-2">
+                      <button
+                        onClick={() => fetchSuggestions(selectedConversation)}
+                        className="px-3 py-1.5 bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-bold text-[#008069] dark:text-[#00e676] cursor-pointer shadow-sm transition-all flex items-center gap-1.5 active:scale-[0.98]"
+                      >
+                        <Sparkles size={11} />
+                        <span>Generate Smart Replies</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
