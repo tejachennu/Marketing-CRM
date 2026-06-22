@@ -58,10 +58,34 @@ async function executeCampaign(campaignId: string) {
       return
     }
 
-    const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
-    const twilioClient = getTwilioClient()
-    const sendgridKey = process.env.SENDGRID_API_KEY || ''
-    const sendgridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'no-reply@example.com'
+    // Load custom credentials per organization
+    let twilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
+    let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
+    let TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
+    let sendgridKey = process.env.SENDGRID_API_KEY || ''
+    let sendgridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'no-reply@example.com'
+
+    if (campaign.organization_id) {
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email')
+          .eq('id', campaign.organization_id)
+          .single()
+
+        if (orgData) {
+          if (orgData.twilio_account_sid) twilioAccountSid = orgData.twilio_account_sid
+          if (orgData.twilio_auth_token) twilioAuthToken = orgData.twilio_auth_token
+          if (orgData.twilio_whatsapp_number) TWILIO_WHATSAPP_NUMBER = orgData.twilio_whatsapp_number
+          if (orgData.sendgrid_api_key) sendgridKey = orgData.sendgrid_api_key
+          if (orgData.sendgrid_from_email) sendgridFromEmail = orgData.sendgrid_from_email
+        }
+      } catch (dbErr) {
+        console.error('[Campaign Worker] Error loading database credentials:', dbErr)
+      }
+    }
+
+    const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
     
     let sentCount = 0
     let failedCount = 0
@@ -96,12 +120,15 @@ async function executeCampaign(campaignId: string) {
             twilioParams.from = fromNumber
           }
 
-          // Determine if we use Content SID or text fallback
-          if (campaign.template_sid && !campaign.template_sid.startsWith('HX_')) {
+          // Determine if we use Content SID or body interpolation.
+          // Real Twilio Content SIDs always start with "HX" (e.g. HXabc123...).
+          // DB-stored Meta-approved templates use UUID sids — always interpolate locally.
+          const isRealTwilioSid = campaign.template_sid && /^HX[0-9a-f]{32}$/i.test(campaign.template_sid)
+          if (isRealTwilioSid) {
             twilioParams.contentSid = campaign.template_sid
             twilioParams.contentVariables = JSON.stringify(mappedVars)
           } else {
-            // Construct message body by replacing {{1}}, {{2}} locally
+            // DB template or no sid — interpolate body locally
             let body = campaign.template_body || ''
             Object.entries(mappedVars).forEach(([key, val]) => {
               body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val))

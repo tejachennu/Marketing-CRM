@@ -1230,33 +1230,16 @@ export default function LeadsPage() {
               </div>
               <h2 className="text-lg font-bold text-[#111b21] mb-2">Welcome to your Sales Pipeline!</h2>
               <p className="text-xs text-[#667781] leading-relaxed mb-6">
-                Your pipeline is currently empty. Get started by adding a lead manually, or seed your pipeline with realistic demo contacts and sales deals to explore all CRM features instantly.
+                Your pipeline is currently empty. Get started by creating your first sales lead to track opportunities and manage your pipeline.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
-                <button
-                  onClick={handleSeedDemoData}
-                  disabled={actionLoading}
-                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-5 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {actionLoading ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span>Seeding data...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Package size={14} />
-                      <span>Seed Demo Data</span>
-                    </>
-                  )}
-                </button>
                 <button
                   onClick={() => {
                     setContactSearchInput('')
                     setNewLead(prev => ({ ...prev, contact_id: '' }))
                     setShowAddModal(true)
                   }}
-                  className="bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] px-5 py-2.5 rounded-lg text-xs font-bold border border-[#e9edef] transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="bg-[#00a884] hover:bg-[#008069] text-white px-5 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Plus size={14} />
                   <span>Create Lead</span>

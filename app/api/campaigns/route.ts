@@ -51,18 +51,21 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
     const offset = (page - 1) * limit
 
-    // Count total matching campaigns
-    let countQuery = supabase.from('campaigns').select('*', { count: 'exact', head: true })
-    if (orgId) {
-      countQuery = countQuery.eq('organization_id', orgId)
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
-    const { count: total, error: countError } = await countQuery
+
+    // Count total matching campaigns
+    const { count: total, error: countError } = await supabase
+      .from('campaigns')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
     if (countError) throw countError
 
-    let query = supabase.from('campaigns').select('*')
-    if (orgId) {
-      query = query.eq('organization_id', orgId)
-    }
+    const query = supabase
+      .from('campaigns')
+      .select('*')
+      .eq('organization_id', orgId)
 
     const { data: campaigns, error: listError } = await query
       .order('created_at', { ascending: false })

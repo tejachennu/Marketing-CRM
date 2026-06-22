@@ -22,9 +22,6 @@ function getTwilioClient() {
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient()
-    const twilioClient = getTwilioClient()
-    const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
-    
     const body = await request.json()
     const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url } = body
 
@@ -32,8 +29,56 @@ export async function POST(request: NextRequest) {
     const msgBody = messageBody || message || ''
     const contactPhone = phoneNumber
     const convId = conversationId
-    const orgId = organizationId
+    let orgId = organizationId
     const msgMediaUrl = mediaUrl || media_url || null
+
+    // Determine organization context
+    if (!orgId && convId) {
+      try {
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('organization_id')
+          .eq('id', convId)
+          .single()
+        if (conv) orgId = conv.organization_id
+      } catch {}
+    }
+
+    if (!orgId && contactId) {
+      try {
+        const { data: c } = await supabase
+          .from('contacts')
+          .select('organization_id')
+          .eq('id', contactId)
+          .single()
+        if (c) orgId = c.organization_id
+      } catch {}
+    }
+
+    // Resolve tenant credentials
+    let twilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
+    let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
+    let TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
+
+    if (orgId) {
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number')
+          .eq('id', orgId)
+          .single()
+
+        if (orgData) {
+          if (orgData.twilio_account_sid) twilioAccountSid = orgData.twilio_account_sid
+          if (orgData.twilio_auth_token) twilioAuthToken = orgData.twilio_auth_token
+          if (orgData.twilio_whatsapp_number) TWILIO_WHATSAPP_NUMBER = orgData.twilio_whatsapp_number
+        }
+      } catch (dbErr) {
+        console.error('[Messages Send] Error loading database credentials:', dbErr)
+      }
+    }
+
+    const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
 
     if (!msgBody && !msgMediaUrl) {
       return NextResponse.json(

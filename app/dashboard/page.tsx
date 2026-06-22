@@ -673,16 +673,16 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="h-full w-full bg-white flex overflow-hidden animate-in fade-in duration-300 relative font-sans">
+    <div className="h-full w-full bg-[#efeae2] dark:bg-[#0b141a] flex overflow-hidden animate-in fade-in duration-300 relative font-sans text-[#111b21] dark:text-white">
       {/* Sidebar: Conversations List */}
-      <div className={`w-full md:w-[350px] bg-white border-r border-[#e9edef] flex flex-col overflow-hidden transition-all duration-300 ${
+      <div className={`w-full md:w-[350px] bg-white dark:bg-[#111b21] border-r border-[#e9edef] dark:border-[#202d36] flex flex-col overflow-hidden transition-all duration-300 ${
         selectedConversation ? 'hidden md:flex' : 'flex'
       }`}>
         {/* Sidebar Header */}
-        <div className="p-3 border-b border-[#e9edef] space-y-3 bg-white">
+        <div className="p-3 border-b border-[#e9edef] dark:border-[#202d36] space-y-3 bg-[#f0f2f5] dark:bg-[#111b21]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">Inbox</h2>
+              <h2 className="text-base font-bold text-[#111b21] dark:text-white">Inbox</h2>
               <span className="flex items-center" title={`Realtime: ${realtimeStatus}`}>
                 {realtimeStatus === 'connected' ? (
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -703,35 +703,35 @@ export default function ConversationsPage() {
 
           {/* Search bar */}
           <div className="relative">
-            <Search size={15} className="absolute left-3 top-3 text-[#54656f]" />
+            <Search size={15} className="absolute left-3 top-3 text-[#667781] dark:text-[#8696a0]" />
             <input
               type="text"
               placeholder="Search or start new chat"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-[#f0f2f5] border border-transparent rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-xs font-semibold placeholder-[#667781] transition-all"
+              className="w-full pl-9 pr-4 py-2 bg-[#f0f2f5] dark:bg-[#202c33] border border-transparent rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white transition-all"
             />
           </div>
 
           {/* Filters and Sort */}
-          <div className="flex items-center justify-between text-xs font-bold text-[#54656f]">
+          <div className="flex items-center justify-between text-xs font-bold text-[#667781] dark:text-[#8696a0]">
             <div className="flex gap-2">
               <button
                 onClick={() => setUnreadFilter(false)}
-                className={`px-3 py-1 rounded-full text-[11px] transition-all ${
+                className={`px-3 py-1 rounded-full text-[11px] transition-all font-bold ${
                   !unreadFilter 
-                    ? 'bg-[#e7f7f4] text-[#008069] font-bold' 
-                    : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'
+                    ? 'bg-[#e7f7f4] dark:bg-[#002a22] text-[#008069] dark:text-[#00e676]' 
+                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#dfe5e7] dark:hover:bg-[#2a3942]'
                 }`}
               >
                 All
               </button>
               <button
                 onClick={() => setUnreadFilter(true)}
-                className={`px-3 py-1 rounded-full text-[11px] transition-all ${
+                className={`px-3 py-1 rounded-full text-[11px] transition-all font-bold ${
                   unreadFilter 
-                    ? 'bg-[#e7f7f4] text-[#008069] font-bold' 
-                    : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'
+                    ? 'bg-[#e7f7f4] dark:bg-[#002a22] text-[#008069] dark:text-[#00e676]' 
+                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#dfe5e7] dark:hover:bg-[#2a3942]'
                 }`}
               >
                 Unread
@@ -739,7 +739,7 @@ export default function ConversationsPage() {
             </div>
             <button
               onClick={() => setSortBy((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
-              className="flex items-center gap-1 bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef] px-2.5 py-1 rounded-full transition-all"
+              className="flex items-center gap-1 bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#dfe5e7] dark:hover:bg-[#2a3942] px-2.5 py-1 rounded-full transition-all"
             >
               <span>{sortBy === 'newest' ? 'Newest' : 'Oldest'}</span>
               <ChevronDown size={12} className={sortBy === 'oldest' ? 'rotate-180' : ''} />
@@ -748,11 +748,11 @@ export default function ConversationsPage() {
         </div>
 
         {/* Conversations list area */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-100/50">
+        <div className="flex-1 overflow-y-auto divide-y divide-[#e9edef] dark:divide-[#202d36]/50 bg-white dark:bg-[#111b21]">
           {sortedConversations.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs font-medium space-y-2">
+            <div className="p-8 text-center text-slate-500 text-xs font-medium space-y-2">
               <p>No conversations found.</p>
-              <p className="text-[10px] text-slate-300">New WhatsApp contacts appear here.</p>
+              <p className="text-[10px] text-slate-600">New WhatsApp contacts appear here.</p>
             </div>
           ) : (
             sortedConversations.map((conv) => {
@@ -765,28 +765,28 @@ export default function ConversationsPage() {
                 <button
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv.id)}
-                  className={`w-full p-3 text-left flex items-center gap-3 transition-all border-b border-[#e9edef]/60 ${
+                  className={`w-full p-3 text-left flex items-center gap-3 transition-all border-b border-[#e9edef] dark:border-[#202d36]/40 ${
                     isSelected
-                      ? 'bg-[#f0f2f5]'
-                      : 'bg-white hover:bg-[#f5f6f6]'
+                      ? 'bg-[#f0f2f5] dark:bg-[#2a3942] border-l-4 border-l-[#00a884]'
+                      : 'bg-white dark:bg-[#111b21] hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]/50'
                   }`}
                 >
-                  {/* Outlined Avatar with green WhatsApp indicator */}
+                  {/* Outlined Avatar with green indicator */}
                   <div className="relative flex-shrink-0">
-                    <div className="h-11 w-11 rounded-full bg-[#dfe5e7] flex items-center justify-center font-bold text-[#54656f] border border-[#e9edef] text-xs select-none">
+                    <div className="h-11 w-11 rounded-full bg-[#dfe5e7] dark:bg-[#202c33] flex items-center justify-center font-bold text-[#667781] dark:text-[#8696a0] border border-[#e9edef] dark:border-[#2a3942] text-xs select-none">
                       {contactName.substring(0, 2).toUpperCase()}
                     </div>
-                    <div className="absolute bottom-0 right-0 h-3 w-3 bg-[#25d366] border border-white rounded-full" />
+                    <div className="absolute bottom-0 right-0 h-3 w-3 bg-[#00a884] border-2 border-white dark:border-[#111b21] rounded-full" />
                   </div>
 
                   {/* Conv metadata */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="font-bold text-[13px] text-[#111b21] truncate">
+                      <p className="font-bold text-[13px] text-[#111b21] dark:text-white truncate">
                         {contactName}
                       </p>
                       {conv.last_message_at && (
-                        <p className={`text-[10px] font-bold ${conv.unread_count > 0 ? 'text-[#25d366]' : 'text-[#8696a0]'}`}>
+                        <p className={`text-[10px] font-bold ${conv.unread_count > 0 ? 'text-[#008069] dark:text-[#00e676]' : 'text-[#667781] dark:text-[#8696a0]'}`}>
                           {new Date(conv.last_message_at).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -795,14 +795,14 @@ export default function ConversationsPage() {
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-[11px] text-[#667781] mt-0.5 font-medium min-w-0">
+                    <div className="flex items-center gap-1 text-[11px] text-[#667781] dark:text-[#8696a0] mt-0.5 font-medium min-w-0">
                       {conv.last_message ? (
                         <>
                           {conv.last_message.sender_type === 'user' && (
                             <CheckCheck 
                               size={15} 
                               className={`flex-shrink-0 ${
-                                conv.last_message.read_at ? 'text-[#53bdeb]' : 'text-[#8696a0]'
+                                conv.last_message.read_at ? 'text-[#53bdeb]' : 'text-[#667781] dark:text-[#8696a0]'
                               }`} 
                             />
                           )}
@@ -825,7 +825,7 @@ export default function ConversationsPage() {
                   </div>
                   
                   {conv.unread_count > 0 && (
-                    <span className="flex-shrink-0 bg-[#25d366] text-white text-[10px] font-bold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center shadow-sm">
+                    <span className="flex-shrink-0 bg-[#00a884] text-white text-[10px] font-bold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center shadow-sm">
                       {conv.unread_count}
                     </span>
                   )}
@@ -840,7 +840,7 @@ export default function ConversationsPage() {
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-bold px-4 py-2 hover:bg-slate-50 rounded-lg transition-all inline-flex items-center gap-1.5"
+                className="text-xs text-[#008069] dark:text-[#00e676] hover:text-[#00a884] font-bold px-4 py-2 hover:bg-[#e9edef] dark:hover:bg-[#202c33] rounded-lg transition-all inline-flex items-center gap-1.5"
               >
                 {loadingMore && <Loader2 size={12} className="animate-spin" />}
                 <span>{loadingMore ? 'Loading...' : 'Load More'}</span>
@@ -852,26 +852,26 @@ export default function ConversationsPage() {
 
       {/* Main Chat Panel */}
       {selectedContact ? (
-        <div className={`flex-1 bg-[#efeae2] flex flex-col overflow-hidden relative transition-all duration-300 ${
+        <div className={`flex-1 bg-[#efeae2] dark:bg-[#0b141a] flex flex-col overflow-hidden relative transition-all duration-300 ${
           selectedConversation ? 'flex' : 'hidden md:flex'
         }`}>
           {/* Chat Header */}
-          <div className="p-3 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between h-[59px] flex-shrink-0 select-none">
+          <div className="p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between h-[59px] flex-shrink-0 select-none">
             <div className="flex items-center gap-3">
               {/* Back Button for mobile */}
               <button
                 onClick={() => setSelectedConversation(null)}
-                className="md:hidden p-1 hover:bg-[#e9edef] rounded-lg text-[#54656f] mr-1 flex items-center justify-center transition-colors"
+                className="md:hidden p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg text-[#667781] dark:text-[#8696a0] mr-1 flex items-center justify-center transition-colors"
                 title="Back to inbox"
               >
                 <ArrowLeft size={18} />
               </button>
-              <div className="h-10 w-10 rounded-full bg-[#dfe5e7] border border-[#e9edef] flex items-center justify-center font-bold text-[#54656f] text-sm">
+              <div className="h-10 w-10 rounded-full bg-[#dfe5e7] dark:bg-[#202c33] border border-[#e9edef] dark:border-[#2a3942] flex items-center justify-center font-bold text-[#667781] dark:text-[#8696a0] text-sm">
                 {selectedContact.first_name ? selectedContact.first_name.substring(0, 2).toUpperCase() : 'CO'}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-[13px] font-bold text-[#111b21] leading-tight">
+                  <h3 className="text-[13px] font-bold text-[#111b21] dark:text-white leading-tight">
                     {selectedContact.first_name || 'Unknown'} {selectedContact.last_name || ''}
                   </h3>
                   <button
@@ -882,13 +882,13 @@ export default function ConversationsPage() {
                       setRenameError(null)
                       setShowRenameModal(true)
                     }}
-                    className="p-1 hover:bg-[#e9edef] rounded-lg text-[#8696a0] hover:text-[#00a884] transition-colors"
+                    className="p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] transition-colors"
                     title="Rename Contact"
                   >
                     <Edit2 size={12} />
                   </button>
                 </div>
-                <p className="text-[10px] text-[#667781] font-semibold flex items-center gap-1 mt-0.5 leading-none">
+                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-center gap-1 mt-0.5 leading-none">
                   <Phone size={10} />
                   {selectedContact.phone_number}
                 </p>
@@ -897,11 +897,11 @@ export default function ConversationsPage() {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-3 wa-chat-wallpaper">
+          <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-[#efeae2] dark:bg-[#0b141a] wa-chat-wallpaper">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs font-medium space-y-1">
-                <MessageCircle size={28} className="text-slate-300" />
-                <p>No messages yet. Send a WhatsApp to start!</p>
+              <div className="flex flex-col items-center justify-center h-full text-slate-500 text-xs font-medium space-y-1">
+                <MessageCircle size={28} className="text-slate-600" />
+                <p>No messages yet. Send a message to start!</p>
               </div>
             ) : (
               messages.map((msg) => {
@@ -931,7 +931,7 @@ export default function ConversationsPage() {
                     {/* Hover Reply Button */}
                     <button
                       onClick={() => setReplyingTo(msg)}
-                      className={`absolute top-1/2 -translate-y-1/2 p-1.5 bg-white hover:bg-[#f5f6f6] border border-[#e9edef] rounded-full shadow-sm text-[#54656f] hover:text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity z-10 ${
+                      className={`absolute top-1/2 -translate-y-1/2 p-1.5 bg-white dark:bg-[#1f2c34] hover:bg-[#f0f2f5] dark:hover:bg-[#202c33] border border-[#e9edef] dark:border-[#2a3942] rounded-full shadow-sm text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity z-10 ${
                         isUser ? 'left-[-35px]' : 'right-[-35px]'
                       }`}
                       title="Reply"
@@ -943,8 +943,8 @@ export default function ConversationsPage() {
                       id={`msg-${msg.id}`}
                       className={`max-w-[65%] rounded-lg px-3 py-1.5 shadow-sm border transition-all duration-200 relative text-[13px] leading-snug ${
                         isUser
-                          ? 'bg-[#d9fdd3] border-[#d9fdd3] text-[#111b21] rounded-tr-none'
-                          : 'bg-white border-white text-[#111b21] rounded-tl-none'
+                          ? 'bg-[#d9fdd3] dark:bg-[#005c4b] border-[#d9fdd3] dark:border-[#005c4b] text-[#111b21] dark:text-white rounded-tr-none'
+                          : 'bg-white dark:bg-[#202c33] border-white dark:border-[#202c33] text-[#111b21] dark:text-white rounded-tl-none'
                       }`}
                     >
                       {/* Reply quote preview block */}
@@ -953,11 +953,11 @@ export default function ConversationsPage() {
                           onClick={() => repliedMsg && scrollToMessage(replyId)}
                           className={`mb-1.5 p-1.5 rounded-lg border-l-4 text-[10px] cursor-pointer transition-colors text-left ${
                             isUser
-                              ? 'bg-[#c7f1be] border-l-[#00a884] text-[#304030]'
-                              : 'bg-[#f0f2f5] border-l-[#8696a0] text-[#54656f]'
+                              ? 'bg-[#c7f1be] dark:bg-[#004d40] border-l-[#00a884] text-slate-700 dark:text-slate-300'
+                              : 'bg-[#f0f2f5] dark:bg-[#1f2c34] border-l-[#8696a0] text-slate-600 dark:text-[#8696a0]'
                           }`}
                         >
-                          <p className="font-bold mb-0.5">
+                          <p className="font-bold mb-0.5 text-[#111b21] dark:text-white">
                             {repliedMsg 
                               ? (repliedMsg.sender_type === 'user' ? 'You' : (selectedContact?.first_name || 'Contact'))
                               : 'Message'
@@ -987,7 +987,7 @@ export default function ConversationsPage() {
                       {msg.media_url && (
                         <div className="mb-2 max-w-full relative group">
                           {mediaType === 'image' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10">
+                            <div className="relative rounded-xl overflow-hidden border border-slate-700/10">
                               <img
                                 src={getDisplayUrl(msg.media_url)}
                                 alt="Attached Image"
@@ -999,8 +999,8 @@ export default function ConversationsPage() {
                                 download={getDownloadName(msg.media_url)}
                                 className={`absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md ${
                                   isUser
-                                    ? 'bg-emerald-800/80 hover:bg-emerald-900/90 text-white'
-                                    : 'bg-slate-100/90 hover:bg-slate-200/90 text-slate-700'
+                                    ? 'bg-[#004d40]/80 hover:bg-[#005c4b]/90 text-white'
+                                    : 'bg-white/90 hover:bg-[#f0f2f5]/90 dark:bg-[#1f2c34]/90 dark:hover:bg-[#202c33]/90 text-[#111b21] dark:text-white border border-[#e9edef] dark:border-transparent'
                                 }`}
                                 title="Download Image"
                               >
@@ -1009,7 +1009,7 @@ export default function ConversationsPage() {
                             </div>
                           )}
                           {mediaType === 'video' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10">
+                            <div className="relative rounded-xl overflow-hidden border border-slate-700/10">
                               <video
                                 src={getDisplayUrl(msg.media_url)}
                                 controls
@@ -1020,8 +1020,8 @@ export default function ConversationsPage() {
                                 download={getDownloadName(msg.media_url)}
                                 className={`absolute top-2 right-12 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md ${
                                   isUser
-                                    ? 'bg-emerald-800/80 hover:bg-emerald-900/90 text-white'
-                                    : 'bg-slate-100/90 hover:bg-slate-200/90 text-slate-700'
+                                    ? 'bg-[#004d40]/80 hover:bg-[#005c4b]/90 text-white'
+                                    : 'bg-white/90 hover:bg-[#f0f2f5]/90 dark:bg-[#1f2c34]/90 dark:hover:bg-[#202c33]/90 text-[#111b21] dark:text-white border border-[#e9edef] dark:border-transparent'
                                 }`}
                                 title="Download Video"
                               >
@@ -1030,7 +1030,7 @@ export default function ConversationsPage() {
                             </div>
                           )}
                           {mediaType === 'audio' && (
-                            <div className="flex items-center gap-2 bg-slate-100/10 p-1.5 rounded-xl">
+                            <div className="flex items-center gap-2 bg-slate-100/50 dark:bg-[#1f2c34]/50 p-1.5 rounded-xl">
                               <audio
                                 src={getDisplayUrl(msg.media_url)}
                                 controls
@@ -1041,8 +1041,8 @@ export default function ConversationsPage() {
                                 download={getDownloadName(msg.media_url)}
                                 className={`p-1.5 rounded-lg flex items-center justify-center transition-colors ${
                                   isUser
-                                    ? 'hover:bg-emerald-700/50 text-emerald-100'
-                                    : 'hover:bg-slate-200 text-slate-600'
+                                    ? 'hover:bg-[#004d40] text-[#00e676]'
+                                    : 'hover:bg-[#e9edef] dark:hover:bg-[#202c33] text-[#667781] dark:text-[#8696a0]'
                                 }`}
                                 title="Download Audio"
                               >
@@ -1056,8 +1056,8 @@ export default function ConversationsPage() {
                               download={getDownloadName(msg.media_url)}
                               className={`flex items-center justify-between gap-3 p-3 rounded-xl text-xs font-bold border transition-colors ${
                                 isUser
-                                  ? 'bg-emerald-700/30 hover:bg-emerald-700/40 border-emerald-700 text-emerald-100'
-                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                                  ? 'bg-[#004d40] hover:bg-[#004d40]/80 border-[#00a884]/20 text-white'
+                                  : 'bg-[#f0f2f5] dark:bg-[#1f2c34] hover:bg-[#e9edef] dark:hover:bg-[#202c33] border-[#e9edef] dark:border-[#2a3942] text-[#111b21] dark:text-white'
                               }`}
                               title="Click to Download"
                             >
@@ -1077,7 +1077,7 @@ export default function ConversationsPage() {
                       {displayBody && <p className="text-[13px] font-normal break-words whitespace-pre-wrap leading-snug">{displayBody}</p>}
                       
                       {/* Message Footer (Time & Status) */}
-                      <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-[#667781] select-none">
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-[#667781] dark:text-[#8696a0] select-none">
                         <span>
                           {new Date(msg.created_at).toLocaleTimeString([], {
                             hour: '2-digit',
@@ -1097,12 +1097,12 @@ export default function ConversationsPage() {
 
           {/* Reply Preview Area */}
           {replyingTo && (
-            <div className="p-3 bg-[#f0f2f5] border-t border-[#e9edef] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 border-l-4 border-l-[#00a884]">
+            <div className="p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 border-l-4 border-l-[#00a884]">
               <div className="overflow-hidden text-left">
-                <p className="text-[10px] font-bold text-[#008069]">
+                <p className="text-[10px] font-bold text-[#00e676]">
                   Replying to {replyingTo.sender_type === 'user' ? 'yourself' : (selectedContact?.first_name || 'Contact')}
                 </p>
-                <p className="text-xs text-[#54656f] truncate max-w-[500px] italic">
+                <p className="text-xs text-[#667781] dark:text-[#8696a0] truncate max-w-[500px] italic">
                   {replyingTo.body 
                     ? (replyingTo.body.startsWith('[reply:') 
                         ? replyingTo.body.replace(/^\[reply:[^\]]+\]/, '') 
@@ -1119,7 +1119,7 @@ export default function ConversationsPage() {
               </div>
               <button 
                 onClick={() => setReplyingTo(null)}
-                className="p-1 hover:bg-[#e9edef] rounded-full transition-colors text-slate-400 hover:text-slate-600"
+                className="p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-full transition-colors text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white"
               >
                 <X size={14} />
               </button>
@@ -1128,29 +1128,29 @@ export default function ConversationsPage() {
 
           {/* Attachment Preview Area */}
           {attachedFile && (
-            <div className="p-3 bg-[#f0f2f5] border-t border-[#e9edef] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
               <div className="flex items-center gap-3">
                 {attachedFile.type.startsWith('image/') ? (
                   <img 
                     src={attachedFile.url} 
                     alt="Upload preview" 
-                    className="h-10 w-10 object-cover rounded-lg border border-slate-200"
+                    className="h-10 w-10 object-cover rounded-lg border border-slate-700"
                   />
                 ) : (
-                  <div className="h-10 w-10 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 border border-indigo-200">
+                  <div className="h-10 w-10 rounded-lg bg-indigo-955 flex items-center justify-center text-indigo-400 border border-indigo-900">
                     <File size={18} />
                   </div>
                 )}
                 <div className="overflow-hidden">
-                  <p className="text-[10px] font-bold truncate text-slate-700 max-w-[200px]">
+                  <p className="text-[10px] font-bold truncate text-[#111b21] dark:text-white max-w-[200px]">
                     {attachedFile.name}
                   </p>
-                  <p className="text-[9px] text-[#667781]">Attached media</p>
+                  <p className="text-[9px] text-[#667781] dark:text-[#8696a0]">Attached media</p>
                 </div>
               </div>
               <button 
                 onClick={() => setAttachedFile(null)}
-                className="p-1 hover:bg-[#e9edef] rounded-full transition-colors text-slate-500"
+                className="p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-full transition-colors text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white"
               >
                 <X size={14} />
               </button>
@@ -1159,16 +1159,16 @@ export default function ConversationsPage() {
 
           {/* AI Suggested Replies (RAG) */}
           {features.enable_ai && selectedConversation && (
-            <div className="border-t border-[#e9edef] bg-[#f0f2f5] select-none">
+            <div className="border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] select-none">
               {/* Header Bar */}
               <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-black text-[#008069] shrink-0 mr-1 bg-[#e7f7f4] px-2 py-0.5 rounded-md border border-[#00a884]/15">
-                  <Sparkles size={11} className="text-[#00a884]" />
+                <div className="flex items-center gap-1.5 text-[10px] font-black text-[#008069] dark:text-[#00e676] shrink-0 mr-1 bg-[#e7f7f4] dark:bg-[#002a22] px-2 py-0.5 rounded-md border border-[#00a884]/15">
+                  <Sparkles size={11} className="text-[#008069] dark:text-[#00e676]" />
                   <span>AI SUGGESTIONS</span>
                 </div>
 
                 {loadingSuggestions && (
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#8696a0] py-1">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#667781] dark:text-[#8696a0] py-1">
                     <Loader2 size={11} className="animate-spin text-[#00a884]" />
                     <span>Analyzing knowledge base...</span>
                   </div>
@@ -1183,7 +1183,7 @@ export default function ConversationsPage() {
                 {/* Refresh / Generate Button */}
                 <button
                   onClick={() => fetchSuggestions(selectedConversation)}
-                  className="p-1.5 hover:bg-[#e9edef] text-[#8696a0] hover:text-[#008069] rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
+                  className="p-1.5 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
                   title={aiSuggestions.length > 0 ? 'Refresh Suggestions' : 'Generate Smart Replies'}
                 >
                   <Sparkles size={12} className={loadingSuggestions ? 'animate-spin' : ''} />
@@ -1196,23 +1196,23 @@ export default function ConversationsPage() {
                   {aiSuggestions.map((sug, i) => (
                     <div
                       key={i}
-                      className="group relative bg-white hover:bg-[#f7faf9] border border-[#e9edef] hover:border-[#00a884]/30 rounded-lg transition-all cursor-pointer active:scale-[0.995] shadow-sm hover:shadow"
+                      className="group relative bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#26353d] border border-[#e9edef] dark:border-[#2a3942] hover:border-[#00a884]/30 rounded-lg transition-all cursor-pointer active:scale-[0.995] shadow-sm hover:shadow"
                       onClick={() => setMessageText(sug.text)}
                     >
                       {/* Main suggestion text */}
                       <div className="px-3 py-2 flex items-start gap-2">
-                        <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-[#e7f7f4] flex items-center justify-center text-[10px] font-bold text-[#008069]">
+                        <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-[#e7f7f4] dark:bg-[#002a22] flex items-center justify-center text-[10px] font-bold text-[#008069] dark:text-[#00e676]">
                           {i + 1}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11.5px] leading-relaxed text-[#111b21] font-medium">
+                          <p className="text-[11.5px] leading-relaxed text-[#111b21] dark:text-slate-200 font-medium">
                             {sug.text}
                           </p>
                           {/* Source article badge */}
                           {sug.article_title && (
                             <div className="mt-1.5 flex items-center gap-1.5">
                               <BookOpen size={10} className="text-[#00a884] shrink-0" />
-                              <span className="text-[9.5px] font-semibold text-[#00a884] truncate">
+                              <span className="text-[9.5px] font-semibold text-[#008069] dark:text-[#00e676] truncate">
                                 {sug.article_title}
                               </span>
                               {sug.source_url && (
@@ -1221,7 +1221,7 @@ export default function ConversationsPage() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="shrink-0 flex items-center gap-0.5 text-[9px] text-[#667781] hover:text-[#008069] font-medium underline decoration-dotted"
+                                  className="shrink-0 flex items-center gap-0.5 text-[9px] text-[#667781] dark:text-[#8696a0] hover:text-[#00a884] dark:hover:text-[#00e676] font-medium underline decoration-dotted"
                                 >
                                   <ExternalLink size={8} />
                                   Source
@@ -1245,7 +1245,7 @@ export default function ConversationsPage() {
                 <div className="px-3 pb-2">
                   <button
                     onClick={() => fetchSuggestions(selectedConversation)}
-                    className="px-3 py-1.5 bg-white hover:bg-[#f0f2f5] border border-[#e9edef] rounded-lg text-[10px] font-bold text-[#008069] cursor-pointer shadow-sm transition-all flex items-center gap-1.5 active:scale-[0.98]"
+                    className="px-3 py-1.5 bg-white dark:bg-[#1f2c34] hover:bg-[#f5f6f6] dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-bold text-[#008069] dark:text-[#00e676] cursor-pointer shadow-sm transition-all flex items-center gap-1.5 active:scale-[0.98]"
                   >
                     <Sparkles size={11} />
                     <span>Generate Smart Replies</span>
@@ -1256,7 +1256,7 @@ export default function ConversationsPage() {
           )}
 
           {/* Chat Input controls */}
-          <div className="p-3 border-t border-[#e9edef] bg-[#f0f2f5]">
+          <div className="p-3 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33]">
             <div className="flex gap-2.5 items-center">
               <input 
                 type="file" 
@@ -1267,13 +1267,13 @@ export default function ConversationsPage() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="hover:bg-[#e9edef] text-[#54656f] p-2 rounded-lg transition-colors flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+                className="hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] p-2 rounded-lg transition-colors flex items-center justify-center flex-shrink-0 disabled:opacity-50"
                 title="Attach Media"
               >
                 {uploading ? (
                   <Loader2 className="animate-spin text-[#8696a0]" size={20} />
                 ) : (
-                  <Paperclip size={20} className="rotate-45" />
+                  <Paperclip size={20} className="rotate-45 text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white" />
                 )}
               </button>
               <input
@@ -1282,7 +1282,7 @@ export default function ConversationsPage() {
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                 placeholder={attachedFile ? "Add a caption..." : "Type a message..."}
-                className="flex-1 px-4 py-2.5 bg-white border border-transparent rounded-lg focus:outline-none text-[13px] text-[#111b21] placeholder-[#667781] shadow-sm font-medium"
+                className="flex-1 px-4 py-2.5 bg-white dark:bg-[#2a3942] border border-[#e9edef] dark:border-transparent rounded-lg focus:outline-none text-[13px] text-[#111b21] dark:text-white placeholder-[#667781] dark:placeholder-[#8696a0] shadow-sm font-medium"
               />
               <button
                 onClick={handleSendMessage}
@@ -1295,17 +1295,17 @@ export default function ConversationsPage() {
           </div>
         </div>
       ) : (
-        <div className="hidden md:flex flex-1 bg-[#f8f9fa] flex-col items-center justify-center text-[#667781] p-8 border-l border-[#e9edef]">
+        <div className="hidden md:flex flex-1 bg-[#f8f9fa] dark:bg-[#0c1317] flex-col items-center justify-center text-[#667781] dark:text-[#8696a0] p-8 border-l border-[#e9edef] dark:border-[#202d36]">
           <div className="max-w-md text-center space-y-4">
-            <div className="mx-auto h-24 w-24 rounded-full bg-slate-200/50 flex items-center justify-center text-[#8696a0]">
+            <div className="mx-auto h-24 w-24 rounded-full bg-[#f0f2f5] dark:bg-[#111b21] flex items-center justify-center text-[#667781] dark:text-[#8696a0] border border-[#e9edef] dark:border-[#202d36]">
               <MessageCircle size={48} />
             </div>
-            <h2 className="text-[#41525d] text-lg font-normal">WhatsApp CRM</h2>
-            <p className="text-xs text-[#8696a0] leading-relaxed">
-              Send and receive messages on your Twilio WhatsApp numbers. Style-synchronized to mirror WhatsApp Web exactly.
+            <h2 className="text-[#111b21] dark:text-white text-lg font-normal">WhatsApp CRM</h2>
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] leading-relaxed">
+              Send and receive messages on your WhatsApp and SMS numbers. Style-synchronized to mirror WhatsApp Web exactly.
             </p>
-            <div className="pt-4 flex items-center justify-center gap-1.5 text-[10px] text-[#8696a0]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#25d366]" />
+            <div className="pt-4 flex items-center justify-center gap-1.5 text-[10px] text-[#667781] dark:text-[#8696a0]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00a884] animate-pulse" />
               <span>Realtime Connected</span>
             </div>
           </div>
@@ -1316,7 +1316,7 @@ export default function ConversationsPage() {
       {activeImageModal && (
         <div 
           onClick={() => setActiveImageModal(null)}
-          className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-[#070a10]/80 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
         >
           <div className="relative max-w-4xl max-h-[90vh]">
             <img 
@@ -1326,7 +1326,7 @@ export default function ConversationsPage() {
             />
             <button 
               onClick={() => setActiveImageModal(null)}
-              className="absolute -top-10 right-0 text-white hover:text-emerald-400 transition-colors flex items-center gap-1 font-bold text-xs"
+              className="absolute -top-10 right-0 text-white hover:text-[#00e676] transition-colors flex items-center gap-1 font-bold text-xs"
             >
               <X size={16} />
               <span>Close</span>
@@ -1337,66 +1337,66 @@ export default function ConversationsPage() {
 
       {/* Rename Contact Modal */}
       {showRenameModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Name Contact</h3>
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 text-[#111b21] dark:text-white">
+            <div className="p-6 border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Name Contact</h3>
               <button
                 onClick={() => setShowRenameModal(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-50 rounded-lg"
+                className="text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white transition-colors p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg"
               >
                 <X size={16} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">First Name</label>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">First Name</label>
                 <input
                   type="text"
                   value={renameFirst}
                   onChange={(e) => setRenameFirst(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-500/10 outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white"
                   placeholder="e.g. John"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Last Name</label>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Last Name</label>
                 <input
                   type="text"
                   value={renameLast}
                   onChange={(e) => setRenameLast(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-500/10 outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white"
                   placeholder="e.g. Smith"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company</label>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Company</label>
                 <input
                   type="text"
                   value={renameCompany}
                   onChange={(e) => setRenameCompany(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-500/10 outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white"
                   placeholder="e.g. Acme Corp"
                 />
               </div>
 
               {renameError && (
-                <div className="bg-rose-50 border border-rose-100 text-rose-600 px-3.5 py-2.5 rounded-xl text-xs font-medium">
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-3.5 py-2.5 rounded-xl text-xs font-medium">
                   {renameError}
                 </div>
               )}
             </div>
-            <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-3">
+            <div className="p-6 bg-[#f0f2f5] dark:bg-[#1c282f] border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowRenameModal(false)}
-                className="px-4 py-2 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all"
+                className="px-4 py-2 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-slate-300 rounded-xl text-xs font-bold transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleRenameContact}
                 disabled={renameLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/10"
+                className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/10"
               >
                 {renameLoading && <Loader2 size={12} className="animate-spin" />}
                 <span>Save Changes</span>
@@ -1407,4 +1407,5 @@ export default function ConversationsPage() {
       )}
     </div>
   )
+
 }

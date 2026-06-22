@@ -12,17 +12,44 @@ function getSupabaseClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const openAiKey = process.env.OPENAI_API_KEY
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'OpenAI API key is not configured' }, { status: 400 })
-    }
-
     const { conversationId } = await request.json()
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
     }
 
     const supabase = getSupabaseClient()
+
+    // 1. Fetch conversation details to get organization_id
+    const { data: conv, error: convErr } = await supabase
+      .from('conversations')
+      .select('organization_id')
+      .eq('id', conversationId)
+      .single()
+
+    if (convErr || !conv) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    // Load custom credentials per organization
+    let openAiKey = process.env.OPENAI_API_KEY || ''
+    if (conv.organization_id) {
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('openai_api_key')
+          .eq('id', conv.organization_id)
+          .single()
+        if (orgData && orgData.openai_api_key) {
+          openAiKey = orgData.openai_api_key
+        }
+      } catch (dbErr) {
+        console.error('[Summarize] Error loading organization OpenAI key:', dbErr)
+      }
+    }
+
+    if (!openAiKey) {
+      return NextResponse.json({ error: 'OpenAI API key is not configured' }, { status: 400 })
+    }
 
     // Fetch all messages for the conversation
     const { data: messages, error: msgErr } = await supabase

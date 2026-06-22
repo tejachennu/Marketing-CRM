@@ -457,7 +457,7 @@ export default function IVRWorkflowsPage() {
                 Voice Call Setup Instructions:
               </p>
               <p className="text-[11px] text-[#008069] mt-1.5 leading-relaxed font-semibold">
-                Configure incoming calls to your Twilio voice number to point to the following webhook URL. Only <strong>one active workflow</strong> is allowed at a time. Active calls will dynamically follow the active tree.
+                Configure incoming calls to your gateway voice number to point to the following webhook URL. Only <strong>one active workflow</strong> is allowed at a time. Active calls will dynamically follow the active tree.
               </p>
               <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#00a884]/10 select-all break-all text-[#54656f] font-semibold">
                 {webhookUrl || 'loading...'}
@@ -994,10 +994,10 @@ export default function IVRWorkflowsPage() {
           {/* Webhook Instruction Banner */}
           <div className="bg-[#e7f7f4] border border-[#00a884]/20 rounded-lg p-4 select-none">
             <p className="text-xs text-[#008069] font-bold">
-              ChatGPT Realtime Calling Integration Instructions:
+              AI Realtime Voice Assistant Integration Instructions:
             </p>
             <p className="text-[11px] text-[#008069] mt-1.5 leading-relaxed font-semibold">
-              To route calls through OpenAI's real-time speech model, configure your Twilio number voice webhook to point to the following URL (exposing port 5050 locally via ngrok):
+              To route calls through our AI real-time voice assistant, configure your voice number voice webhook to point to the following URL (exposing port 5050 locally via ngrok):
             </p>
             <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#00a884]/10 select-all break-all text-[#54656f] font-semibold">
               {webhookUrl ? webhookUrl.replace('/api/webhooks/voice', ':5050/incoming-call') : 'http://localhost:5050/incoming-call'}

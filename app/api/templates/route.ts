@@ -1,9 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
+import { createClient } from '@supabase/supabase-js'
 
-function getTwilioClient() {
-  const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
-  const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+  return createClient(supabaseUrl, supabaseKey)
+}
+
+async function getTwilioClientForOrg(orgId: string | null) {
+  let TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
+  let TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
+
+  if (orgId) {
+    try {
+      const supabase = getSupabaseClient()
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('twilio_account_sid, twilio_auth_token')
+        .eq('id', orgId)
+        .single()
+
+      if (orgData) {
+        if (orgData.twilio_account_sid) TWILIO_ACCOUNT_SID = orgData.twilio_account_sid
+        if (orgData.twilio_auth_token) TWILIO_AUTH_TOKEN = orgData.twilio_auth_token
+      }
+    } catch (e) {
+      console.error('Failed to load twilio config for templates:', e)
+    }
+  }
+
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     throw new Error('Missing Twilio credentials')
   }
@@ -30,79 +59,176 @@ const fallbackTemplates = [
     name: 'follow_up_lead (Meta Approved)',
     body: 'Hi {{1}}, this is {{2}} from {{3}}. Just following up on our previous conversation regarding your inquiry. Let us know if you have any questions!',
     variables: ['1', '2', '3'],
-    category: 'UTILITY'
+    category: 'UTILITY',
+    language: 'en'
   }
 ]
 
 export async function GET(request: NextRequest) {
   try {
-    let client
-    try {
-      client = getTwilioClient()
-    } catch {
-      console.warn('Twilio credentials not configured, returning fallback templates')
-      return NextResponse.json({ templates: fallbackTemplates })
-    }
+    const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('organizationId')
 
-    // Attempt to fetch templates using Twilio Content API
-    // Content API: https://www.twilio.com/docs/content
+    let twilioList: any[] = []
     try {
+      const client = await getTwilioClientForOrg(orgId)
       const twilioTemplates = await client.content.v1.contents.list({ limit: 50 })
       
-      if (!twilioTemplates || twilioTemplates.length === 0) {
-        return NextResponse.json({ templates: fallbackTemplates })
-      }
-
-      // Parse Twilio Content API formats
-      const templates = twilioTemplates.map((item: any) => {
-        // Twilio templates have their bodies nested under types (e.g. twilio/text or twilio/card etc)
-        const types = item.types || {}
-        let body = ''
-        
-        // Find body text in template types
-        if (types['twilio/text']) {
-          body = types['twilio/text'].body
-        } else if (types['twilio/media']) {
-          body = types['twilio/media'].body || ''
-        } else if (types['twilio/card']) {
-          body = types['twilio/card'].body || ''
-        } else {
-          // Fallback - stringify values or grab what we can
-          const firstType = Object.keys(types)[0]
-          if (firstType && types[firstType]) {
-            body = types[firstType].body || types[firstType].text || ''
+      if (twilioTemplates) {
+        twilioList = twilioTemplates.map((item: any) => {
+          const types = item.types || {}
+          let body = ''
+          
+          if (types['twilio/text']) {
+            body = types['twilio/text'].body
+          } else if (types['twilio/media']) {
+            body = types['twilio/media'].body || ''
+          } else if (types['twilio/card']) {
+            body = types['twilio/card'].body || ''
+          } else {
+            const firstType = Object.keys(types)[0]
+            if (firstType && types[firstType]) {
+              body = types[firstType].body || types[firstType].text || ''
+            }
           }
-        }
 
-        // Detect variables {{1}}, {{2}} etc.
-        const variables: string[] = []
-        const varMatches = body.match(/\{\{\d+\}\}/g)
-        if (varMatches) {
-          varMatches.forEach((match: string) => {
-            const num = match.replace(/[\{\}]/g, '')
-            if (!variables.includes(num)) {
-              variables.push(num)
+          const variables: string[] = []
+          const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+          if (varMatches) {
+            varMatches.forEach((match: string) => {
+              const variable = match.replace(/[\{\}]/g, '')
+              if (!variables.includes(variable)) {
+                variables.push(variable)
+              }
+            })
+          }
+
+          return {
+            sid: item.sid,
+            name: item.friendlyName || item.sid,
+            body: body,
+            variables: variables,
+            category: 'UTILITY',
+            language: 'en',
+            isDbTemplate: false
+          }
+        })
+      }
+    } catch (apiError) {
+      console.warn('Failed to fetch from Twilio Content API, loading DB templates next:', apiError)
+    }
+
+    let dbList: any[] = []
+    if (orgId) {
+      try {
+        const supabase = getSupabaseClient()
+        const { data: dbTemplates } = await supabase
+          .from('message_templates')
+          .select('*')
+          .eq('organization_id', orgId)
+          .eq('status', 'APPROVED')
+
+        if (dbTemplates) {
+          dbList = dbTemplates.map((t: any) => {
+            const variables: string[] = []
+            const varMatches = t.body.match(/\{\{[^\}]+\}\}/g)
+            if (varMatches) {
+              varMatches.forEach((match: string) => {
+                const variable = match.replace(/[\{\}]/g, '')
+                if (!variables.includes(variable)) {
+                  variables.push(variable)
+                }
+              })
+            }
+            return {
+              sid: t.id,
+              name: t.name,
+              body: t.body,
+              variables: variables,
+              category: t.category || 'UTILITY',
+              language: t.language || 'en',
+              isDbTemplate: true
             }
           })
-          variables.sort((a, b) => parseInt(a) - parseInt(b))
         }
+      } catch (dbErr) {
+        console.error('Failed to fetch templates from database:', dbErr)
+      }
+    }
 
-        return {
-          sid: item.sid,
-          name: item.friendlyName || item.sid,
-          body: body,
-          variables: variables,
-          category: item.language || 'en'
-        }
-      })
+    const mergedTemplates = [...dbList, ...twilioList]
 
-      return NextResponse.json({ templates })
-    } catch (apiError) {
-      console.warn('Failed to fetch from Twilio Content API, returning fallbacks:', apiError)
+    if (mergedTemplates.length === 0) {
       return NextResponse.json({ templates: fallbackTemplates })
     }
+
+    return NextResponse.json({ templates: mergedTemplates })
   } catch (error) {
     console.error('Templates fetch general error:', error)
     return NextResponse.json({ templates: fallbackTemplates })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { organizationId, name, category, language, body: templateBody } = body
+
+    if (!organizationId || !name || !templateBody) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseClient()
+    const { data, error } = await supabase
+      .from('message_templates')
+      .insert({
+        organization_id: organizationId,
+        name: name.trim().toLowerCase(),
+        category: category || 'UTILITY',
+        language: language || 'en',
+        body: templateBody,
+        status: 'APPROVED',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Failed to create database template:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, template: data })
+  } catch (error: any) {
+    console.error('Template POST error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing template ID' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseClient()
+    const { error } = await supabase
+      .from('message_templates')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('Failed to delete template:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error('Template DELETE error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

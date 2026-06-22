@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { authSessionManager } from '@/lib/auth-context'
-import { MessageCircle } from 'lucide-react'
-
+import { Sparkles, Mail, Lock, User, Building, ArrowRight } from 'lucide-react'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -74,89 +73,120 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#eae6df] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Green Header Band */}
-      <div className="h-[222px] bg-[#00a884] w-full absolute top-0 left-0 z-0 shadow-sm flex items-center justify-center" />
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-100">
+      {/* Ambient background glows */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[30%] left-[55%] w-[35%] h-[35%] bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
 
-      {/* Main Card */}
+      {/* Grid Pattern Overlay */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
+
+      {/* Main Signup Card Container */}
       <div className="w-full max-w-[440px] relative z-10 my-8">
-        {/* Upper Brand Icon for presentation */}
-        <div className="flex items-center justify-center gap-3 mb-6 relative select-none">
-          <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-md">
-            <MessageCircle size={22} className="text-[#00a884]" />
+        
+        {/* Brand Header */}
+        <div className="flex items-center justify-center gap-3 mb-8 select-none">
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+            <Sparkles size={20} className="text-white animate-pulse" />
           </div>
-          <span className="text-white text-lg font-bold tracking-tight">WHATSAPP CRM</span>
+          <span className="text-white text-2xl font-black tracking-wider">
+            OMNI<span className="text-teal-400 font-extrabold">CRM</span>
+          </span>
         </div>
 
-        <div className="bg-white rounded-lg shadow-md border border-[#e9edef] p-10">
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-[#111b21]">Create Account</h2>
-            <p className="text-xs text-[#667781] mt-1.5 font-medium">To set up your WhatsApp CRM.</p>
+        {/* Glassmorphism Card */}
+        <div className="backdrop-blur-xl bg-slate-900/60 rounded-3xl border border-slate-800/80 p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
+          <div className="mb-8">
+            <h2 className="text-2xl font-black text-white tracking-tight">Create Account</h2>
+            <p className="text-xs text-slate-400 mt-2 font-medium leading-relaxed">
+              Get started with OmniCRM to unify your messages, voice channels, and AI workflows.
+            </p>
           </div>
 
-          <form onSubmit={handleSignup} className="space-y-4">
+          <form onSubmit={handleSignup} className="space-y-5">
             <div>
-              <label htmlFor="fullName" className="block text-[11px] font-bold text-[#54656f] uppercase tracking-wider mb-1.5">
+              <label htmlFor="fullName" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                 Full Name
               </label>
-              <input
-                id="fullName"
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:border-[#00a884] text-xs font-semibold placeholder-[#8696a0] transition-all"
-                placeholder="John Doe"
-                required
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <User size={16} />
+                </div>
+                <input
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950/50 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-500 text-slate-200 transition-all"
+                  placeholder="John Doe"
+                  required
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="companyName" className="block text-[11px] font-bold text-[#54656f] uppercase tracking-wider mb-1.5">
+              <label htmlFor="companyName" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                 Company Name
               </label>
-              <input
-                id="companyName"
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:border-[#00a884] text-xs font-semibold placeholder-[#8696a0] transition-all"
-                placeholder="Acme Inc"
-                required
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Building size={16} />
+                </div>
+                <input
+                  id="companyName"
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950/50 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-500 text-slate-200 transition-all"
+                  placeholder="Acme Inc"
+                  required
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-[11px] font-bold text-[#54656f] uppercase tracking-wider mb-1.5">
+              <label htmlFor="email" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                 Email Address
               </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:border-[#00a884] text-xs font-semibold placeholder-[#8696a0] transition-all"
-                placeholder="you@example.com"
-                required
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Mail size={16} />
+                </div>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950/50 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-500 text-slate-200 transition-all"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-[11px] font-bold text-[#54656f] uppercase tracking-wider mb-1.5">
+              <label htmlFor="password" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:border-[#00a884] text-xs font-semibold placeholder-[#8696a0] transition-all"
-                placeholder="Choose a password"
-                required
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Lock size={16} />
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950/50 border border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-500 text-slate-200 transition-all"
+                  placeholder="Choose a strong password"
+                  required
+                />
+              </div>
             </div>
 
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-100 rounded-lg text-xs font-medium text-rose-600">
+              <div className="p-3 bg-rose-950/40 border border-rose-900/50 rounded-xl text-xs font-medium text-rose-400">
                 {error}
               </div>
             )}
@@ -164,16 +194,23 @@ export default function SignupPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#00a884] hover:bg-[#008069] text-white py-2.5 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 text-xs"
+              className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white py-3 rounded-xl font-bold transition-all duration-300 shadow-md shadow-teal-500/10 hover:shadow-teal-400/20 disabled:opacity-50 text-xs hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer border-0"
             >
-              {loading ? 'Creating account...' : 'Create Account'}
+              {loading ? (
+                <span>Creating account...</span>
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <ArrowRight size={14} />
+                </>
+              )}
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-[#e9edef]">
-            <p className="text-xs text-[#667781] font-semibold">
+          <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
+            <p className="text-xs text-slate-400 font-semibold">
               Already have an account?{' '}
-              <Link href="/login" className="text-[#00a884] hover:text-[#008069] font-bold">
+              <Link href="/login" className="text-teal-400 hover:text-teal-300 font-bold transition-colors">
                 Sign in
               </Link>
             </p>

@@ -18,14 +18,20 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseClient()
 
     const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('organizationId')
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const search = searchParams.get('search') || ''
     const offset = (page - 1) * limit
 
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
+    }
+
     let query = supabase
       .from('contacts')
       .select('*', { count: 'exact' })
+      .eq('organization_id', orgId)
 
     if (search) {
       query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
@@ -86,10 +92,11 @@ export async function POST(request: NextRequest) {
 
     const normalizedPhone = phoneNumber.replace(/[\s-()]/g, '')
 
-    // Check if contact already exists globally
+    // Check if contact already exists in this organization
     const { data: existing, error: existingError } = await supabase
       .from('contacts')
       .select('*')
+      .eq('organization_id', organizationId)
       .eq('phone_number', normalizedPhone)
       .single()
 
@@ -192,10 +199,11 @@ export async function PUT(request: NextRequest) {
 
     const normalizedPhone = phone_number.replace(/[\s-()]/g, '')
 
-    // Check if another contact globally has this phone number
+    // Check if another contact in this organization has this phone number
     const { data: existing, error: existingError } = await supabase
       .from('contacts')
       .select('*')
+      .eq('organization_id', organizationId)
       .eq('phone_number', normalizedPhone)
       .neq('id', id)
       .single()

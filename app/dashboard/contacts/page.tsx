@@ -63,7 +63,7 @@ export default function ContactsPage() {
       setUser(userData)
 
       const limit = 10
-      const res = await fetch(`/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}`)
+      const res = await fetch(`/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}&organizationId=${userData.organization_id}`)
       const resData = await res.json()
       if (!res.ok) {
         throw new Error(resData.error || 'Failed to fetch contacts')

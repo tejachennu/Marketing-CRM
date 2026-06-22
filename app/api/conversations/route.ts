@@ -18,11 +18,16 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseClient()
 
     const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('organizationId')
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const unreadOnly = searchParams.get('unread') === 'true'
     const search = searchParams.get('search') || ''
     const offset = (page - 1) * limit
+
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
+    }
 
     let query = supabase
       .from('conversations')
@@ -49,6 +54,7 @@ export async function GET(request: NextRequest) {
       `,
         { count: 'exact' }
       )
+      .eq('organization_id', orgId)
 
     if (unreadOnly) {
       query = query.gt('unread_count', 0)
@@ -59,6 +65,7 @@ export async function GET(request: NextRequest) {
       const { data: matchedContacts } = await supabase
         .from('contacts')
         .select('id')
+        .eq('organization_id', orgId)
         .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%`)
 
       const contactIds = (matchedContacts || []).map((c: any) => c.id)

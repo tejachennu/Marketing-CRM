@@ -12,11 +12,6 @@ function getSupabaseClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const openAiKey = process.env.OPENAI_API_KEY
-    if (!openAiKey) {
-      return NextResponse.json({ suggestions: [] }, { status: 200 })
-    }
-
     const { conversationId } = await request.json()
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
@@ -33,6 +28,27 @@ export async function POST(request: NextRequest) {
 
     if (convErr || !conv) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    // Load custom credentials per organization
+    let openAiKey = process.env.OPENAI_API_KEY || ''
+    if (conv.organization_id) {
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('openai_api_key')
+          .eq('id', conv.organization_id)
+          .single()
+        if (orgData && orgData.openai_api_key) {
+          openAiKey = orgData.openai_api_key
+        }
+      } catch (dbErr) {
+        console.error('[Copilot] Error loading organization OpenAI key:', dbErr)
+      }
+    }
+
+    if (!openAiKey) {
+      return NextResponse.json({ suggestions: [], error: 'OpenAI API key is not configured' }, { status: 200 })
     }
 
     // 2. Fetch last 15 messages
