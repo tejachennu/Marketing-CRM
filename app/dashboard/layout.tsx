@@ -4,8 +4,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { AssistantDrawer } from '@/components/assistant-drawer'
 
 export default function DashboardLayout({
   children,
@@ -33,6 +34,7 @@ export default function DashboardLayout({
   })
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
+  const [showAssistant, setShowAssistant] = useState(false)
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -447,6 +449,23 @@ export default function DashboardLayout({
               )}
             </div>
           )}
+
+          {/* Global AI Assistant Floating Trigger */}
+          <button
+            onClick={() => setShowAssistant(true)}
+            title="Open Marketing Assistant"
+            className="fixed right-6 bottom-20 md:bottom-6 w-12 h-12 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 active:scale-95 transition-all z-40 hover:scale-110 duration-200 cursor-pointer border border-emerald-500/30 hover:shadow-emerald-500/40"
+          >
+            <Sparkles size={20} className="animate-pulse" />
+          </button>
+
+          {/* Global AI Assistant Drawer */}
+          <AssistantDrawer
+            isOpen={showAssistant}
+            onClose={() => setShowAssistant(false)}
+            orgId={orgId || ''}
+            orgName={orgName}
+          />
         </main>
       </div>
     </div>
