@@ -332,25 +332,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
     localStorage.removeItem('assistant_notifs')
   }
 
-  // UTM generator
-  useEffect(() => {
-    let base = utmBase.trim()
-    if (!base) return
-    const params = new URLSearchParams()
-    if (utmSource.trim()) params.append('utm_source', utmSource.trim())
-    if (utmMedium.trim()) params.append('utm_medium', utmMedium.trim())
-    if (utmCampaign.trim()) params.append('utm_campaign', utmCampaign.trim())
-    if (utmTerm.trim()) params.append('utm_term', utmTerm.trim())
-    if (utmContent.trim()) params.append('utm_content', utmContent.trim())
-    
-    const query = params.toString()
-    if (query) {
-      const sep = base.includes('?') ? '&' : '?'
-      setGeneratedUtm(base + sep + query)
-    } else {
-      setGeneratedUtm(base)
-    }
-  }, [utmBase, utmSource, utmMedium, utmCampaign, utmTerm, utmContent])
+
 
   // Save template in database
   const handleSaveTemplateToDb = async () => {
