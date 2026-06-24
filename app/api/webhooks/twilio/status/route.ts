@@ -35,14 +35,13 @@ export async function POST(request: NextRequest) {
       try {
         const supabase = getSupabaseClient()
 
-        // We can store delivery status; for now just log it
-        // If you want to track delivery status, add a 'delivery_status' column to messages table
-        // and uncomment the below:
-        //
-        // await supabase
-        //   .from('messages')
-        //   .update({ delivery_status: messageStatus })
-        //   .eq('twilio_message_sid', messageSid)
+        await supabase
+          .from('messages')
+          .update({
+            status: messageStatus,
+            error_message: errorMessage
+          })
+          .eq('twilio_message_sid', messageSid)
 
         if (messageStatus === 'failed' || messageStatus === 'undelivered') {
           console.error('[v0] Message delivery failed:', {

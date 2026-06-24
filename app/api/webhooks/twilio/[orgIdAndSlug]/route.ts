@@ -169,8 +169,11 @@ export async function POST(
 
     console.log(`[Webhook] Received WhatsApp message for Org: ${orgId}`, { from, to, messageBody, messageSid, mediaUrl, contentType })
 
-    // Extract phone number (remove 'whatsapp:' prefix if present)
-    const phoneNumber = from.replace('whatsapp:', '')
+    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
+    let phoneNumber = from.replace('whatsapp:', '').trim()
+    if (!phoneNumber.startsWith('+')) {
+      phoneNumber = '+' + phoneNumber
+    }
 
     if (!phoneNumber || (!messageBody && !mediaUrl)) {
       console.error('[Webhook] Missing phone number, message body, or media')
@@ -363,14 +366,36 @@ export async function POST(
               return `[FAQ ${i + 1}]\nQuestion: ${faq.title}\nAnswer: ${faq.content}`
             }).join('\n\n---\n\n')
 
-            // 4. Construct System Prompt
+            // 4. Fetch last 6 messages for conversation context
+            const { data: recentMessages } = await supabase
+              .from('messages')
+              .select('sender_type, body')
+              .eq('conversation_id', conversation.id)
+              .order('created_at', { ascending: false })
+              .limit(6)
+
+            const chatHistory = (recentMessages || [])
+              .reverse()
+              .filter((m: any) => m.body)
+              .map((m: any) => ({
+                role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const,
+                content: m.body
+              }))
+
+            console.log(`[Webhook Chatbot] Including ${chatHistory.length} previous messages as context`)
+
+            // 5. Construct System Prompt
             const basePrompt = orgData.chatbot_base_prompt || DEFAULT_BASE_PROMPT
             const systemPrompt = `${basePrompt}
 
 MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
-${formattedContext || '(No matching FAQs found in the knowledge base)'}`
+${formattedContext || '(No matching FAQs found in the knowledge base)'}
 
-            // 5. Call GPT-4o-mini
+CONVERSATION HISTORY:
+The messages below are the recent conversation between you (assistant) and the customer (user).
+Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.`
+
+            // 6. Call GPT-4o-mini with conversation history
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
               headers: {
@@ -381,10 +406,11 @@ ${formattedContext || '(No matching FAQs found in the knowledge base)'}`
                 model: 'gpt-4o-mini',
                 messages: [
                   { role: 'system', content: systemPrompt },
+                  ...chatHistory,
                   { role: 'user', content: messageBody }
                 ],
-                temperature: 0.0, // Strict deterministic output
-                max_tokens: 150
+                temperature: 0.3,
+                max_tokens: 300
               })
             })
 

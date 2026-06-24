@@ -129,6 +129,7 @@ export default function CampaignsPage() {
     enable_email: true,
     enable_messages: true,
     enable_phone_calls: true,
+    enable_sms: true,
   })
   const [channel, setChannel] = useState<'whatsapp' | 'sms' | 'email'>('whatsapp')
   const [sender, setSender] = useState('')
@@ -202,7 +203,7 @@ export default function CampaignsPage() {
             setUser(userData)
             const { data: orgData } = await supabase
               .from('organizations')
-              .select('enable_ai, enable_email, enable_messages, enable_phone_calls')
+              .select('enable_ai, enable_email, enable_messages, enable_phone_calls, enable_sms')
               .eq('id', userData.organization_id)
               .maybeSingle()
             if (orgData) {
@@ -211,6 +212,7 @@ export default function CampaignsPage() {
                 enable_email: orgData.enable_email !== false,
                 enable_messages: orgData.enable_messages !== false,
                 enable_phone_calls: orgData.enable_phone_calls !== false,
+                enable_sms: orgData.enable_sms !== false,
               }
               setFeatures(enabledFeatures)
               if (!enabledFeatures.enable_messages && enabledFeatures.enable_email) {
@@ -1103,7 +1105,7 @@ export default function CampaignsPage() {
                           WhatsApp
                         </button>
                       )}
-                      {features.enable_messages && (
+                      {features.enable_messages && features.enable_sms && (
                         <button
                           type="button"
                           onClick={() => setChannel('sms')}

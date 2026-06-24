@@ -8,6 +8,11 @@ export interface Organization {
   enable_email?: boolean
   enable_messages?: boolean
   enable_phone_calls?: boolean
+  enable_sms?: boolean
+  contact_name?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+  contact_address?: string | null
   twilio_account_sid?: string | null
   twilio_auth_token?: string | null
   twilio_whatsapp_number?: string | null
@@ -20,6 +25,12 @@ export interface Organization {
   smtp_port?: number | null
   smtp_email?: string | null
   smtp_password?: string | null
+  whatsapp_provider?: 'twilio' | 'facebook' | null
+  whatsapp_api_token?: string | null
+  whatsapp_default_phone?: string | null
+  whatsapp_graph_api_version?: string | null
+  whatsapp_phone_number_id?: string | null
+  whatsapp_business_account_id?: string | null
 }
 
 export interface User {
@@ -27,7 +38,7 @@ export interface User {
   organization_id: string
   email: string
   full_name: string | null
-  role: 'owner' | 'admin' | 'member' | 'salesemployees' | 'saleslead'
+  role: 'owner' | 'admin' | 'member' | 'salesemployees' | 'saleslead' | 'superadmin' | 'OrgAdmin' | 'Manager'
   created_at: string
   updated_at: string
 }
@@ -105,6 +116,8 @@ export interface Message {
   media_url: string | null
   twilio_message_sid: string | null
   read_at: string | null
+  status?: string | null
+  error_message?: string | null
   created_at: string
 }
 

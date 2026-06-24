@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
     let envEmail = process.env.SENDGRID_FROM_EMAIL || ''
     let emailProvider = 'sendgrid'
     let smtpEmail = ''
+    let whatsappProvider = process.env.WHATSAPP_PROVIDER || 'twilio'
+    let whatsappDefaultPhone = process.env.WHATSAPP_DEFAULT_PHONE || ''
 
     // Resolve tenant credentials
     if (orgId) {
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
         const supabase = getSupabaseClient()
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_email')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_email, whatsapp_provider, whatsapp_default_phone')
           .eq('id', orgId)
           .single()
 
@@ -42,6 +44,8 @@ export async function GET(request: NextRequest) {
           if (orgData.sendgrid_from_email) envEmail = orgData.sendgrid_from_email
           if (orgData.email_provider) emailProvider = orgData.email_provider
           if (orgData.smtp_email) smtpEmail = orgData.smtp_email
+          if (orgData.whatsapp_provider) whatsappProvider = orgData.whatsapp_provider
+          if (orgData.whatsapp_default_phone) whatsappDefaultPhone = orgData.whatsapp_default_phone
         }
       } catch (dbErr) {
         console.error('[Senders API] Error loading database credentials:', dbErr)
@@ -56,26 +60,68 @@ export async function GET(request: NextRequest) {
     const whatsappSenders: Array<{ value: string; label: string }> = []
     const emailSenders: Array<{ value: string; label: string }> = []
 
-    // 1. Fetch Twilio Numbers & Services
+    // 1. Fetch WhatsApp Senders based on active provider
+    if (whatsappProvider === 'facebook') {
+      if (whatsappDefaultPhone) {
+        const stdPhone = whatsappDefaultPhone.startsWith('+') ? whatsappDefaultPhone : '+' + whatsappDefaultPhone
+        whatsappSenders.push({
+          value: `whatsapp:${stdPhone}`,
+          label: `WhatsApp Direct (Meta API): ${stdPhone}`,
+        })
+      }
+    } else {
+      if (accountSid && authToken) {
+        try {
+          const client = twilio(accountSid, authToken)
+          const numbers = await client.incomingPhoneNumbers.list({ limit: 50 })
+          numbers.forEach((n) => {
+            whatsappSenders.push({
+              value: `whatsapp:${n.phoneNumber}`,
+              label: `WhatsApp: ${n.friendlyName || n.phoneNumber} (${n.phoneNumber})`,
+            })
+          })
+        } catch (err) {
+          console.error('[Senders API] Error fetching Twilio numbers for WhatsApp:', err)
+        }
+      }
+
+      // Add env configured WhatsApp number if present
+      if (envWhatsapp) {
+        const cleanWhatsapp = envWhatsapp.startsWith('whatsapp:') ? envWhatsapp : `whatsapp:${envWhatsapp}`
+        const cleanPhone = envWhatsapp.replace('whatsapp:', '')
+        if (!whatsappSenders.some((s) => s.value === cleanWhatsapp)) {
+          whatsappSenders.unshift({
+            value: cleanWhatsapp,
+            label: `Configured WhatsApp Number (${cleanPhone})`,
+          })
+        }
+      }
+
+      // Always offer the Twilio WhatsApp Sandbox number as a fallback
+      const sandboxWhatsapp = 'whatsapp:+14155238886'
+      if (!whatsappSenders.some((s) => s.value === sandboxWhatsapp)) {
+        whatsappSenders.push({
+          value: sandboxWhatsapp,
+          label: 'Twilio WhatsApp Sandbox (+14155238886)',
+        })
+      }
+    }
+
+    // 2. Fetch Twilio SMS Numbers & Messaging Services
     if (accountSid && authToken) {
       try {
         const client = twilio(accountSid, authToken)
 
-        // Fetch active incoming phone numbers
+        // Fetch active incoming phone numbers for SMS
         const numbers = await client.incomingPhoneNumbers.list({ limit: 50 })
         numbers.forEach((n) => {
           smsSenders.push({
             value: n.phoneNumber,
             label: `${n.friendlyName || n.phoneNumber} (${n.phoneNumber})`,
           })
-
-          whatsappSenders.push({
-            value: `whatsapp:${n.phoneNumber}`,
-            label: `WhatsApp: ${n.friendlyName || n.phoneNumber} (${n.phoneNumber})`,
-          })
         })
 
-        // Fetch messaging services
+        // Fetch messaging services for SMS
         const services = await client.messaging.v1.services.list({ limit: 50 })
         services.forEach((s) => {
           smsSenders.push({
@@ -84,29 +130,8 @@ export async function GET(request: NextRequest) {
           })
         })
       } catch (err) {
-        console.error('[Senders API] Error fetching Twilio numbers/services:', err)
+        console.error('[Senders API] Error fetching Twilio numbers/services for SMS:', err)
       }
-    }
-
-    // Add env configured WhatsApp number if present
-    if (envWhatsapp) {
-      const cleanWhatsapp = envWhatsapp.startsWith('whatsapp:') ? envWhatsapp : `whatsapp:${envWhatsapp}`
-      const cleanPhone = envWhatsapp.replace('whatsapp:', '')
-      if (!whatsappSenders.some((s) => s.value === cleanWhatsapp)) {
-        whatsappSenders.unshift({
-          value: cleanWhatsapp,
-          label: `Configured WhatsApp Number (${cleanPhone})`,
-        })
-      }
-    }
-
-    // Always offer the Twilio WhatsApp Sandbox number as a fallback
-    const sandboxWhatsapp = 'whatsapp:+14155238886'
-    if (!whatsappSenders.some((s) => s.value === sandboxWhatsapp)) {
-      whatsappSenders.push({
-        value: sandboxWhatsapp,
-        label: 'Twilio WhatsApp Sandbox (+14155238886)',
-      })
     }
 
     // 2. Fetch SendGrid Verified Senders

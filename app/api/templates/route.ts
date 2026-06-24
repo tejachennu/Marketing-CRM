@@ -39,6 +39,95 @@ async function getTwilioClientForOrg(orgId: string | null) {
   return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 }
 
+// Fetch organization WhatsApp config from DB
+async function getOrgWhatsappConfig(orgId: string) {
+  const supabase = getSupabaseClient()
+  const { data: orgData } = await supabase
+    .from('organizations')
+    .select('whatsapp_provider, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_business_account_id')
+    .eq('id', orgId)
+    .single()
+
+  return {
+    provider: orgData?.whatsapp_provider || process.env.WHATSAPP_PROVIDER || 'twilio',
+    apiToken: orgData?.whatsapp_api_token || process.env.WHATSAPP_API_TOKEN || '',
+    graphApiVersion: orgData?.whatsapp_graph_api_version || process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0',
+    businessAccountId: orgData?.whatsapp_business_account_id || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+  }
+}
+
+// Fetch templates from Meta WhatsApp Business Cloud API
+async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, businessAccountId: string): Promise<any[]> {
+  if (!apiToken || !businessAccountId) {
+    console.warn('[Templates] Missing Meta API token or WABA ID, skipping Meta template fetch')
+    return []
+  }
+
+  const allTemplates: any[] = []
+  let url: string | null = `https://graph.facebook.com/${graphApiVersion}/${businessAccountId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
+
+  try {
+    while (url) {
+      const res: Response = await fetch(url)
+
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error(`[Templates] Meta API error: ${res.status} ${errText}`)
+        break
+      }
+
+      const data = await res.json()
+      const templates = data.data || []
+
+      for (const tpl of templates) {
+        // Only include APPROVED templates
+        if (tpl.status !== 'APPROVED') continue
+
+        // Extract body text from components
+        let body = ''
+        const components = tpl.components || []
+        for (const comp of components) {
+          if (comp.type === 'BODY') {
+            body = comp.text || ''
+            break
+          }
+        }
+
+        // Extract variables from body (e.g., {{1}}, {{2}})
+        const variables: string[] = []
+        const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+        if (varMatches) {
+          varMatches.forEach((match: string) => {
+            const variable = match.replace(/[\{\}]/g, '')
+            if (!variables.includes(variable)) {
+              variables.push(variable)
+            }
+          })
+        }
+
+        allTemplates.push({
+          sid: `META_${tpl.id}`,
+          name: `${tpl.name} (Meta Approved)`,
+          body: body,
+          variables: variables,
+          category: tpl.category || 'UTILITY',
+          language: tpl.language || 'en',
+          isDbTemplate: false,
+          source: 'meta',
+          meta_template_name: tpl.name,
+        })
+      }
+
+      // Handle pagination
+      url = data.paging?.next || null
+    }
+  } catch (err) {
+    console.error('[Templates] Failed to fetch Meta templates:', err)
+  }
+
+  return allTemplates
+}
+
 const fallbackTemplates = [
   {
     sid: 'HX_welcome_campaign',
@@ -69,53 +158,85 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
 
-    let twilioList: any[] = []
-    try {
-      const client = await getTwilioClientForOrg(orgId)
-      const twilioTemplates = await client.content.v1.contents.list({ limit: 50 })
-      
-      if (twilioTemplates) {
-        twilioList = twilioTemplates.map((item: any) => {
-          const types = item.types || {}
-          let body = ''
-          
-          if (types['twilio/text']) {
-            body = types['twilio/text'].body
-          } else if (types['twilio/media']) {
-            body = types['twilio/media'].body || ''
-          } else if (types['twilio/card']) {
-            body = types['twilio/card'].body || ''
-          } else {
-            const firstType = Object.keys(types)[0]
-            if (firstType && types[firstType]) {
-              body = types[firstType].body || types[firstType].text || ''
-            }
-          }
+    // Determine which provider this org uses
+    let whatsappConfig = {
+      provider: process.env.WHATSAPP_PROVIDER || 'twilio',
+      apiToken: process.env.WHATSAPP_API_TOKEN || '',
+      graphApiVersion: process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0',
+      businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+    }
 
-          const variables: string[] = []
-          const varMatches = body.match(/\{\{[^\}]+\}\}/g)
-          if (varMatches) {
-            varMatches.forEach((match: string) => {
-              const variable = match.replace(/[\{\}]/g, '')
-              if (!variables.includes(variable)) {
-                variables.push(variable)
-              }
-            })
-          }
-
-          return {
-            sid: item.sid,
-            name: item.friendlyName || item.sid,
-            body: body,
-            variables: variables,
-            category: 'UTILITY',
-            language: 'en',
-            isDbTemplate: false
-          }
-        })
+    if (orgId) {
+      try {
+        whatsappConfig = await getOrgWhatsappConfig(orgId)
+      } catch (e) {
+        console.warn('[Templates] Failed to load org whatsapp config:', e)
       }
-    } catch (apiError) {
-      console.warn('Failed to fetch from Twilio Content API, loading DB templates next:', apiError)
+    }
+
+    let twilioList: any[] = []
+    let metaList: any[] = []
+
+    if (whatsappConfig.provider === 'facebook') {
+      // Fetch templates from Meta WhatsApp Business Cloud API
+      try {
+        metaList = await fetchMetaTemplates(
+          whatsappConfig.apiToken,
+          whatsappConfig.graphApiVersion,
+          whatsappConfig.businessAccountId
+        )
+      } catch (metaErr) {
+        console.warn('[Templates] Failed to fetch from Meta WhatsApp API:', metaErr)
+      }
+    } else {
+      // Fetch templates from Twilio Content API
+      try {
+        const client = await getTwilioClientForOrg(orgId)
+        const twilioTemplates = await client.content.v1.contents.list({ limit: 50 })
+        
+        if (twilioTemplates) {
+          twilioList = twilioTemplates.map((item: any) => {
+            const types = item.types || {}
+            let body = ''
+            
+            if (types['twilio/text']) {
+              body = types['twilio/text'].body
+            } else if (types['twilio/media']) {
+              body = types['twilio/media'].body || ''
+            } else if (types['twilio/card']) {
+              body = types['twilio/card'].body || ''
+            } else {
+              const firstType = Object.keys(types)[0]
+              if (firstType && types[firstType]) {
+                body = types[firstType].body || types[firstType].text || ''
+              }
+            }
+
+            const variables: string[] = []
+            const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+            if (varMatches) {
+              varMatches.forEach((match: string) => {
+                const variable = match.replace(/[\{\}]/g, '')
+                if (!variables.includes(variable)) {
+                  variables.push(variable)
+                }
+              })
+            }
+
+            return {
+              sid: item.sid,
+              name: item.friendlyName || item.sid,
+              body: body,
+              variables: variables,
+              category: 'UTILITY',
+              language: 'en',
+              isDbTemplate: false
+            }
+          })
+        }
+      } catch (apiError) {
+        console.warn('Failed to fetch from Twilio Content API, loading DB templates next:', apiError)
+      }
     }
 
     let dbList: any[] = []
@@ -156,7 +277,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const mergedTemplates = [...dbList, ...twilioList]
+    // Merge: DB templates first, then provider-specific templates (Meta or Twilio)
+    const mergedTemplates = [...dbList, ...metaList, ...twilioList]
 
     if (mergedTemplates.length === 0) {
       return NextResponse.json({ templates: fallbackTemplates })

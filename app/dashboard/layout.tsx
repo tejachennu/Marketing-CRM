@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 export default function DashboardLayout({
@@ -19,6 +19,7 @@ export default function DashboardLayout({
   const [orgId, setOrgId] = useState<string | null>(null)
   const [orgName, setOrgName] = useState<string>('')
   const [orgSlug, setOrgSlug] = useState<string>('')
+  const [userRole, setUserRole] = useState<string>('')
   const [features, setFeatures] = useState({
     enable_ai: true,
     enable_email: true,
@@ -87,7 +88,7 @@ export default function DashboardLayout({
       if (id) {
         const { data: profile } = await supabase
           .from('users')
-          .select('full_name, organization_id')
+          .select('full_name, organization_id, role')
           .eq('id', id)
           .maybeSingle()
         if (profile) {
@@ -97,11 +98,20 @@ export default function DashboardLayout({
           if (profile.organization_id) {
             setOrgId(profile.organization_id)
           }
+          if (profile.role) {
+            setUserRole(profile.role)
+          }
         }
       }
     }
     getUserEmail()
   }, [])
+
+  useEffect(() => {
+    if (userRole === 'superadmin' && pathname === '/dashboard') {
+      router.push('/dashboard/superadmin')
+    }
+  }, [userRole, pathname, router])
 
   useEffect(() => {
     if (!orgId) return
@@ -166,9 +176,20 @@ export default function DashboardLayout({
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
     { href: '/dashboard/ivr', label: 'IVR Workflows', icon: Phone },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+    { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
 
   const filteredNavItems = navItems.filter((item) => {
+    // If user is superadmin, ONLY show the Super Admin dashboard link
+    if (userRole === 'superadmin') {
+      return item.href === '/dashboard/superadmin'
+    }
+    
+    // For normal users, hide the Super Admin link
+    if (item.href === '/dashboard/superadmin') {
+      return false
+    }
+
     if (item.href === '/dashboard') {
       return features.enable_messages
     }
@@ -182,6 +203,10 @@ export default function DashboardLayout({
   })
 
   const isPageAllowed = () => {
+    if (userRole === 'superadmin') {
+      return pathname.startsWith('/dashboard/superadmin')
+    }
+    if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
     if (pathname === '/dashboard' && !features.enable_messages) return false
     if (pathname.startsWith('/dashboard/ivr') && !features.enable_phone_calls) return false
     if ((pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts')) && !features.enable_messages && !features.enable_email) return false
@@ -189,16 +214,16 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#eae6df] dark:bg-[#0b141a] text-[#111b21] dark:text-white antialiased overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
       {/* Top Header status bar */}
-      <header className="h-14 bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] px-5 flex items-center justify-between flex-shrink-0 select-none">
+      <header className="h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/80 px-5 flex items-center justify-between flex-shrink-0 select-none z-50">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-[#00a884] flex items-center justify-center text-white font-bold text-xs shadow-md">
+          <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white font-bold text-xs shadow-sm shadow-emerald-500/20">
             <Key size={14} className="rotate-45" />
           </div>
           <div>
-            <h1 className="text-xs font-black text-[#111b21] dark:text-white leading-none">ByokCRM Panel</h1>
-            <span className="text-[9px] text-[#00a884] font-bold block mt-1">
+            <h1 className="text-xs font-black text-slate-900 dark:text-white leading-none">ByokCRM Panel</h1>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-1">
               ● Active Workspace ({orgSlug || 'canada-tenant'})
             </span>
           </div>
@@ -209,33 +234,35 @@ export default function DashboardLayout({
           <button
             onClick={toggleTheme}
             title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-            className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#e9edef] dark:bg-[#202d36] hover:bg-[#dfe5e7] dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#202d36] text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white transition-all duration-200 shadow-sm cursor-pointer mr-1"
+            className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-all duration-200 shadow-sm cursor-pointer mr-1"
           >
             {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
           </button>
 
-          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-extrabold border ${
+          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold border transition-all duration-200 ${
             credentialsStatus.twilio 
-              ? 'bg-[#00a884]/10 border-[#00a884]/20 text-[#00a884]' 
-              : 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400' 
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
           }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${credentialsStatus.twilio ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             <span>WhatsApp/SMS: {credentialsStatus.twilio ? 'Active' : 'Unconfigured'}</span>
           </div>
-          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-extrabold border ${
+          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold border transition-all duration-200 ${
             credentialsStatus.openai 
-              ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
-              : 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+              ? 'bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400' 
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
           }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${credentialsStatus.openai ? 'bg-blue-500' : 'bg-amber-500'}`} />
             <span>AI Assistant: {credentialsStatus.openai ? 'Active' : 'Unconfigured'}</span>
           </div>
-          <div className="h-2.5 w-2.5 rounded-full bg-[#00a884] animate-pulse" />
+          <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse" />
         </div>
       </header>
 
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-bar */}
-        <aside className="fixed bottom-0 left-0 right-0 h-14 w-full flex flex-row justify-around items-center border-t border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#111b21] md:relative md:h-full md:w-[60px] md:flex-col md:justify-between md:py-4 md:border-r md:border-[#e9edef] dark:border-[#202d36] md:border-t-0 z-40 select-none flex-shrink-0">
+        <aside className="fixed bottom-0 left-0 right-0 h-14 w-full flex flex-row justify-around items-center border-t border-slate-100 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md md:relative md:h-full md:w-[64px] md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 md:border-t-0 z-40 select-none flex-shrink-0">
           
           {/* Navigation Tabs (Vertical/Horizontal) */}
           <div className="flex flex-row md:flex-col items-center gap-1 md:gap-4 w-full h-full md:h-auto justify-around md:justify-start">
@@ -250,30 +277,30 @@ export default function DashboardLayout({
                     key={item.href}
                     href={item.href}
                     title={item.label}
-                    className={`flex items-center justify-center w-12 h-12 md:w-11 md:h-11 rounded-xl transition-all duration-200 group relative ${
+                    className={`flex items-center justify-center w-12 h-12 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative ${
                       isActive
-                        ? 'bg-[#e9edef] dark:bg-[#202d36] text-[#00a884]'
-                        : 'text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white hover:bg-[#e9edef]/60 dark:hover:bg-[#202d36]/60'
+                        ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                     }`}
                   >
                     {/* Vertical active indicator on desktop */}
                     {isActive && (
-                      <span className="hidden md:block absolute left-0 top-2 bottom-2 w-[3px] bg-[#00a884] rounded-r-md" />
+                      <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
                     )}
                     {/* Horizontal active indicator on mobile */}
                     {isActive && (
-                      <span className="block md:hidden absolute bottom-0 left-2 right-2 h-[3px] bg-[#00a884] rounded-t-md" />
+                      <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
                     )}
 
                     <Icon
                       size={20}
                       className={`transition-transform duration-300 group-hover:scale-110 ${
-                        isActive ? 'text-[#00a884]' : 'text-[#667781] dark:text-[#8696a0] group-hover:text-[#111b21] dark:group-hover:text-white'
+                        isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                       }`}
                     />
                     
                     {/* Tooltip for desktop */}
-                    <span className="absolute left-[65px] bg-[#111b21] text-white text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
+                    <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
                       {item.label}
                     </span>
                   </Link>
@@ -287,7 +314,7 @@ export default function DashboardLayout({
             {/* Circular Avatar */}
             <div 
               title={userFullName || userEmail}
-              className="h-9 w-9 rounded-full bg-[#e9edef] dark:bg-[#202d36] flex items-center justify-center font-bold text-[#667781] dark:text-[#8696a0] text-xs border border-[#e9edef] dark:border-[#202d36] select-none cursor-pointer"
+              className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs border border-slate-200/50 dark:border-slate-700/50 select-none cursor-pointer shadow-sm hover:border-slate-350 dark:hover:border-slate-600 transition-all duration-200"
             >
               {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
             </div>
@@ -296,7 +323,7 @@ export default function DashboardLayout({
             <button
               onClick={handleLogout}
               title="Logout"
-              className="flex items-center justify-center h-10 w-10 rounded-xl bg-[#e9edef] dark:bg-[#111b21] hover:bg-[#dfe5e7] dark:hover:bg-[#202d36] border border-[#e9edef] dark:border-[#202d36] text-[#667781] dark:text-[#8696a0] hover:text-rose-400 transition-all duration-200 shadow-sm cursor-pointer"
+              className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
             >
               <LogOut size={16} />
             </button>
@@ -304,25 +331,25 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-hidden bg-[#eae6df] dark:bg-[#0c1317] relative pb-14 md:pb-0 h-[calc(100vh-3.5rem)] md:h-full">
+        <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-[#090d16] relative pb-14 md:pb-0 h-[calc(100vh-3.5rem)] md:h-full">
           <div className="h-full w-full p-0">
             {isPageAllowed() ? (
               children
             ) : (
               <div className="flex items-center justify-center h-full p-4 select-none">
-                <div className="bg-[#f0f2f5] dark:bg-[#111b21] rounded-2xl border border-[#e9edef] dark:border-[#202d36] p-8 max-w-md w-full text-center shadow-xl animate-in fade-in duration-300">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-8 max-w-md w-full text-center shadow-xl animate-in fade-in duration-300">
                   <div className="mx-auto w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                     </svg>
                   </div>
-                  <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-2">Feature Disabled</h2>
-                  <p className="text-xs text-[#667781] dark:text-[#8696a0] mb-6 leading-relaxed font-semibold">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">Feature Disabled</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
                     This feature has been disabled in the Global Features Configuration. Please contact an administrator or visit Settings to enable it.
                   </p>
                   <Link
                     href="/dashboard/settings"
-                    className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#00a884] hover:bg-[#008069] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                    className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                   >
                     Go to Settings
                   </Link>

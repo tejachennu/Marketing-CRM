@@ -70,12 +70,17 @@ async function executeCampaign(campaignId: string) {
     let smtpPort = 587
     let smtpEmail = ''
     let smtpPassword = ''
+    let whatsappProvider = process.env.WHATSAPP_PROVIDER || 'twilio'
+    let whatsappApiToken = process.env.WHATSAPP_API_TOKEN || ''
+    let whatsappDefaultPhone = process.env.WHATSAPP_DEFAULT_PHONE || ''
+    let whatsappGraphApiVersion = process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
+    let whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
 
     if (campaign.organization_id) {
       try {
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_host, smtp_port, smtp_email, smtp_password')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, sendgrid_api_key, sendgrid_from_email, email_provider, smtp_host, smtp_port, smtp_email, smtp_password, whatsapp_provider, whatsapp_api_token, whatsapp_default_phone, whatsapp_graph_api_version, whatsapp_phone_number_id')
           .eq('id', campaign.organization_id)
           .single()
 
@@ -90,6 +95,11 @@ async function executeCampaign(campaignId: string) {
           if (orgData.smtp_port) smtpPort = orgData.smtp_port
           if (orgData.smtp_email) smtpEmail = orgData.smtp_email
           if (orgData.smtp_password) smtpPassword = orgData.smtp_password
+          if (orgData.whatsapp_provider) whatsappProvider = orgData.whatsapp_provider
+          if (orgData.whatsapp_api_token) whatsappApiToken = orgData.whatsapp_api_token
+          if (orgData.whatsapp_default_phone) whatsappDefaultPhone = orgData.whatsapp_default_phone
+          if (orgData.whatsapp_graph_api_version) whatsappGraphApiVersion = orgData.whatsapp_graph_api_version
+          if (orgData.whatsapp_phone_number_id) whatsappPhoneNumberId = orgData.whatsapp_phone_number_id
         }
       } catch (dbErr) {
         console.error('[Campaign Worker] Error loading database credentials:', dbErr)
@@ -116,40 +126,169 @@ async function executeCampaign(campaignId: string) {
           if (!recipientPhone) {
             throw new Error('Recipient phone number is missing in campaign log')
           }
-          
-          const twilioParams: any = {
-            to: recipientPhone.startsWith('whatsapp:') ? recipientPhone : `whatsapp:${recipientPhone}`
-          }
 
-          if (campaignSender && campaignSender.startsWith('MG')) {
-            twilioParams.messagingServiceSid = campaignSender
-          } else {
-            let fromNumber = campaignSender || `whatsapp:${TWILIO_WHATSAPP_NUMBER}`
-            if (!fromNumber.startsWith('whatsapp:')) {
-              fromNumber = `whatsapp:${fromNumber}`
+          if (whatsappProvider === 'facebook') {
+            if (!whatsappApiToken || !whatsappPhoneNumberId) {
+              throw new Error('Facebook WhatsApp API credentials (API Token & Phone ID) must be configured in settings')
             }
-            twilioParams.from = fromNumber
-          }
 
-          // Determine if we use Content SID or body interpolation.
-          // Real Twilio Content SIDs always start with "HX" (e.g. HXabc123...).
-          // DB-stored Meta-approved templates use UUID sids — always interpolate locally.
-          const isRealTwilioSid = campaign.template_sid && /^HX[0-9a-f]{32}$/i.test(campaign.template_sid)
-          if (isRealTwilioSid) {
-            twilioParams.contentSid = campaign.template_sid
-            twilioParams.contentVariables = JSON.stringify(mappedVars)
-          } else {
-            // DB template or no sid — interpolate body locally
-            let body = campaign.template_body || ''
-            Object.entries(mappedVars).forEach(([key, val]) => {
-              body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val))
+            const cleanToFb = recipientPhone.replace('whatsapp:', '').replace('+', '').trim()
+
+            let templateName = ''
+            let templateLanguage = 'en'
+            let templateBody = campaign.template_body || ''
+
+            if (campaign.template_sid) {
+              if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaign.template_sid)) {
+                const { data: dbTpl } = await supabase
+                  .from('message_templates')
+                  .select('*')
+                  .eq('id', campaign.template_sid)
+                  .single()
+                if (dbTpl) {
+                  templateName = dbTpl.name
+                  templateLanguage = dbTpl.language || 'en'
+                  templateBody = dbTpl.body
+                }
+              } else if (campaign.template_sid.startsWith('META_')) {
+                // Meta template fetched from WhatsApp Business Cloud API
+                // The campaign.template_name contains "name (Meta Approved)" format
+                const rawName = campaign.template_name || campaign.template_sid.replace('META_', '')
+                templateName = rawName.replace(/\s*\(Meta Approved\)/i, '').trim()
+                templateLanguage = campaign.template_language || 'en'
+              } else if (campaign.template_sid.startsWith('HX_')) {
+                const matchedFallback = [
+                  {
+                    sid: 'HX_welcome_campaign',
+                    name: 'welcome_campaign',
+                    body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.',
+                    language: 'en'
+                  },
+                  {
+                    sid: 'HX_promotion_discount',
+                    name: 'promotion_discount',
+                    body: 'Hey {{1}}! Get {{2}}% off on all our services this weekend. Use code {{3}} at checkout.',
+                    language: 'en'
+                  },
+                  {
+                    sid: 'HX_follow_up_lead',
+                    name: 'follow_up_lead',
+                    body: 'Hi {{1}}, this is {{2}} from {{3}}. Just following up on our previous conversation regarding your inquiry. Let us know if you have any questions!',
+                    language: 'en'
+                  }
+                ].find(t => t.sid === campaign.template_sid)
+
+                if (matchedFallback) {
+                  templateName = matchedFallback.name
+                  templateLanguage = matchedFallback.language || 'en'
+                  templateBody = matchedFallback.body
+                }
+              } else if (campaign.template_sid.startsWith('HX')) {
+                // Ignore real Twilio Content SID prefix, fallback to direct text payload
+              } else {
+                templateName = campaign.template_sid
+              }
+            }
+
+            if (templateName) {
+              templateName = templateName.replace(/\s*\(Meta Approved\)/i, '').trim()
+            }
+
+            let payload: any = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: cleanToFb,
+            }
+
+            if (templateName) {
+              const placeholders = templateBody.match(/\{\{([^}]+)\}\}/g) || []
+              const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
+              const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)))
+              if (isNumeric) {
+                uniqueKeys.sort((a, b) => Number(a) - Number(b))
+              }
+
+              const parameters = uniqueKeys.map(key => ({
+                type: 'text',
+                text: String(mappedVars[key] || '')
+              }))
+
+              payload.type = 'template'
+              payload.template = {
+                name: templateName,
+                language: {
+                  code: templateLanguage
+                }
+              }
+
+              if (parameters.length > 0) {
+                payload.template.components = [
+                  {
+                    type: 'body',
+                    parameters: parameters
+                  }
+                ]
+              }
+            } else {
+              let body = campaign.template_body || ''
+              Object.entries(mappedVars).forEach(([key, val]) => {
+                body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val))
+              })
+
+              payload.type = 'text'
+              payload.text = {
+                body: body
+              }
+            }
+
+            const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${whatsappApiToken}`
+              },
+              body: JSON.stringify(payload)
             })
-            twilioParams.body = body
-          }
 
-          const messageResponse = await twilioClient.messages.create(twilioParams)
-          twilioMessageSid = messageResponse.sid
-          sentCount++
+            if (!fbRes.ok) {
+              const errText = await fbRes.text()
+              throw new Error(`Facebook API error: ${fbRes.status} ${errText}`)
+            }
+
+            const fbData = await fbRes.json()
+            twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+            sentCount++
+          } else {
+            const twilioParams: any = {
+              to: recipientPhone.startsWith('whatsapp:') ? recipientPhone : `whatsapp:${recipientPhone}`
+            }
+
+            if (campaignSender && campaignSender.startsWith('MG')) {
+              twilioParams.messagingServiceSid = campaignSender
+            } else {
+              let fromNumber = campaignSender || `whatsapp:${TWILIO_WHATSAPP_NUMBER}`
+              if (!fromNumber.startsWith('whatsapp:')) {
+                fromNumber = `whatsapp:${fromNumber}`
+              }
+              twilioParams.from = fromNumber
+            }
+
+            const isRealTwilioSid = campaign.template_sid && /^HX[0-9a-f]{32}$/i.test(campaign.template_sid)
+            if (isRealTwilioSid) {
+              twilioParams.contentSid = campaign.template_sid
+              twilioParams.contentVariables = JSON.stringify(mappedVars)
+            } else {
+              let body = campaign.template_body || ''
+              Object.entries(mappedVars).forEach(([key, val]) => {
+                body = body.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val))
+              })
+              twilioParams.body = body
+            }
+
+            const messageResponse = await twilioClient.messages.create(twilioParams)
+            twilioMessageSid = messageResponse.sid
+            sentCount++
+          }
         } else if (channel === 'sms') {
           // SMS Channel
           if (!recipientPhone) {

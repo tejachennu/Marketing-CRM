@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
           first_name,
           last_name,
           phone_number,
+          whatsapp_number,
           email,
           company
         )

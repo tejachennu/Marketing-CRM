@@ -27,11 +27,19 @@ export default function SettingsPage() {
   const [smtpPort, setSmtpPort] = useState('')
   const [smtpEmail, setSmtpEmail] = useState('')
   const [smtpPassword, setSmtpPassword] = useState('')
+  const [whatsappProvider, setWhatsappProvider] = useState<'twilio' | 'facebook'>('twilio')
+  const [whatsappApiToken, setWhatsappApiToken] = useState('')
+  const [whatsappDefaultPhone, setWhatsappDefaultPhone] = useState('')
+  const [whatsappGraphApiVersion, setWhatsappGraphApiVersion] = useState('v25.0')
+  const [whatsappPhoneNumberId, setWhatsappPhoneNumberId] = useState('')
+  const [whatsappBusinessAccountId, setWhatsappBusinessAccountId] = useState('')
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [showTwilioToken, setShowTwilioToken] = useState(false)
   const [showSgKey, setShowSgKey] = useState(false)
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
+  const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
+  const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
 
   // RAG Knowledge Base State
   const [activeTab, setActiveTab] = useState<'general' | 'knowledge'>('general')
@@ -227,7 +235,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls', value: boolean) {
+  async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls' | 'enable_sms', value: boolean) {
     if (!organization || !user) return
     
     // Optimistic update
@@ -314,12 +322,19 @@ export default function SettingsPage() {
         setSmtpPort(orgData.smtp_port ? String(orgData.smtp_port) : '')
         setSmtpEmail(orgData.smtp_email || '')
         setSmtpPassword(orgData.smtp_password || '')
+        setWhatsappProvider(orgData.whatsapp_provider || 'twilio')
+        setWhatsappApiToken(orgData.whatsapp_api_token || '')
+        setWhatsappDefaultPhone(orgData.whatsapp_default_phone || '')
+        setWhatsappGraphApiVersion(orgData.whatsapp_graph_api_version || 'v25.0')
+        setWhatsappPhoneNumberId(orgData.whatsapp_phone_number_id || '')
+        setWhatsappBusinessAccountId(orgData.whatsapp_business_account_id || '')
 
         // Set organization-specific dynamic webhook URL
         if (typeof window !== 'undefined') {
           const orgSlug = orgData.slug || 'org'
           const dynamicPath = `${orgData.id}_${orgSlug}`
           setWebhookUrl(`${window.location.origin}/api/webhooks/twilio/${dynamicPath}`)
+          setFacebookWebhookUrl(`${window.location.origin}/api/webhooks/facebook/${dynamicPath}`)
         }
       }
     } catch (error) {
@@ -348,6 +363,12 @@ export default function SettingsPage() {
           smtp_port: smtpPort ? parseInt(smtpPort) : null,
           smtp_email: smtpEmail.trim() || null,
           smtp_password: smtpPassword.trim() || null,
+          whatsapp_provider: whatsappProvider,
+          whatsapp_api_token: whatsappApiToken.trim() || null,
+          whatsapp_default_phone: whatsappDefaultPhone.trim() || null,
+          whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
+          whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
+          whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
         })
         .eq('id', organization.id)
 
@@ -367,6 +388,12 @@ export default function SettingsPage() {
         smtp_port: smtpPort ? parseInt(smtpPort) : null,
         smtp_email: smtpEmail.trim() || null,
         smtp_password: smtpPassword.trim() || null,
+        whatsapp_provider: whatsappProvider,
+        whatsapp_api_token: whatsappApiToken.trim() || null,
+        whatsapp_default_phone: whatsappDefaultPhone.trim() || null,
+        whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
+        whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
+        whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
       })
 
       showNotification('success', 'Organization credentials updated successfully.', 'Credentials Saved')
@@ -632,76 +659,315 @@ export default function SettingsPage() {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* WhatsApp & SMS Gateway Section */}
-              <div className="space-y-4 border-b md:border-b-0 md:border-r border-[#e9edef] dark:border-[#202d36] pb-6 md:pb-0 md:pr-6">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp & SMS Gateway</h3>
+              {/* WhatsApp & SMS Gateway Column */}
+              <div className="space-y-6 border-b md:border-b-0 md:border-r border-[#e9edef] dark:border-[#202d36] pb-6 md:pb-0 md:pr-6 flex flex-col justify-start">
                 
-                {/* Visual Mockup - Chat Inbox */}
-                <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                  <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
-                    <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 Active Chat Session</span>
-                    <span className="bg-emerald-500/20 text-[#00a884] px-1.5 py-0.5 rounded font-bold">Live Status</span>
-                  </div>
-                  <div className="space-y-1.5 max-h-16 overflow-hidden flex flex-col">
-                    <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[9px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
-                      I want to set up automatic responses
+                {/* WHATSAPP GATEWAY SECTION */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp Gateway</h3>
+                  
+                  {/* Visual Mockup - Chat Inbox */}
+                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 Active Chat Session</span>
+                      <span className="bg-emerald-500/20 text-[#00a884] px-1.5 py-0.5 rounded font-bold">Live Status</span>
                     </div>
-                    <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[9px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
-                      Input your Account details and your gateway starts routing chats instantly!
-                      <span className="text-emerald-600 dark:text-emerald-300 text-[6px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
+                    <div className="space-y-1.5 max-h-16 overflow-hidden flex flex-col">
+                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[9px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
+                        I want to set up automatic responses
+                      </div>
+                      <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[9px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
+                        Input your Account details and your gateway starts routing chats instantly!
+                        <span className="text-emerald-600 dark:text-emerald-300 text-[6px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                    Account SID
-                  </label>
-                  <input
-                    type="text"
-                    value={twilioAccountSid}
-                    onChange={(e) => setTwilioAccountSid(e.target.value)}
-                    placeholder="Gateway Account SID"
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                    Auth Token
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showTwilioToken ? 'text' : 'password'}
-                      value={twilioAuthToken}
-                      onChange={(e) => setTwilioAuthToken(e.target.value)}
-                      placeholder="Gateway Auth Token"
-                      className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowTwilioToken(!showTwilioToken)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                    >
-                      {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                      WhatsApp Gateway Provider
+                    </label>
+                    <div className="flex gap-4 mb-2 select-none">
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="whatsappProvider"
+                          value="twilio"
+                          checked={whatsappProvider === 'twilio'}
+                          onChange={() => setWhatsappProvider('twilio')}
+                          className="accent-[#00a884]"
+                        />
+                        Twilio Gateway
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="whatsappProvider"
+                          value="facebook"
+                          checked={whatsappProvider === 'facebook'}
+                          onChange={() => setWhatsappProvider('facebook')}
+                          className="accent-[#00a884]"
+                        />
+                        Direct Facebook API
+                      </label>
+                    </div>
                   </div>
+
+                  {whatsappProvider === 'twilio' ? (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          Account SID
+                        </label>
+                        <input
+                          type="text"
+                          value={twilioAccountSid}
+                          onChange={(e) => setTwilioAccountSid(e.target.value)}
+                          placeholder="Gateway Account SID"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          Auth Token
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showTwilioToken ? 'text' : 'password'}
+                            value={twilioAuthToken}
+                            onChange={(e) => setTwilioAuthToken(e.target.value)}
+                            placeholder="Gateway Auth Token"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowTwilioToken(!showTwilioToken)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                          >
+                            {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          WhatsApp Sender Number
+                        </label>
+                        <input
+                          type="text"
+                          value={twilioWhatsappNumber}
+                          onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
+                          placeholder="+14155238886 or whatsapp:+14155238886"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                        <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                          Include the sender prefix (e.g., whatsapp:+14155238886)
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          WhatsApp Cloud API Token
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showWhatsappApiToken ? 'text' : 'password'}
+                            value={whatsappApiToken}
+                            onChange={(e) => setWhatsappApiToken(e.target.value)}
+                            placeholder="EAAG..."
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                          >
+                            {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          WhatsApp Phone Number ID
+                        </label>
+                        <input
+                          type="text"
+                          value={whatsappPhoneNumberId}
+                          onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
+                          placeholder="e.g. 109876543210987"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          WhatsApp Business Account ID (WABA ID)
+                        </label>
+                        <input
+                          type="text"
+                          value={whatsappBusinessAccountId}
+                          onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
+                          placeholder="e.g. 102938475647382"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                        <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                          Required to fetch message templates from Meta. Find it in Meta Business Suite → WhatsApp Manager → Settings.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-2">
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            Default Sender Phone Number
+                          </label>
+                          <input
+                            type="text"
+                            value={whatsappDefaultPhone}
+                            onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
+                            placeholder="e.g. +14155238886"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            API Version
+                          </label>
+                          <input
+                            type="text"
+                            value={whatsappGraphApiVersion}
+                            onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
+                            placeholder="v25.0"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                    WhatsApp Sender Number
-                  </label>
-                  <input
-                    type="text"
-                    value={twilioWhatsappNumber}
-                    onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
-                    placeholder="+14155238886 or whatsapp:+14155238886"
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                  />
-                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                    Include the sender prefix (e.g., whatsapp:+14155238886)
-                  </p>
+                {/* Divider Line */}
+                <div className="border-t border-[#e9edef] dark:border-[#202d36] my-2"></div>
+
+                {/* SMS GATEWAY SECTION */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h3>
+                    
+                    {/* Toggle switch: only render if Twilio is configured */}
+                    {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' ? (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFeature('enable_sms', organization?.enable_sms !== false ? false : true)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                          organization?.enable_sms !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            organization?.enable_sms !== false ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">
+                        Requires Twilio
+                      </span>
+                    )}
+                  </div>
+
+                  {/* SMS Visual Status Mockup */}
+                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 SMS Gateway Connection</span>
+                      <span className={`${
+                        organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
+                          ? 'bg-emerald-500/20 text-[#00a884]'
+                          : 'bg-gray-500/20 text-gray-500'
+                      } px-1.5 py-0.5 rounded font-bold`}>
+                        {organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
+                          ? 'Active & Enabled'
+                          : 'Inactive / Disabled'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Warning message if Twilio credentials are not configured */}
+                  {!(twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '') ? (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/50 rounded-lg text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed font-medium">
+                      ⚠️ Twilio credentials are required to use the SMS Gateway. 
+                      {whatsappProvider === 'facebook' 
+                        ? ' Please configure Twilio Account SID and Auth Token below to enable the SMS Gateway.'
+                        : ' Please configure Twilio Gateway credentials in the WhatsApp Gateway section above.'
+                      }
+                    </div>
+                  ) : null}
+
+                  {/* If using Facebook for WhatsApp, render Twilio input fields under SMS Gateway section */}
+                  {whatsappProvider === 'facebook' && (
+                    <div className="space-y-4 pt-1">
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
+                        Enter Twilio credentials below to send SMS.
+                      </p>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          Twilio Account SID (for SMS)
+                        </label>
+                        <input
+                          type="text"
+                          value={twilioAccountSid}
+                          onChange={(e) => setTwilioAccountSid(e.target.value)}
+                          placeholder="Twilio Account SID"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                          Twilio Auth Token (for SMS)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showTwilioToken ? 'text' : 'password'}
+                            value={twilioAuthToken}
+                            onChange={(e) => setTwilioAuthToken(e.target.value)}
+                            placeholder="Twilio Auth Token"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowTwilioToken(!showTwilioToken)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                          >
+                            {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SMS sender phone number input */}
+                  {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                        SMS Sender Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        value={twilioWhatsappNumber}
+                        onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
+                        placeholder="e.g. +13185069063"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                      />
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                        Twilio active phone number used for outgoing SMS broadcasts.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -931,32 +1197,59 @@ export default function SettingsPage() {
                 Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
               </p>
               
-              <div className="space-y-3">
-                <div>
-                  <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                    Incoming Message Webhook
-                  </span>
-                  <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                    <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
+              {whatsappProvider === 'twilio' ? (
+                <div className="space-y-3">
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Incoming Message Webhook (Twilio)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Status Callback Webhook (Twilio)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">
+                        {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
+                      </code>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                    <span className="text-amber-500 font-bold">⚠️</span>
+                    <span>Make sure to select HTTP POST in the Twilio Sandbox/Numbers configuration screen when saving these webhook links.</span>
                   </div>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Callback URL (Facebook Webhook)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
+                    </div>
+                  </div>
 
-                <div>
-                  <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                    Status Callback Webhook
-                  </span>
-                  <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                    <code className="text-xs text-[#00e676] font-mono">
-                      {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
-                    </code>
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Verify Token (Facebook Webhook Verification)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{organization?.id || 'Save credentials to view Organization ID'}</code>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                    <span className="text-amber-500 font-bold">⚠️</span>
+                    <span>Enter this Callback URL and Verify Token in your Meta App Dashboard under WhatsApp Webhook settings. Subscribe to "messages" webhook fields.</span>
                   </div>
                 </div>
-              </div>
-
-              <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
-                <span className="text-amber-500 font-bold">⚠️</span>
-                <span>Make sure to select HTTP POST in the gateway Sandbox/Numbers configuration screen when saving these webhook links.</span>
-              </div>
+              )}
             </div>
           </div>
 

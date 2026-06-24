@@ -123,8 +123,11 @@ export async function POST(request: NextRequest) {
 
     console.log('[v0] Received WhatsApp message:', { from, to, messageBody, messageSid, mediaUrl, contentType })
 
-    // Extract phone number (remove 'whatsapp:' prefix if present)
-    const phoneNumber = from.replace('whatsapp:', '')
+    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
+    let phoneNumber = from.replace('whatsapp:', '').trim()
+    if (!phoneNumber.startsWith('+')) {
+      phoneNumber = '+' + phoneNumber
+    }
 
     if (!phoneNumber || (!messageBody && !mediaUrl)) {
       console.error('[v0] Missing phone number, message body, or media')

@@ -1,0 +1,582 @@
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { writeFile, mkdir } from 'fs/promises'
+import path from 'path'
+
+const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
+
+CLASSIFICATION AND RESPONSE RULES:
+1. NORMAL COMMUNICATION MESSAGES (Greetings, thanks, simple politeness, acknowledgments):
+   - If the customer's message is a standard greeting, thank you, or simple polite acknowledgment (e.g., "Hi", "Hello", "Hey", "Good morning", "Thanks", "Thank you", "Ok", "Great", "Awesome", "How are you"), reply with a brief, friendly, and natural response (e.g., greeting them back and asking how you can help, or saying you're welcome).
+2. ALL OTHER CONTEXTS (Questions, topic queries, specific inquiries, or any other statements):
+   - You must answer using ONLY the facts directly mentioned in the MATCHED FAQ ARTICLES. Do not assume, extrapolate, or refer to outside knowledge.
+   - If you do not have the knowledge (i.e., the answer is not explicitly written in the matched FAQs, or no matched FAQs are provided), you MUST respond with EXACTLY this text: "Our support team will reply you soon."
+
+ADDITIONAL CONSTRAINTS:
+- Do not make up any facts, procedures, URLs, phone numbers, or fees. Only state what is explicitly written in the matched FAQs.
+- Keep the reply helpful, direct, professional, and under 80 words. Do not add conversational filler to topic answers.`;
+
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+
+  return createClient(supabaseUrl, supabaseKey)
+}
+
+async function downloadFacebookMedia(
+  mediaId: string,
+  whatsappApiToken: string,
+  whatsappGraphApiVersion: string
+): Promise<string | null> {
+  try {
+    // Step 1: Retrieve Media URL from Graph API
+    const metaUrl = `https://graph.facebook.com/${whatsappGraphApiVersion}/${mediaId}`
+    const res = await fetch(metaUrl, {
+      headers: {
+        'Authorization': `Bearer ${whatsappApiToken}`
+      }
+    })
+    if (!res.ok) {
+      console.error('[Facebook Media] Failed to get media URL:', res.statusText)
+      return null
+    }
+    const metaData = await res.json()
+    const downloadUrl = metaData.url
+    const contentType = metaData.mime_type || 'application/octet-stream'
+
+    if (!downloadUrl) {
+      console.error('[Facebook Media] Download URL missing in response')
+      return null
+    }
+
+    // Step 2: Download Media Content
+    const mediaRes = await fetch(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${whatsappApiToken}`
+      }
+    })
+    if (!mediaRes.ok) {
+      console.error('[Facebook Media] Failed to download binary:', mediaRes.statusText)
+      return null
+    }
+
+    // Map content-type to file extension
+    let ext = '.bin'
+    if (contentType.includes('image/jpeg')) ext = '.jpg'
+    else if (contentType.includes('image/png')) ext = '.png'
+    else if (contentType.includes('image/gif')) ext = '.gif'
+    else if (contentType.includes('image/webp')) ext = '.webp'
+    else if (contentType.includes('audio/ogg') || contentType.includes('audio/x-ogg')) ext = '.ogg'
+    else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) ext = '.mp3'
+    else if (contentType.includes('audio/wav') || contentType.includes('audio/x-wav')) ext = '.wav'
+    else if (contentType.includes('audio/aac')) ext = '.aac'
+    else if (contentType.includes('audio/amr')) ext = '.amr'
+    else if (contentType.includes('video/mp4')) ext = '.mp4'
+    else if (contentType.includes('video/webm')) ext = '.webm'
+    else if (contentType.includes('application/pdf')) ext = '.pdf'
+
+    const arrayBuffer = await mediaRes.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
+    await mkdir(uploadsDir, { recursive: true })
+
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    const filename = `fb-incoming-${uniqueSuffix}${ext}`
+    const filePath = path.join(uploadsDir, filename)
+
+    await writeFile(filePath, buffer)
+    console.log(`[Facebook Webhook] Media downloaded and saved to: ${filePath}`)
+    return `/uploads/${filename}`
+  } catch (err) {
+    console.error('[Facebook Webhook] Error downloading media:', err)
+    return null
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }
+) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const mode = searchParams.get('hub.mode')
+    const token = searchParams.get('hub.verify_token')
+    const challenge = searchParams.get('hub.challenge')
+
+    const resolvedParams = await (params as any)
+    const orgIdAndSlug = resolvedParams.orgIdAndSlug || ''
+    const uuidMatch = orgIdAndSlug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+
+    if (!uuidMatch) {
+      console.error('[Facebook Webhook GET] Invalid organization context:', orgIdAndSlug)
+      return new NextResponse('Invalid organization context', { status: 400 })
+    }
+
+    const orgId = uuidMatch[0]
+
+    // Verify token defaults to the organization's ID
+    if (mode === 'subscribe' && token === orgId) {
+      console.log('[Facebook Webhook GET] Verification successful for org:', orgId)
+      return new NextResponse(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+
+    console.warn('[Facebook Webhook GET] Verification failed. Mode:', mode, 'Token matched:', token === orgId)
+    return new NextResponse('Verification failed', { status: 403 })
+  } catch (error) {
+    console.error('[Facebook Webhook GET] error:', error)
+    return new NextResponse('Internal server error', { status: 500 })
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }
+) {
+  try {
+    const payload = await request.json()
+    console.log('[Facebook Webhook POST] Payload received:', JSON.stringify(payload, null, 2))
+
+    const entry = payload.entry?.[0]
+    const change = entry?.changes?.[0]
+    const value = change?.value
+
+    // If it's a status callback, acknowledge and exit
+    if (value?.statuses) {
+      console.log('[Facebook Webhook POST] Received status callback, acknowledging...')
+      try {
+        const statusObj = value.statuses[0]
+        if (statusObj) {
+          const messageSid = statusObj.id
+          const status = statusObj.status
+          const errorDetail = statusObj.errors?.[0]?.error_data?.details || statusObj.errors?.[0]?.message || null
+          
+          console.log('[Facebook Webhook POST] Updating message status:', { messageSid, status, errorDetail })
+          
+          const supabase = getSupabaseClient()
+          
+          // Remember we prefixed it with FB_ in the database
+          const dbSid = `FB_${messageSid}`
+          
+          await supabase
+            .from('messages')
+            .update({
+              status: status,
+              error_message: errorDetail
+            })
+            .eq('twilio_message_sid', dbSid)
+        }
+      } catch (err) {
+        console.error('[Facebook Webhook POST] Error processing status callback:', err)
+      }
+      return NextResponse.json({ success: true, type: 'status_update' })
+    }
+
+    const messages = value?.messages
+    if (!messages || messages.length === 0) {
+      return NextResponse.json({ success: true, type: 'no_messages' })
+    }
+
+    const message = messages[0]
+    const contactObj = value?.contacts?.[0]
+    const from = message.from || '' // Contact phone number (e.g. 14168777529)
+    const messageSid = message.id || '' // Meta message ID
+
+    if (!from || !messageSid) {
+      console.error('[Facebook Webhook POST] Missing from or message ID')
+      return NextResponse.json({ error: 'Missing required message parameters' }, { status: 400 })
+    }
+
+    // Resolve path parameter
+    const resolvedParams = await (params as any)
+    const orgIdAndSlug = resolvedParams.orgIdAndSlug || ''
+    const uuidMatch = orgIdAndSlug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+    if (!uuidMatch) {
+      console.error('[Facebook Webhook POST] Invalid organization parameter:', orgIdAndSlug)
+      return NextResponse.json({ error: 'Invalid organization context' }, { status: 400 })
+    }
+    const orgId = uuidMatch[0]
+
+    // Fetch credentials for this specific organization
+    const supabase = getSupabaseClient()
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', orgId)
+      .single()
+
+    if (!orgData) {
+      console.error('[Facebook Webhook POST] Organization not found:', orgId)
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+    }
+
+    const whatsappApiToken = orgData.whatsapp_api_token || process.env.WHATSAPP_API_TOKEN || ''
+    const whatsappGraphApiVersion = orgData.whatsapp_graph_api_version || process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
+    const whatsappPhoneNumberId = orgData.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
+
+    // Parse message type and content
+    let messageBody = ''
+    let mediaId = null
+    let mediaType = null
+    let mediaCaption = ''
+    let contentType = null
+
+    const type = message.type
+    if (type === 'text') {
+      messageBody = message.text?.body || ''
+    } else if (type === 'interactive') {
+      const interactive = message.interactive
+      if (interactive?.type === 'button_reply') {
+        messageBody = interactive.button_reply?.title || ''
+      } else if (interactive?.type === 'list_reply') {
+        messageBody = interactive.list_reply?.title || ''
+      }
+    } else if (type === 'button') {
+      messageBody = message.button?.text || ''
+    } else if (['image', 'document', 'audio', 'video', 'sticker', 'voice'].includes(type)) {
+      const mediaObj = message[type]
+      if (mediaObj) {
+        mediaId = mediaObj.id
+        mediaType = type
+        mediaCaption = mediaObj.caption || ''
+        contentType = mediaObj.mime_type || null
+        messageBody = mediaCaption || ''
+      }
+    }
+
+    // Download media content locally if available
+    let finalMediaUrl = null
+    if (mediaId && whatsappApiToken) {
+      console.log('[Facebook Webhook] Fetching incoming media for id:', mediaId)
+      const downloadedPath = await downloadFacebookMedia(
+        mediaId,
+        whatsappApiToken,
+        whatsappGraphApiVersion
+      )
+      if (downloadedPath) {
+        if (contentType) {
+          let ext = '.bin'
+          if (contentType.includes('image/jpeg')) ext = '.jpg'
+          else if (contentType.includes('image/png')) ext = '.png'
+          else if (contentType.includes('image/gif')) ext = '.gif'
+          else if (contentType.includes('image/webp')) ext = '.webp'
+          else if (contentType.includes('audio/ogg') || contentType.includes('audio/x-ogg')) ext = '.ogg'
+          else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) ext = '.mp3'
+          else if (contentType.includes('audio/wav') || contentType.includes('audio/x-wav')) ext = '.wav'
+          else if (contentType.includes('audio/aac')) ext = '.aac'
+          else if (contentType.includes('audio/amr')) ext = '.amr'
+          else if (contentType.includes('video/mp4')) ext = '.mp4'
+          else if (contentType.includes('video/webm')) ext = '.webm'
+          else if (contentType.includes('application/pdf')) ext = '.pdf'
+
+          finalMediaUrl = `${downloadedPath}#media${ext}`
+        } else {
+          finalMediaUrl = downloadedPath
+        }
+      }
+    }
+
+    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
+    const phoneNumber = from.trim().startsWith('+') ? from.trim() : '+' + from.trim()
+
+    // Step 1: Find or create the Contact
+    const { data: existingContact } = await supabase
+      .from('contacts')
+      .select('id, organization_id')
+      .eq('organization_id', orgId)
+      .eq('phone_number', phoneNumber)
+      .limit(1)
+      .maybeSingle()
+
+    let contact: any = null
+
+    if (existingContact) {
+      const { data: fullContact } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', existingContact.id)
+        .single()
+
+      contact = fullContact
+    } else {
+      const contactName = contactObj?.profile?.name || phoneNumber
+      const { data: newContact, error: createError } = await supabase
+        .from('contacts')
+        .insert([
+          {
+            organization_id: orgId,
+            phone_number: phoneNumber,
+            whatsapp_number: `whatsapp:${phoneNumber}`,
+            first_name: contactName,
+          },
+        ])
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('[Facebook Webhook] Error creating contact:', createError)
+        throw createError
+      }
+
+      contact = newContact
+      console.log('[Facebook Webhook] Auto-created new contact:', contact.id, 'for phone:', phoneNumber)
+    }
+
+    // Step 2: Find or create an active Conversation
+    let conversation: any = null
+
+    const { data: existingConvs } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('contact_id', contact.id)
+      .eq('is_active', true)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+
+    const existingConv = existingConvs?.[0] || null
+
+    if (existingConv) {
+      conversation = existingConv
+    } else {
+      const { data: newConv, error: convError } = await supabase
+        .from('conversations')
+        .insert([
+          {
+            organization_id: orgId,
+            contact_id: contact.id,
+            is_active: true,
+            last_message_at: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single()
+
+      if (convError) {
+        console.error('[Facebook Webhook] Error creating conversation:', convError)
+        throw convError
+      }
+
+      conversation = newConv
+      console.log('[Facebook Webhook] Auto-created new conversation:', conversation.id)
+    }
+
+    // Step 3: Store incoming message
+    const { data: savedMessage, error: messageError } = await supabase
+      .from('messages')
+      .insert([
+        {
+          organization_id: orgId,
+          conversation_id: conversation.id,
+          sender_type: 'contact',
+          body: messageBody,
+          media_url: finalMediaUrl,
+          twilio_message_sid: `FB_${messageSid}`,
+        },
+      ])
+      .select()
+      .single()
+
+    if (messageError) {
+      console.error('[Facebook Webhook] Error storing message:', messageError)
+      throw messageError
+    }
+
+    console.log('[Facebook Webhook] Message stored:', savedMessage.id)
+
+    // Step 4: Update conversation metadata
+    const { error: updateError } = await supabase
+      .from('conversations')
+      .update({
+        last_message_at: new Date().toISOString(),
+        unread_count: (existingConv?.unread_count || 0) + 1,
+      })
+      .eq('id', conversation.id)
+
+    if (updateError) {
+      console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+    }
+
+    // Step 5: Chatbot Auto-Reply Trigger
+    if (
+      orgData.enable_ai !== false &&
+      conversation.auto_reply_enabled !== false &&
+      messageBody &&
+      openAiKey
+    ) {
+      console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
+      try {
+        // 1. Generate query embedding
+        const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAiKey}`
+          },
+          body: JSON.stringify({
+            model: 'text-embedding-3-small',
+            input: messageBody.substring(0, 8000)
+          })
+        })
+
+        if (embedRes.ok) {
+          const embedData = await embedRes.json()
+          const embedding = embedData.data?.[0]?.embedding
+
+          if (embedding) {
+            const embeddingStr = `[${embedding.join(',')}]`
+
+            // 2. Query match_faqs similarity search
+            const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
+              query_embedding: embeddingStr,
+              match_threshold: 0.60,
+              match_count: 3,
+              org_id: orgId
+            })
+
+            if (rpcError) {
+              console.error('[Facebook Webhook Chatbot] match_faqs RPC error:', rpcError)
+            }
+
+            const faqs = matchedFaqs || []
+            console.log(`[Facebook Webhook Chatbot] Found ${faqs.length} matching FAQs for auto-reply`)
+
+            // 3. Format matched context
+            const formattedContext = faqs.map((faq: any, i: number) => {
+              return `[FAQ ${i + 1}]\nQuestion: ${faq.title}\nAnswer: ${faq.content}`
+            }).join('\n\n---\n\n')
+
+            // 4. Fetch last 6 messages for conversation context
+            const { data: recentMessages } = await supabase
+              .from('messages')
+              .select('sender_type, body')
+              .eq('conversation_id', conversation.id)
+              .order('created_at', { ascending: false })
+              .limit(6)
+
+            const chatHistory = (recentMessages || [])
+              .reverse()
+              .filter((m: any) => m.body)
+              .map((m: any) => ({
+                role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const,
+                content: m.body
+              }))
+
+            console.log(`[Facebook Webhook Chatbot] Including ${chatHistory.length} previous messages as context`)
+
+            // 5. Construct System Prompt
+            const basePrompt = orgData.chatbot_base_prompt || DEFAULT_BASE_PROMPT
+            const systemPrompt = `${basePrompt}
+
+MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
+${formattedContext || '(No matching FAQs found in the knowledge base)'}
+
+CONVERSATION HISTORY:
+The messages below are the recent conversation between you (assistant) and the customer (user).
+Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.`
+
+            // 6. Call GPT-4o-mini with conversation history
+            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openAiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  ...chatHistory,
+                  { role: 'user', content: messageBody }
+                ],
+                temperature: 0.3,
+                max_tokens: 300
+              })
+            })
+
+            if (gptResponse.ok) {
+              const gptData = await gptResponse.json()
+              const botReply = gptData.choices?.[0]?.message?.content?.trim() || ''
+
+              if (botReply) {
+                console.log(`[Facebook Webhook Chatbot] Generated reply: "${botReply}"`)
+
+                // 6. Send reply via Facebook Cloud API
+                let fbMessageSid = null
+                if (whatsappPhoneNumberId && whatsappApiToken) {
+                  try {
+                    const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${whatsappApiToken}`
+                      },
+                      body: JSON.stringify({
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: phoneNumber,
+                        type: 'text',
+                        text: {
+                          body: botReply
+                        }
+                      })
+                    })
+
+                    if (fbRes.ok) {
+                      const fbData = await fbRes.json()
+                      fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+                      console.log(`[Facebook Webhook Chatbot] Sent Facebook message: ${fbMessageSid}`)
+                    } else {
+                      const errText = await fbRes.text()
+                      console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message: ${fbRes.status} ${errText}`)
+                    }
+                  } catch (sendErr: any) {
+                    console.error('[Facebook Webhook Chatbot] Failed to send Facebook message:', sendErr.message)
+                  }
+                }
+
+                // 7. Save bot reply in messages table
+                await supabase
+                  .from('messages')
+                  .insert([
+                    {
+                      organization_id: orgId,
+                      conversation_id: conversation.id,
+                      sender_type: 'user',
+                      body: botReply,
+                      twilio_message_sid: fbMessageSid
+                    }
+                  ])
+
+                // 8. Update conversation timestamp
+                await supabase
+                  .from('conversations')
+                  .update({ last_message_at: new Date().toISOString() })
+                  .eq('id', conversation.id)
+              }
+            } else {
+              console.error('[Facebook Webhook Chatbot] GPT API call failed:', gptResponse.status)
+            }
+          }
+        } else {
+          console.error('[Facebook Webhook Chatbot] Embedding API call failed:', embedRes.status)
+        }
+      } catch (err: any) {
+        console.error('[Facebook Webhook Chatbot] Error in auto-reply process:', err)
+      }
+    }
+
+    return NextResponse.json({ success: true, messageId: savedMessage.id })
+  } catch (error) {
+    console.error('[Facebook Webhook] POST Webhook error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
