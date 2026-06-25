@@ -7,7 +7,7 @@ import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen
+  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
@@ -38,6 +38,38 @@ function ConversationsPageContent() {
   const [convPage, setConvPage] = useState(1)
   const [hasMoreConvs, setHasMoreConvs] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+
+  const [pinnedConvs, setPinnedConvs] = useState<string[]>([])
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+
+  useEffect(() => {
+    if (user?.organization_id) {
+      const stored = localStorage.getItem(`pinned_convs_${user.organization_id}`)
+      if (stored) {
+        try {
+          setPinnedConvs(JSON.parse(stored))
+        } catch (e) {
+          setPinnedConvs([])
+        }
+      } else {
+        setPinnedConvs([])
+      }
+    }
+  }, [user])
+
+  const togglePinConversation = (convId: string) => {
+    if (!user?.organization_id) return
+    const current = [...pinnedConvs]
+    const index = current.indexOf(convId)
+    if (index > -1) {
+      current.splice(index, 1)
+    } else {
+      current.push(convId)
+    }
+    setPinnedConvs(current)
+    localStorage.setItem(`pinned_convs_${user.organization_id}`, JSON.stringify(current))
+  }
   
   // File Upload States
   const [uploading, setUploading] = useState(false)
@@ -122,11 +154,17 @@ function ConversationsPageContent() {
     return data.contacts || []
   }, [])
 
-  const fetchMessages = useCallback(async (convId: string): Promise<Message[]> => {
-    const res = await fetch(`/api/messages?conversationId=${convId}`)
+  const fetchMessages = useCallback(async (convId: string, before?: string): Promise<{ messages: Message[]; hasMore: boolean }> => {
+    const url = before 
+      ? `/api/messages?conversationId=${convId}&before=${encodeURIComponent(before)}`
+      : `/api/messages?conversationId=${convId}`
+    const res = await fetch(url)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Failed to fetch messages')
-    return data.messages || []
+    return {
+      messages: data.messages || [],
+      hasMore: !!data.hasMore
+    }
   }, [])
 
   // ─── State Update Helpers ───
@@ -194,12 +232,39 @@ function ConversationsPageContent() {
 
   const loadMessages = useCallback(async (convId: string) => {
     try {
-      const data = await fetchMessages(convId)
-      setMessages(data)
+      const { messages: msgs, hasMore } = await fetchMessages(convId)
+      setMessages(msgs)
+      setHasMoreMessages(hasMore)
     } catch (err) {
       console.error('[Dashboard] Error loading messages:', err)
     }
   }, [fetchMessages])
+
+  const loadOlderMessages = async () => {
+    if (!selectedConversation || messages.length === 0 || loadingOlderMessages) return
+    setLoadingOlderMessages(true)
+    try {
+      const oldestMessage = messages[0]
+      const { messages: olderMsgs, hasMore } = await fetchMessages(selectedConversation, oldestMessage.created_at)
+      
+      const chatContainer = document.getElementById('chat-messages-container')
+      const previousScrollHeight = chatContainer?.scrollHeight || 0
+      
+      setMessages((prev) => [...olderMsgs, ...prev])
+      setHasMoreMessages(hasMore)
+      
+      setTimeout(() => {
+        if (chatContainer) {
+          const currentScrollHeight = chatContainer.scrollHeight
+          chatContainer.scrollTop = currentScrollHeight - previousScrollHeight
+        }
+      }, 0)
+    } catch (err) {
+      console.error('[Dashboard] Error loading older messages:', err)
+    } finally {
+      setLoadingOlderMessages(false)
+    }
+  }
 
   const reloadAll = useCallback(() => {
     if (!user) return
@@ -750,6 +815,12 @@ function ConversationsPageContent() {
   // ─── Sorting ───
 
   const sortedConversations = [...conversations].sort((a, b) => {
+    const aPinned = pinnedConvs.includes(a.id)
+    const bPinned = pinnedConvs.includes(b.id)
+    
+    if (aPinned && !bPinned) return -1
+    if (!aPinned && bPinned) return 1
+    
     const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
     const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
     return sortBy === 'newest' ? bTime - aTime : aTime - bTime
@@ -861,10 +932,10 @@ function ConversationsPageContent() {
               const isSelected = selectedConversation === conv.id
 
               return (
-                <button
+                <div
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv.id)}
-                  className={`w-full p-3 text-left flex items-center gap-3 rounded-xl transition-all duration-200 border relative ${
+                  className={`w-full p-3 text-left flex items-center gap-3 rounded-xl transition-all duration-200 border relative cursor-pointer group/item ${
                     isSelected
                       ? 'bg-slate-100/80 dark:bg-slate-800/70 border-slate-200/50 dark:border-slate-700/50 shadow-xs'
                       : 'bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/30 border-transparent'
@@ -876,29 +947,18 @@ function ConversationsPageContent() {
                   )}
 
                   {/* Avatar with status indicator */}
-                  <div className="relative flex-shrink-0">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 text-xs select-none shadow-xs">
+                  <div className="relative flex-shrink-0 select-none">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 text-xs shadow-xs">
                       {contactName.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-sm" />
                   </div>
 
                   {/* Conv metadata */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate">
-                        {contactName}
-                      </p>
-                      {conv.last_message_at && (
-                        <p className={`text-[9px] font-bold ${conv.unread_count > 0 ? 'text-emerald-550 dark:text-emerald-400' : 'text-slate-450 dark:text-slate-500'}`}>
-                          {new Date(conv.last_message_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true
-                          })}
-                        </p>
-                      )}
-                    </div>
+                  <div className="flex-1 min-w-0 pr-2 select-none">
+                    <p className="font-bold text-xs text-slate-855 dark:text-slate-100 truncate">
+                      {contactName}
+                    </p>
                     <div className="flex items-center gap-1 text-[10px] text-slate-450 dark:text-slate-500 mt-1 font-medium min-w-0">
                       {conv.last_message ? (
                         <>
@@ -937,15 +997,66 @@ function ConversationsPageContent() {
                     </div>
                   </div>
                   
-                  {conv.unread_count > 0 && (
-                    <span className="flex-shrink-0 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white text-[9px] font-black rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center shadow-sm shadow-emerald-500/25">
-                      {conv.unread_count}
-                    </span>
-                  )}
-                </button>
+                  {/* Right side column for Time, Pinned, Unread count */}
+                  <div className="flex flex-col items-end justify-between h-9 select-none flex-shrink-0 min-w-[50px] relative">
+                    {conv.last_message_at && (
+                      <p className={`text-[9px] font-bold ${conv.unread_count > 0 ? 'text-emerald-550 dark:text-emerald-400' : 'text-slate-450 dark:text-slate-500'}`}>
+                        {new Date(conv.last_message_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        })}
+                      </p>
+                    )}
+                    
+                    <div className="flex items-center gap-1.5 mt-1 justify-end w-full">
+                      {/* Pinned Icon (always visible if pinned) */}
+                      {pinnedConvs.includes(conv.id) && (
+                        <span className="text-emerald-600 dark:text-emerald-400" title="Pinned">
+                          <Pin size={10} className="fill-current" />
+                        </span>
+                      )}
+                      
+                      {/* Unread count badge */}
+                      {conv.unread_count > 0 && (
+                        <span className="bg-gradient-to-tr from-emerald-500 to-teal-500 text-white text-[9px] font-black rounded-full h-4.5 min-w-[18px] px-1 flex items-center justify-center shadow-xs">
+                          {conv.unread_count}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Hover Pin/Unpin Action Button */}
+                    <div className="absolute right-0 bottom-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-slate-900/90 rounded-md shadow-xs flex items-center">
+                      {pinnedConvs.includes(conv.id) ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            togglePinConversation(conv.id)
+                          }}
+                          title="Unpin Chat"
+                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-550 rounded-md cursor-pointer transition-colors"
+                        >
+                          <Pin size={12} className="fill-current text-rose-500" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            togglePinConversation(conv.id)
+                          }}
+                          title="Pin Chat"
+                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 rounded-md cursor-pointer transition-colors"
+                        >
+                          <Pin size={12} className="rotate-45" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )
             })
           )}
+        </div>
 
           {/* Load More Button */}
           {hasMoreConvs && (
@@ -961,7 +1072,6 @@ function ConversationsPageContent() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Main Chat Panel */}
       {selectedContact ? (
@@ -1001,58 +1111,240 @@ function ConversationsPageContent() {
                     <Edit2 size={11} />
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 mt-0.5 leading-none">
-                  <Phone size={9} />
-                  {selectedContact.phone_number}
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none">
+                    <Phone size={9} />
+                    {selectedContact.phone_number}
+                  </p>
+                  
+                  {/* Status Indicator inside header */}
+                  {(() => {
+                    void windowTick
+                    const lastInbound = [...messages]
+                      .reverse()
+                      .find(m => m.sender_type === 'contact')
+
+                    if (!lastInbound) return <span className="text-[9px] font-bold text-slate-400 dark:text-slate-550 border border-slate-200 dark:border-slate-800 px-1.5 rounded-sm">NO ACTIVE WINDOW</span>
+
+                    const lastInboundTime = new Date(lastInbound.created_at).getTime()
+                    const now = Date.now()
+                    const windowMs = 24 * 60 * 60 * 1000
+                    const elapsed = now - lastInboundTime
+                    const remaining = windowMs - elapsed
+                    const isOpen = remaining > 0
+                    const hoursLeft = Math.floor(remaining / (60 * 60 * 1000))
+                    const minutesLeft = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+                    const isClosingSoon = isOpen && remaining < 4 * 60 * 60 * 1000
+
+                    return (
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wide border ${
+                        !isOpen
+                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-650 dark:text-rose-400 border-rose-200/40'
+                          : isClosingSoon
+                            ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-650 dark:text-amber-450 border-amber-200/40'
+                            : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-650 dark:text-emerald-400 border-emerald-250/30'
+                      }`}>
+                        <span className={`w-1 h-1 rounded-full ${!isOpen ? 'bg-rose-500' : isClosingSoon ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                        <span>
+                          {!isOpen
+                            ? 'Expired'
+                            : isClosingSoon
+                              ? `${hoursLeft}h ${minutesLeft}m left`
+                              : `${hoursLeft}h ${minutesLeft}m left`
+                          }
+                        </span>
+                      </span>
+                    )
+                  })()}
+                </div>
               </div>
             </div>
 
-            {/* Auto-Reply Chatbot Toggle Override */}
-            {selectedConversation && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none">
-                  Auto-Reply Chatbot
-                </span>
+            {/* Right Side Header Controls */}
+            <div className="flex items-center gap-4">
+              {/* AI Suggestions Trigger */}
+              {features.enable_ai && selectedConversation && (
                 <button
                   onClick={() => {
-                    const conv = conversations.find((c) => c.id === selectedConversation)
-                    if (conv) {
-                      toggleAutoReply(selectedConversation, conv.auto_reply_enabled !== false)
+                    setShowAiPanel(!showAiPanel)
+                    if (!showAiPanel && aiSuggestions.length === 0 && selectedConversation) {
+                      fetchSuggestions(selectedConversation)
                     }
                   }}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
-                      ? 'bg-emerald-500'
-                      : 'bg-slate-200 dark:bg-slate-700'
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all cursor-pointer ${
+                    showAiPanel
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/15 dark:text-indigo-400 border border-indigo-500/10 hover:bg-indigo-550/20'
                   }`}
-                  title={
-                    conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
-                      ? 'AI chatbot will automatically reply to customer messages'
-                      : 'Chatbot auto-reply is disabled for this contact'
-                  }
                 >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                      conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
-                        ? 'translate-x-4'
-                        : 'translate-x-0'
-                    }`}
-                  />
+                  <Sparkles size={10} className={loadingSuggestions ? 'animate-spin' : ''} />
+                  <span className="hidden sm:inline">AI Suggestions</span>
                 </button>
-              </div>
-            )}
+              )}
+
+              {/* Auto-Reply Chatbot Toggle Override */}
+              {selectedConversation && (
+                <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-800 pl-4">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none hidden sm:inline">
+                    Auto-Reply Chatbot
+                  </span>
+                  <button
+                    onClick={() => {
+                      const conv = conversations.find((c) => c.id === selectedConversation)
+                      if (conv) {
+                        toggleAutoReply(selectedConversation, conv.auto_reply_enabled !== false)
+                      }
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                        ? 'bg-emerald-500'
+                        : 'bg-slate-200 dark:bg-slate-700'
+                    }`}
+                    title={
+                      conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                        ? 'AI chatbot will automatically reply to customer messages'
+                        : 'Chatbot auto-reply is disabled for this contact'
+                    }
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
+                          ? 'translate-x-4'
+                          : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
+
+
+          {/* Floating AI Suggestions Popup */}
+          {features.enable_ai && selectedConversation && showAiPanel && (
+            <div className="absolute top-[106px] right-4 left-4 max-w-sm md:left-auto md:w-80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-20 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2 duration-200 select-none">
+              {/* Header Bar */}
+              <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-150 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/20">
+                <div className="flex items-center gap-1.5 text-[8.5px] font-black text-indigo-650 dark:text-indigo-400 shrink-0 mr-1 bg-indigo-500/10 dark:bg-indigo-500/15 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                  <Sparkles size={10} className="text-indigo-550 dark:text-indigo-400" />
+                  <span>AI SUGGESTIONS</span>
+                </div>
+
+                {loadingSuggestions && (
+                  <div className="flex items-center gap-1 text-[9px] font-bold text-slate-400 dark:text-slate-550">
+                    <Loader2 size={10} className="animate-spin text-indigo-550" />
+                  </div>
+                )}
+
+                {aiSuggestionsError && (
+                  <span className="text-[9px] font-bold text-rose-500 py-1 truncate" title={aiSuggestionsError}>
+                    ⚠️ Error
+                  </span>
+                )}
+
+                {/* Refresh / Generate Button */}
+                <button
+                  onClick={() => selectedConversation && fetchSuggestions(selectedConversation)}
+                  className="p-1 hover:bg-slate-150 dark:hover:bg-slate-800 text-slate-450 hover:text-indigo-550 dark:hover:text-indigo-400 rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
+                  title="Refresh Suggestions"
+                >
+                  <Sparkles size={11} className={loadingSuggestions ? 'animate-spin' : ''} />
+                </button>
+
+                {/* Close Button */}
+                <button
+                  onClick={() => setShowAiPanel(false)}
+                  className="p-1 hover:bg-slate-150 dark:hover:bg-slate-800 text-slate-450 hover:text-rose-550 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                  title="Close panel"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+
+              {/* Suggestions list */}
+              {loadingSuggestions ? (
+                <div className="p-6 flex flex-col items-center justify-center gap-2">
+                  <Loader2 size={20} className="animate-spin text-indigo-500" />
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Analyzing chat...</span>
+                </div>
+              ) : aiSuggestionsError ? (
+                <div className="p-6 text-center text-rose-500">
+                  <p className="text-xs font-semibold">Failed to fetch suggestions</p>
+                </div>
+              ) : aiSuggestions.length === 0 ? (
+                <div className="p-6 text-center text-slate-450 dark:text-slate-500">
+                  <p className="text-xs font-semibold">No suggestions generated</p>
+                  <button
+                    onClick={() => selectedConversation && fetchSuggestions(selectedConversation)}
+                    className="mt-2.5 px-2.5 py-1.5 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg text-[9px] font-bold shadow-xs transition-all cursor-pointer"
+                  >
+                    Generate Smart Replies
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2.5 flex flex-col gap-1.5 max-h-60 overflow-y-auto">
+                  {aiSuggestions.map((sug, i) => (
+                    <div
+                      key={i}
+                      className="group relative bg-[#f8fafc]/50 dark:bg-slate-850 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/15 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 rounded-lg transition-all duration-200 cursor-pointer active:scale-[0.995] shadow-xs"
+                      onClick={() => {
+                        setMessageText(sug.text)
+                        setShowAiPanel(false)
+                      }}
+                    >
+                      <div className="px-2.5 py-2 flex items-start gap-2">
+                        <div className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-indigo-500/10 flex items-center justify-center text-[9px] font-bold text-indigo-650 dark:text-indigo-400">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10.5px] leading-normal text-slate-700 dark:text-slate-200 font-medium">
+                            {sug.text}
+                          </p>
+                          {sug.article_title && (
+                            <div className="mt-1 flex items-center gap-1">
+                              <BookOpen size={8} className="text-indigo-400 shrink-0" />
+                              <span className="text-[8px] font-semibold text-indigo-650 dark:text-indigo-405 truncate max-w-[150px]">
+                                {sug.article_title}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 wa-chat-wallpaper z-0">
+          <div id="chat-messages-container" className="flex-1 overflow-y-auto p-6 space-y-4 wa-chat-wallpaper z-0">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 text-xs font-medium space-y-2 select-none relative z-10">
                 <MessageCircle size={32} className="text-slate-355" />
                 <p>No messages yet. Send a message to start!</p>
               </div>
             ) : (
-              messages.map((msg) => {
+              <>
+                {/* Load Previous Messages Button */}
+                {hasMoreMessages && (
+                  <div className="flex justify-center pb-4 select-none">
+                    <button
+                      onClick={loadOlderMessages}
+                      disabled={loadingOlderMessages}
+                      className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 rounded-full border border-slate-200/50 dark:border-slate-800/80 shadow-xs hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
+                    >
+                      {loadingOlderMessages ? (
+                        <Loader2 size={11} className="animate-spin text-emerald-500" />
+                      ) : (
+                        <Clock size={11} />
+                      )}
+                      <span>{loadingOlderMessages ? 'Loading older messages...' : 'Load Previous Messages'}</span>
+                    </button>
+                  </div>
+                )}
+                {messages.map((msg) => {
                 const isUser = msg.sender_type === 'user'
                 const mediaType = getMediaType(msg.media_url)
                 
@@ -1263,10 +1555,11 @@ function ConversationsPageContent() {
                     </div>
                   </div>
                 )
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              })}
+            </>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
           {/* Reply Preview Area */}
           {replyingTo && (
@@ -1330,203 +1623,24 @@ function ConversationsPageContent() {
             </div>
           )}
 
-          {/* AI Suggested Replies (RAG) */}
-          {features.enable_ai && selectedConversation && (
-            <div className="border-t border-slate-100 dark:border-slate-800/80 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md select-none z-10">
-              {!showAiPanel ? (
-                /* Collapsed State Bar */
-                <div 
-                  onClick={() => {
-                    setShowAiPanel(true)
-                    if (aiSuggestions.length === 0) {
-                      fetchSuggestions(selectedConversation)
-                    }
-                  }}
-                  className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors duration-200"
-                >
-                  <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-650 dark:text-indigo-400">
-                    <Sparkles size={12} className="text-indigo-500 animate-pulse" />
-                    <span>SHOW AI SUGGESTIONS</span>
-                  </div>
-                  <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500 opacity-80 hover:opacity-100 transition-opacity">
-                    Click to expand
-                  </span>
-                </div>
-              ) : (
-                /* Expanded State Panel */
-                <>
-                  {/* Header Bar */}
-                  <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-150 dark:border-slate-800/50">
-                    <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-600 dark:text-indigo-400 shrink-0 mr-1 bg-indigo-500/10 dark:bg-indigo-500/15 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
-                      <Sparkles size={11} className="text-indigo-550 dark:text-indigo-400" />
-                      <span>AI SUGGESTIONS</span>
-                    </div>
-
-                    {loadingSuggestions && (
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-550 py-1">
-                        <Loader2 size={11} className="animate-spin text-indigo-550" />
-                        <span>Analyzing knowledge base...</span>
-                      </div>
-                    )}
-
-                    {aiSuggestionsError && (
-                      <span className="text-[10px] font-bold text-rose-500 py-1 truncate max-w-md" title={aiSuggestionsError}>
-                        ⚠️ {aiSuggestionsError}
-                      </span>
-                    )}
-
-                    {/* Refresh / Generate Button */}
-                    <button
-                      onClick={() => fetchSuggestions(selectedConversation)}
-                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-550 dark:hover:text-indigo-400 rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
-                      title={aiSuggestions.length > 0 ? 'Refresh Suggestions' : 'Generate Smart Replies'}
-                    >
-                      <Sparkles size={12} className={loadingSuggestions ? 'animate-spin' : ''} />
-                    </button>
-
-                    {/* Close / Dismiss Button */}
-                    <button
-                      onClick={() => setShowAiPanel(false)}
-                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
-                      title="Close suggestions"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-
-                  {/* Suggestion Cards */}
-                  {!loadingSuggestions && aiSuggestions.length > 0 && (
-                    <div className="px-4 py-3 flex flex-col gap-2 max-h-60 overflow-y-auto">
-                      {aiSuggestions.map((sug, i) => (
-                        <div
-                          key={i}
-                          className="group relative bg-white/90 dark:bg-slate-850/90 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/15 border border-slate-150 dark:border-slate-800 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 rounded-xl transition-all duration-200 cursor-pointer active:scale-[0.995] shadow-xs hover:shadow-md"
-                          onClick={() => setMessageText(sug.text)}
-                        >
-                          {/* Main suggestion text */}
-                          <div className="px-3.5 py-2.5 flex items-start gap-2.5">
-                            <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-indigo-550/10 dark:bg-indigo-500/15 flex items-center justify-center text-[10px] font-bold text-indigo-650 dark:text-indigo-400 border border-indigo-500/10">
-                              {i + 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[11px] leading-relaxed text-slate-700 dark:text-slate-200 font-medium">
-                                {sug.text}
-                              </p>
-                              {/* Source article badge */}
-                              {sug.article_title && (
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <BookOpen size={9} className="text-indigo-500 shrink-0" />
-                                  <span className="text-[9px] font-semibold text-indigo-650 dark:text-indigo-400 truncate">
-                                    {sug.article_title}
-                                  </span>
-                                  {sug.source_url && (
-                                    <a
-                                      href={sug.source_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="shrink-0 flex items-center gap-0.5 text-[8.5px] text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 font-medium underline decoration-dotted"
-                                    >
-                                      <ExternalLink size={8} />
-                                      Source
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            {/* Use this reply arrow */}
-                            <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <Send size={12} className="text-indigo-500" />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Empty state: Generate button */}
-                  {!loadingSuggestions && aiSuggestions.length === 0 && !aiSuggestionsError && (
-                    <div className="px-4 pb-3 pt-1">
-                      <button
-                        onClick={() => fetchSuggestions(selectedConversation)}
-                        className="px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 border border-slate-200/60 dark:border-slate-750 rounded-xl text-[10px] font-bold text-indigo-600 dark:text-indigo-400 cursor-pointer shadow-xs transition-all flex items-center gap-1.5 active:scale-[0.98]"
-                      >
-                        <Sparkles size={11} />
-                        <span>Generate Smart Replies</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* WhatsApp 24h Free Window Status Banner */}
-          {(() => {
-            // Reference windowTick to force re-render every 60s
-            void windowTick
-            // Find the last inbound message from customer (sender_type === 'contact')
-            const lastInbound = [...messages]
-              .reverse()
-              .find(m => m.sender_type === 'contact')
-
-            if (!lastInbound) return null
-
-            const lastInboundTime = new Date(lastInbound.created_at).getTime()
-            const now = Date.now()
-            const windowMs = 24 * 60 * 60 * 1000 // 24 hours
-            const elapsed = now - lastInboundTime
-            const remaining = windowMs - elapsed
-            const isOpen = remaining > 0
-            const hoursLeft = Math.floor(remaining / (60 * 60 * 1000))
-            const minutesLeft = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
-            const isClosingSoon = isOpen && remaining < 4 * 60 * 60 * 1000 // < 4 hours
-
-            // Colors based on status
-            const bgColor = !isOpen
-              ? 'bg-red-50 dark:bg-red-950/20 border-red-200/60 dark:border-red-900/35'
-              : isClosingSoon
-                ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200/60 dark:border-amber-900/35'
-                : 'bg-emerald-50 dark:bg-emerald-950/15 border-emerald-200/60 dark:border-emerald-900/35'
-            const textColor = !isOpen
-              ? 'text-red-650 dark:text-red-400'
-              : isClosingSoon
-                ? 'text-amber-650 dark:text-amber-455'
-                : 'text-emerald-650 dark:text-emerald-400'
-            const subTextColor = !isOpen
-              ? 'text-red-500/80 dark:text-red-400/60'
-              : isClosingSoon
-                ? 'text-amber-500/80 dark:text-amber-400/60'
-                : 'text-emerald-555/80 dark:text-emerald-400/60'
-
-            return (
-              <div className={`mx-4 mb-2 mt-2 px-3 py-2 rounded-xl border backdrop-blur-sm shadow-xs ${bgColor} flex items-center justify-between gap-2 select-none z-10`}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[10px] font-bold ${textColor} truncate`}>
-                    {!isOpen
-                      ? '⛔ Free window expired — Template messages only'
-                      : isClosingSoon
-                        ? `⏳ Window closing soon — ${hoursLeft}h ${minutesLeft}m left`
-                        : `✅ Free window open — ${hoursLeft}h ${minutesLeft}m remaining`
-                    }
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className={`text-[9px] font-semibold ${subTextColor} hidden sm:inline`}>
-                    {!isOpen
-                      ? 'Only approved templates can be sent'
-                      : 'Free-form replies are enabled'
-                    }
-                  </span>
-                </div>
-              </div>
-            )
-          })()}
-
           {/* Chat Input controls */}
           {(() => {
             const isWhatsApp = selectedContact?.phone_number?.startsWith('whatsapp:') || selectedContact?.whatsapp_number?.startsWith('whatsapp:')
             const isSmsDisabled = !isWhatsApp && !features.enable_sms
+            
+            const lastInbound = [...messages]
+              .reverse()
+              .find(m => m.sender_type === 'contact')
+            
+            let isExpired = false
+            if (lastInbound) {
+              const lastInboundTime = new Date(lastInbound.created_at).getTime()
+              const now = Date.now()
+              const windowMs = 24 * 60 * 60 * 1000
+              const elapsed = now - lastInboundTime
+              const remaining = windowMs - elapsed
+              isExpired = remaining <= 0
+            }
             
             return (
               <>
@@ -1538,6 +1652,14 @@ function ConversationsPageContent() {
                   </div>
                 )}
                 
+                {isExpired && !isSmsDisabled && (
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex items-center gap-2 select-none z-10 animate-in fade-in duration-200">
+                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455">
+                      ⚠️ The 24-hour WhatsApp support window has expired. You cannot send free-form messages until the user replies.
+                    </span>
+                  </div>
+                )}
+                
                 <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/85 backdrop-blur-md z-10">
                   <div className="flex gap-3 items-center max-w-5xl mx-auto w-full">
                     <input 
@@ -1545,13 +1667,13 @@ function ConversationsPageContent() {
                       ref={fileInputRef} 
                       onChange={handleFileChange} 
                       className="hidden" 
-                      disabled={isSmsDisabled}
+                      disabled={isSmsDisabled || isExpired}
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading || isSmsDisabled}
+                      disabled={uploading || isSmsDisabled || isExpired}
                       className="hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
-                      title="Attach Media"
+                      title={isExpired ? "Support window expired" : "Attach Media"}
                     >
                       {uploading ? (
                         <Loader2 className="animate-spin text-slate-400" size={18} />
@@ -1564,14 +1686,14 @@ function ConversationsPageContent() {
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                      placeholder={isSmsDisabled ? "SMS sending is disabled" : attachedFile ? "Add a caption..." : "Type a message..."}
-                      disabled={isSmsDisabled}
+                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : attachedFile ? "Add a caption..." : "Type a message..."}
+                      disabled={isSmsDisabled || isExpired}
                       className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200"
                     />
                     <button
                       onClick={handleSendMessage}
-                      disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled}
-                      className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
+                      disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled || isExpired}
+                      className="bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
                     >
                       <Send size={16} />
                     </button>

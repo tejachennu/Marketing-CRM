@@ -42,7 +42,26 @@ export default function SettingsPage() {
   const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
 
   // RAG Knowledge Base State
-  const [activeTab, setActiveTab] = useState<'general' | 'knowledge' | 'teammates'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'knowledge' | 'teammates' | 'appearance'>('general')
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+
+  useEffect(() => {
+    const storedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
+    if (storedTheme) {
+      setTheme(storedTheme)
+    }
+  }, [])
+
+  const toggleTheme = (nextTheme: 'light' | 'dark') => {
+    setTheme(nextTheme)
+    localStorage.setItem('theme', nextTheme)
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    window.dispatchEvent(new Event('theme-changed'))
+  }
   const [articles, setArticles] = useState<any[]>([])
   const [loadingArticles, setLoadingArticles] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
@@ -581,6 +600,17 @@ export default function SettingsPage() {
         >
           <Users size={13} />
           Manage Teammates
+        </button>
+        <button
+          onClick={() => setActiveTab('appearance')}
+          className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+            activeTab === 'appearance'
+              ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+              : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
+          }`}
+        >
+          <Sun size={13} />
+          Appearance
         </button>
       </div>
 
@@ -1819,6 +1849,43 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      {activeTab === 'appearance' && (
+        <div className="space-y-6 w-full max-w-full">
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-2">Appearance Settings</h2>
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] mb-5 font-semibold leading-relaxed">
+              Customize how the application looks for you on this device.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 max-w-md">
+              <button
+                onClick={() => toggleTheme('light')}
+                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${
+                  theme === 'light' 
+                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]' 
+                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
+                }`}
+              >
+                <Sun size={32} className={theme === 'light' ? 'text-amber-500' : 'text-[#667781] dark:text-[#8696a0]'} />
+                <span className={`text-xs font-bold ${theme === 'light' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Light Mode</span>
+              </button>
+              
+              <button
+                onClick={() => toggleTheme('dark')}
+                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${
+                  theme === 'dark' 
+                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]' 
+                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
+                }`}
+              >
+                <Moon size={32} className={theme === 'dark' ? 'text-indigo-400' : 'text-[#667781] dark:text-[#8696a0]'} />
+                <span className={`text-xs font-bold ${theme === 'dark' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Dark Mode</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

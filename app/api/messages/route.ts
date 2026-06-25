@@ -33,18 +33,55 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
-    const { data: messages, error } = await supabase
+    const limitVal = searchParams.get('limit')
+    const beforeVal = searchParams.get('before')
+
+    let query = supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+
+    if (limitVal) {
+      const parsedLimit = parseInt(limitVal, 10)
+      if (!isNaN(parsedLimit)) {
+        query = query.limit(parsedLimit)
+      }
+    } else {
+      query = query.limit(100)
+    }
+
+    if (beforeVal) {
+      query = query.lt('created_at', beforeVal)
+    }
+
+    const { data: messages, error } = await query
 
     if (error) throw error
 
+    const chronologicalMessages = messages ? [...messages].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    ) : []
+
+    let hasMore = false
+    if (chronologicalMessages.length > 0) {
+      const oldestTimestamp = chronologicalMessages[0].created_at
+      const { count, error: countError } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('conversation_id', conversationId)
+        .lt('created_at', oldestTimestamp)
+      
+      if (!countError && count && count > 0) {
+        hasMore = true
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      messages: messages || [],
-      count: messages?.length || 0,
+      messages: chronologicalMessages,
+      count: chronologicalMessages.length,
+      hasMore,
     })
   } catch (error) {
     console.error('[API] List messages error:', error)

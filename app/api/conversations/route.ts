@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const unreadOnly = searchParams.get('unread') === 'true'
     const search = searchParams.get('search') || ''
+    const specificId = searchParams.get('id')
     const offset = (page - 1) * limit
 
     if (!orgId) {
@@ -63,11 +64,15 @@ export async function GET(request: NextRequest) {
       )
       .eq('organization_id', orgId)
 
-    if (unreadOnly) {
+    if (specificId) {
+      query = query.eq('id', specificId)
+    }
+
+    if (unreadOnly && !specificId) {
       query = query.gt('unread_count', 0)
     }
 
-    if (search) {
+    if (search && !specificId) {
       // Find matching contacts first, then scope conversations
       const { data: matchedContacts } = await supabase
         .from('contacts')
@@ -136,8 +141,11 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore: (count || 0) > offset + formatted.length,
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('[API] List conversations error:', error)
+    try {
+      require('fs').appendFileSync('d:/new-chat/scratch/api-error.log', new Date().toISOString() + ': ' + (error.message || error) + '\n' + (error.stack || '') + '\n\n')
+    } catch(e) {}
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to list conversations',

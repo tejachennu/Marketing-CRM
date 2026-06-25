@@ -50,13 +50,17 @@ async function rephraseQuery(chatHistory: any[], apiKey: string): Promise<string
   }
 
   try {
-    const formattedHistory = chatHistory.slice(0, -1).map(m => {
+    // Take only the previous 4 chats for context + the current message
+    const recentHistory = chatHistory.slice(-5)
+    
+    const formattedHistory = recentHistory.slice(0, -1).map(m => {
       const sender = m.sender_type === 'user' ? 'Operator' : 'Client'
       return `${sender}: ${m.body}`
     }).join('\n')
 
     const prompt = `You are an expert AI assistant. Your task is to rewrite the client's latest message into a standalone, self-contained search query. 
 The standalone query should contain all the necessary context from the conversation history (such as topic, entity, location, etc.) so it can be used for semantic search (vector database lookup).
+Crucially, you must CORRECT ANY SPELLING ERRORS or typos in the client's latest message while rewriting it.
 
 CONVERSATION HISTORY:
 ${formattedHistory}
@@ -67,8 +71,9 @@ CLIENT'S LATEST MESSAGE:
 INSTRUCTIONS:
 1. Output ONLY the standalone query.
 2. Do not include any intro, explanation, quotes, or conversational filler.
-3. If the latest message is already a standalone question and doesn't depend on history, output it exactly as-is.
+3. If the latest message is already a standalone question and doesn't depend on history, correct its spelling and output it as-is.
 4. If the latest message is just small talk or doesn't refer to the conversation topic (e.g. "thanks", "ok"), you can keep it simple or output it as-is.
+5. ALWAYS correct spelling mistakes.
 
 Standalone search query:`
 

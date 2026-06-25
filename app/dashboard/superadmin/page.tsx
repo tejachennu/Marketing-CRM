@@ -43,8 +43,9 @@ interface OrgStats {
   created_at: string
   usersCount: number
   contactsCount: number
-  campaignsCount: number
   messagesCount: number
+  aiTokens: number
+  aiCost: number
 }
 
 interface UserProfile {
@@ -499,10 +500,11 @@ export default function SuperAdminPage() {
   // Overall statistics
   const [stats, setStats] = useState({
     organizations: 0,
-    users: 0,
     contacts: 0,
     messages: 0,
     campaigns: 0,
+    totalAiTokens: 0,
+    totalAiCost: 0,
   })
 
   // Data lists
@@ -1110,6 +1112,22 @@ export default function SuperAdminPage() {
               </div>
             </div>
 
+            {/* AI Costing */}
+            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-amber-500/30 dark:hover:border-amber-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total AI Costing</span>
+                <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Sparkles size={15} />
+                </div>
+              </div>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : `$${stats.totalAiCost.toFixed(4)}`}
+                </span>
+                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
+              </div>
+            </div>
+
           </div>
 
           {/* Org activity breakdown list */}
@@ -1143,6 +1161,7 @@ export default function SuperAdminPage() {
                       <th className="py-3 px-4 text-center">Contacts</th>
                       <th className="py-3 px-4 text-center">Campaigns</th>
                       <th className="py-3 px-4 text-center">Messages</th>
+                      <th className="py-3 px-4 text-center">AI Cost</th>
                       <th className="py-3 px-4 text-right">Created Date</th>
                     </tr>
                   </thead>
@@ -1155,6 +1174,7 @@ export default function SuperAdminPage() {
                         <td className="py-3.5 px-4 text-center font-bold text-blue-500">{org.contactsCount}</td>
                         <td className="py-3.5 px-4 text-center font-bold text-rose-500">{org.campaignsCount}</td>
                         <td className="py-3.5 px-4 text-center font-bold text-emerald-500">{org.messagesCount}</td>
+                        <td className="py-3.5 px-4 text-center font-bold text-amber-500">${(org.aiCost || 0).toFixed(4)}</td>
                         <td className="py-3.5 px-4 text-right text-neutral-400 dark:text-[#8696a0] font-semibold">
                           {new Date(org.created_at).toLocaleDateString()}
                         </td>

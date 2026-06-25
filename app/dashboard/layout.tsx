@@ -39,6 +39,34 @@ export default function DashboardLayout({
   const [showTickets, setShowTickets] = useState(false)
   const [activeTicketsCount, setActiveTicketsCount] = useState(0)
   const [ticketToast, setTicketToast] = useState<{ id: string; subject: string; contactName: string; conversationId: string } | null>(null)
+  const [hasUnreadAssistantNotif, setHasUnreadAssistantNotif] = useState(false)
+
+  const addAssistantNotification = (msg: string) => {
+    const newNotif = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      msg,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+    let current = []
+    try {
+      current = JSON.parse(localStorage.getItem('assistant_notifs') || '[]')
+    } catch (e) {
+      current = []
+    }
+    const updated = [newNotif, ...current].slice(0, 30)
+    localStorage.setItem('assistant_notifs', JSON.stringify(updated))
+    localStorage.setItem('assistant_has_unread', 'true')
+    window.dispatchEvent(new Event('assistant-unread-changed'))
+  }
+
+  useEffect(() => {
+    const checkUnread = () => {
+      setHasUnreadAssistantNotif(localStorage.getItem('assistant_has_unread') === 'true')
+    }
+    checkUnread()
+    window.addEventListener('assistant-unread-changed', checkUnread)
+    return () => window.removeEventListener('assistant-unread-changed', checkUnread)
+  }, [])
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -227,6 +255,8 @@ export default function DashboardLayout({
                 contactName,
                 conversationId: payload.new.conversation_id
               })
+
+              addAssistantNotification(`🎫 New active ticket created: "${payload.new.subject}" for contact ${contactName}`)
             } catch (err) {
               console.error('Error handling new ticket notification:', err)
             }
@@ -235,8 +265,44 @@ export default function DashboardLayout({
       )
       .subscribe()
 
+    const convChannel = supabase
+      .channel('layout-conversations-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `organization_id=eq.${orgId}`
+        },
+        async (payload) => {
+          const oldVal = payload.old?.auto_reply_enabled
+          const newVal = payload.new?.auto_reply_enabled
+          
+          if (newVal === false && oldVal !== false) {
+            try {
+              const { data: contact } = await supabase
+                .from('contacts')
+                .select('first_name, last_name, phone')
+                .eq('id', payload.new.contact_id)
+                .maybeSingle()
+                
+              const contactName = contact
+                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.phone || 'Unknown'
+                : 'Unknown'
+                
+              addAssistantNotification(`🤖 Auto-reply chatbot turned OFF for conversation with ${contactName}`)
+            } catch (err) {
+              console.error('Error handling chatbot disabled notification:', err)
+            }
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(convChannel)
     }
   }, [orgId])
 
@@ -254,7 +320,6 @@ export default function DashboardLayout({
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
-    { href: '/dashboard/ivr', label: 'IVR Workflows', icon: Phone },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
@@ -276,9 +341,6 @@ export default function DashboardLayout({
     if (item.href === '/dashboard/tickets') {
       return features.enable_messages
     }
-    if (item.href === '/dashboard/ivr') {
-      return features.enable_phone_calls
-    }
     if (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts') {
       return features.enable_messages || features.enable_email
     }
@@ -291,73 +353,14 @@ export default function DashboardLayout({
     }
     if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
     if (pathname === '/dashboard' && !features.enable_messages) return false
-    if (pathname.startsWith('/dashboard/ivr') && !features.enable_phone_calls) return false
+    if (pathname.startsWith('/dashboard/ivr')) return false
     if ((pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts')) && !features.enable_messages && !features.enable_email) return false
     return true
   }
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
-      {/* Top Header status bar */}
-      <header className="h-14 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/80 px-5 flex items-center justify-between flex-shrink-0 select-none z-50">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white font-bold text-xs shadow-sm shadow-emerald-500/20">
-            <Key size={14} className="rotate-45" />
-          </div>
-          <div>
-            <h1 className="text-xs font-black text-slate-900 dark:text-white leading-none">ByokCRM Panel</h1>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-1">
-              ● Active Workspace ({orgSlug || 'canada-tenant'})
-            </span>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Theme Switcher Button */}
-          <button
-            onClick={toggleTheme}
-            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-            className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-all duration-200 shadow-sm cursor-pointer"
-          >
-            {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
-          </button>
-
-          {/* User profile & Logout (Mobile Only) */}
-          <div className="flex md:hidden items-center gap-1.5">
-            <div 
-              title={userFullName || userEmail}
-              className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-[10px] border border-slate-200/50 dark:border-slate-700/50 select-none shadow-sm"
-            >
-              {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
-            </div>
-            <button
-              onClick={handleLogout}
-              title="Logout"
-              className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-700/50 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
-            >
-              <LogOut size={13} />
-            </button>
-          </div>
-
-          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold border transition-all duration-200 ${
-            credentialsStatus.twilio 
-              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400' 
-              : 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${credentialsStatus.twilio ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            <span>WhatsApp/SMS: {credentialsStatus.twilio ? 'Active' : 'Unconfigured'}</span>
-          </div>
-          <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold border transition-all duration-200 ${
-            credentialsStatus.openai 
-              ? 'bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400' 
-              : 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${credentialsStatus.openai ? 'bg-blue-500' : 'bg-amber-500'}`} />
-            <span>AI Assistant: {credentialsStatus.openai ? 'Active' : 'Unconfigured'}</span>
-          </div>
-          <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse" />
-        </div>
-      </header>
 
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
@@ -419,12 +422,12 @@ export default function DashboardLayout({
             </nav>
           </div>
 
-          {/* User profile & Logout (Desktop Only) */}
-          <div className="hidden md:flex flex-col items-center gap-4 w-full">
+          {/* User profile & Logout (All Screens) */}
+          <div className="flex flex-row md:flex-col items-center gap-2 md:gap-4 ml-auto md:ml-0 px-2 md:px-0 w-max md:w-full">
             {/* Circular Avatar */}
             <div 
               title={userFullName || userEmail}
-              className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs border border-slate-200/50 dark:border-slate-700/50 select-none cursor-pointer shadow-sm hover:border-slate-350 dark:hover:border-slate-600 transition-all duration-200"
+              className="hidden md:flex h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs border border-slate-200/50 dark:border-slate-700/50 select-none cursor-pointer shadow-sm hover:border-slate-350 dark:hover:border-slate-600 transition-all duration-200"
             >
               {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
             </div>
@@ -433,7 +436,7 @@ export default function DashboardLayout({
             <button
               onClick={handleLogout}
               title="Logout"
-              className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
+              className="flex items-center justify-center h-10 w-10 md:h-10 md:w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
             >
               <LogOut size={16} />
             </button>
@@ -558,14 +561,20 @@ export default function DashboardLayout({
             </div>
           )}
 
-          {/* Global AI Assistant Floating Trigger */}
-          <button
-            onClick={() => setShowAssistant(true)}
-            title="Open Marketing Assistant"
-            className="fixed right-6 bottom-20 md:bottom-6 w-12 h-12 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 active:scale-95 transition-all z-40 hover:scale-110 duration-200 cursor-pointer border border-emerald-500/30 hover:shadow-emerald-500/40"
-          >
+          {/* Floating Action Buttons Container */}
+          <div className="fixed right-6 bottom-40 md:bottom-36 flex flex-col gap-3 z-[1000]">
+            {/* Global AI Assistant Floating Trigger */}
+            <button
+              onClick={() => setShowAssistant((prev) => !prev)}
+              title={showAssistant ? "Close Marketing Assistant" : "Open Marketing Assistant"}
+              className={`w-12 h-12 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 active:scale-95 transition-all hover:scale-110 duration-200 cursor-pointer border border-emerald-500/30 hover:shadow-emerald-500/40 relative ${showAssistant ? 'ring-4 ring-emerald-500/20' : ''}`}
+            >
             <Sparkles size={20} className="animate-pulse" />
-          </button>
+            {hasUnreadAssistantNotif && !showAssistant && (
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse z-50" />
+            )}
+            </button>
+          </div>
 
           {/* Global AI Assistant Drawer */}
           <AssistantDrawer

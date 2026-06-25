@@ -164,7 +164,49 @@ const EMAIL_TEMPLATES = [
 ]
 
 export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDrawerProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('templates')
+  const [activeTab, setActiveTab] = useState<Tab>('notifications')
+  
+  // Dragging state
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartPos = useRef({ x: 0, y: 0 })
+  const dragStartMouse = useRef({ x: 0, y: 0 })
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Only drag with primary mouse button
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement
+    // Prevent dragging if clicking a button inside the header
+    if (target.closest('button')) return
+
+    setIsDragging(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragStartMouse.current = { x: e.clientX, y: e.clientY }
+    dragStartPos.current = { ...position }
+  }
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return
+    const dx = e.clientX - dragStartMouse.current.x
+    const dy = e.clientY - dragStartMouse.current.y
+    setPosition({
+      x: dragStartPos.current.x + dx,
+      y: dragStartPos.current.y + dy
+    })
+  }
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!isDragging) return
+    setIsDragging(false)
+    e.currentTarget.releasePointerCapture(e.pointerId)
+  }
+
+  // Reset position when closed
+  useEffect(() => {
+    if (!isOpen) {
+      setPosition({ x: 0, y: 0 })
+    }
+  }, [isOpen])
   
   // Tab 2: Email Template Builder states
   const [templateCode, setTemplateCode] = useState('')
@@ -253,6 +295,32 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
     const storedNotifs = localStorage.getItem('assistant_notifs')
     if (storedNotifs) setNotifications(JSON.parse(storedNotifs))
   }, [])
+
+  const [hasUnread, setHasUnread] = useState(false)
+
+  useEffect(() => {
+    const checkUnread = () => {
+      setHasUnread(localStorage.getItem('assistant_has_unread') === 'true')
+      const storedNotifs = localStorage.getItem('assistant_notifs')
+      if (storedNotifs) {
+        try {
+          setNotifications(JSON.parse(storedNotifs))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+    }
+    checkUnread()
+    window.addEventListener('assistant-unread-changed', checkUnread)
+    return () => window.removeEventListener('assistant-unread-changed', checkUnread)
+  }, [])
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'notifications') {
+      localStorage.setItem('assistant_has_unread', 'false')
+      window.dispatchEvent(new Event('assistant-unread-changed'))
+    }
+  }, [isOpen, activeTab])
 
   // Fetch db stats/tags segment estimation
   useEffect(() => {
@@ -435,10 +503,20 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-l border-slate-200/60 dark:border-slate-800/80 shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300 font-sans text-slate-800 dark:text-slate-100">
-      
-      {/* Drawer Header */}
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20 shrink-0">
+    <div 
+      className={`fixed bottom-56 md:bottom-52 right-6 md:right-6 z-[999] transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+      style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
+    >
+      <div className={`w-[380px] max-w-[calc(100vw-32px)] h-[600px] max-h-[calc(100vh-120px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border border-slate-200/60 dark:border-slate-800/80 shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 font-sans text-slate-800 dark:text-slate-100 origin-bottom-right ${isDragging ? 'cursor-grabbing' : ''}`}>
+        
+        {/* Drawer Header */}
+        <div 
+          className={`p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20 shrink-0 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
         <div className="flex items-center gap-2">
           <div className="h-6 w-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white">
             <Sparkles size={13} className="animate-pulse" />
@@ -459,10 +537,13 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
       {/* Navigation tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/10 shrink-0 p-1 justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 select-none">
         <button 
-          onClick={() => setActiveTab('templates')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'templates' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'hover:text-slate-800'}`}
+          onClick={() => setActiveTab('notifications')} 
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all relative ${activeTab === 'notifications' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-800'}`}
         >
-          Templates
+          <span>Notifications</span>
+          {hasUnread && (
+            <span className="absolute top-1 right-2 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+          )}
         </button>
         <button 
           onClick={() => setActiveTab('stats')} 
@@ -477,10 +558,10 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
           Tasks
         </button>
         <button 
-          onClick={() => setActiveTab('notifications')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'notifications' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-800'}`}
+          onClick={() => setActiveTab('templates')} 
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'templates' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'hover:text-slate-800'}`}
         >
-          Logs
+          Templates
         </button>
       </div>
 
@@ -814,26 +895,26 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
           </div>
         )}
 
-        {/* Tab 5: System Notifications Logs */}
+        {/* Tab 5: System Notifications */}
         {activeTab === 'notifications' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-extrabold text-slate-500 uppercase flex items-center gap-1">
                 <Bell size={12} className="text-emerald-500" />
-                Operation Logs History
+                Notification History
               </label>
               {notifications.length > 0 && (
                 <button 
                   onClick={handleClearNotifs}
                   className="text-[9px] text-rose-600 hover:text-rose-550 font-extrabold"
                 >
-                  Clear Logs
+                  Clear Notifications
                 </button>
               )}
             </div>
             {notifications.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs italic bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl select-none">
-                No logs recorded in this session.
+                No notifications recorded in this session.
               </div>
             ) : (
               <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
@@ -848,6 +929,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
           </div>
         )}
 
+      </div>
       </div>
     </div>
   )

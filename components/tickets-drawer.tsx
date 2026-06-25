@@ -143,12 +143,12 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/20 dark:bg-slate-950/40 backdrop-blur-xs z-50 transition-opacity duration-300"
+        className="fixed inset-0 bg-slate-950/20 dark:bg-slate-950/40 backdrop-blur-xs z-[100] transition-opacity duration-300"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="fixed top-0 right-0 h-full w-full max-w-sm bg-white/95 dark:bg-slate-900/95 border-l border-slate-100 dark:border-slate-800 backdrop-blur-md shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-300 select-none">
+      <div className="fixed top-0 right-0 h-full w-full max-w-sm bg-white/95 dark:bg-slate-900/95 border-l border-slate-100 dark:border-slate-800 backdrop-blur-md shadow-2xl z-[100] flex flex-col animate-in slide-in-from-right duration-300 select-none">
         
         {/* Header */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">

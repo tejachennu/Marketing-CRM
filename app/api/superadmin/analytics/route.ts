@@ -35,12 +35,18 @@ export async function GET(request: NextRequest) {
       const campaigns = (campaignMapping || []).filter(c => c.organization_id === org.id).length
       const messages = (messageMapping || []).filter(m => m.organization_id === org.id).length
 
+      // Mock AI Usage for the admin panel demonstration
+      const aiTokens = messages * 250 + campaigns * 1000 // roughly 250 tokens per message
+      const aiCost = aiTokens * 0.000002 // gpt-4o-mini approx cost
+
       return {
         ...org,
         usersCount: users,
         contactsCount: contacts,
         campaignsCount: campaigns,
-        messagesCount: messages
+        messagesCount: messages,
+        aiTokens,
+        aiCost
       }
     })
 
@@ -52,6 +58,8 @@ export async function GET(request: NextRequest) {
         contacts: contactCount || 0,
         messages: messageCount || 0,
         campaigns: campaignCount || 0,
+        totalAiTokens: mappedOrgs.reduce((acc, org) => acc + org.aiTokens, 0),
+        totalAiCost: mappedOrgs.reduce((acc, org) => acc + org.aiCost, 0),
       },
       organizationsList: mappedOrgs
     })
