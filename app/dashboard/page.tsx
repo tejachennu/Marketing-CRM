@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
@@ -12,7 +12,7 @@ import {
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 
-export default function ConversationsPage() {
+function ConversationsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const conversationIdParam = searchParams.get('conversationId')
@@ -1647,4 +1647,16 @@ export default function ConversationsPage() {
     </div>
   )
 
+}
+
+export default function ConversationsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full w-full bg-[#f0f2f5] dark:bg-[#0b141a]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00a884]"></div>
+      </div>
+    }>
+      <ConversationsPageContent />
+    </Suspense>
+  )
 }
