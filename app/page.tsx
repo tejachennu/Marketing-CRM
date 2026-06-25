@@ -68,7 +68,6 @@ export default function LandingPage() {
           <nav className="hidden md:flex items-center gap-8 text-xs font-bold text-slate-400">
             <a href="#features" className="hover:text-[#00a884] transition-colors">Features</a>
             <a href="#economics" className="hover:text-[#00a884] transition-colors">BYOK Economics</a>
-            <a href="#pricing" className="hover:text-[#00a884] transition-colors">Pricing</a>
             <a href="#contact" className="hover:text-[#00a884] transition-colors">Contact Sales</a>
           </nav>
 
@@ -218,7 +217,7 @@ export default function LandingPage() {
                         <span>AI: How to configure WhatsApp</span>
                       </button>
                       <button className="bg-[#1e2630] border border-slate-800 text-slate-300 text-[9px] font-bold px-3 py-1.5 rounded-full whitespace-nowrap hover:bg-slate-800 transition-all">
-                        <span>AI: View pricing FAQ</span>
+                        <span>AI: Setup Twilio gateway</span>
                       </button>
                     </div>
                     <div className="h-10 bg-[#1e2630] border border-slate-800 rounded-xl flex items-center justify-between px-4">
@@ -518,33 +517,28 @@ export default function LandingPage() {
                   <Sparkles size={20} />
                 </div>
 
-                {/* Visual Mockup - High Fidelity RAG Crawler */}
+                {/* Visual Mockup - High Fidelity AI Content Writer */}
                 <div className="bg-[#0f1722] rounded-xl mb-5 border border-slate-800 flex flex-col h-32 overflow-hidden relative select-none">
                   {/* Mock App Header */}
                   <div className="h-7 bg-[#1e2630] border-b border-slate-800 px-3 flex items-center justify-between text-[7px] text-slate-400">
-                    <span className="font-bold text-white">Sitemap Scraper RAG</span>
-                    <span className="text-slate-400 text-[6px] font-bold">Crawling website...</span>
+                    <span className="font-bold text-white">AI Content Writer</span>
+                    <span className="text-slate-400 text-[6px] font-bold">Writing copy...</span>
                   </div>
-                  {/* RAG Area */}
+                  {/* AI Writer Area */}
                   <div className="flex-1 p-3 bg-[#0b0f19] flex flex-col gap-2 justify-center">
-                    <div className="flex items-center justify-between text-[7px]">
-                      <span className="text-slate-300 font-bold">helpdesk.com/sitemap.xml</span>
-                      <span className="text-[#00a884] font-extrabold">85% Complete</span>
+                    <div className="bg-slate-900 border border-slate-800 rounded p-1.5 flex flex-col gap-1 text-slate-400 text-[6px]">
+                      <span className="text-slate-500 font-bold uppercase text-[5px]">Prompt:</span>
+                      <span className="text-slate-300">"Create a welcome coupon template for sneakers"</span>
                     </div>
-                    {/* Progress Bar */}
-                    <div className="w-full h-1.5 bg-slate-850 rounded-full overflow-hidden">
-                      <div className="bg-[#00a884] h-full rounded-full w-[85%] animate-pulse" />
-                    </div>
-                    <div className="flex items-center justify-between text-[6px] text-slate-400 bg-[#1e2630]/50 p-1.5 rounded border border-slate-800/80">
-                      <span>✓ Crawled /refund-policy</span>
-                      <span className="text-[#00a884] font-bold">Indexed</span>
+                    <div className="w-full h-1 bg-slate-850 rounded-full overflow-hidden">
+                      <div className="bg-[#00a884] h-full rounded-full w-[95%] animate-pulse" />
                     </div>
                   </div>
                 </div>
 
-                <h3 className="text-sm font-black text-white mb-2">AI Copilot & Sitemap RAG</h3>
+                <h3 className="text-sm font-black text-white mb-2">AI Template Content Writer</h3>
                 <p className="text-[11px] text-slate-400 leading-relaxed font-semibold">
-                  Crawl site indices recursively to compile your customer support knowledge base. Instantly query and display matches in the operator chat interface.
+                  Describe your campaign goals, promo codes, or tone shifts. Instantly generate device-responsive HTML templates and custom copy via OpenAI.
                 </p>
               </div>
             </div>
@@ -588,107 +582,6 @@ export default function LandingPage() {
                   Compose visual HTML messages with our rich text toolbar or paste developer templates. Preview designs safely inside isolated iframe sandboxes.
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ━━━ PRICING PLANS ━━━ */}
-      <section id="pricing" className="py-20 md:py-24 border-t border-slate-900 bg-[#070a10]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-2xl sm:text-3xl font-black text-white mb-4">
-              Flat Software Rates. Zero API Markups.
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-semibold">
-              Bring your own API keys. Scale your team size and message volume without premium seat charges.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Starter Plan */}
-            <div className="bg-slate-950 p-8 rounded-2xl border border-slate-850 flex flex-col justify-between shadow-sm relative">
-              <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1">Starter</h4>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-3xl font-black text-white">$29</span>
-                  <span className="text-[11px] text-slate-500 font-bold">/ month</span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-semibold mb-6 leading-relaxed">
-                  Best for growing teams needing core chat systems and contact lists.
-                </p>
-                <div className="h-px bg-slate-850 w-full mb-6" />
-                <ul className="space-y-3 mb-8 text-[11px] font-semibold text-slate-200">
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>3 Team Members</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Single Gateway Account integration</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Conversations Dashboard & Contacts</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Dynamic Routing Webhooks</span></li>
-                </ul>
-              </div>
-              <Link 
-                href="/signup" 
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm text-center transition-colors block"
-              >
-                Start Trial
-              </Link>
-            </div>
-
-            {/* Professional Plan */}
-            <div className="bg-slate-950 p-8 rounded-2xl border-2 border-[#00a884] flex flex-col justify-between shadow-xl relative scale-105 z-10">
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#00a884] text-white text-[9px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wider">Most Popular</span>
-              <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-[#00a884] mb-1">Professional</h4>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-3xl font-black text-white">$79</span>
-                  <span className="text-[11px] text-slate-500 font-bold">/ month</span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-semibold mb-6 leading-relaxed">
-                  Best for marketing teams needing automation, campaigns, and AI tools.
-                </p>
-                <div className="h-px bg-slate-850 w-full mb-6" />
-                <ul className="space-y-3 mb-8 text-[11px] font-semibold text-slate-200">
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>15 Team Members</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Excel Campaigns bulk dispatch</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>AI Copilot suggested replies</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>RAG Sitemap Crawling RAG</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>HTML Email Templates wizard</span></li>
-                </ul>
-              </div>
-              <Link 
-                href="/signup" 
-                className="w-full py-2.5 bg-[#00a884] hover:bg-[#008069] text-white font-bold text-xs rounded-xl shadow-sm text-center transition-all block active:scale-[0.98]"
-              >
-                Start Trial
-              </Link>
-            </div>
-
-            {/* Enterprise Plan */}
-            <div className="bg-slate-950 p-8 rounded-2xl border border-slate-850 flex flex-col justify-between shadow-sm relative">
-              <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1">Enterprise</h4>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-3xl font-black text-white">$199</span>
-                  <span className="text-[11px] text-slate-500 font-bold">/ month</span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-semibold mb-6 leading-relaxed">
-                  Best for organizations running IVR workflows, realtime voice bots, and leaderboards.
-                </p>
-                <div className="h-px bg-slate-850 w-full mb-6" />
-                <ul className="space-y-3 mb-8 text-[11px] font-semibold text-slate-200">
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Unlimited Team Members</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Voice IVR Call Trees Builder</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Real-time AI voice streaming proxy</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Sales Team performance leaderboard</span></li>
-                  <li className="flex items-center gap-2"><Check size={14} className="text-[#00a884] flex-shrink-0" /> <span>Premium 24/7 Slack support</span></li>
-                </ul>
-              </div>
-              <Link 
-                href="/signup" 
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm text-center transition-colors block"
-              >
-                Start Trial
-              </Link>
             </div>
           </div>
         </div>
