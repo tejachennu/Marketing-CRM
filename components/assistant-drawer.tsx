@@ -504,35 +504,40 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
 
   return (
     <div 
-      className={`fixed bottom-56 md:bottom-52 right-6 md:right-6 z-[999] transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+      className={`fixed bottom-[152px] right-2 md:right-6 z-[999] transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
     >
       <div className={`w-[320px] md:w-[350px] max-w-[calc(100vw-32px)] h-[400px] md:h-[500px] max-h-[calc(100vh-160px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border border-slate-200/60 dark:border-slate-800/80 shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 font-sans text-slate-800 dark:text-slate-100 origin-bottom-right ${isDragging ? 'cursor-grabbing' : ''}`}>
         
         {/* Drawer Header */}
         <div 
-          className={`p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20 shrink-0 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`px-4 pt-2.5 pb-4 border-b border-slate-100 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/20 shrink-0 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white">
-            <Sparkles size={13} className="animate-pulse" />
-          </div>
-          <div>
-            <h3 className="text-xs font-black tracking-tight text-slate-900 dark:text-white leading-none">Marketing Assistant</h3>
-            <span className="text-[9px] text-slate-400 font-bold block mt-1 uppercase">{orgName || 'Workspace'}</span>
+          {/* Centered Drag Handle Indicator */}
+          <div className="w-12 h-1 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-2.5 transition-colors duration-200 group-hover:bg-slate-350 dark:group-hover:bg-slate-700" />
+
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white">
+                <Sparkles size={13} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black tracking-tight text-slate-900 dark:text-white leading-none">Marketing Assistant</h3>
+                <span className="text-[9px] text-slate-400 font-bold block mt-1 uppercase">{orgName || 'Workspace'}</span>
+              </div>
+            </div>
+            <button 
+              onClick={onClose}
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-lg transition-colors"
+            >
+              <X size={15} />
+            </button>
           </div>
         </div>
-        <button 
-          onClick={onClose}
-          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-lg transition-colors"
-        >
-          <X size={15} />
-        </button>
-      </div>
 
       {/* Navigation tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/10 shrink-0 p-1 justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 select-none">

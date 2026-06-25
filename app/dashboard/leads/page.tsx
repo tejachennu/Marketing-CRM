@@ -1257,20 +1257,20 @@ export default function LeadsPage() {
                 <p className="text-xs font-medium mt-1">Try adjusting your filters or add a new lead</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-[#e9edef] shadow-sm overflow-hidden">
-                {/* Table Header */}
-                <div className="grid grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 border-b border-[#e9edef] bg-[#f8f9fa] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-[#667781]">
-                  <button onClick={() => handleSort('title')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] transition-colors text-left">
+              <div className="bg-white dark:bg-[#111b21] rounded-xl border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden">
+                {/* Table Header (Desktop only) */}
+                <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f8f9fa] dark:bg-[#182229] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                  <button onClick={() => handleSort('title')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors text-left border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
                     Contact / Deal {sortField === 'title' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Stage</span>
-                  <button onClick={() => handleSort('value')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] transition-colors">
+                  <button onClick={() => handleSort('value')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
                     Value {sortField === 'value' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Status</span>
                   <span>Priority</span>
                   <span>Source</span>
-                  <button onClick={() => handleSort('last_activity_at')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] transition-colors">
+                  <button onClick={() => handleSort('last_activity_at')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
                     Activity {sortField === 'last_activity_at' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Actions</span>
@@ -1282,86 +1282,162 @@ export default function LeadsPage() {
                   const statusCfg = STATUS_CONFIG[lead.status || 'active']
                   const priorityCfg = PRIORITY_CONFIG[lead.priority || 'medium']
                   const PriorityIcon = priorityCfg.icon
+                  const isSelected = selectedLeadId === lead.id
                   return (
                     <div
                       key={lead.id}
                       onClick={() => setSelectedLeadId(lead.id)}
-                      className={`grid grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 px-4 py-3 border-b border-[#f5f6f6] last:border-b-0 cursor-pointer transition-all hover:bg-[#f8f9fa] group ${
-                        selectedLeadId === lead.id ? 'bg-[#e7f7f4]/30' : ''
+                      className={`px-4 py-4 md:py-3 border-b border-[#f5f6f6] dark:border-[#202d36] last:border-b-0 cursor-pointer transition-all hover:bg-[#f8f9fa] dark:hover:bg-[#182229]/60 ${
+                        isSelected ? 'bg-[#e7f7f4]/30 dark:bg-emerald-950/20' : ''
                       }`}
                     >
-                      {/* Contact / Deal */}
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="h-8 w-8 rounded-full bg-[#dfe5e7] flex items-center justify-center font-bold text-[10px] text-[#54656f] flex-shrink-0 border border-[#e9edef]">
-                          {(lead.contact?.first_name || 'U').substring(0, 2).toUpperCase()}
+                      {/* MOBILE CARD LAYOUT (visible on mobile only) */}
+                      <div className="flex flex-col gap-2.5 md:hidden">
+                        {/* Header Row: Contact info + Value */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="h-8 w-8 rounded-full bg-[#dfe5e7] dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-[#54656f] dark:text-slate-300 flex-shrink-0 border border-[#e9edef] dark:border-slate-800">
+                              {(lead.contact?.first_name || 'U').substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-[#111b21] dark:text-slate-100 truncate">{lead.title}</p>
+                              <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium truncate">
+                                {name}{lead.contact?.company ? ` · ${lead.contact.company}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="text-xs font-black text-[#008069] dark:text-[#00e676] font-mono whitespace-nowrap pt-1">
+                            {lead.value ? formatCurrency(lead.value) : '—'}
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-[#111b21] truncate">{lead.title}</p>
-                          <p className="text-[10px] text-[#667781] font-medium truncate">{name}{lead.contact?.company ? ` · ${lead.contact.company}` : ''}</p>
+
+                        {/* Badges Row */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[9px] mt-0.5">
+                          <span className="px-2 py-0.5 rounded-full font-bold text-white truncate"
+                            style={{ backgroundColor: lead.stage?.color || '#8696a0' }}>
+                            {lead.stage?.name || 'Unknown'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                            {statusCfg.label}
+                          </span>
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-bold ${priorityCfg.bg} ${priorityCfg.color} border ${priorityCfg.border}`}>
+                            <PriorityIcon size={9} />
+                            {priorityCfg.label}
+                          </span>
+                          <span className="text-[9px] text-[#667781] dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
+                            {(lead.source || 'other').replace('_', ' ')}
+                          </span>
+                        </div>
+
+                        {/* Footer Row: Activity + Actions */}
+                        <div className="flex items-center justify-between border-t border-[#f5f6f6] dark:border-[#202d36] pt-2 mt-1">
+                          <div className="text-[9px] text-[#8696a0] dark:text-slate-500 font-medium">
+                            Activity: {daysSince(lead.last_activity_at || lead.created_at)}
+                          </div>
+                          
+                          {/* Quick Actions (always visible on mobile) */}
+                          <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                            {lead.status === 'active' && (
+                              <>
+                                <button onClick={() => handleStatusChange(lead.id, 'won')}
+                                  title="Mark Won"
+                                  className="p-1 rounded-md bg-green-50 dark:bg-green-950/40 text-green-600 dark:text-green-400 hover:bg-green-100 border border-green-100 dark:border-green-900/50 cursor-pointer transition-all">
+                                  <CheckCircle2 size={12} />
+                                </button>
+                                <button onClick={() => handleStatusChange(lead.id, 'lost')}
+                                  title="Mark Lost"
+                                  className="p-1 rounded-md bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-450 hover:bg-red-100 border border-red-100 dark:border-red-900/50 cursor-pointer transition-all">
+                                  <Ban size={12} />
+                                </button>
+                              </>
+                            )}
+                            {(lead.status === 'won' || lead.status === 'lost' || lead.status === 'on_hold') && (
+                              <button onClick={() => handleStatusChange(lead.id, 'active')}
+                                title="Reactivate"
+                                className="p-1 px-2 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[9px] font-bold">
+                                Reactivate
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Stage */}
-                      <div className="flex items-center">
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white truncate"
-                          style={{ backgroundColor: lead.stage?.color || '#8696a0' }}>
-                          {lead.stage?.name || 'Unknown'}
-                        </span>
-                      </div>
+                      {/* DESKTOP TABLE ROW LAYOUT (hidden on mobile) */}
+                      <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 items-center">
+                        {/* Contact / Deal */}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="h-8 w-8 rounded-full bg-[#dfe5e7] dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-[#54656f] dark:text-slate-350 flex-shrink-0 border border-[#e9edef] dark:border-slate-800">
+                            {(lead.contact?.first_name || 'U').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-[#111b21] dark:text-slate-100 truncate">{lead.title}</p>
+                            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium truncate">{name}{lead.contact?.company ? ` · ${lead.contact.company}` : ''}</p>
+                          </div>
+                        </div>
 
-                      {/* Value */}
-                      <div className="flex items-center text-xs font-bold text-[#008069] font-mono">
-                        {lead.value ? formatCurrency(lead.value) : '—'}
-                      </div>
+                        {/* Stage */}
+                        <div className="flex items-center">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white truncate"
+                            style={{ backgroundColor: lead.stage?.color || '#8696a0' }}>
+                            {lead.stage?.name || 'Unknown'}
+                          </span>
+                        </div>
 
-                      {/* Status */}
-                      <div className="flex items-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
-                          {statusCfg.label}
-                        </span>
-                      </div>
+                        {/* Value */}
+                        <div className="flex items-center text-xs font-bold text-[#008069] dark:text-[#00e676] font-mono">
+                          {lead.value ? formatCurrency(lead.value) : '—'}
+                        </div>
 
-                      {/* Priority */}
-                      <div className="flex items-center">
-                        <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${priorityCfg.bg} ${priorityCfg.color} border ${priorityCfg.border}`}>
-                          <PriorityIcon size={9} />
-                          {priorityCfg.label}
-                        </span>
-                      </div>
+                        {/* Status */}
+                        <div className="flex items-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                            {statusCfg.label}
+                          </span>
+                        </div>
 
-                      {/* Source */}
-                      <div className="flex items-center text-[10px] text-[#667781] font-medium capitalize">
-                        {(lead.source || 'other').replace('_', ' ')}
-                      </div>
+                        {/* Priority */}
+                        <div className="flex items-center">
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${priorityCfg.bg} ${priorityCfg.color} border ${priorityCfg.border}`}>
+                            <PriorityIcon size={9} />
+                            {priorityCfg.label}
+                          </span>
+                        </div>
 
-                      {/* Activity */}
-                      <div className="flex items-center text-[10px] text-[#8696a0] font-medium">
-                        {daysSince(lead.last_activity_at || lead.created_at)}
-                      </div>
+                        {/* Source */}
+                        <div className="flex items-center text-[10px] text-[#667781] dark:text-[#8696a0] font-medium capitalize">
+                          {(lead.source || 'other').replace('_', ' ')}
+                        </div>
 
-                      {/* Quick Actions */}
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        {lead.status === 'active' && (
-                          <>
-                            <button onClick={() => handleStatusChange(lead.id, 'won')}
-                              title="Mark Won"
-                              className="p-1.5 rounded-md bg-green-50 text-green-600 hover:bg-green-100 border border-green-100 cursor-pointer transition-all">
-                              <CheckCircle2 size={12} />
+                        {/* Activity */}
+                        <div className="flex items-center text-[10px] text-[#8696a0] dark:text-[#8696a0] font-medium">
+                          {daysSince(lead.last_activity_at || lead.created_at)}
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                          {lead.status === 'active' && (
+                            <>
+                              <button onClick={() => handleStatusChange(lead.id, 'won')}
+                                title="Mark Won"
+                                className="p-1.5 rounded-md bg-green-50 dark:bg-green-950/40 text-green-600 dark:text-green-400 hover:bg-green-100 border border-green-100 dark:border-green-900/50 cursor-pointer transition-all">
+                                <CheckCircle2 size={12} />
+                              </button>
+                              <button onClick={() => handleStatusChange(lead.id, 'lost')}
+                                title="Mark Lost"
+                                className="p-1.5 rounded-md bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 border border-red-100 dark:border-red-900/50 cursor-pointer transition-all">
+                                <Ban size={12} />
+                              </button>
+                            </>
+                          )}
+                          {(lead.status === 'won' || lead.status === 'lost' || lead.status === 'on_hold') && (
+                            <button onClick={() => handleStatusChange(lead.id, 'active')}
+                              title="Reactivate"
+                              className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[9px] font-bold">
+                              Reactivate
                             </button>
-                            <button onClick={() => handleStatusChange(lead.id, 'lost')}
-                              title="Mark Lost"
-                              className="p-1.5 rounded-md bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 cursor-pointer transition-all">
-                              <Ban size={12} />
-                            </button>
-                          </>
-                        )}
-                        {(lead.status === 'won' || lead.status === 'lost' || lead.status === 'on_hold') && (
-                          <button onClick={() => handleStatusChange(lead.id, 'active')}
-                            title="Reactivate"
-                            className="p-1.5 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 cursor-pointer transition-all text-[9px] font-bold">
-                            Reactivate
-                          </button>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   )

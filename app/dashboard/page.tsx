@@ -27,6 +27,18 @@ function ConversationsPageContent() {
     }
   }, [conversationIdParam])
 
+  useEffect(() => {
+    const handleReset = () => {
+      setSelectedConversation(null)
+      if (window.history.pushState) {
+        const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.pushState({path:newurl}, '', newurl);
+      }
+    }
+    window.addEventListener('reset-active-chat', handleReset)
+    return () => window.removeEventListener('reset-active-chat', handleReset)
+  }, [])
+
   const [messages, setMessages] = useState<Message[]>([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -115,6 +127,8 @@ function ConversationsPageContent() {
   const selectedConvRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const conversationsRef = useRef<ConversationWithContact[]>([])
+  const hasScrolledForConvRef = useRef(false)
+  const lastScrollMsgIdRef = useRef<string | null>(null)
 
   // Keep conversations ref in sync
   useEffect(() => {
@@ -127,14 +141,27 @@ function ConversationsPageContent() {
     return () => clearInterval(timer)
   }, [])
 
-  // Keep ref in sync for use in callbacks
+  // Keep ref in sync for use in callbacks and reset scroll tracking when switching conversation
   useEffect(() => {
     selectedConvRef.current = selectedConversation
+    hasScrolledForConvRef.current = false
+    lastScrollMsgIdRef.current = null
   }, [selectedConversation])
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom intelligently (instant on load, smooth on new messages, none on pagination)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length > 0) {
+      const lastMsgId = messages[messages.length - 1]?.id || null
+      
+      if (!hasScrolledForConvRef.current) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+        hasScrolledForConvRef.current = true
+        lastScrollMsgIdRef.current = lastMsgId
+      } else if (lastMsgId !== lastScrollMsgIdRef.current) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        lastScrollMsgIdRef.current = lastMsgId
+      }
+    }
   }, [messages])
 
   // ─── Data Fetching ───
@@ -922,30 +949,30 @@ function ConversationsPageContent() {
 
           {/* Filters and Sort */}
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/30 dark:border-slate-700/30">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setUnreadFilter(false)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] transition-all font-semibold ${
+                className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold cursor-pointer ${
                   !unreadFilter 
-                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold' 
+                    : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/80'
                 }`}
               >
                 All
               </button>
               <button
                 onClick={() => setUnreadFilter(true)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] transition-all font-semibold flex items-center gap-1.5 ${
+                className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold flex items-center gap-1.5 cursor-pointer ${
                   unreadFilter 
-                    ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' 
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold' 
+                    : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/80'
                 }`}
               >
                 <span>Unread</span>
                 {unreadCount > 0 && (
                   <span className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[9px] font-bold transition-all ${
                     unreadFilter 
-                      ? 'bg-emerald-500 text-white' 
+                      ? 'bg-emerald-550 dark:bg-emerald-500 text-white' 
                       : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
                   }`}>
                     {unreadCount}
@@ -992,12 +1019,11 @@ function ConversationsPageContent() {
                     <div className="absolute left-1 top-3.5 bottom-3.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-full" />
                   )}
 
-                  {/* Avatar with status indicator */}
+                  {/* Avatar */}
                   <div className="relative flex-shrink-0 select-none">
                     <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 text-xs shadow-xs">
                       {contactName.substring(0, 2).toUpperCase()}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-sm" />
                   </div>
 
                   {/* Conv metadata */}

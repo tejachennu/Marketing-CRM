@@ -241,12 +241,12 @@ export default function DashboardLayout({
             try {
               const { data: contact } = await supabase
                 .from('contacts')
-                .select('first_name, last_name')
+                .select('first_name, last_name, phone_number, whatsapp_number')
                 .eq('id', payload.new.contact_id)
                 .maybeSingle()
 
               const contactName = contact
-                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.whatsapp_number || contact.phone_number || 'Unknown'
                 : 'Unknown'
 
               setTicketToast({
@@ -283,12 +283,12 @@ export default function DashboardLayout({
             try {
               const { data: contact } = await supabase
                 .from('contacts')
-                .select('first_name, last_name, phone')
+                .select('first_name, last_name, phone_number, whatsapp_number')
                 .eq('id', payload.new.contact_id)
                 .maybeSingle()
                 
               const contactName = contact
-                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.phone || 'Unknown'
+                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.whatsapp_number || contact.phone_number || 'Unknown'
                 : 'Unknown'
                 
               addAssistantNotification(`🤖 Auto-reply chatbot turned OFF for conversation with ${contactName}`)
@@ -364,13 +364,12 @@ export default function DashboardLayout({
 
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-bar */}
-        <aside className="fixed bottom-0 left-0 right-0 h-14 w-full flex flex-row items-center border-t border-slate-100 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md md:relative md:h-full md:w-[64px] md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 md:border-t-0 z-40 select-none flex-shrink-0 overflow-x-auto scrollbar-none">
+        {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-ba        {/* DESKTOP VERTICAL SIDEBAR */}
+        <aside className="hidden md:flex md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900 md:w-[64px] md:h-full z-40 select-none flex-shrink-0">
           
-          {/* Navigation Tabs (Vertical/Horizontal) */}
-          <div className="flex flex-row md:flex-col items-center gap-1.5 md:gap-4 w-full h-full md:h-auto justify-start md:justify-start px-2 md:px-0">
-            
-            <nav className="flex flex-row md:flex-col items-center gap-1.5 md:gap-2 justify-start md:justify-start">
+          {/* Navigation Tabs (Vertical) */}
+          <div className="flex flex-col items-center gap-4 w-full">
+            <nav className="flex flex-col items-center gap-2">
               {filteredNavItems.map((item) => {
                 const Icon = item.icon
                 const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
@@ -380,19 +379,19 @@ export default function DashboardLayout({
                     <Link
                       href={item.href}
                       title={item.label}
-                      className={`flex items-center justify-center w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
+                      onClick={() => {
+                        if (item.href === '/dashboard') {
+                          window.dispatchEvent(new Event('reset-active-chat'))
+                        }
+                      }}
+                      className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                         isActive
                           ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
                           : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                       }`}
                     >
-                      {/* Vertical active indicator on desktop */}
                       {isActive && (
-                        <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
-                      )}
-                      {/* Horizontal active indicator on mobile */}
-                      {isActive && (
-                        <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
+                        <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
                       )}
  
                       <Icon
@@ -410,24 +409,22 @@ export default function DashboardLayout({
                       )}
                       
                       {/* Tooltip for desktop */}
-                      <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
+                      <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
                         {item.label}
                       </span>
                     </Link>
- 
-
                   </span>
                 )
               })}
             </nav>
           </div>
 
-          {/* User profile & Logout (All Screens) */}
-          <div className="flex flex-row md:flex-col items-center gap-2 md:gap-4 ml-auto md:ml-0 px-2 md:px-0 w-max md:w-full">
+          {/* User profile & Logout (Desktop) */}
+          <div className="flex flex-col items-center gap-4 w-full">
             {/* Circular Avatar */}
             <div 
               title={userFullName || userEmail}
-              className="hidden md:flex h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs border border-slate-200/50 dark:border-slate-700/50 select-none cursor-pointer shadow-sm hover:border-slate-350 dark:hover:border-slate-600 transition-all duration-200"
+              className="flex h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs border border-slate-200/50 dark:border-slate-700/50 select-none cursor-pointer shadow-sm hover:border-slate-350 dark:hover:border-slate-600 transition-all duration-200"
             >
               {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
             </div>
@@ -436,15 +433,80 @@ export default function DashboardLayout({
             <button
               onClick={handleLogout}
               title="Logout"
-              className="flex items-center justify-center h-10 w-10 md:h-10 md:w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
+              className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
             >
               <LogOut size={16} />
             </button>
           </div>
         </aside>
 
+        {/* MOBILE BOTTOM NAVIGATION BAR */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 h-[76px] bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md z-45 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)] flex items-center justify-around px-1 pb-safe">
+          {filteredNavItems.map((item) => {
+            const Icon = item.icon
+            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+            const shortLabel = item.label === 'Conversations' 
+              ? 'Chats' 
+              : item.label === 'Sales Pipeline' 
+              ? 'Pipeline' 
+              : item.label === 'Support Tickets' 
+              ? 'Tickets' 
+              : item.label
+            
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => {
+                  if (item.href === '/dashboard') {
+                    window.dispatchEvent(new Event('reset-active-chat'))
+                  }
+                }}
+                className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative"
+              >
+                {/* Icon Container with active background pill */}
+                <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  isActive 
+                    ? 'bg-emerald-500/10 dark:bg-emerald-400/15 text-[#00a884] dark:text-[#00e676] scale-105' 
+                    : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-350'
+                }`}>
+                  <Icon size={20} className="transition-transform" />
+                </div>
+                
+                {/* Text Label */}
+                <span className={`text-[9px] font-bold tracking-normal mt-1 uppercase transition-colors duration-250 ${
+                  isActive 
+                    ? 'text-[#00a884] dark:text-[#00e676]' 
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}>
+                  {shortLabel}
+                </span>
+
+                {/* Badge for Tickets */}
+                {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
+                  <span className="absolute top-1 right-2 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50 animate-pulse">
+                    {activeTicketsCount}
+                  </span>
+                )}
+              </Link>
+            )
+          })}
+          
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors duration-250 border-0 bg-transparent cursor-pointer"
+          >
+            <div className="w-12 h-7 rounded-full flex items-center justify-center group-hover:bg-rose-500/10 group-hover:text-rose-500 transition-all duration-300">
+              <LogOut size={20} />
+            </div>
+            <span className="text-[9px] font-bold tracking-normal mt-1 uppercase text-slate-400 dark:text-slate-500 group-hover:text-rose-500">
+              Logout
+            </span>
+          </button>
+        </div>
+
         {/* Main Content Area */}
-        <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-[#090d16] relative pb-14 md:pb-0 h-[calc(100vh-3.5rem)] md:h-full">
+        <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-[#090d16] relative pb-[76px] md:pb-0 h-[calc(100vh-76px)] md:h-full">
           <div className="h-full w-full p-0">
             {isPageAllowed() ? (
               children
@@ -562,7 +624,7 @@ export default function DashboardLayout({
           )}
 
           {/* Floating Action Buttons Container */}
-          <div className="fixed right-6 bottom-40 md:bottom-36 flex flex-col gap-3 z-[1000]">
+          <div className="fixed right-2 md:right-6 bottom-24 flex flex-col gap-3 z-[1000]">
             {/* Global AI Assistant Floating Trigger */}
             <button
               onClick={() => setShowAssistant((prev) => !prev)}

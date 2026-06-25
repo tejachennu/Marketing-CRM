@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
         is_active,
         last_message_at,
         unread_count,
+        auto_reply_enabled,
         assigned_to,
         created_at,
         updated_at,

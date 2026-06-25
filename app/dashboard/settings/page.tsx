@@ -566,10 +566,10 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[#e9edef] dark:border-[#202d36] mb-6">
+      <div className="flex overflow-x-auto whitespace-nowrap border-b border-[#e9edef] dark:border-[#202d36] mb-6 no-scrollbar -mx-4 px-4 md:-mx-0 md:px-0">
         <button
           onClick={() => setActiveTab('general')}
-          className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${
             activeTab === 'general'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
@@ -580,7 +580,7 @@ export default function SettingsPage() {
         {organization?.enable_ai !== false && (
           <button
             onClick={() => setActiveTab('knowledge')}
-            className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+            className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
               activeTab === 'knowledge'
                 ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
                 : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
@@ -592,7 +592,7 @@ export default function SettingsPage() {
         )}
         <button
           onClick={() => setActiveTab('teammates')}
-          className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
             activeTab === 'teammates'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
@@ -603,7 +603,7 @@ export default function SettingsPage() {
         </button>
         <button
           onClick={() => setActiveTab('appearance')}
-          className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
             activeTab === 'appearance'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
