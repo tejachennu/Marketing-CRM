@@ -43,6 +43,7 @@ interface OrgStats {
   created_at: string
   usersCount: number
   contactsCount: number
+  campaignsCount: number
   messagesCount: number
   aiTokens: number
   aiCost: number
@@ -500,6 +501,7 @@ export default function SuperAdminPage() {
   // Overall statistics
   const [stats, setStats] = useState({
     organizations: 0,
+    users: 0,
     contacts: 0,
     messages: 0,
     campaigns: 0,

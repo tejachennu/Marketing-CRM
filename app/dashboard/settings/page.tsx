@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
