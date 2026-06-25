@@ -977,7 +977,7 @@ export default function LeadsPage() {
 
   // ─── Render ───
   return (
-    <div className="h-full flex flex-col bg-[#eae6df]/30 overflow-hidden">
+    <div className="h-full flex flex-col bg-[#eae6df]/30 overflow-hidden leads-page-container">
       {/* ━━━ TOP BAR ━━━ */}
       <div className="flex-shrink-0 bg-white border-b border-[#e9edef] px-4 md:px-6 py-2.5">
         <div className="flex flex-col gap-3">

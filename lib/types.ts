@@ -31,6 +31,7 @@ export interface Organization {
   whatsapp_graph_api_version?: string | null
   whatsapp_phone_number_id?: string | null
   whatsapp_business_account_id?: string | null
+  max_teammates?: number | null
 }
 
 export interface User {

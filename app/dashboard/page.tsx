@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
 import { 
@@ -14,8 +14,17 @@ import { authSessionManager } from '@/lib/auth-context'
 
 export default function ConversationsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const conversationIdParam = searchParams.get('conversationId')
+
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (conversationIdParam) {
+      setSelectedConversation(conversationIdParam)
+    }
+  }, [conversationIdParam])
   const [messages, setMessages] = useState<Message[]>([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -817,7 +826,7 @@ export default function ConversationsPage() {
                     <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 text-xs select-none shadow-xs">
                       {contactName.substring(0, 2).toUpperCase()}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-[#111b21] rounded-full shadow-sm" />
+                    <div className="absolute -bottom-1 -right-1 h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-sm" />
                   </div>
 
                   {/* Conv metadata */}
@@ -1029,7 +1038,7 @@ export default function ConversationsPage() {
                       className={`max-w-[65%] rounded-2xl px-4 py-2.5 shadow-xs border transition-all duration-200 relative text-xs leading-relaxed ${
                         isUser
                           ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-emerald-500/25 text-white shadow-emerald-500/10 rounded-tr-none'
-                          : 'bg-white/95 dark:bg-slate-805 border-slate-100 dark:border-slate-800/80 text-slate-800 dark:text-slate-100 rounded-tl-none shadow-slate-200/50 dark:shadow-none'
+                          : 'bg-wa-bubble-in border-wa-border text-wa-text-primary rounded-tl-none shadow-sm dark:shadow-none'
                       }`}
                     >
                       {/* Reply quote preview block */}

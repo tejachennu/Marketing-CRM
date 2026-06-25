@@ -268,6 +268,23 @@ export default function CampaignsPage() {
     }
   }, [channel, availableSenders])
 
+  // Auto-select first configured channel when availableSenders or features change
+  useEffect(() => {
+    const channels: Array<'whatsapp' | 'sms' | 'email'> = []
+    if (features.enable_messages && availableSenders.whatsappSenders.length > 0) {
+      channels.push('whatsapp')
+    }
+    if (features.enable_messages && features.enable_sms && availableSenders.smsSenders.length > 0) {
+      channels.push('sms')
+    }
+    if (features.enable_email && availableSenders.emailSenders.length > 0) {
+      channels.push('email')
+    }
+    if (channels.length > 0 && !channels.includes(channel)) {
+      setChannel(channels[0])
+    }
+  }, [availableSenders, features, channel])
+
   // Auto-polling for active campaigns
   useEffect(() => {
     const hasProcessing = campaigns.some(c => c.status === 'PROCESSING' || c.status === 'PENDING')
@@ -714,9 +731,9 @@ export default function CampaignsPage() {
             <span className="text-[10px] uppercase font-bold tracking-wider text-[#667781] dark:text-[#8696a0]">Total Sent</span>
             <span className="text-xl font-bold text-[#111b21] dark:text-white mt-0.5">{totalSent}</span>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-[#e9edef] shadow-sm flex flex-col">
+          <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-sm flex flex-col">
             <span className="text-[10px] uppercase font-bold tracking-wider text-[#667781] dark:text-[#8696a0]">Success Rate</span>
-            <span className="text-xl font-bold text-[#008069] mt-0.5">{successRate}%</span>
+            <span className="text-xl font-bold text-[#008069] dark:text-emerald-400 mt-0.5">{successRate}%</span>
           </div>
         </div>
 
@@ -799,24 +816,24 @@ export default function CampaignsPage() {
                       <span>Progress: {c.sent_count + c.failed_count} / {c.total_contacts}</span>
                       {c.failed_count > 0 && <span className="text-red-500">{c.failed_count} failed</span>}
                     </div>
-                    <div className="h-1.5 bg-[#e9edef] rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[#e9edef] dark:bg-[#202d36] rounded-full overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-500 ${c.status === 'FAILED' ? 'bg-red-500' : 'bg-[#00a884]'}`}
                         style={{ width: `${c.total_contacts > 0 ? ((c.sent_count + c.failed_count) / c.total_contacts) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
-
+ 
                   <div className="flex justify-between items-center text-[10px] text-[#8696a0] mt-1">
                     <span>{new Date(c.created_at).toLocaleDateString()}</span>
-                    <span>Sent: <span className="text-[#008069] font-bold">{c.sent_count}</span></span>
+                    <span>Sent: <span className="text-[#008069] dark:text-emerald-400 font-bold">{c.sent_count}</span></span>
                   </div>
                 </div>
               )
             })
           )}
         </div>
-
+ 
         {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="h-[52px] bg-[#f0f2f5] dark:bg-[#111b21] border-t border-[#e9edef] dark:border-[#202d36] flex items-center justify-between px-4 flex-shrink-0 select-none">
@@ -828,7 +845,7 @@ export default function CampaignsPage() {
                 type="button"
                 disabled={currentPage === 1}
                 onClick={() => fetchCampaigns(currentPage - 1)}
-                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] bg-white hover:bg-[#f8f9fa] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
               >
                 Prev
               </button>
@@ -836,7 +853,7 @@ export default function CampaignsPage() {
                 type="button"
                 disabled={currentPage === totalPages}
                 onClick={() => fetchCampaigns(currentPage + 1)}
-                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] bg-white hover:bg-[#f8f9fa] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
               >
                 Next
               </button>
@@ -904,17 +921,17 @@ export default function CampaignsPage() {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Total Targets</div>
                 <div className="text-2xl font-black text-[#111b21] dark:text-white mt-1">{selectedCampaign.total_contacts}</div>
               </div>
-              <div className="bg-[#f8f9fa] p-3.5 rounded-xl border border-[#e9edef]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[#008069]">Successfully Sent</div>
-                <div className="text-2xl font-black text-[#008069] mt-1">{selectedCampaign.sent_count}</div>
+              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[#008069] dark:text-emerald-400">Successfully Sent</div>
+                <div className="text-2xl font-black text-[#008069] dark:text-emerald-400 mt-1">{selectedCampaign.sent_count}</div>
               </div>
-              <div className="bg-[#f8f9fa] p-3.5 rounded-xl border border-[#e9edef]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-red-500">Dispatch Failed</div>
-                <div className="text-2xl font-black text-red-500 mt-1">{selectedCampaign.failed_count}</div>
+              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-red-500 dark:text-red-400">Dispatch Failed</div>
+                <div className="text-2xl font-black text-red-500 dark:text-red-400 mt-1">{selectedCampaign.failed_count}</div>
               </div>
-              <div className="bg-[#f8f9fa] p-3.5 rounded-xl border border-[#e9edef]">
+              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Delivery Success</div>
-                <div className="text-2xl font-black text-blue-600 mt-1">
+                <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">
                   {selectedCampaign.total_contacts > 0 
                     ? Math.round((selectedCampaign.sent_count / selectedCampaign.total_contacts) * 100) 
                     : 0}%
@@ -954,7 +971,7 @@ export default function CampaignsPage() {
                 )}
               </div>
               {selectedCampaign.channel === 'email' && /<[a-z][\s\S]*>/i.test(selectedCampaign.template_body || '') && detailsPreviewMode === 'preview' ? (
-                <div className="mt-1.5 border border-[#e9edef] rounded-xl overflow-hidden bg-white max-w-2xl shadow-sm">
+                <div className="mt-1.5 border border-[#e9edef] dark:border-[#2a3942] rounded-xl overflow-hidden bg-white dark:bg-slate-900 max-w-2xl shadow-sm">
                   <iframe
                     srcDoc={selectedCampaign.template_body}
                     title="Email Template Preview"
@@ -963,7 +980,7 @@ export default function CampaignsPage() {
                   />
                 </div>
               ) : (
-                <div className="mt-1.5 p-3 rounded-lg bg-[#f0f2f5] border border-[#e9edef] text-xs font-mono text-[#54656f] dark:text-[#8696a0] max-w-2xl whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
+                <div className="mt-1.5 p-3 rounded-lg bg-[#f0f2f5] dark:bg-[#1c282f] border border-[#e9edef] dark:border-[#2a3942] text-xs font-mono text-[#54656f] dark:text-[#8696a0] max-w-2xl whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
                   {selectedCampaign.template_body}
                 </div>
               )}
@@ -984,7 +1001,7 @@ export default function CampaignsPage() {
                   </div>
                 ) : (
                   <table className="w-full text-left text-xs border-collapse">
-                    <thead className="sticky top-0 bg-[#f0f2f5] border-b border-[#e9edef] text-[#54656f] dark:text-[#8696a0] font-bold">
+                    <thead className="sticky top-0 bg-[#f0f2f5] dark:bg-[#1c282f] border-b border-[#e9edef] dark:border-[#2a3942] text-[#54656f] dark:text-[#8696a0] font-bold">
                       <tr>
                         <th className="p-3">Recipient</th>
                         <th className="p-3">Status</th>
@@ -993,7 +1010,7 @@ export default function CampaignsPage() {
                         <th className="p-3">Error / Details</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#f5f6f6]">
+                    <tbody className="divide-y divide-[#f5f6f6] dark:divide-[#2a3942]/60">
                       {selectedCampaignLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#1f2c34] transition-all">
                           <td className="p-3 font-semibold text-[#111b21] dark:text-white">
@@ -1003,9 +1020,9 @@ export default function CampaignsPage() {
                           </td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              log.status === 'SENT' ? 'bg-[#e7f7f4] text-[#008069]' :
-                              log.status === 'FAILED' ? 'bg-red-50 text-red-600' :
-                              'bg-gray-100 text-gray-500'
+                              log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-emerald-950/30 text-[#008069] dark:text-emerald-400' :
+                              log.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400' :
+                              'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400'
                             }`}>
                               {log.status}
                             </span>
@@ -1020,7 +1037,7 @@ export default function CampaignsPage() {
                               ))}
                             </div>
                           </td>
-                          <td className="p-3 text-red-500 max-w-[200px] truncate" title={log.error_message || ''}>
+                          <td className="p-3 text-red-555 dark:text-red-400 max-w-[200px] truncate" title={log.error_message || ''}>
                             {log.error_message || '-'}
                           </td>
                         </tr>
@@ -1092,7 +1109,7 @@ export default function CampaignsPage() {
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">Campaign Channel</label>
                     <div className="grid grid-cols-3 gap-2">
-                      {features.enable_messages && (
+                      {features.enable_messages && availableSenders.whatsappSenders.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setChannel('whatsapp')}
@@ -1105,7 +1122,7 @@ export default function CampaignsPage() {
                           WhatsApp
                         </button>
                       )}
-                      {features.enable_messages && features.enable_sms && (
+                      {features.enable_messages && features.enable_sms && availableSenders.smsSenders.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setChannel('sms')}
@@ -1118,7 +1135,7 @@ export default function CampaignsPage() {
                           SMS
                         </button>
                       )}
-                      {features.enable_email && (
+                      {features.enable_email && availableSenders.emailSenders.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setChannel('email')}

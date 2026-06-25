@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -47,6 +48,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
     const supabase = getSupabaseClient()
     const { data, error } = await supabase
       .from('knowledge_base')
@@ -71,6 +77,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 })
     }
 
+    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
     const supabase = getSupabaseClient()
     const { error } = await supabase
       .from('knowledge_base')
@@ -87,13 +98,19 @@ export async function DELETE(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const { organizationId, type, title, content } = body
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     if (type !== 'manual') {
       return NextResponse.json({ error: 'Invalid type. Only "manual" FAQ entries are supported.' }, { status: 400 })

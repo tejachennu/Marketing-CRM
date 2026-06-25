@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -102,9 +103,15 @@ Standalone search query:`
 
 export async function POST(request: NextRequest) {
   try {
-    const { conversationId } = await request.json()
+    const body = await request.json()
+    const { conversationId } = body
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
+    }
+
+    const authResult = await verifyRecordAccess(request, 'conversations', conversationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()

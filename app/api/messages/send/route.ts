@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
+import { verifyOrgAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -55,16 +56,28 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing organization context' }, { status: 400 })
+    }
+
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+
     // Resolve tenant credentials
-    let twilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
-    let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
-    let TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
-    let whatsappProvider = process.env.WHATSAPP_PROVIDER || 'twilio'
-    let whatsappApiToken = process.env.WHATSAPP_API_TOKEN || ''
-    let whatsappDefaultPhone = process.env.WHATSAPP_DEFAULT_PHONE || ''
-    let whatsappGraphApiVersion = process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
-    let whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    let twilioAccountSid = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
+    let twilioAuthToken = isMasterOrg ? (process.env.TWILIO_AUTH_TOKEN || '') : ''
+    let TWILIO_WHATSAPP_NUMBER = isMasterOrg ? (process.env.TWILIO_WHATSAPP_NUMBER || '') : ''
+    let whatsappProvider = isMasterOrg ? (process.env.WHATSAPP_PROVIDER || 'twilio') : 'twilio'
+    let whatsappApiToken = isMasterOrg ? (process.env.WHATSAPP_API_TOKEN || '') : ''
+    let whatsappDefaultPhone = isMasterOrg ? (process.env.WHATSAPP_DEFAULT_PHONE || '') : ''
+    let whatsappGraphApiVersion = isMasterOrg ? (process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0') : 'v25.0'
+    let whatsappPhoneNumberId = isMasterOrg ? (process.env.WHATSAPP_PHONE_NUMBER_ID || '') : ''
     let enableSms = true
+
 
     if (orgId) {
       try {

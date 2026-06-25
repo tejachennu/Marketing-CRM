@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,12 +16,17 @@ function getSupabaseClient() {
 // GET: List all campaigns or get details of a single campaign (including logs)
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     const orgId = searchParams.get('organizationId')
 
     if (id) {
+      const authResult = await verifyRecordAccess(request, 'campaigns', id)
+      if (!authResult.authorized) {
+        return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      }
+
+      const supabase = getSupabaseClient()
       // Fetch details of a single campaign
       const { data: campaign, error: campaignError } = await supabase
         .from('campaigns')
@@ -54,6 +60,13 @@ export async function GET(request: NextRequest) {
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     // Count total matching campaigns
     const { count: total, error: countError } = await supabase
@@ -95,7 +108,6 @@ export async function GET(request: NextRequest) {
 // POST: Create a new campaign + initialize pending logs
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const {
       name,
@@ -117,6 +129,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const supabase = getSupabaseClient()
+
     // Resolve or get default organizationId
     let resolvedOrgId = organizationId
     if (!resolvedOrgId) {
@@ -124,6 +138,11 @@ export async function POST(request: NextRequest) {
       if (orgs && orgs.length > 0) {
         resolvedOrgId = orgs[0].id
       }
+    }
+
+    const authResult = await verifyOrgAccess(request, resolvedOrgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const campaignChannel = channel || 'whatsapp'

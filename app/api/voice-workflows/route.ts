@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,6 +20,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
     const supabase = getSupabaseClient()
     const { data, error } = await supabase
       .from('voice_workflows')
@@ -36,13 +42,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const { organizationId, name, description, steps } = body
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
     if (!name) {
       return NextResponse.json({ error: 'Missing name' }, { status: 400 })
     }
@@ -95,13 +107,19 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const { id, name, description, steps, isActive } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
     }
+
+    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     // 1. Fetch current workflow to know the organization_id if we need to toggle active
     const { data: current, error: getErr } = await supabase
@@ -154,6 +172,11 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
+    }
+
+    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
 
     const supabase = getSupabaseClient()

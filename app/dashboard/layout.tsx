@@ -4,9 +4,10 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
+import { TicketsDrawer } from '@/components/tickets-drawer'
 
 export default function DashboardLayout({
   children,
@@ -35,6 +36,7 @@ export default function DashboardLayout({
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
+  const [showTickets, setShowTickets] = useState(false)
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -231,15 +233,32 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Theme Switcher Button */}
           <button
             onClick={toggleTheme}
             title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-            className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-all duration-200 shadow-sm cursor-pointer mr-1"
+            className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-all duration-200 shadow-sm cursor-pointer"
           >
             {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
           </button>
+
+          {/* User profile & Logout (Mobile Only) */}
+          <div className="flex md:hidden items-center gap-1.5">
+            <div 
+              title={userFullName || userEmail}
+              className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-[10px] border border-slate-200/50 dark:border-slate-700/50 select-none shadow-sm"
+            >
+              {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Logout"
+              className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-700/50 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
 
           <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold border transition-all duration-200 ${
             credentialsStatus.twilio 
@@ -264,48 +283,81 @@ export default function DashboardLayout({
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-bar */}
-        <aside className="fixed bottom-0 left-0 right-0 h-14 w-full flex flex-row justify-around items-center border-t border-slate-100 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md md:relative md:h-full md:w-[64px] md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 md:border-t-0 z-40 select-none flex-shrink-0">
+        <aside className="fixed bottom-0 left-0 right-0 h-14 w-full flex flex-row items-center border-t border-slate-100 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md md:relative md:h-full md:w-[64px] md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 md:border-t-0 z-40 select-none flex-shrink-0 overflow-x-auto scrollbar-none">
           
           {/* Navigation Tabs (Vertical/Horizontal) */}
-          <div className="flex flex-row md:flex-col items-center gap-1 md:gap-4 w-full h-full md:h-auto justify-around md:justify-start">
+          <div className="flex flex-row md:flex-col items-center gap-1.5 md:gap-4 w-full h-full md:h-auto justify-start md:justify-start px-2 md:px-0">
             
-            <nav className="flex flex-row md:flex-col items-center gap-1 md:gap-2 w-full justify-around md:justify-start">
+            <nav className="flex flex-row md:flex-col items-center gap-1.5 md:gap-2 justify-start md:justify-start">
               {filteredNavItems.map((item) => {
                 const Icon = item.icon
                 const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
                 
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    title={item.label}
-                    className={`flex items-center justify-center w-12 h-12 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative ${
-                      isActive
-                        ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                    }`}
-                  >
-                    {/* Vertical active indicator on desktop */}
-                    {isActive && (
-                      <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
-                    )}
-                    {/* Horizontal active indicator on mobile */}
-                    {isActive && (
-                      <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
-                    )}
-
-                    <Icon
-                      size={20}
-                      className={`transition-transform duration-300 group-hover:scale-110 ${
-                        isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                  <span key={item.href} className="contents">
+                    <Link
+                      href={item.href}
+                      title={item.label}
+                      className={`flex items-center justify-center w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
+                        isActive
+                          ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                          : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                       }`}
-                    />
-                    
-                    {/* Tooltip for desktop */}
-                    <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
-                      {item.label}
-                    </span>
-                  </Link>
+                    >
+                      {/* Vertical active indicator on desktop */}
+                      {isActive && (
+                        <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
+                      )}
+                      {/* Horizontal active indicator on mobile */}
+                      {isActive && (
+                        <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
+                      )}
+ 
+                      <Icon
+                        size={18}
+                        className={`transition-transform duration-300 group-hover:scale-110 ${
+                          isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                        }`}
+                      />
+                      
+                      {/* Tooltip for desktop */}
+                      <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
+                        {item.label}
+                      </span>
+                    </Link>
+ 
+                    {/* Render Tickets button right after Conversations */}
+                    {item.href === '/dashboard' && features.enable_messages && (
+                      <button
+                        type="button"
+                        onClick={() => setShowTickets(true)}
+                        title="Support Tickets"
+                        className={`flex items-center justify-center w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative cursor-pointer flex-shrink-0 ${
+                          showTickets
+                            ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                        }`}
+                      >
+                        {showTickets && (
+                          <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
+                        )}
+                        {showTickets && (
+                          <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
+                        )}
+ 
+                        <Ticket
+                          size={18}
+                          className={`transition-transform duration-300 group-hover:scale-110 ${
+                            showTickets ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                          }`}
+                        />
+                        
+                        <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
+                          Tickets
+                        </span>
+                      </button>
+                    )}
+                  </span>
                 )
               })}
             </nav>
@@ -465,6 +517,13 @@ export default function DashboardLayout({
             onClose={() => setShowAssistant(false)}
             orgId={orgId || ''}
             orgName={orgName}
+          />
+
+          {/* Support Tickets Drawer */}
+          <TicketsDrawer
+            isOpen={showTickets}
+            onClose={() => setShowTickets(false)}
+            orgId={orgId}
           />
         </main>
       </div>

@@ -130,6 +130,13 @@ export async function POST(
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
+    // Verify if Twilio is the active provider
+    const provider = orgData.whatsapp_provider || 'twilio'
+    if (provider !== 'twilio') {
+      console.log(`[Twilio Webhook] Ignoring webhook event for Org ${orgId} because active provider is ${provider}`)
+      return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
+    }
+
     // 3. Fallback check for credentials
     const twilioAccountSid = orgData.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID || ''
     const twilioAuthToken = orgData.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''
@@ -393,7 +400,12 @@ ${formattedContext || '(No matching FAQs found in the knowledge base)'}
 
 CONVERSATION HISTORY:
 The messages below are the recent conversation between you (assistant) and the customer (user).
-Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.`
+Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.
+
+CRITICAL INSTRUCTIONS:
+You MUST respond in JSON format. The JSON object must contain two keys:
+1. "reply": (string) Your natural conversational reply to the customer. If you cannot answer the query using the matched FAQ articles, or if the user asks to connect with support/a human, or if you need to hand off to a human agent, set "reply" to a friendly notice indicating that the support team will get in touch soon.
+2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.`
 
             // 6. Call GPT-4o-mini with conversation history
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -409,6 +421,7 @@ Use this history to maintain context, avoid repeating information, and respond n
                   ...chatHistory,
                   { role: 'user', content: messageBody }
                 ],
+                response_format: { type: 'json_object' },
                 temperature: 0.3,
                 max_tokens: 300
               })
@@ -416,10 +429,49 @@ Use this history to maintain context, avoid repeating information, and respond n
 
             if (gptResponse.ok) {
               const gptData = await gptResponse.json()
-              const botReply = gptData.choices?.[0]?.message?.content?.trim() || ''
+              const contentString = gptData.choices?.[0]?.message?.content?.trim() || '{}'
+
+              let botReply = ''
+              let isRiseTicket = false
+
+              try {
+                const parsed = JSON.parse(contentString)
+                botReply = parsed.reply || ''
+                isRiseTicket = !!parsed.isRiseTicket
+              } catch (parseErr) {
+                console.error('[Webhook Chatbot] Failed to parse JSON response from GPT:', parseErr, contentString)
+                botReply = contentString
+                isRiseTicket = false
+              }
+
+              // Safety check: if bot reply or incoming message suggests human agent or support team, raise ticket
+              const lowerReply = botReply.toLowerCase()
+              const lowerIncoming = messageBody ? messageBody.toLowerCase() : ''
+              if (
+                !isRiseTicket &&
+                (lowerReply.includes('support team') ||
+                 lowerReply.includes('reply you soon') ||
+                 lowerReply.includes('reply soon') ||
+                 lowerReply.includes('contact you') ||
+                 lowerReply.includes('reach you') ||
+                 lowerReply.includes('human agent') ||
+                 lowerReply.includes('representative') ||
+                 lowerIncoming.includes('support team') ||
+                 lowerIncoming.includes('human') ||
+                 lowerIncoming.includes('agent') ||
+                 lowerIncoming.includes('connect to support') ||
+                 lowerIncoming.includes('talk to a person') ||
+                 lowerIncoming.includes('representative') ||
+                 lowerIncoming.includes('raise ticket') ||
+                 lowerIncoming.includes('create ticket') ||
+                 lowerIncoming.includes('need help'))
+              ) {
+                isRiseTicket = true
+                console.log('[Webhook Chatbot] Force-setting isRiseTicket to true based on text analysis. Incoming:', messageBody, 'Reply:', botReply)
+              }
 
               if (botReply) {
-                console.log(`[Webhook Chatbot] Generated reply: "${botReply}"`)
+                console.log(`[Webhook Chatbot] Generated reply: "${botReply}" (isRiseTicket: ${isRiseTicket})`)
 
                 // 6. Send reply via Twilio
                 let twilioMessageSid = null
@@ -457,6 +509,36 @@ Use this history to maintain context, avoid repeating information, and respond n
                   .from('conversations')
                   .update({ last_message_at: new Date().toISOString() })
                   .eq('id', conversation.id)
+
+                // 9. Generate a ticket if chatbot fallbacks or isRiseTicket is true
+                if (isRiseTicket) {
+                  try {
+                    const { data: existingTicket } = await supabase
+                      .from('tickets')
+                      .select('id')
+                      .eq('conversation_id', conversation.id)
+                      .eq('status', 'open')
+                      .limit(1)
+                      .maybeSingle()
+
+                    if (!existingTicket) {
+                      await supabase
+                        .from('tickets')
+                        .insert([
+                          {
+                            organization_id: orgId,
+                            conversation_id: conversation.id,
+                            contact_id: contact.id,
+                            subject: messageBody ? (messageBody.length > 100 ? messageBody.substring(0, 97) + '...' : messageBody) : 'Support Request',
+                            status: 'open'
+                          }
+                        ])
+                      console.log('[Webhook Chatbot] Created active support ticket for conversation:', conversation.id)
+                    }
+                  } catch (ticketErr: any) {
+                    console.error('[Webhook Chatbot] Failed to create support ticket:', ticketErr.message)
+                  }
+                }
               }
             } else {
               console.error('[Webhook Chatbot] GPT API call failed:', gptResponse.status)

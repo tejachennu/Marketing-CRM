@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyOrgAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -18,6 +19,11 @@ export async function GET(request: NextRequest) {
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
+    }
+
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()
@@ -50,13 +56,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const { organizationId, customPrompt, variables } = body
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     // Process variables
     let varArray: string[] = []

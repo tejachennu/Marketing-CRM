@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables')
+  }
+  return createClient(supabaseUrl, supabaseKey)
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,9 +24,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
     }
 
-    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
-    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
-    const authHeader = 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')
+    let twilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
+    let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
+
+    // Try to extract Account SID from the mediaUrl
+    const match = mediaUrl.match(/\/Accounts\/(AC[a-fA-F0-9]{32})\//)
+    const extractedSid = match ? match[1] : null
+
+    if (extractedSid && extractedSid !== twilioAccountSid) {
+      try {
+        const supabase = getSupabaseClient()
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('twilio_auth_token')
+          .eq('twilio_account_sid', extractedSid)
+          .maybeSingle()
+        if (orgData?.twilio_auth_token) {
+          twilioAccountSid = extractedSid
+          twilioAuthToken = orgData.twilio_auth_token
+        }
+      } catch (dbErr) {
+        console.error('[Proxy] Error loading credentials from DB:', dbErr)
+      }
+    }
+
+    const authHeader = 'Basic ' + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString('base64')
+
 
     // Clean hash from URL if present
     const cleanUrl = mediaUrl.split('#')[0]

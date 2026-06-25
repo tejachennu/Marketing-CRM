@@ -213,11 +213,11 @@ export default function ContactsPage() {
   const endIdx = Math.min(currentPage * limit, totalCount)
 
   return (
-    <div className="p-4 md:p-6 space-y-6 animate-in fade-in duration-300 font-sans h-full overflow-y-auto">
+    <div className="p-4 md:p-6 space-y-6 animate-in fade-in duration-300 font-sans h-full overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 select-none">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#111b21]">Contacts</h1>
-          <p className="text-xs text-[#667781] mt-1 font-semibold">Manage and organize your customer records</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Contacts</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold">Manage and organize your customer records</p>
         </div>
         <button
           onClick={() => {
@@ -242,21 +242,21 @@ export default function ContactsPage() {
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-3.5 text-[#8696a0]" />
+          <Search size={16} className="absolute left-3 top-3.5 text-slate-400" />
           <input
             type="text"
             placeholder="Search by name, phone, email, or company..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-xs font-semibold placeholder-[#8696a0] transition-all"
+            className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-[#00a884] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white transition-all"
           />
         </div>
       </div>
 
       {/* Contacts Table Wrapper */}
-      <div className="bg-white rounded-lg border border-[#e9edef] shadow-sm overflow-hidden relative">
+      <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
         {loadingContacts && (
-          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
+          <div className="absolute inset-0 bg-white/50 dark:bg-slate-950/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
             <Loader2 className="animate-spin text-[#00a884]" size={24} />
           </div>
         )}
@@ -264,18 +264,18 @@ export default function ContactsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#f0f2f5] border-b border-[#e9edef]">
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[#54656f]">Name</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[#54656f]">Phone</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[#54656f]">Email</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[#54656f]">Company</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[#54656f] text-right">Actions</th>
+              <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-850">
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Name</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Phone</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Email</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Company</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-xs font-medium">
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-450 dark:text-slate-500 text-xs font-medium">
                     No contacts found. Click "Add Contact" to create one.
                   </td>
                 </tr>
@@ -283,53 +283,53 @@ export default function ContactsPage() {
                 contacts.map((contact) => {
                   const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
                   return (
-                    <tr key={contact.id} className="hover:bg-[#f5f6f6]/50 transition-colors">
+                    <tr key={contact.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-[#dfe5e7] border border-[#e9edef] flex items-center justify-center font-bold text-[#54656f] text-xs shadow-sm select-none">
+                          <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
                             {contactName.substring(0, 2).toUpperCase()}
                           </div>
-                          <p className="font-bold text-xs text-[#111b21]">{contactName}</p>
+                          <p className="font-bold text-xs text-slate-900 dark:text-white">{contactName}</p>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                          <Phone size={13} className="text-slate-400" />
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                          <Phone size={13} className="text-slate-450 dark:text-slate-500" />
                           {contact.phone_number}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         {contact.email ? (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                            <Mail size={13} className="text-slate-400" />
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                            <Mail size={13} className="text-slate-455 dark:text-slate-500" />
                             {contact.email}
                           </div>
                         ) : (
-                          <span className="text-slate-300 text-[10px] font-bold">—</span>
+                          <span className="text-slate-300 dark:text-slate-600 text-[10px] font-bold">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
                         {contact.company ? (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                            <Building2 size={13} className="text-slate-400" />
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                            <Building2 size={13} className="text-slate-455 dark:text-slate-500" />
                             {contact.company}
                           </div>
                         ) : (
-                          <span className="text-slate-300 text-[10px] font-bold">—</span>
+                          <span className="text-slate-300 dark:text-slate-600 text-[10px] font-bold">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleEditContact(contact)}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-600 hover:text-blue-700 transition-colors"
+                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-blue-600 hover:text-blue-400 transition-colors cursor-pointer"
                             title="Edit"
                           >
                             <Edit2 size={15} />
                           </button>
                           <button
                             onClick={() => handleDeleteContact(contact.id)}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-rose-600 hover:text-rose-700 transition-colors"
+                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-rose-600 hover:text-rose-450 transition-colors cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 size={15} />
@@ -346,8 +346,8 @@ export default function ContactsPage() {
 
         {/* Pagination Bar */}
         {totalCount > 0 && (
-          <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4 flex-col sm:flex-row">
-            <p className="text-xs font-semibold text-slate-500">
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4 flex-col sm:flex-row bg-white dark:bg-slate-900">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
               Showing <span className="text-slate-800">{startIdx}</span> to{' '}
               <span className="text-slate-800">{endIdx}</span> of{' '}
               <span className="text-slate-800">{totalCount}</span> entries
@@ -360,13 +360,13 @@ export default function ContactsPage() {
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-xs font-bold text-slate-700 px-2">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 px-2">
                 Page {currentPage}
               </span>
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={!hasMore}
-                className="p-2 border border-slate-200/80 rounded-xl hover:bg-slate-50 text-slate-600 disabled:opacity-40 transition-colors"
+                className="p-2 border border-slate-200/80 dark:border-slate-750/80 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 <ChevronRight size={16} />
               </button>
@@ -378,15 +378,15 @@ export default function ContactsPage() {
       {/* Add/Edit Contact Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-lg border border-[#e9edef] shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
-            <h2 className="text-base font-bold text-[#111b21] mb-4">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-lg border border-slate-200 dark:border-[#2a3942] shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white mb-4">
               {editingId ? 'Edit Contact' : 'Add New Contact'}
             </h2>
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#54656f] mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     First Name
                   </label>
                   <input
@@ -395,12 +395,12 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, first_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="John"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#54656f] mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                     Last Name
                   </label>
                   <input
@@ -409,14 +409,14 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, last_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="Doe"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#54656f] mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                   Phone Number *
                 </label>
                 <input
@@ -425,14 +425,14 @@ export default function ContactsPage() {
                   onChange={(e) =>
                     setNewContact({ ...newContact, phone_number: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="+1234567890"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#54656f] mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                   Email
                 </label>
                 <input
@@ -441,13 +441,13 @@ export default function ContactsPage() {
                   onChange={(e) =>
                     setNewContact({ ...newContact, email: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="john@example.com"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#54656f] mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                   Company
                 </label>
                 <input
@@ -456,13 +456,13 @@ export default function ContactsPage() {
                   onChange={(e) =>
                     setNewContact({ ...newContact, company: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="Acme Inc"
                 />
               </div>
 
               {error && (
-                <div className="bg-rose-50 border border-rose-100 text-rose-600 px-3.5 py-2.5 rounded-lg text-xs font-semibold">
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 px-3.5 py-2.5 rounded-lg text-xs font-semibold">
                   {error}
                 </div>
               )}
@@ -471,14 +471,14 @@ export default function ContactsPage() {
                 <button
                   onClick={() => setShowAddModal(false)}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 border border-[#e9edef] rounded-lg text-[#54656f] hover:bg-slate-50 transition-colors disabled:opacity-50 text-xs font-bold"
+                  className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-805 transition-colors disabled:opacity-50 text-xs font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddContact}
                   disabled={saving || !newContact.phone_number.trim()}
-                  className="flex-1 px-4 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-bold"
+                  className="flex-1 px-4 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-bold cursor-pointer"
                 >
                   {saving ? 'Saving...' : editingId ? 'Update' : 'Add Contact'}
                 </button>

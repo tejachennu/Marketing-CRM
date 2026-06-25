@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,8 +16,6 @@ function getSupabaseClient() {
 // GET: List contacts
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
-
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
     const page = parseInt(searchParams.get('page') || '1', 10)
@@ -27,6 +26,13 @@ export async function GET(request: NextRequest) {
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     let query = supabase
       .from('contacts')
@@ -65,7 +71,6 @@ export async function GET(request: NextRequest) {
 // POST: Create contact + Auto-create conversation
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const {
       organizationId,
@@ -82,6 +87,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     if (!phoneNumber) {
       return NextResponse.json(
@@ -171,7 +183,6 @@ export async function POST(request: NextRequest) {
 // PUT: Update contact
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const body = await request.json()
     const {
       id,
@@ -189,6 +200,18 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     if (!phone_number) {
       return NextResponse.json(
@@ -254,7 +277,6 @@ export async function PUT(request: NextRequest) {
 // DELETE: Delete contact
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 
@@ -264,6 +286,13 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     const { error: deleteError } = await supabase
       .from('contacts')

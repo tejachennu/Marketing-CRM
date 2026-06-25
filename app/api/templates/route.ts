@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
+import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -12,8 +13,10 @@ function getSupabaseClient() {
 }
 
 async function getTwilioClientForOrg(orgId: string | null) {
-  let TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
-  let TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
+  const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+
+  let TWILIO_ACCOUNT_SID = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
+  let TWILIO_AUTH_TOKEN = isMasterOrg ? (process.env.TWILIO_AUTH_TOKEN || '') : ''
 
   if (orgId) {
     try {
@@ -48,13 +51,16 @@ async function getOrgWhatsappConfig(orgId: string) {
     .eq('id', orgId)
     .single()
 
+  const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+
   return {
-    provider: orgData?.whatsapp_provider || process.env.WHATSAPP_PROVIDER || 'twilio',
-    apiToken: orgData?.whatsapp_api_token || process.env.WHATSAPP_API_TOKEN || '',
-    graphApiVersion: orgData?.whatsapp_graph_api_version || process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0',
-    businessAccountId: orgData?.whatsapp_business_account_id || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+    provider: orgData?.whatsapp_provider || (isMasterOrg ? (process.env.WHATSAPP_PROVIDER || 'twilio') : 'twilio'),
+    apiToken: orgData?.whatsapp_api_token || (isMasterOrg ? (process.env.WHATSAPP_API_TOKEN || '') : ''),
+    graphApiVersion: orgData?.whatsapp_graph_api_version || (isMasterOrg ? (process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0') : 'v25.0'),
+    businessAccountId: orgData?.whatsapp_business_account_id || (isMasterOrg ? (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '') : ''),
   }
 }
+
 
 // Fetch templates from Meta WhatsApp Business Cloud API
 async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, businessAccountId: string): Promise<any[]> {
@@ -157,6 +163,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
+
+    if (orgId) {
+      const authResult = await verifyOrgAccess(request, orgId)
+      if (!authResult.authorized) {
+        return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      }
+    }
 
     // Determine which provider this org uses
     let whatsappConfig = {
@@ -300,6 +313,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    const authResult = await verifyOrgAccess(request, organizationId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
     const supabase = getSupabaseClient()
     const { data, error } = await supabase
       .from('message_templates')
@@ -335,6 +353,11 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'Missing template ID' }, { status: 400 })
+    }
+
+    const recordResult = await verifyRecordAccess(request, 'message_templates', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
 
     const supabase = getSupabaseClient()

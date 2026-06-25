@@ -92,78 +92,78 @@ export function AddContactDialog({
         <DialogHeader>
           <DialogTitle>Add New Contact</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 text-slate-900 dark:text-white">
           {/* First Name */}
           <div>
-            <label className="block text-sm font-medium mb-2">First Name *</label>
+            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">First Name *</label>
             <input
               type="text"
               value={formData.firstName}
               onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
               placeholder="John"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
           </div>
 
           {/* Last Name */}
           <div>
-            <label className="block text-sm font-medium mb-2">Last Name</label>
+            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Last Name</label>
             <input
               type="text"
               value={formData.lastName}
               onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
               placeholder="Smith"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
           </div>
 
           {/* Phone Number */}
           <div>
-            <label className="block text-sm font-medium mb-2">Phone Number *</label>
+            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Phone Number *</label>
             <input
               type="tel"
               value={formData.phoneNumber}
               onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
               placeholder="+1 (416) 555-1234"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
-            <p className="text-xs text-gray-500 mt-1">Include country code (e.g., +1 for North America)</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Include country code (e.g., +1 for North America)</p>
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
+            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Email</label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="john@example.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
           </div>
 
           {/* Company */}
           <div>
-            <label className="block text-sm font-medium mb-2">Company</label>
+            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Company</label>
             <input
               type="text"
               value={formData.company}
               onChange={(e) => setFormData({ ...formData, company: e.target.value })}
               placeholder="Tech Corp"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded-lg text-sm font-semibold">
               {error}
             </div>
           )}
 
           {/* Success Message */}
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 px-3 py-2 rounded-lg text-sm font-semibold">
               Contact added successfully!
             </div>
           )}
@@ -172,12 +172,12 @@ export function AddContactDialog({
           <Button
             onClick={handleAddContact}
             disabled={loading || !formData.firstName.trim() || !formData.phoneNumber.trim()}
-            className="w-full"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
           >
             {loading ? 'Adding...' : 'Add Contact'}
           </Button>
 
-          <p className="text-xs text-gray-500">* Required fields</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">* Required fields</p>
         </div>
       </DialogContent>
     </Dialog>

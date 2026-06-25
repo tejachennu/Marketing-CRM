@@ -435,7 +435,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-l border-slate-200/60 dark:border-slate-800/80 shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300 font-sans text-slate-855 dark:text-slate-100">
+    <div className="fixed inset-y-0 right-0 w-[420px] max-w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-l border-slate-200/60 dark:border-slate-800/80 shadow-2xl z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300 font-sans text-slate-800 dark:text-slate-100">
       
       {/* Drawer Header */}
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20 shrink-0">
@@ -460,32 +460,32 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
       <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/10 shrink-0 p-1 justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 select-none">
         <button 
           onClick={() => setActiveTab('templates')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'templates' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-855'}`}
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'templates' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'hover:text-slate-800'}`}
         >
           Templates
         </button>
         <button 
           onClick={() => setActiveTab('stats')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'stats' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-855'}`}
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'stats' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'hover:text-slate-800'}`}
         >
           Stats
         </button>
         <button 
           onClick={() => setActiveTab('notes')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'notes' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-855'}`}
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'notes' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-800'}`}
         >
           Tasks
         </button>
         <button 
           onClick={() => setActiveTab('notifications')} 
-          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'notifications' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-855'}`}
+          className={`flex-1 py-1.5 text-center rounded-lg transition-all ${activeTab === 'notifications' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-450 shadow-xs' : 'hover:text-slate-800'}`}
         >
           Logs
         </button>
       </div>
 
       {/* Main Tab View */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4 space-y-4">
 
         {/* Tab 2: Email Template Builder */}
         {activeTab === 'templates' && (
@@ -540,7 +540,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
             </div>
 
             {/* Quick Themer selection */}
-            <div className="bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
+            <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
               <label className="block text-[9px] font-bold text-slate-400 uppercase">Quick-Theme Color Palettes</label>
               <div className="grid grid-cols-4 gap-1.5 text-[8.5px] font-bold text-center">
                 <button 
@@ -551,19 +551,19 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
                 </button>
                 <button 
                   onClick={() => handleApplyColorTheme('indigo')}
-                  className="py-1 px-1.5 bg-indigo-50 dark:bg-indigo-955/20 border border-indigo-200/50 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100"
+                  className="py-1 px-1.5 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100"
                 >
                   Indigo
                 </button>
                 <button 
                   onClick={() => handleApplyColorTheme('sunset')}
-                  className="py-1 px-1.5 bg-rose-50 dark:bg-rose-955/20 border border-rose-200/50 text-rose-600 dark:text-rose-450 rounded-lg hover:bg-rose-100"
+                  className="py-1 px-1.5 bg-rose-50 dark:bg-rose-955/20 border border-rose-200/50 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100"
                 >
                   Sunset
                 </button>
                 <button 
                   onClick={() => handleApplyColorTheme('dark')}
-                  className="py-1 px-1.5 bg-slate-900 border border-slate-800 text-white rounded-lg hover:bg-slate-850"
+                  className="py-1 px-1.5 bg-slate-900 border border-slate-800 text-white rounded-lg hover:bg-slate-80 hover:bg-slate-800"
                 >
                   Dark Mode
                 </button>
@@ -634,8 +634,8 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
             </div>
 
             {/* Save Template DB Controls */}
-            <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-800 space-y-3.5">
-              <h5 className="text-[10.5px] font-bold text-slate-855 dark:text-white uppercase flex items-center gap-1">
+            <div className="bg-slate-50 dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3.5">
+              <h5 className="text-[10.5px] font-bold text-slate-800 dark:text-white uppercase flex items-center gap-1">
                 <Save size={12} className="text-emerald-500" />
                 Save to Campaign Repository
               </h5>
@@ -740,13 +740,13 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
                 onChange={(e) => handleSaveNotes(e.target.value)}
                 placeholder="Write campaign ideas, subject line variations, draft messages, or copy blocks here..."
                 rows={6}
-                className="w-full px-3.5 py-2.5 bg-slate-55 dark:bg-slate-905 border border-slate-200/60 dark:border-slate-800 focus:border-emerald-500/50 rounded-2xl focus:outline-none text-[11px] leading-relaxed text-slate-800 dark:text-slate-100 placeholder-slate-400 shadow-inner"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800 focus:border-emerald-500/50 rounded-2xl focus:outline-none text-[11px] leading-relaxed text-slate-800 dark:text-slate-100 placeholder-slate-400 shadow-inner"
               />
               <span className="text-[8px] text-slate-400 font-bold block mt-0.5 text-right uppercase">Auto-saved in browser</span>
             </div>
 
             {/* Reminders list */}
-            <div className="bg-slate-55 dark:bg-slate-850 p-4 rounded-2xl border border-slate-150 dark:border-slate-800 space-y-3">
+            <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-150 dark:border-slate-800 space-y-3">
               <h4 className="text-[11px] font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1">
                 <Clock size={12} className="text-indigo-500" />
                 Campaign Reminders
@@ -802,7 +802,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
                       </div>
                       <button
                         onClick={() => handleDeleteReminder(r.id)}
-                        className="text-slate-400 hover:text-rose-500 p-1 rounded-lg hover:bg-slate-55 dark:hover:bg-slate-800 transition-colors"
+                        className="text-slate-400 hover:text-rose-500 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                       >
                         <Trash2 size={11} />
                       </button>
@@ -825,7 +825,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
               {notifications.length > 0 && (
                 <button 
                   onClick={handleClearNotifs}
-                  className="text-[9px] text-rose-550 hover:text-rose-450 font-extrabold"
+                  className="text-[9px] text-rose-600 hover:text-rose-550 font-extrabold"
                 >
                   Clear Logs
                 </button>
@@ -838,7 +838,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
             ) : (
               <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
                 {notifications.map(n => (
-                  <div key={n.id} className="p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800/80 rounded-xl text-[10px] leading-relaxed flex justify-between gap-3 text-slate-650 dark:text-slate-350">
+                  <div key={n.id} className="p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800/80 rounded-xl text-[10px] leading-relaxed flex justify-between gap-3 text-slate-600 dark:text-slate-400">
                     <span className="font-semibold break-all">{n.msg}</span>
                     <span className="text-[8px] font-bold text-slate-400 shrink-0 mt-0.5">{n.time}</span>
                   </div>

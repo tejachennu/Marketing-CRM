@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyOrgAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -16,6 +17,13 @@ export async function POST(request: NextRequest) {
     
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 })
+    }
+
+    if (orgId) {
+      const authResult = await verifyOrgAccess(request, orgId)
+      if (!authResult.authorized) {
+        return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      }
     }
 
     const supabase = getSupabaseClient()

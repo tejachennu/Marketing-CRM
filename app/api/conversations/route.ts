@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyOrgAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,8 +16,6 @@ function getSupabaseClient() {
 // GET: List conversations with their contacts
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient()
-
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
     const page = parseInt(searchParams.get('page') || '1', 10)
@@ -28,6 +27,13 @@ export async function GET(request: NextRequest) {
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
+
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const supabase = getSupabaseClient()
 
     let query = supabase
       .from('conversations')

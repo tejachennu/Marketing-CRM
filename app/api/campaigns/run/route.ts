@@ -59,22 +59,25 @@ async function executeCampaign(campaignId: string) {
       return
     }
 
+    const isMasterOrg = !campaign.organization_id || campaign.organization_id === '303b7a2d-281c-403c-b794-54d1e195ca69'
+
     // Load custom credentials per organization
-    let twilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
-    let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
-    let TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER || ''
-    let sendgridKey = process.env.SENDGRID_API_KEY || ''
-    let sendgridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'no-reply@example.com'
+    let twilioAccountSid = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
+    let twilioAuthToken = isMasterOrg ? (process.env.TWILIO_AUTH_TOKEN || '') : ''
+    let TWILIO_WHATSAPP_NUMBER = isMasterOrg ? (process.env.TWILIO_WHATSAPP_NUMBER || '') : ''
+    let sendgridKey = isMasterOrg ? (process.env.SENDGRID_API_KEY || '') : ''
+    let sendgridFromEmail = isMasterOrg ? (process.env.SENDGRID_FROM_EMAIL || 'no-reply@example.com') : ''
     let emailProvider = 'sendgrid'
     let smtpHost = ''
     let smtpPort = 587
     let smtpEmail = ''
     let smtpPassword = ''
-    let whatsappProvider = process.env.WHATSAPP_PROVIDER || 'twilio'
-    let whatsappApiToken = process.env.WHATSAPP_API_TOKEN || ''
-    let whatsappDefaultPhone = process.env.WHATSAPP_DEFAULT_PHONE || ''
-    let whatsappGraphApiVersion = process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
-    let whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    let whatsappProvider = isMasterOrg ? (process.env.WHATSAPP_PROVIDER || 'twilio') : 'twilio'
+    let whatsappApiToken = isMasterOrg ? (process.env.WHATSAPP_API_TOKEN || '') : ''
+    let whatsappDefaultPhone = isMasterOrg ? (process.env.WHATSAPP_DEFAULT_PHONE || '') : ''
+    let whatsappGraphApiVersion = isMasterOrg ? (process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0') : 'v25.0'
+    let whatsappPhoneNumberId = isMasterOrg ? (process.env.WHATSAPP_PHONE_NUMBER_ID || '') : ''
+
 
     if (campaign.organization_id) {
       try {

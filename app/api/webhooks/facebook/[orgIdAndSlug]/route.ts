@@ -141,6 +141,38 @@ export async function POST(
   { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }
 ) {
   try {
+    // Resolve dynamic path params and extract organization UUID
+    const resolvedParams = await (params as any)
+    const orgIdAndSlug = resolvedParams.orgIdAndSlug || ''
+    const uuidMatch = orgIdAndSlug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+    
+    if (!uuidMatch) {
+      console.error('[Facebook Webhook POST] Invalid organization parameter:', orgIdAndSlug)
+      return NextResponse.json({ error: 'Invalid organization context' }, { status: 400 })
+    }
+    
+    const orgId = uuidMatch[0]
+
+    // Fetch credentials for this specific organization
+    const supabase = getSupabaseClient()
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', orgId)
+      .single()
+
+    if (!orgData) {
+      console.error('[Facebook Webhook POST] Organization not found:', orgId)
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+    }
+
+    // Verify if Facebook is the active provider
+    const provider = orgData.whatsapp_provider || 'twilio'
+    if (provider !== 'facebook') {
+      console.log(`[Facebook Webhook] Ignoring webhook event for Org ${orgId} because active provider is ${provider}`)
+      return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
+    }
+
     const payload = await request.json()
     console.log('[Facebook Webhook POST] Payload received:', JSON.stringify(payload, null, 2))
 
@@ -159,8 +191,6 @@ export async function POST(
           const errorDetail = statusObj.errors?.[0]?.error_data?.details || statusObj.errors?.[0]?.message || null
           
           console.log('[Facebook Webhook POST] Updating message status:', { messageSid, status, errorDetail })
-          
-          const supabase = getSupabaseClient()
           
           // Remember we prefixed it with FB_ in the database
           const dbSid = `FB_${messageSid}`
@@ -192,29 +222,6 @@ export async function POST(
     if (!from || !messageSid) {
       console.error('[Facebook Webhook POST] Missing from or message ID')
       return NextResponse.json({ error: 'Missing required message parameters' }, { status: 400 })
-    }
-
-    // Resolve path parameter
-    const resolvedParams = await (params as any)
-    const orgIdAndSlug = resolvedParams.orgIdAndSlug || ''
-    const uuidMatch = orgIdAndSlug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
-    if (!uuidMatch) {
-      console.error('[Facebook Webhook POST] Invalid organization parameter:', orgIdAndSlug)
-      return NextResponse.json({ error: 'Invalid organization context' }, { status: 400 })
-    }
-    const orgId = uuidMatch[0]
-
-    // Fetch credentials for this specific organization
-    const supabase = getSupabaseClient()
-    const { data: orgData } = await supabase
-      .from('organizations')
-      .select('*')
-      .eq('id', orgId)
-      .single()
-
-    if (!orgData) {
-      console.error('[Facebook Webhook POST] Organization not found:', orgId)
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
     const whatsappApiToken = orgData.whatsapp_api_token || process.env.WHATSAPP_API_TOKEN || ''
@@ -481,7 +488,12 @@ ${formattedContext || '(No matching FAQs found in the knowledge base)'}
 
 CONVERSATION HISTORY:
 The messages below are the recent conversation between you (assistant) and the customer (user).
-Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.`
+Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.
+
+CRITICAL INSTRUCTIONS:
+You MUST respond in JSON format. The JSON object must contain two keys:
+1. "reply": (string) Your natural conversational reply to the customer. If you cannot answer the query using the matched FAQ articles, or if the user asks to connect with support/a human, or if you need to hand off to a human agent, set "reply" to a friendly notice indicating that the support team will get in touch soon.
+2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.`
 
             // 6. Call GPT-4o-mini with conversation history
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -497,6 +509,7 @@ Use this history to maintain context, avoid repeating information, and respond n
                   ...chatHistory,
                   { role: 'user', content: messageBody }
                 ],
+                response_format: { type: 'json_object' },
                 temperature: 0.3,
                 max_tokens: 300
               })
@@ -504,10 +517,49 @@ Use this history to maintain context, avoid repeating information, and respond n
 
             if (gptResponse.ok) {
               const gptData = await gptResponse.json()
-              const botReply = gptData.choices?.[0]?.message?.content?.trim() || ''
+              const contentString = gptData.choices?.[0]?.message?.content?.trim() || '{}'
+
+              let botReply = ''
+              let isRiseTicket = false
+
+              try {
+                const parsed = JSON.parse(contentString)
+                botReply = parsed.reply || ''
+                isRiseTicket = !!parsed.isRiseTicket
+              } catch (parseErr) {
+                console.error('[Facebook Webhook Chatbot] Failed to parse JSON response from GPT:', parseErr, contentString)
+                botReply = contentString
+                isRiseTicket = false
+              }
+
+              // Safety check: if bot reply or incoming message suggests human agent or support team, raise ticket
+              const lowerReply = botReply.toLowerCase()
+              const lowerIncoming = messageBody ? messageBody.toLowerCase() : ''
+              if (
+                !isRiseTicket &&
+                (lowerReply.includes('support team') ||
+                 lowerReply.includes('reply you soon') ||
+                 lowerReply.includes('reply soon') ||
+                 lowerReply.includes('contact you') ||
+                 lowerReply.includes('reach you') ||
+                 lowerReply.includes('human agent') ||
+                 lowerReply.includes('representative') ||
+                 lowerIncoming.includes('support team') ||
+                 lowerIncoming.includes('human') ||
+                 lowerIncoming.includes('agent') ||
+                 lowerIncoming.includes('connect to support') ||
+                 lowerIncoming.includes('talk to a person') ||
+                 lowerIncoming.includes('representative') ||
+                 lowerIncoming.includes('raise ticket') ||
+                 lowerIncoming.includes('create ticket') ||
+                 lowerIncoming.includes('need help'))
+              ) {
+                isRiseTicket = true
+                console.log('[Facebook Webhook Chatbot] Force-setting isRiseTicket to true based on text analysis. Incoming:', messageBody, 'Reply:', botReply)
+              }
 
               if (botReply) {
-                console.log(`[Facebook Webhook Chatbot] Generated reply: "${botReply}"`)
+                console.log(`[Facebook Webhook Chatbot] Generated reply: "${botReply}" (isRiseTicket: ${isRiseTicket})`)
 
                 // 6. Send reply via Facebook Cloud API
                 let fbMessageSid = null
@@ -522,7 +574,7 @@ Use this history to maintain context, avoid repeating information, and respond n
                       body: JSON.stringify({
                         messaging_product: 'whatsapp',
                         recipient_type: 'individual',
-                        to: phoneNumber,
+                        to: phoneNumber.replace('+', '').trim(),
                         type: 'text',
                         text: {
                           body: botReply
@@ -561,6 +613,36 @@ Use this history to maintain context, avoid repeating information, and respond n
                   .from('conversations')
                   .update({ last_message_at: new Date().toISOString() })
                   .eq('id', conversation.id)
+
+                // 9. Generate a ticket if chatbot fallbacks or isRiseTicket is true
+                if (isRiseTicket) {
+                  try {
+                    const { data: existingTicket } = await supabase
+                      .from('tickets')
+                      .select('id')
+                      .eq('conversation_id', conversation.id)
+                      .eq('status', 'open')
+                      .limit(1)
+                      .maybeSingle()
+
+                    if (!existingTicket) {
+                      await supabase
+                        .from('tickets')
+                        .insert([
+                          {
+                            organization_id: orgId,
+                            conversation_id: conversation.id,
+                            contact_id: contact.id,
+                            subject: messageBody ? (messageBody.length > 100 ? messageBody.substring(0, 97) + '...' : messageBody) : 'Support Request',
+                            status: 'open'
+                          }
+                        ])
+                      console.log('[Facebook Webhook Chatbot] Created active support ticket for conversation:', conversation.id)
+                    }
+                  } catch (ticketErr: any) {
+                    console.error('[Facebook Webhook Chatbot] Failed to create support ticket:', ticketErr.message)
+                  }
+                }
               }
             } else {
               console.error('[Facebook Webhook Chatbot] GPT API call failed:', gptResponse.status)

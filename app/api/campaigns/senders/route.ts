@@ -16,15 +16,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
 
-    let accountSid = process.env.TWILIO_ACCOUNT_SID || ''
-    let authToken = process.env.TWILIO_AUTH_TOKEN || ''
-    let envWhatsapp = process.env.TWILIO_WHATSAPP_NUMBER || ''
-    let sendgridKey = process.env.SENDGRID_API_KEY || ''
-    let envEmail = process.env.SENDGRID_FROM_EMAIL || ''
+    const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+
+    let accountSid = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
+    let authToken = isMasterOrg ? (process.env.TWILIO_AUTH_TOKEN || '') : ''
+    let envWhatsapp = isMasterOrg ? (process.env.TWILIO_WHATSAPP_NUMBER || '') : ''
+    let sendgridKey = isMasterOrg ? (process.env.SENDGRID_API_KEY || '') : ''
+    let envEmail = isMasterOrg ? (process.env.SENDGRID_FROM_EMAIL || '') : ''
     let emailProvider = 'sendgrid'
     let smtpEmail = ''
-    let whatsappProvider = process.env.WHATSAPP_PROVIDER || 'twilio'
-    let whatsappDefaultPhone = process.env.WHATSAPP_DEFAULT_PHONE || ''
+    let whatsappProvider = isMasterOrg ? (process.env.WHATSAPP_PROVIDER || 'twilio') : 'twilio'
+    let whatsappDefaultPhone = isMasterOrg ? (process.env.WHATSAPP_DEFAULT_PHONE || '') : ''
+
 
     // Resolve tenant credentials
     if (orgId) {

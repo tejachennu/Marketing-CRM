@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
@@ -42,7 +42,7 @@ export default function SettingsPage() {
   const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
 
   // RAG Knowledge Base State
-  const [activeTab, setActiveTab] = useState<'general' | 'knowledge'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'knowledge' | 'teammates'>('general')
   const [articles, setArticles] = useState<any[]>([])
   const [loadingArticles, setLoadingArticles] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
@@ -52,6 +52,19 @@ export default function SettingsPage() {
   const [itemsPerPage] = useState(10)
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Teammates management state
+  const [teammates, setTeammates] = useState<any[]>([])
+  const [loadingTeammates, setLoadingTeammates] = useState(false)
+  const [addingTeammate, setAddingTeammate] = useState(false)
+  const [teammateForm, setTeammateForm] = useState({
+    email: '',
+    password: '',
+    fullName: '',
+    role: 'agent'
+  })
+  const [teammateError, setTeammateError] = useState('')
+  const [teammateSuccess, setTeammateSuccess] = useState('')
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'info'
@@ -76,7 +89,95 @@ export default function SettingsPage() {
     if (user?.organization_id && activeTab === 'knowledge') {
       loadArticles(user.organization_id)
     }
+    if (user?.organization_id && activeTab === 'teammates') {
+      loadTeammates(user.organization_id)
+    }
   }, [user, activeTab])
+
+  async function loadTeammates(orgId: string) {
+    setLoadingTeammates(true)
+    try {
+      const res = await fetch(`/api/teammates?organizationId=${orgId}`)
+      const data = await res.json()
+      if (data.success) {
+        setTeammates(data.teammates || [])
+      } else {
+        showNotification('error', data.error || 'Failed to load teammates', 'Error')
+      }
+    } catch (err: any) {
+      console.error('Failed to load teammates:', err)
+      showNotification('error', err.message || 'Failed to load teammates', 'Error')
+    } finally {
+      setLoadingTeammates(false)
+    }
+  }
+
+  async function handleAddTeammate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user?.organization_id) return
+
+    const limit = organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4
+    if (teammates.length >= limit) {
+      showNotification('error', `Teammate limit reached. Your organization is limited to ${limit} teammates.`, 'Limit Reached')
+      return
+    }
+
+    setAddingTeammate(true)
+    setTeammateError('')
+    setTeammateSuccess('')
+    try {
+      const res = await fetch('/api/teammates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: teammateForm.email.trim(),
+          password: teammateForm.password,
+          fullName: teammateForm.fullName.trim(),
+          role: teammateForm.role,
+          organizationId: user.organization_id
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to add teammate')
+      }
+      setTeammateSuccess('Teammate successfully added!')
+      setTeammateForm({
+        email: '',
+        password: '',
+        fullName: '',
+        role: 'agent'
+      })
+      showNotification('success', 'Teammate successfully added!', 'Teammate Added')
+      await loadTeammates(user.organization_id)
+    } catch (err: any) {
+      console.error('Add teammate error:', err)
+      setTeammateError(err.message || 'Failed to add teammate')
+      showNotification('error', err.message || 'Failed to add teammate', 'Add Failed')
+    } finally {
+      setAddingTeammate(false)
+    }
+  }
+
+  async function handleDeleteTeammate(teammateId: string) {
+    if (!user?.organization_id) return
+    if (!confirm('Are you sure you want to remove this teammate? They will no longer be able to log in.')) return
+
+    try {
+      const res = await fetch(`/api/teammates?userId=${teammateId}&organizationId=${user.organization_id}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete teammate')
+      }
+      showNotification('success', 'Teammate removed successfully.', 'Teammate Removed')
+      await loadTeammates(user.organization_id)
+    } catch (err: any) {
+      console.error('Delete teammate error:', err)
+      showNotification('error', err.message || 'Failed to remove teammate.', 'Remove Failed')
+    }
+  }
 
   async function loadArticles(orgId: string) {
     setLoadingArticles(true)
@@ -419,7 +520,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-6 relative">
+    <div className="p-4 pb-20 md:pb-6 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-6 relative">
       {notification && (
         <div className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#00a884' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
           <div className="flex-1 min-w-0">
@@ -470,6 +571,17 @@ export default function SettingsPage() {
             Knowledge Base (AI RAG)
           </button>
         )}
+        <button
+          onClick={() => setActiveTab('teammates')}
+          className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+            activeTab === 'teammates'
+              ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+              : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
+          }`}
+        >
+          <Users size={13} />
+          Manage Teammates
+        </button>
       </div>
 
       {activeTab === 'general' && (
@@ -1436,6 +1548,250 @@ export default function SettingsPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'teammates' && (
+        <div className="space-y-6 max-w-4xl">
+          {/* Teammates Usage & Limits Card */}
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                  <Users className="text-[#00a884]" size={20} />
+                  Teammate Account Slots
+                </h2>
+                <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold">
+                  Manage your organization's members, roles, and system logins.
+                </p>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-xs font-bold text-[#111b21] dark:text-white">
+                  {teammates.length} / {organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4} Slots Filled
+                </span>
+                <div className="w-40 bg-[#f0f2f5] dark:bg-[#1f2c34] h-2 rounded-full mt-1.5 overflow-hidden">
+                  <div
+                    className="bg-[#00a884] h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min(
+                        (teammates.length / (organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4)) * 100,
+                        100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Add Teammate Form */}
+            <div className="lg:col-span-1 bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm h-fit">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] mb-4">
+                Add New Teammate
+              </h3>
+              <form onSubmit={handleAddTeammate} className="space-y-4">
+                {teammateError && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-lg text-rose-600 dark:text-rose-400 text-[10px] font-semibold">
+                    {teammateError}
+                  </div>
+                )}
+                {teammateSuccess && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
+                    {teammateSuccess}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={teammateForm.fullName}
+                    onChange={(e) => setTeammateForm({ ...teammateForm, fullName: e.target.value })}
+                    placeholder="e.g. Jane Doe"
+                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={teammateForm.email}
+                    onChange={(e) => setTeammateForm({ ...teammateForm, email: e.target.value })}
+                    placeholder="jane@company.com"
+                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={teammateForm.password}
+                    onChange={(e) => setTeammateForm({ ...teammateForm, password: e.target.value })}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
+                    Workspace Role
+                  </label>
+                  <select
+                    value={teammateForm.role}
+                    onChange={(e) => setTeammateForm({ ...teammateForm, role: e.target.value })}
+                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                  >
+                    <option value="agent">Agent (Standard)</option>
+                    <option value="admin">Admin (Full Settings Access)</option>
+                    <option value="viewer">Viewer (Read-Only)</option>
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={addingTeammate || teammates.length >= (organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4)}
+                  className="w-full bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {addingTeammate ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                  <span>Create Account</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Teammates List */}
+            <div className="lg:col-span-2 bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden flex flex-col justify-start">
+              <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Active Teammates</h3>
+                <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
+                  {teammates.length} users
+                </span>
+              </div>
+
+              {loadingTeammates ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={24} className="animate-spin text-[#00a884]" />
+                </div>
+              ) : teammates.length === 0 ? (
+                <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
+                  <Users size={36} className="text-[#e9edef] dark:text-[#202d36] mx-auto mb-3" />
+                  <p className="text-xs font-bold">No teammates found</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  {/* Table view on larger screens, card list on small screens */}
+                  <div className="hidden sm:block">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                          <th className="px-6 py-3">Name</th>
+                          <th className="px-6 py-3">Email</th>
+                          <th className="px-6 py-3">Role</th>
+                          <th className="px-6 py-3">Joined Date</th>
+                          <th className="px-6 py-3 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teammates.map((member) => (
+                          <tr
+                            key={member.id}
+                            className="border-b border-[#e9edef] dark:border-[#202d36] last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors"
+                          >
+                            <td className="px-6 py-3.5 font-bold text-[#111b21] dark:text-white">
+                              {member.full_name || 'N/A'}
+                            </td>
+                            <td className="px-6 py-3.5 text-[#667781] dark:text-[#8696a0] font-semibold">
+                              {member.email}
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                                member.role === 'admin' || member.role === 'owner' || member.role === 'OrgAdmin' || member.role === 'superadmin'
+                                  ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900'
+                                  : member.role === 'viewer'
+                                  ? 'bg-gray-50 dark:bg-gray-950/20 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-900'
+                                  : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900'
+                              }`}>
+                                {member.role}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium">
+                              {new Date(member.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-3.5 text-center">
+                              {member.id !== user?.id && member.role !== 'owner' ? (
+                                <button
+                                  onClick={() => handleDeleteTeammate(member.id)}
+                                  className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
+                                  title="Remove Teammate"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-[#8696a0] font-semibold">Protected</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Responsive Cards list view on mobile */}
+                  <div className="sm:hidden p-4 space-y-3">
+                    {teammates.map((member) => (
+                      <div
+                        key={member.id}
+                        className="p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5]/40 dark:bg-[#1f2c34]/20 space-y-2 relative"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="text-xs font-bold text-[#111b21] dark:text-white">
+                              {member.full_name || 'N/A'}
+                            </h4>
+                            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
+                              {member.email}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border ${
+                            member.role === 'admin' || member.role === 'owner' || member.role === 'OrgAdmin' || member.role === 'superadmin'
+                              ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900'
+                              : member.role === 'viewer'
+                              ? 'bg-gray-50 dark:bg-gray-950/20 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-900'
+                              : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900'
+                          }`}>
+                            {member.role}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-[#667781] dark:text-[#8696a0] pt-1">
+                          <span>Joined {new Date(member.created_at).toLocaleDateString()}</span>
+                          {member.id !== user?.id && member.role !== 'owner' ? (
+                            <button
+                              onClick={() => handleDeleteTeammate(member.id)}
+                              className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1 rounded transition-all cursor-pointer"
+                            >
+                              <Trash2 size={11} />
+                              <span>Remove</span>
+                            </button>
+                          ) : (
+                            <span className="text-[9px] text-[#8696a0] font-bold bg-[#f0f2f5] dark:bg-[#111b21] px-2 py-1 rounded border border-[#e9edef] dark:border-[#2a3942]">
+                              Protected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
