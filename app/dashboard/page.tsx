@@ -228,7 +228,8 @@ function ConversationsPageContent() {
           if (matched) return matched.id
         }
 
-        if (prev && (append || result.conversations.some((c) => c.id === prev))) return prev
+        if (prev) return prev
+        if (unreadOnly) return null
         return !append && result.conversations.length > 0 ? result.conversations[0].id : prev
       })
       // Also load unread count
