@@ -25,6 +25,7 @@ function ConversationsPageContent() {
       setSelectedConversation(conversationIdParam)
     }
   }, [conversationIdParam])
+
   const [messages, setMessages] = useState<Message[]>([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -225,6 +226,59 @@ function ConversationsPageContent() {
       console.error('[Dashboard] Error resetting unread count:', err)
     }
   }, [])
+
+  // Dynamically fetch selected conversation if it is not in the active conversations list
+  useEffect(() => {
+    if (!selectedConversation || !user) return
+    const exists = conversations.some((c) => c.id === selectedConversation)
+    if (!exists) {
+      const fetchSingleConv = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('conversations')
+            .select(`
+              id,
+              organization_id,
+              contact_id,
+              lead_id,
+              is_active,
+              last_message_at,
+              unread_count,
+              assigned_to,
+              created_at,
+              updated_at,
+              contact:contact_id (
+                id,
+                first_name,
+                last_name,
+                phone_number,
+                whatsapp_number,
+                email,
+                company
+              )
+            `)
+            .eq('id', selectedConversation)
+            .single()
+
+          if (error) throw error
+          if (data) {
+            const conv = {
+              ...data,
+              contact: Array.isArray(data.contact) ? data.contact[0] : data.contact
+            } as ConversationWithContact
+
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === conv.id)) return prev
+              return [conv, ...prev]
+            })
+          }
+        } catch (err) {
+          console.error('[Dashboard] Error fetching selected conversation:', err)
+        }
+      }
+      fetchSingleConv()
+    }
+  }, [selectedConversation, user, conversations])
 
   // ─── Initial Data Load ───
 

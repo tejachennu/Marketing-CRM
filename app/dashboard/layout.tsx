@@ -37,6 +37,8 @@ export default function DashboardLayout({
   const [isMinimized, setIsMinimized] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
   const [showTickets, setShowTickets] = useState(false)
+  const [activeTicketsCount, setActiveTicketsCount] = useState(0)
+  const [ticketToast, setTicketToast] = useState<{ id: string; subject: string; contactName: string; conversationId: string } | null>(null)
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -165,6 +167,79 @@ export default function DashboardLayout({
     }
   }, [orgId])
 
+  useEffect(() => {
+    if (ticketToast) {
+      const timer = setTimeout(() => {
+        setTicketToast(null)
+      }, 7000)
+      return () => clearTimeout(timer)
+    }
+  }, [ticketToast])
+
+  useEffect(() => {
+    if (!orgId) return
+
+    const fetchActiveTicketsCount = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('tickets')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('status', 'open')
+
+        if (error) throw error
+        setActiveTicketsCount(count || 0)
+      } catch (err) {
+        console.error('Error fetching active tickets count:', err)
+      }
+    }
+
+    fetchActiveTicketsCount()
+
+    const channel = supabase
+      .channel('layout-tickets-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tickets',
+          filter: `organization_id=eq.${orgId}`
+        },
+        async (payload) => {
+          fetchActiveTicketsCount()
+
+          if (payload.eventType === 'INSERT') {
+            try {
+              const { data: contact } = await supabase
+                .from('contacts')
+                .select('first_name, last_name')
+                .eq('id', payload.new.contact_id)
+                .maybeSingle()
+
+              const contactName = contact
+                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+                : 'Unknown'
+
+              setTicketToast({
+                id: payload.new.id,
+                subject: payload.new.subject,
+                contactName,
+                conversationId: payload.new.conversation_id
+              })
+            } catch (err) {
+              console.error('Error handling new ticket notification:', err)
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [orgId])
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
     await supabase.auth.signOut()
@@ -175,6 +250,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
+    { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
@@ -195,6 +271,9 @@ export default function DashboardLayout({
     }
 
     if (item.href === '/dashboard') {
+      return features.enable_messages
+    }
+    if (item.href === '/dashboard/tickets') {
       return features.enable_messages
     }
     if (item.href === '/dashboard/ivr') {
@@ -319,6 +398,13 @@ export default function DashboardLayout({
                           isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                         }`}
                       />
+
+                      {/* Live Badge for Tickets */}
+                      {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                          {activeTicketsCount}
+                        </span>
+                      )}
                       
                       {/* Tooltip for desktop */}
                       <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
@@ -326,37 +412,7 @@ export default function DashboardLayout({
                       </span>
                     </Link>
  
-                    {/* Render Tickets button right after Conversations */}
-                    {item.href === '/dashboard' && features.enable_messages && (
-                      <button
-                        type="button"
-                        onClick={() => setShowTickets(true)}
-                        title="Support Tickets"
-                        className={`flex items-center justify-center w-10 h-10 md:w-11 md:h-11 rounded-xl transition-all duration-300 group relative cursor-pointer flex-shrink-0 ${
-                          showTickets
-                            ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                        }`}
-                      >
-                        {showTickets && (
-                          <span className="hidden md:block absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
-                        )}
-                        {showTickets && (
-                          <span className="block md:hidden absolute bottom-0 left-2.5 right-2.5 h-[3px] bg-gradient-to-r from-emerald-500 to-teal-400 rounded-t-full" />
-                        )}
- 
-                        <Ticket
-                          size={18}
-                          className={`transition-transform duration-300 group-hover:scale-110 ${
-                            showTickets ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-                          }`}
-                        />
-                        
-                        <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left hidden md:block">
-                          Tickets
-                        </span>
-                      </button>
-                    )}
+
                   </span>
                 )
               })}
@@ -525,6 +581,34 @@ export default function DashboardLayout({
             onClose={() => setShowTickets(false)}
             orgId={orgId}
           />
+
+          {/* Realtime Ticket Toast Notification */}
+          {ticketToast && (
+            <div className="fixed top-4 right-4 z-[9999] flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-emerald-500/30 dark:border-emerald-500/20 shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: '4px solid #00a884' }}>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-bold text-[#111b21] dark:text-white mb-0.5">🎫 New Support Ticket</h4>
+                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{ticketToast.subject}</p>
+                <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold">From: {ticketToast.contactName}</p>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      router.push(`/dashboard?conversationId=${ticketToast.conversationId}`)
+                      setTicketToast(null)
+                    }}
+                    className="px-2.5 py-1 bg-[#00a884] hover:bg-[#008069] text-white text-[9px] font-bold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
+                  >
+                    View Chat
+                  </button>
+                  <button
+                    onClick={() => setTicketToast(null)}
+                    className="px-2.5 py-1 bg-slate-150 hover:bg-slate-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-slate-700 dark:text-slate-200 text-[9px] font-bold rounded-lg shadow-xs transition-all cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

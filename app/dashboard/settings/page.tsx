@@ -585,7 +585,7 @@ export default function SettingsPage() {
       </div>
 
       {activeTab === 'general' && (
-        <div className="space-y-6 max-w-4xl">
+        <div className="space-y-6 w-full max-w-full">
           {/* Organization Settings */}
           <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
             <h2 className="text-base font-bold text-[#111b21] dark:text-white mb-4">Organization</h2>
@@ -1393,7 +1393,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'knowledge' && (
-        <div className="space-y-6 max-w-4xl">
+        <div className="space-y-6 w-full max-w-full">
 
           {/* Add FAQ panel */}
           <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
@@ -1553,7 +1553,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'teammates' && (
-        <div className="space-y-6 max-w-4xl">
+        <div className="space-y-6 w-full max-w-full">
           {/* Teammates Usage & Limits Card */}
           <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
