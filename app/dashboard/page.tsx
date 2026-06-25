@@ -18,6 +18,7 @@ function ConversationsPageContent() {
   const conversationIdParam = searchParams.get('conversationId')
 
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
+  const [unreadCount, setUnreadCount] = useState<number>(0)
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
 
   useEffect(() => {
@@ -42,6 +43,7 @@ function ConversationsPageContent() {
   const [pinnedConvs, setPinnedConvs] = useState<string[]>([])
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
 
   useEffect(() => {
     if (user?.organization_id) {
@@ -147,6 +149,21 @@ function ConversationsPageContent() {
     }
   }, [])
 
+  const loadUnreadCount = useCallback(async (orgId: string) => {
+    try {
+      const { count, error } = await supabase
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .gt('unread_count', 0)
+      if (!error && count !== null) {
+        setUnreadCount(count)
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error fetching unread count:', err)
+    }
+  }, [])
+
   const fetchContacts = useCallback(async (orgId: string): Promise<Contact[]> => {
     const res = await fetch(`/api/contacts?organizationId=${orgId}&limit=100`)
     const data = await res.json()
@@ -214,12 +231,14 @@ function ConversationsPageContent() {
         if (prev && (append || result.conversations.some((c) => c.id === prev))) return prev
         return !append && result.conversations.length > 0 ? result.conversations[0].id : prev
       })
+      // Also load unread count
+      loadUnreadCount(orgId)
     } catch (err) {
       console.error('[Dashboard] Error loading conversations:', err)
     } finally {
       setLoadingMore(false)
     }
-  }, [fetchConversations, searchTerm, unreadFilter])
+  }, [fetchConversations, searchTerm, unreadFilter, loadUnreadCount])
 
   const loadContacts = useCallback(async (orgId: string) => {
     try {
@@ -231,12 +250,15 @@ function ConversationsPageContent() {
   }, [fetchContacts])
 
   const loadMessages = useCallback(async (convId: string) => {
+    setLoadingMessages(true)
     try {
       const { messages: msgs, hasMore } = await fetchMessages(convId)
       setMessages(msgs)
       setHasMoreMessages(hasMore)
     } catch (err) {
       console.error('[Dashboard] Error loading messages:', err)
+    } finally {
+      setLoadingMessages(false)
     }
   }, [fetchMessages])
 
@@ -286,11 +308,15 @@ function ConversationsPageContent() {
         .eq('id', convId)
       if (error) {
         console.error('[Dashboard] Error resetting unread count in DB:', error)
+      } else {
+        if (user?.organization_id) {
+          loadUnreadCount(user.organization_id)
+        }
       }
     } catch (err) {
       console.error('[Dashboard] Error resetting unread count:', err)
     }
-  }, [])
+  }, [user, loadUnreadCount])
 
   // Dynamically fetch selected conversation if it is not in the active conversations list
   useEffect(() => {
@@ -445,6 +471,7 @@ function ConversationsPageContent() {
             )
             return newList
           })
+          loadUnreadCount(orgId)
         }
       )
       .subscribe((status) => {
@@ -489,7 +516,8 @@ function ConversationsPageContent() {
             })
             // Reset unread count for the active conversation
             clearUnreadCount(selectedConvRef.current)
-            
+          } else {
+            loadUnreadCount(orgId)
           }
         }
       )
@@ -516,7 +544,7 @@ function ConversationsPageContent() {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(contactsChannel)
     }
-  }, [user, loadConversations, loadContacts])
+  }, [user, loadConversations, loadContacts, loadUnreadCount])
 
   // ─── Load Messages ───
 
@@ -898,13 +926,22 @@ function ConversationsPageContent() {
               </button>
               <button
                 onClick={() => setUnreadFilter(true)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] transition-all font-semibold ${
+                className={`px-3 py-1.5 rounded-lg text-[11px] transition-all font-semibold flex items-center gap-1.5 ${
                   unreadFilter 
                     ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' 
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                Unread
+                <span>Unread</span>
+                {unreadCount > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[9px] font-bold transition-all ${
+                    unreadFilter 
+                      ? 'bg-emerald-500 text-white' 
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {unreadCount}
+                  </span>
+                )}
               </button>
             </div>
             <button
@@ -1320,7 +1357,22 @@ function ConversationsPageContent() {
 
           {/* Chat Messages */}
           <div id="chat-messages-container" className="flex-1 overflow-y-auto p-6 space-y-4 wa-chat-wallpaper z-0">
-            {messages.length === 0 ? (
+            {loadingMessages ? (
+              <div className="flex flex-col space-y-6 pt-4 relative z-10 w-full max-w-3xl mx-auto opacity-70">
+                <div className="flex justify-start w-full">
+                  <div className="h-16 w-[65%] sm:w-[45%] bg-slate-200 dark:bg-slate-800 rounded-2xl rounded-tl-none animate-pulse"></div>
+                </div>
+                <div className="flex justify-end w-full">
+                  <div className="h-12 w-[55%] sm:w-[35%] bg-emerald-500/20 dark:bg-emerald-900/40 rounded-2xl rounded-tr-none animate-pulse"></div>
+                </div>
+                <div className="flex justify-start w-full">
+                  <div className="h-24 w-[70%] sm:w-[50%] bg-slate-200 dark:bg-slate-800 rounded-2xl rounded-tl-none animate-pulse"></div>
+                </div>
+                <div className="flex justify-end w-full">
+                  <div className="h-12 w-[60%] sm:w-[40%] bg-emerald-500/20 dark:bg-emerald-900/40 rounded-2xl rounded-tr-none animate-pulse"></div>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 text-xs font-medium space-y-2 select-none relative z-10">
                 <MessageCircle size={32} className="text-slate-355" />
                 <p>No messages yet. Send a message to start!</p>

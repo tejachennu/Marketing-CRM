@@ -93,58 +93,64 @@ export function AddContactDialog({
           <DialogTitle>Add New Contact</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4 text-slate-900 dark:text-white">
-          {/* First Name */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">First Name *</label>
-            <input
-              type="text"
-              value={formData.firstName}
-              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-              placeholder="John"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
+          {/* Name Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* First Name */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">First Name *</label>
+              <input
+                type="text"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                placeholder="John"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              />
+            </div>
+
+            {/* Last Name */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Last Name</label>
+              <input
+                type="text"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                placeholder="Smith"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              />
+            </div>
           </div>
 
-          {/* Last Name */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Last Name</label>
-            <input
-              type="text"
-              value={formData.lastName}
-              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-              placeholder="Smith"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
-          </div>
+          {/* Contact Details Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Phone Number */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Phone Number *</label>
+              <input
+                type="tel"
+                value={formData.phoneNumber}
+                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                placeholder="+1 (416) 555-1234"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Include country code (e.g., +1)</p>
+            </div>
 
-          {/* Phone Number */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Phone Number *</label>
-            <input
-              type="tel"
-              value={formData.phoneNumber}
-              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-              placeholder="+1 (416) 555-1234"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Include country code (e.g., +1 for North America)</p>
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Email</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="john@example.com"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="john@example.com"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              />
+            </div>
           </div>
 
           {/* Company */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-slate-900 dark:text-slate-200">Company</label>
+            <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Company</label>
             <input
               type="text"
               value={formData.company}

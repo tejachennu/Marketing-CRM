@@ -507,7 +507,7 @@ export function AssistantDrawer({ isOpen, onClose, orgId, orgName }: AssistantDr
       className={`fixed bottom-56 md:bottom-52 right-6 md:right-6 z-[999] transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
     >
-      <div className={`w-[380px] max-w-[calc(100vw-32px)] h-[600px] max-h-[calc(100vh-120px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border border-slate-200/60 dark:border-slate-800/80 shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 font-sans text-slate-800 dark:text-slate-100 origin-bottom-right ${isDragging ? 'cursor-grabbing' : ''}`}>
+      <div className={`w-[320px] md:w-[350px] max-w-[calc(100vw-32px)] h-[400px] md:h-[500px] max-h-[calc(100vh-160px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border border-slate-200/60 dark:border-slate-800/80 shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 font-sans text-slate-800 dark:text-slate-100 origin-bottom-right ${isDragging ? 'cursor-grabbing' : ''}`}>
         
         {/* Drawer Header */}
         <div 
