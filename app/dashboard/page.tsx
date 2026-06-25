@@ -114,6 +114,12 @@ function ConversationsPageContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedConvRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const conversationsRef = useRef<ConversationWithContact[]>([])
+
+  // Keep conversations ref in sync
+  useEffect(() => {
+    conversationsRef.current = conversations
+  }, [conversations])
 
   // Tick every 60s to keep the 24h free window timer accurate
   useEffect(() => {
@@ -151,13 +157,10 @@ function ConversationsPageContent() {
 
   const loadUnreadCount = useCallback(async (orgId: string) => {
     try {
-      const { count, error } = await supabase
-        .from('conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId)
-        .gt('unread_count', 0)
-      if (!error && count !== null) {
-        setUnreadCount(count)
+      const res = await fetch(`/api/conversations?organizationId=${orgId}&unread=true&limit=1`)
+      const data = await res.json()
+      if (res.ok && data.count !== undefined) {
+        setUnreadCount(data.count)
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching unread count:', err)
@@ -298,6 +301,11 @@ function ConversationsPageContent() {
 
   const clearUnreadCount = useCallback(async (convId: string) => {
     try {
+      const conv = conversationsRef.current.find((c) => c.id === convId)
+      if (conv && conv.unread_count === 0) {
+        return
+      }
+
       // Optimistic local state update
       setConversations((prev) =>
         prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
