@@ -82,16 +82,11 @@ async function downloadFacebookMedia(
     const arrayBuffer = await mediaRes.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
-    await mkdir(uploadsDir, { recursive: true })
-
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    const filename = `fb-incoming-${uniqueSuffix}${ext}`
-    const filePath = path.join(uploadsDir, filename)
-
-    await writeFile(filePath, buffer)
-    console.log(`[Facebook Webhook] Media downloaded and saved to: ${filePath}`)
-    return `/uploads/${filename}`
+    // Convert to base64 data URL to store persistently in DB and avoid Vercel filesystem constraints
+    const base64 = buffer.toString('base64')
+    const dataUrl = `data:${contentType};base64,${base64}`
+    console.log(`[Facebook Webhook] Media downloaded and converted to data URL, size: ${dataUrl.length}`)
+    return dataUrl
   } catch (err) {
     console.error('[Facebook Webhook] Error downloading media:', err)
     return null

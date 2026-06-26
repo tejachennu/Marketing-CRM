@@ -19,6 +19,54 @@ function getTwilioClient() {
   const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
   return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 }
+const mediaCache: Record<string, string> = {}
+
+async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId: string): Promise<string | null> {
+  if (mediaCache[url]) {
+    console.log(`[Campaign Worker] Cache hit for media URL: ${url} -> Media ID: ${mediaCache[url]}`);
+    return mediaCache[url];
+  }
+
+  try {
+    console.log(`[Campaign Worker] Downloading media from URL to re-upload to Meta: ${url}`);
+    const downloadRes = await fetch(url);
+    if (!downloadRes.ok) {
+      throw new Error(`Failed to download media: ${downloadRes.status} ${downloadRes.statusText}`);
+    }
+
+    const contentType = downloadRes.headers.get('content-type') || 'image/png';
+    const arrayBuffer = await downloadRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Create Blob and FormData dynamically
+    const fileBlob = new Blob([buffer], { type: contentType });
+    const formData = new FormData();
+    const extension = contentType.split('/')[1] || 'png';
+    formData.append('file', fileBlob, `file.${extension}`);
+    formData.append('messaging_product', 'whatsapp');
+
+    console.log(`[Campaign Worker] Uploading buffer to Meta /media for Phone ID ${phoneNumberId}...`);
+    const uploadRes = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      },
+      body: formData
+    });
+
+    const data = await uploadRes.json();
+    if (!uploadRes.ok) {
+      throw new Error(`Upload failed: ${JSON.stringify(data)}`);
+    }
+
+    console.log(`[Campaign Worker] Successfully uploaded media. Retrieved Media ID: ${data.id}`);
+    mediaCache[url] = data.id;
+    return data.id;
+  } catch (err) {
+    console.error(`[Campaign Worker] uploadMediaUrlToMeta failed:`, err);
+    return null;
+  }
+}
 
 // Background worker function (not awaited in POST response)
 async function executeCampaign(campaignId: string) {
@@ -109,8 +157,25 @@ async function executeCampaign(campaignId: string) {
       }
     }
 
+    let metaTemplateComponents: any[] = []
+    if (channel === 'whatsapp' && whatsappProvider === 'facebook' && campaign.template_sid && campaign.template_sid.startsWith('META_')) {
+      const templateId = campaign.template_sid.replace('META_', '')
+      try {
+        const tplRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${templateId}?access_token=${whatsappApiToken}`)
+        if (tplRes.ok) {
+          const tplData = await tplRes.json()
+          metaTemplateComponents = tplData.components || []
+          console.log(`[Campaign Worker] Successfully fetched template components:`, JSON.stringify(metaTemplateComponents))
+        } else {
+          const errText = await tplRes.text()
+          console.warn(`[Campaign Worker] Failed to fetch template components for ${templateId}: ${tplRes.status} ${errText}`)
+        }
+      } catch (err) {
+        console.error(`[Campaign Worker] Error fetching Meta template components:`, err)
+      }
+    }
+
     const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
-    
     let sentCount = 0
     let failedCount = 0
 
@@ -204,18 +269,6 @@ async function executeCampaign(campaignId: string) {
             }
 
             if (templateName) {
-              const placeholders = templateBody.match(/\{\{([^}]+)\}\}/g) || []
-              const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
-              const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)))
-              if (isNumeric) {
-                uniqueKeys.sort((a, b) => Number(a) - Number(b))
-              }
-
-              const parameters = uniqueKeys.map(key => ({
-                type: 'text',
-                text: String(mappedVars[key] || '')
-              }))
-
               payload.type = 'template'
               payload.template = {
                 name: templateName,
@@ -224,13 +277,169 @@ async function executeCampaign(campaignId: string) {
                 }
               }
 
-              if (parameters.length > 0) {
-                payload.template.components = [
-                  {
-                    type: 'body',
-                    parameters: parameters
+              if (metaTemplateComponents && metaTemplateComponents.length > 0) {
+                const reqComponents: any[] = []
+                const parseMediaParam = async (val: string) => {
+                  const cleaned = String(val || '').trim();
+
+                  // Download and upload to Meta to get a valid live Media ID if it is a Facebook scontent/fbcdn URL
+                  if (cleaned.includes('scontent.whatsapp.net') || cleaned.includes('fbcdn.net')) {
+                    const uploadedId = await uploadMediaUrlToMeta(cleaned, whatsappApiToken, whatsappPhoneNumberId);
+                    if (uploadedId) {
+                      return { id: uploadedId };
+                    }
                   }
-                ]
+
+                  if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+                    return { link: cleaned };
+                  }
+                  return { id: cleaned };
+                };
+
+                for (const comp of metaTemplateComponents) {
+                  if (comp.type === 'HEADER') {
+                    if (comp.format === 'IMAGE') {
+                      const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                      if (imgVal) {
+                        const mediaParam = await parseMediaParam(imgVal);
+                        reqComponents.push({
+                          type: 'header',
+                          parameters: [
+                            {
+                              type: 'image',
+                              image: mediaParam
+                            }
+                          ]
+                        })
+                      }
+                    } else if (comp.format === 'VIDEO') {
+                      const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                      if (videoVal) {
+                        const mediaParam = await parseMediaParam(videoVal);
+                        reqComponents.push({
+                          type: 'header',
+                          parameters: [
+                            {
+                              type: 'video',
+                              video: mediaParam
+                            }
+                          ]
+                        })
+                      }
+                    } else if (comp.format === 'DOCUMENT') {
+                      const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                      if (docVal) {
+                        const filename = mappedVars['header_document_filename'] || docVal.split('/').pop()?.split('?')[0] || comp.example?.header_handle?.[0]?.split('/').pop()?.split('?')[0] || 'document.pdf';
+                        const mediaParam = await parseMediaParam(docVal);
+                        reqComponents.push({
+                          type: 'header',
+                          parameters: [
+                            {
+                              type: 'document',
+                              document: {
+                                ...mediaParam,
+                                filename: filename
+                              }
+                            }
+                          ]
+                        })
+                      }
+                    } else if (comp.format === 'TEXT') {
+                      const headerVal = mappedVars['header_text_1'] || mappedVars['header_1'] || comp.example?.header_text?.[0] || '';
+                      if (headerVal) {
+                        reqComponents.push({
+                          type: 'header',
+                          parameters: [
+                            {
+                              type: 'text',
+                              text: headerVal
+                            }
+                          ]
+                        })
+                      }
+                    }
+                  } else if (comp.type === 'BODY') {
+                    const bodyText = comp.text || '';
+                    const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || [];
+                    const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[];
+                    const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)));
+                    if (isNumeric) {
+                      uniqueKeys.sort((a, b) => Number(a) - Number(b));
+                    }
+
+                    const parameters = uniqueKeys.map(key => ({
+                      type: 'text',
+                      text: String(mappedVars[key] !== undefined ? mappedVars[key] : '')
+                    }));
+
+                    if (parameters.length > 0) {
+                      reqComponents.push({
+                        type: 'body',
+                        parameters: parameters
+                      });
+                    }
+                  } else if (comp.type === 'BUTTONS' && Array.isArray(comp.buttons)) {
+                    comp.buttons.forEach((btn: any, idx: number) => {
+                      if (btn.type === 'URL') {
+                        const hasVar = btn.url && btn.url.includes('{{1}}');
+                        if (hasVar) {
+                          const val = mappedVars[`button_url_${idx + 1}`] || mappedVars['button_url_1'] || '';
+                          reqComponents.push({
+                            type: 'button',
+                            sub_type: 'url',
+                            index: String(idx),
+                            parameters: [
+                              {
+                                type: 'text',
+                                text: val
+                              }
+                            ]
+                          });
+                        }
+                      } else if (btn.type === 'COPY_CODE') {
+                        const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars['button_copy_code'] || '';
+                        if (val) {
+                          reqComponents.push({
+                            type: 'button',
+                            sub_type: 'copy_code',
+                            index: String(idx),
+                            parameters: [
+                              {
+                                type: 'text',
+                                text: val
+                              }
+                            ]
+                          });
+                        }
+                      }
+                    });
+                  }
+                }
+
+                if (reqComponents.length > 0) {
+                  payload.template.components = reqComponents
+                }
+              } else {
+                const placeholders = templateBody.match(/\{\{([^}]+)\}\}/g) || []
+                const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
+                const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)))
+                if (isNumeric) {
+                  uniqueKeys.sort((a, b) => Number(a) - Number(b))
+                }
+
+                const parameters = uniqueKeys.map(key => ({
+                  type: 'text',
+                  text: String(mappedVars[key] || '')
+                }))
+
+                if (parameters.length > 0) {
+                  payload.template.components = [
+                    {
+                      type: 'body',
+                      parameters: parameters
+                    }
+                  ]
+                }
               }
             } else {
               let body = campaign.template_body || ''

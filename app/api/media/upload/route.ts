@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,21 +12,13 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
-    // Ensure uploads directory exists
-    await mkdir(uploadsDir, { recursive: true })
+    // Convert file to base64 Data URL to avoid read-only or ephemeral filesystem restrictions on Vercel
+    const mimeType = file.type || 'application/octet-stream'
+    const base64 = buffer.toString('base64')
+    const fileUrl = `data:${mimeType};base64,${base64}`
 
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    const ext = path.extname(file.name)
-    const basename = path.basename(file.name, ext).replace(/[^a-zA-Z0-9]/g, '_')
-    const filename = `${basename}-${uniqueSuffix}${ext}`
-    const filePath = path.join(uploadsDir, filename)
-
-    await writeFile(filePath, buffer)
-    console.log(`[Upload] File saved to ${filePath}`)
-
-    const fileUrl = `/uploads/${filename}`
-    return NextResponse.json({ success: true, url: fileUrl, filename })
+    console.log(`[Upload] File converted to data URL, size: ${fileUrl.length} characters`)
+    return NextResponse.json({ success: true, url: fileUrl, filename: file.name })
   } catch (error) {
     console.error('[Upload] Error uploading file:', error)
     return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })

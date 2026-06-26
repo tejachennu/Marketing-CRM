@@ -89,24 +89,72 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
         // Only include APPROVED templates
         if (tpl.status !== 'APPROVED') continue
 
-        // Extract body text from components
+        // Extract body text and scan components for variables/placeholders
         let body = ''
         const components = tpl.components || []
-        for (const comp of components) {
-          if (comp.type === 'BODY') {
-            body = comp.text || ''
-            break
+        const variables: string[] = []
+        const sampleValues: Record<string, string> = {}
+
+        // 1. Process HEADER component
+        const headerComp = components.find((c: any) => c.type === 'HEADER')
+        if (headerComp) {
+          const handle = headerComp.example?.header_handle?.[0] || ''
+          if (headerComp.format === 'IMAGE') {
+            if (handle) sampleValues['header_image_url'] = handle
+          } else if (headerComp.format === 'VIDEO') {
+            if (handle) sampleValues['header_video_url'] = handle
+          } else if (headerComp.format === 'DOCUMENT') {
+            if (handle) {
+              sampleValues['header_document_url'] = handle
+              sampleValues['header_document_filename'] = 'document.pdf'
+            }
+          } else if (headerComp.format === 'TEXT' && headerComp.text) {
+            const headerVarMatches = headerComp.text.match(/\{\{[^\}]+\}\}/g)
+            if (headerVarMatches) {
+              variables.push('header_text_1')
+              const sampleText = headerComp.example?.header_text?.[0] || ''
+              if (sampleText) sampleValues['header_text_1'] = sampleText
+            }
           }
         }
 
-        // Extract variables from body (e.g., {{1}}, {{2}})
-        const variables: string[] = []
-        const varMatches = body.match(/\{\{[^\}]+\}\}/g)
-        if (varMatches) {
-          varMatches.forEach((match: string) => {
-            const variable = match.replace(/[\{\}]/g, '')
-            if (!variables.includes(variable)) {
-              variables.push(variable)
+        // 2. Process BODY component
+        const bodyComp = components.find((c: any) => c.type === 'BODY')
+        if (bodyComp) {
+          body = bodyComp.text || ''
+          const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+          if (varMatches) {
+            const bodyExamples = bodyComp.example?.body_text?.[0] || []
+            varMatches.forEach((match: string, idx: number) => {
+              const variable = match.replace(/[\{\}]/g, '')
+              if (!variables.includes(variable)) {
+                variables.push(variable)
+              }
+              const exampleVal = bodyExamples[idx] || ''
+              if (exampleVal) {
+                sampleValues[variable] = exampleVal
+              }
+            })
+          }
+        }
+
+        // 3. Process BUTTONS component
+        const buttonsComp = components.find((c: any) => c.type === 'BUTTONS')
+        if (buttonsComp && Array.isArray(buttonsComp.buttons)) {
+          buttonsComp.buttons.forEach((btn: any, idx: number) => {
+            if (btn.type === 'URL' && btn.url) {
+              const btnVarMatches = btn.url.match(/\{\{[^\}]+\}\}/g)
+              if (btnVarMatches) {
+                const varName = `button_url_${idx + 1}`
+                variables.push(varName)
+                const exampleVal = btn.example?.url_text?.[0] || ''
+                if (exampleVal) {
+                  sampleValues[varName] = exampleVal
+                }
+              }
+            } else if (btn.type === 'COPY_CODE') {
+              const varName = `button_copy_code_${idx + 1}`
+              variables.push(varName)
             }
           })
         }
@@ -116,6 +164,8 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
           name: `${tpl.name} (Meta Approved)`,
           body: body,
           variables: variables,
+          sampleValues: sampleValues,
+          components: components,
           category: tpl.category || 'UTILITY',
           language: tpl.language || 'en',
           isDbTemplate: false,

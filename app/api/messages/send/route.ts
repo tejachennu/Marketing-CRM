@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import fs from 'fs'
+import path from 'path'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -18,6 +20,94 @@ function getTwilioClient() {
   const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
   const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
   return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+}
+
+async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
+  try {
+    if (mediaUrl.startsWith('data:')) {
+      const match = mediaUrl.match(/^data:([^;]+);base64,(.+)$/)
+      if (match) {
+        const mimeType = match[1]
+        const buffer = Buffer.from(match[2], 'base64')
+        const ext = mimeType.split('/')[1] || 'bin'
+        const filename = `file.${ext}`
+        return { buffer, mimeType, filename }
+      }
+    }
+
+    if (mediaUrl.startsWith('/uploads/')) {
+      const filename = mediaUrl.replace('/uploads/', '');
+      const filePath = path.join(process.cwd(), 'public', 'uploads', filename);
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+        // Determine mimeType from filename extension
+        const ext = path.extname(filename).toLowerCase();
+        let mimeType = 'image/png';
+        if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+        else if (ext === '.gif') mimeType = 'image/gif';
+        else if (ext === '.webp') mimeType = 'image/webp';
+        else if (ext === '.mp4') mimeType = 'video/mp4';
+        else if (ext === '.pdf') mimeType = 'application/pdf';
+        
+        return { buffer, mimeType, filename };
+      }
+    }
+
+    // Fallback to fetch for external URLs or other paths
+    let fullUrl = mediaUrl;
+    if (!mediaUrl.startsWith('http')) {
+      const runtimeUrl = process.env.V0_RUNTIME_URL || 'http://localhost:3000';
+      fullUrl = `${runtimeUrl}${mediaUrl}`;
+    }
+
+    console.log(`[Messages Send] Fetching external media URL: ${fullUrl}`);
+    const res = await fetch(fullUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to download media: ${res.status} ${res.statusText}`);
+    }
+
+    const mimeType = res.headers.get('content-type') || 'image/png';
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const filename = fullUrl.split('/').pop()?.split('?')[0] || 'file';
+    
+    return { buffer, mimeType, filename };
+  } catch (err) {
+    console.error('[Messages Send] getMediaBufferAndType failed:', err);
+    return null;
+  }
+}
+
+async function uploadDirectMediaToMeta(mediaUrl: string, apiToken: string, phoneNumberId: string): Promise<string | null> {
+  const mediaInfo = await getMediaBufferAndType(mediaUrl);
+  if (!mediaInfo) return null;
+
+  try {
+    const fileBlob = new Blob([mediaInfo.buffer], { type: mediaInfo.mimeType });
+    const formData = new FormData();
+    formData.append('file', fileBlob, mediaInfo.filename);
+    formData.append('messaging_product', 'whatsapp');
+
+    console.log(`[Messages Send] Uploading direct attachment ${mediaInfo.filename} to Meta...`);
+    const uploadRes = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      },
+      body: formData
+    });
+
+    const data = await uploadRes.json();
+    if (!uploadRes.ok) {
+      throw new Error(`Upload failed: ${JSON.stringify(data)}`);
+    }
+
+    console.log(`[Messages Send] Direct media uploaded successfully. ID: ${data.id}`);
+    return data.id;
+  } catch (err) {
+    console.error('[Messages Send] uploadDirectMediaToMeta failed:', err);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -230,19 +320,40 @@ export async function POST(request: NextRequest) {
           const lowerUrl = publicMediaUrl.toLowerCase()
           const isImage = lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || lowerUrl.endsWith('.png') || lowerUrl.endsWith('.gif') || lowerUrl.endsWith('.webp')
           
+          let mediaId: string | null = null
+          try {
+            console.log(`[Messages Send] Attempting to upload direct media to Meta: ${msgMediaUrl}`)
+            mediaId = await uploadDirectMediaToMeta(msgMediaUrl!, whatsappApiToken, whatsappPhoneNumberId)
+          } catch (uploadErr) {
+            console.error('[Messages Send] Direct media upload failed, will fallback to link:', uploadErr)
+          }
+
           if (isImage) {
             payload.type = 'image'
-            payload.image = {
-              link: publicMediaUrl
+            if (mediaId) {
+              payload.image = {
+                id: mediaId
+              }
+            } else {
+              payload.image = {
+                link: publicMediaUrl
+              }
             }
             if (msgBody) {
               payload.image.caption = msgBody
             }
           } else {
             payload.type = 'document'
-            payload.document = {
-              link: publicMediaUrl,
-              filename: 'Attachment'
+            if (mediaId) {
+              payload.document = {
+                id: mediaId,
+                filename: 'Attachment'
+              }
+            } else {
+              payload.document = {
+                link: publicMediaUrl,
+                filename: 'Attachment'
+              }
             }
             if (msgBody) {
               payload.document.caption = msgBody

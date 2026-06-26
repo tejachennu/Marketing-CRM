@@ -28,7 +28,11 @@ import {
   ListOrdered,
   AlignLeft,
   AlignCenter,
-  AlignRight
+  AlignRight,
+  ExternalLink,
+  Copy,
+  FileText,
+  Play
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -65,9 +69,11 @@ interface Template {
   name: string
   body: string
   variables: string[]
+  sampleValues?: Record<string, string>
   category: string
   language?: string
   isDbTemplate?: boolean
+  components?: any[]
 }
 
 interface Contact {
@@ -120,6 +126,8 @@ export default function CampaignsPage() {
   // Mapping state: maps template placeholders "1", "2" to column names / attributes
   const [phoneColumn, setPhoneColumn] = useState('')
   const [variableMappings, setVariableMappings] = useState<Record<string, string>>({})
+  const [variableMappingTypes, setVariableMappingTypes] = useState<Record<string, 'dynamic' | 'static'>>({})
+  const [staticVariableValues, setStaticVariableValues] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -530,16 +538,30 @@ export default function CampaignsPage() {
         : customVariables;
       
       const initialMappings: Record<string, string> = {}
+      const initialTypes: Record<string, 'dynamic' | 'static'> = {}
+      const initialStatics: Record<string, string> = {}
       variablesToMap.forEach(v => {
         initialMappings[v] = ''
+        // Default media headers to static mapping, body variables to dynamic mapping
+        const isMediaHeader = v.includes('image_url') || v.includes('video_url') || v.includes('document_url') || v.includes('filename')
+        initialTypes[v] = isMediaHeader ? 'static' : 'dynamic'
+        initialStatics[v] = selectedTemplate?.sampleValues?.[v] || ''
       })
       setVariableMappings(initialMappings)
+      setVariableMappingTypes(initialTypes)
+      setStaticVariableValues(initialStatics)
       setWizardStep(3)
     } else if (wizardStep === 3) {
       // Validate mapping completed
-      const unmapped = Object.entries(variableMappings).filter(([_, val]) => !val)
+      const unmapped = Object.entries(variableMappingTypes).filter(([tplVar, type]) => {
+        if (type === 'static') {
+          return !staticVariableValues[tplVar]?.trim()
+        } else {
+          return !variableMappings[tplVar]
+        }
+      })
       if (unmapped.length > 0) {
-        setErrorMsg('Please map all template variables before proceeding.')
+        setErrorMsg('Please complete all variable mappings or static values before proceeding.')
         return
       }
       setErrorMsg('')
@@ -557,8 +579,14 @@ export default function CampaignsPage() {
     if (audienceSource === 'excel') {
       return excelData.map(row => {
         const variables: Record<string, string> = {}
-        Object.entries(variableMappings).forEach(([tplVar, colName]) => {
-          variables[tplVar] = String(row[colName] || '')
+        Object.keys(variableMappingTypes).forEach(tplVar => {
+          const type = variableMappingTypes[tplVar]
+          if (type === 'static') {
+            variables[tplVar] = staticVariableValues[tplVar] || ''
+          } else {
+            const colName = variableMappings[tplVar]
+            variables[tplVar] = String(row[colName] || '')
+          }
         })
         if (channel === 'email') {
           return {
@@ -577,10 +605,15 @@ export default function CampaignsPage() {
       const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id))
       return selectedContacts.map(c => {
         const variables: Record<string, string> = {}
-        Object.entries(variableMappings).forEach(([tplVar, attr]) => {
-          // Map properties like first_name, last_name, company, email
-          const key = attr as keyof Contact
-          variables[tplVar] = String(c[key] || '')
+        Object.keys(variableMappingTypes).forEach(tplVar => {
+          const type = variableMappingTypes[tplVar]
+          if (type === 'static') {
+            variables[tplVar] = staticVariableValues[tplVar] || ''
+          } else {
+            const attr = variableMappings[tplVar]
+            const key = attr as keyof Contact
+            variables[tplVar] = String(c[key] || '')
+          }
         })
         if (channel === 'email') {
           return {
@@ -667,20 +700,36 @@ export default function CampaignsPage() {
 
     // Preview with first row/contact
     if (audienceSource === 'excel' && excelData.length > 0) {
-      Object.entries(variableMappings).forEach(([tplVar, colName]) => {
-        const firstVal = excelData[0][colName] || `[${colName}]`
-        preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(firstVal))
+      Object.keys(variableMappingTypes).forEach(tplVar => {
+        const type = variableMappingTypes[tplVar]
+        let val = ''
+        if (type === 'static') {
+          val = staticVariableValues[tplVar] || ''
+        } else {
+          const colName = variableMappings[tplVar]
+          val = excelData[0][colName] || `[${colName}]`
+        }
+        preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(val))
       })
     } else if (audienceSource === 'db' && selectedContactIds.length > 0) {
       const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id))
-      Object.entries(variableMappings).forEach(([tplVar, attr]) => {
-        const firstVal = selectedContacts[0][attr as keyof Contact] || `[${attr}]`
-        preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(firstVal))
+      Object.keys(variableMappingTypes).forEach(tplVar => {
+        const type = variableMappingTypes[tplVar]
+        let val = ''
+        if (type === 'static') {
+          val = staticVariableValues[tplVar] || ''
+        } else {
+          const attr = variableMappings[tplVar]
+          val = selectedContacts[0][attr as keyof Contact] || `[${attr}]`
+        }
+        preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(val))
       })
     } else {
       // Default fallback placeholders
       variablesToMap.forEach(v => {
-        preview = preview.replace(new RegExp(`\\{\\{${v}\\}\\}`, 'g'), `[Value ${v}]`)
+        const type = variableMappingTypes[v]
+        const val = type === 'static' ? (staticVariableValues[v] || `[Static ${v}]`) : `[Value ${v}]`
+        preview = preview.replace(new RegExp(`\\{\\{${v}\\}\\}`, 'g'), val)
       })
     }
     return preview
@@ -1686,36 +1735,89 @@ export default function CampaignsPage() {
                   
                   <div className="space-y-3">
                     {(channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables).map(v => (
-                      <div key={v} className="grid grid-cols-1 md:grid-cols-3 items-center gap-3 bg-[#f8f9fa] p-3 rounded-xl border border-[#e9edef]">
-                        <div className="flex items-center gap-2">
-                          <span className="bg-[#00a884] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded">
-                            {"{{"}{v}{"}}"}
-                          </span>
-                          <span className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">Placeholder {v}</span>
+                      <div key={v} className="space-y-3 bg-[#f8f9fa] dark:bg-[#111b21] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#202d36] transition-all hover:shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#00a884] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow-sm">
+                              {"{{"}{v}{"}}"}
+                            </span>
+                            <span className="text-xs font-bold text-[#111b21] dark:text-white">
+                              {v.startsWith('header_image') ? 'Header Image' : v.startsWith('header_video') ? 'Header Video' : v.startsWith('header_document_filename') ? 'Document Name' : v.startsWith('header_document') ? 'Header Document' : v.startsWith('header_text') ? 'Header Text' : v.startsWith('button_url') ? 'Dynamic Button URL' : v.startsWith('button_copy_code') ? 'Button Coupon/OTP Code' : `Variable ${v}`}
+                            </span>
+                          </div>
+
+                          {/* Toggle mapping type */}
+                          <div className="flex items-center self-end sm:self-auto bg-[#eae6df]/50 dark:bg-[#202d36] p-0.5 rounded-lg border border-[#e9edef] dark:border-[#303d46]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVariableMappingTypes(prev => ({ ...prev, [v]: 'dynamic' }))
+                              }}
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                variableMappingTypes[v] !== 'static'
+                                  ? 'bg-[#00a884] text-white shadow-sm'
+                                  : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
+                              }`}
+                            >
+                              Map Column
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVariableMappingTypes(prev => ({ ...prev, [v]: 'static' }))
+                              }}
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                variableMappingTypes[v] === 'static'
+                                  ? 'bg-[#00a884] text-white shadow-sm'
+                                  : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
+                              }`}
+                            >
+                              Static Value
+                            </button>
+                          </div>
                         </div>
-                        <span className="text-[10px] text-center text-[#8696a0] hidden md:block">maps to</span>
-                        <select
-                          value={variableMappings[v] || ''}
-                          onChange={(e) => {
-                            setVariableMappings(prev => ({ ...prev, [v]: e.target.value }))
-                          }}
-                          className="w-full px-3 py-2 bg-white border border-[#e9edef] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
-                        >
-                          <option value="">-- Map to field --</option>
-                          {audienceSource === 'excel' ? (
-                            excelHeaders.map(h => (
-                              <option key={h} value={h}>{h}</option>
-                            ))
-                          ) : (
-                            <>
-                              <option value="first_name">Contact First Name</option>
-                              <option value="last_name">Contact Last Name</option>
-                              <option value="company">Contact Company</option>
-                              <option value="email">Contact Email</option>
-                              <option value="phone_number">Contact Phone</option>
-                            </>
-                          )}
-                        </select>
+
+                        {/* Input or Dropdown selector */}
+                        {variableMappingTypes[v] === 'static' ? (
+                          <input
+                            type="text"
+                            placeholder={
+                              v.includes('image_url') || v.includes('video_url') || v.includes('document_url')
+                                ? "Enter media public URL or Facebook Media ID (e.g. 1084170318116787)"
+                                : v.includes('filename')
+                                ? "Enter dynamic filename (e.g. report.pdf)"
+                                : `Enter constant value for {{${v}}}`
+                            }
+                            value={staticVariableValues[v] || ''}
+                            onChange={(e) => {
+                              setStaticVariableValues(prev => ({ ...prev, [v]: e.target.value }))
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-[#222e35] border border-[#e9edef] dark:border-[#303d46] text-[#111b21] dark:text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] shadow-inner"
+                          />
+                        ) : (
+                          <select
+                            value={variableMappings[v] || ''}
+                            onChange={(e) => {
+                              setVariableMappings(prev => ({ ...prev, [v]: e.target.value }))
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-[#222e35] border border-[#e9edef] dark:border-[#303d46] text-[#111b21] dark:text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                          >
+                            <option value="">-- Select Excel column / contact field --</option>
+                            {audienceSource === 'excel' ? (
+                              excelHeaders.map(h => (
+                                <option key={h} value={h}>{h}</option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="first_name">Contact First Name</option>
+                                <option value="last_name">Contact Last Name</option>
+                                <option value="company">Contact Company</option>
+                                <option value="email">Contact Email</option>
+                                <option value="phone_number">Contact Phone</option>
+                              </>
+                            )}
+                          </select>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1763,12 +1865,136 @@ export default function CampaignsPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-[#efeae2] p-4 rounded-xl border border-[#e9edef] relative overflow-hidden flex flex-col justify-end">
-                        <div className="bg-white/80 p-3 rounded-lg border border-[#e9edef] text-xs max-w-[85%] relative self-start shadow-sm leading-relaxed text-[#111b21] dark:text-white rounded-tl-none font-sans">
-                          {getPreviewMessage()}
-                          <div className="text-[9px] text-[#667781] dark:text-[#8696a0] text-right mt-1 font-semibold">
-                            10:00 AM
+                      <div className="bg-[#efeae2] p-4 rounded-xl border border-[#e9edef] relative overflow-hidden flex flex-col justify-end min-h-[220px] w-full">
+                        {/* WhatsApp-style Bubble Container */}
+                        <div className="bg-white dark:bg-[#1f2c34] rounded-lg border border-[#e9edef] dark:border-[#2a3942] text-[11px] max-w-[90%] sm:max-w-[285px] relative self-start shadow-sm leading-relaxed text-[#111b21] dark:text-white rounded-tl-none font-sans overflow-hidden flex flex-col">
+                          
+                          {/* 1. Header Rendering */}
+                          {(() => {
+                            const headerComp = selectedTemplate?.components?.find((c: any) => c.type === 'HEADER')
+                            if (!headerComp) return null
+
+                            if (headerComp.format === 'IMAGE') {
+                              const sampleUrl = selectedTemplate?.sampleValues?.header_image_url || ''
+                              return (
+                                <div className="p-1 pb-0">
+                                  {sampleUrl && sampleUrl.startsWith('http') ? (
+                                    <img 
+                                      src={sampleUrl} 
+                                      alt="Header Template Image" 
+                                      className="rounded-t-md max-h-36 w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="bg-slate-100 dark:bg-slate-800 rounded-t-md h-28 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-1.5 border border-dashed border-slate-200 dark:border-slate-700">
+                                      <FileSpreadsheet size={20} />
+                                      <span className="text-[9px] font-medium">📷 Image Header (Approved Asset)</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            }
+
+                            if (headerComp.format === 'VIDEO') {
+                              const sampleUrl = selectedTemplate?.sampleValues?.header_video_url || ''
+                              return (
+                                <div className="p-1 pb-0">
+                                  {sampleUrl && sampleUrl.startsWith('http') ? (
+                                    <video 
+                                      src={sampleUrl} 
+                                      className="rounded-t-md max-h-36 w-full object-cover bg-black"
+                                      controls
+                                    />
+                                  ) : (
+                                    <div className="bg-slate-100 dark:bg-slate-800 rounded-t-md h-28 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-1.5 border border-dashed border-slate-200 dark:border-slate-700">
+                                      <Play size={20} />
+                                      <span className="text-[9px] font-medium">🎥 Video Header (Approved Asset)</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            }
+
+                            if (headerComp.format === 'DOCUMENT') {
+                              const docFilename = selectedTemplate?.sampleValues?.header_document_filename || 'document.pdf'
+                              return (
+                                <div className="p-1.5 pb-0">
+                                  <div className="bg-slate-100 dark:bg-slate-800/80 rounded p-2 flex items-center justify-between border border-slate-200/50 dark:border-slate-700/60">
+                                    <div className="flex items-center gap-2 truncate">
+                                      <FileText size={16} className="text-red-500 flex-shrink-0" />
+                                      <span className="truncate max-w-[150px] text-[9px] font-bold text-slate-750 dark:text-slate-350">
+                                        {docFilename}
+                                      </span>
+                                    </div>
+                                    <Upload size={10} className="text-slate-400 rotate-180 flex-shrink-0" />
+                                  </div>
+                                </div>
+                              )
+                            }
+
+                            if (headerComp.format === 'TEXT' && headerComp.text) {
+                              let headerText = headerComp.text
+                              const headerVarMatches = headerText.match(/\{\{[^\}]+\}\}/g)
+                              if (headerVarMatches) {
+                                const type = variableMappingTypes['header_text_1']
+                                let val = ''
+                                if (type === 'static') {
+                                  val = staticVariableValues['header_text_1'] || selectedTemplate?.sampleValues?.['header_text_1'] || '[Header Text]'
+                                } else {
+                                  const mapping = variableMappings['header_text_1']
+                                  val = mapping ? `[${mapping}]` : '[Header Text]'
+                                }
+                                headerText = headerText.replace(/\{\{[^\}]+\}\}/g, val)
+                              }
+                              return (
+                                <div className="px-3 pt-3 font-bold text-xs text-slate-850 dark:text-slate-100 leading-tight">
+                                  {headerText}
+                                </div>
+                              )
+                            }
+
+                            return null
+                          })()}
+
+                          {/* 2. Body Text Rendering */}
+                          <div className="px-3 pt-2 pb-1 text-[11px] leading-relaxed">
+                            <p className="whitespace-pre-wrap break-words">{getPreviewMessage()}</p>
+                            
+                            <div className="text-[8px] text-[#667781] dark:text-[#8696a0] text-right mt-1 font-semibold select-none">
+                              10:00 AM
+                            </div>
                           </div>
+
+                          {/* 3. Buttons Rendering */}
+                          {(() => {
+                            const buttonsComp = selectedTemplate?.components?.find((c: any) => c.type === 'BUTTONS')
+                            if (!buttonsComp || !Array.isArray(buttonsComp.buttons)) return null
+
+                            return (
+                              <div className="flex flex-col border-t border-[#f0f2f5] dark:border-slate-700/30">
+                                {buttonsComp.buttons.map((btn: any, idx: number) => {
+                                  let icon = null
+                                  if (btn.type === 'URL') {
+                                    icon = <ExternalLink size={10} className="text-[#008069] dark:text-emerald-400" />
+                                  } else if (btn.type === 'PHONE_NUMBER') {
+                                    icon = <Phone size={10} className="text-[#008069] dark:text-emerald-400" />
+                                  } else if (btn.type === 'COPY_CODE') {
+                                    icon = <Copy size={10} className="text-[#008069] dark:text-emerald-400" />
+                                  }
+                                  
+                                  return (
+                                    <div 
+                                      key={idx} 
+                                      className="py-2 px-3 text-center font-bold text-[10px] text-[#008069] dark:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-850/50 cursor-pointer flex items-center justify-center gap-1.5 border-b border-[#f0f2f5] dark:border-slate-700/30 last:border-b-0 transition-colors"
+                                    >
+                                      <span>{btn.text}</span>
+                                      {icon}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
+
                         </div>
                       </div>
                     )}

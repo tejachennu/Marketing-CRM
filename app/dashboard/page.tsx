@@ -857,19 +857,16 @@ function ConversationsPageContent() {
 
   const getDownloadName = (url: string | null): string => {
     if (!url) return 'download'
-    const parts = url.split('/')
+    const cleanUrl = url.split('?')[0].split('#')[0]
+    const parts = cleanUrl.split('/')
     const lastPart = parts[parts.length - 1] || 'download'
-    const [name, hash] = lastPart.split('#')
-    if (hash && hash.startsWith('media.')) {
-      const ext = hash.split('.').pop()
-      return `${name}.${ext}`
-    }
-    return name
+    return decodeURIComponent(lastPart)
   }
 
   const getMediaType = (url: string | null): 'image' | 'video' | 'audio' | 'document' | null => {
     if (!url) return null
-    const ext = url.split('.').pop()?.toLowerCase() || ''
+    const cleanUrl = url.split('?')[0].split('#')[0]
+    const ext = cleanUrl.split('.').pop()?.toLowerCase() || ''
     if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return 'image'
     if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video'
     if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr'].includes(ext)) return 'audio'
@@ -1468,7 +1465,11 @@ function ConversationsPageContent() {
 
                     <div
                       id={`msg-${msg.id}`}
-                      className={`max-w-[65%] rounded-2xl px-4 py-2.5 shadow-xs border transition-all duration-200 relative text-xs leading-relaxed ${
+                      className={`max-w-[70%] sm:max-w-[450px] rounded-2xl border transition-all duration-200 relative text-xs leading-relaxed overflow-hidden ${
+                        (mediaType === 'image' || mediaType === 'video')
+                          ? (displayBody ? 'p-1 pb-2' : 'p-1')
+                          : 'px-4 py-2.5'
+                      } ${
                         isUser
                           ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-emerald-500/25 text-white shadow-emerald-500/10 rounded-tr-none'
                           : 'bg-wa-bubble-in border-wa-border text-wa-text-primary rounded-tl-none shadow-sm dark:shadow-none'
@@ -1479,6 +1480,8 @@ function ConversationsPageContent() {
                         <div 
                           onClick={() => repliedMsg && scrollToMessage(replyId)}
                           className={`mb-2 p-2 rounded-lg border-l-4 text-[10px] cursor-pointer transition-colors text-left ${
+                            (mediaType === 'image' || mediaType === 'video') ? 'mx-2 mt-2' : ''
+                          } ${
                             isUser
                               ? 'bg-white/15 border-l-white/60 text-white/90'
                               : 'bg-slate-50 dark:bg-slate-900 border-l-slate-400 dark:border-l-slate-650 text-slate-600 dark:text-slate-300'
@@ -1512,13 +1515,13 @@ function ConversationsPageContent() {
 
                       {/* Media Renderers */}
                       {msg.media_url && (
-                        <div className="mb-2 max-w-full relative group">
+                        <div className={`max-w-full relative group ${displayBody ? 'mb-1' : ''}`}>
                           {mediaType === 'image' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10">
+                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10 w-full bg-slate-100 dark:bg-slate-900">
                               <img
                                 src={getDisplayUrl(msg.media_url)}
                                 alt="Attached Image"
-                                className="max-h-60 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                className="max-h-80 w-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
                                 onClick={() => setActiveImageModal(getDisplayUrl(msg.media_url))}
                               />
                               <a
@@ -1536,11 +1539,11 @@ function ConversationsPageContent() {
                             </div>
                           )}
                           {mediaType === 'video' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10">
+                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10 w-full bg-slate-100 dark:bg-slate-900">
                               <video
                                 src={getDisplayUrl(msg.media_url)}
                                 controls
-                                className="max-h-60 object-cover w-full"
+                                className="max-h-80 object-cover w-full"
                               />
                               <a
                                 href={getDisplayUrl(msg.media_url)}
@@ -1601,10 +1604,18 @@ function ConversationsPageContent() {
                       )}
 
                       {/* Text Body */}
-                      {displayBody && <p className="text-xs font-normal break-words whitespace-pre-wrap leading-relaxed">{displayBody}</p>}
+                      {displayBody && (
+                        <p className={`text-xs font-normal break-words whitespace-pre-wrap leading-relaxed ${
+                          (mediaType === 'image' || mediaType === 'video') ? 'px-3 pt-2 pb-0.5' : ''
+                        }`}>
+                          {displayBody}
+                        </p>
+                      )}
                       
                       {/* Message Footer (Time & Status) */}
                       <div className={`flex items-center justify-end gap-1 mt-1.5 text-[9px] select-none ${
+                        (mediaType === 'image' || mediaType === 'video') ? 'px-3 pb-0.5' : ''
+                      } ${
                         isUser ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'
                       }`}>
                         <span>
