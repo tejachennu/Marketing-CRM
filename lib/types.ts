@@ -32,6 +32,9 @@ export interface Organization {
   whatsapp_phone_number_id?: string | null
   whatsapp_business_account_id?: string | null
   max_teammates?: number | null
+  ticket_email_enabled?: boolean | null
+  ticket_email_recipients?: string[] | null
+  currency?: string | null
 }
 
 export interface User {
@@ -39,9 +42,20 @@ export interface User {
   organization_id: string
   email: string
   full_name: string | null
-  role: 'owner' | 'admin' | 'member' | 'salesemployees' | 'saleslead' | 'superadmin' | 'OrgAdmin' | 'Manager'
+  // ── New canonical roles ──────────────────────────────────────────
+  // super_admin  : Platform-level (your internal use, cross-org)
+  // org_admin    : Full org access — all chats, leads, settings
+  // org_manager  : Manages team, can assign & grant employee permissions
+  // sales_employee: Restricted — only assigned chats/leads by default
+  // ── Legacy roles kept for backward compat ───────────────────────
+  role: 'super_admin' | 'org_admin' | 'org_manager' | 'sales_employee'
+     | 'owner' | 'admin' | 'member' | 'agent' | 'viewer'
+     | 'salesemployees' | 'saleslead' | 'superadmin' | 'OrgAdmin' | 'Manager'
   created_at: string
   updated_at: string
+  // Permission overrides (set by admin/manager per user)
+  see_all?: boolean    // true → sees all org chats & leads regardless of role
+  read_only?: boolean  // true → can view only, cannot send/edit
 }
 
 export interface Contact {

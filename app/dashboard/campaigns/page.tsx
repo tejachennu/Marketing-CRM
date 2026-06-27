@@ -745,7 +745,9 @@ export default function CampaignsPage() {
   return (
     <div className="h-full flex flex-col md:flex-row bg-[#eae6df] dark:bg-[#0b141a] select-none">
       {/* Sidebar List Section */}
-      <div className="w-full md:w-[380px] bg-white dark:bg-[#111b21] border-r border-[#e9edef] dark:border-[#202d36] flex flex-col h-full flex-shrink-0">
+      <div className={`w-full md:w-[380px] bg-white dark:bg-[#111b21] border-r border-[#e9edef] dark:border-[#202d36] flex flex-col h-full flex-shrink-0 ${
+        selectedCampaign ? 'hidden md:flex' : 'flex'
+      }`}>
         
         {/* Panel Header */}
         <div className="h-[59px] bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] flex items-center justify-between px-4">
@@ -912,13 +914,23 @@ export default function CampaignsPage() {
       </div>
  
       {/* Main Details Panel */}
-      <div className="flex-1 bg-[#f8f9fa] dark:bg-[#0c1317] flex flex-col h-full overflow-y-auto scrollbar-thin">
+      <div className={`flex-1 bg-[#f8f9fa] dark:bg-[#0c1317] flex flex-col h-full overflow-y-auto scrollbar-thin ${
+        selectedCampaign ? 'flex' : 'hidden md:flex'
+      }`}>
         {selectedCampaign ? (
           <div className="flex flex-col min-h-full">
             {/* Header Details */}
-            <div className="bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] p-4 flex justify-between items-center flex-shrink-0">
-              <div>
-                <h2 className="text-base font-bold text-[#111b21] dark:text-white">{selectedCampaign.name}</h2>
+            <div className="bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] p-4 flex gap-3 items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSelectedCampaign(null)}
+                  className="md:hidden p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 mr-1"
+                  title="Back to campaigns"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div>
+                  <h2 className="text-base font-bold text-[#111b21] dark:text-white leading-tight">{selectedCampaign.name}</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   <span className="text-xs text-[#667781] dark:text-[#8696a0]">
                     Launched on {new Date(selectedCampaign.created_at).toLocaleString()}
@@ -945,7 +957,8 @@ export default function CampaignsPage() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+            </div>
+            <div className="flex items-center gap-2">
                 <span className={`text-xs font-bold px-3 py-1 rounded-full ${
                   selectedCampaign.status === 'COMPLETED' ? 'bg-[#e7f7f4] text-[#008069]' :
                   selectedCampaign.status === 'PROCESSING' ? 'bg-amber-50 text-amber-600' :

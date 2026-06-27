@@ -34,6 +34,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { useConfirm } from '@/lib/dialog-context'
 
 // Define interfaces
 interface OrgStats {
@@ -135,6 +136,7 @@ function ToggleSwitch({ checked, onChange, label, description }: ToggleProps) {
 }
 
 export default function SuperAdminPage() {
+  const confirm = useConfirm()
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'analytics' | 'organizations' | 'users'>('analytics')
 
@@ -381,7 +383,14 @@ export default function SuperAdminPage() {
   }
 
   async function handleDeleteArticle(id: string) {
-    if (!selectedOrgSettings || !confirm('Are you sure you want to delete this article? It will be removed from the AI RAG index.')) return
+    if (!selectedOrgSettings) return
+    const confirmed = await confirm({
+      title: 'Delete Article',
+      message: 'Are you sure you want to delete this article? It will be removed from the AI RAG index.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel'
+    })
+    if (!confirmed) return
     try {
       const res = await fetch(`/api/knowledge?id=${id}`, {
         method: 'DELETE'
@@ -746,9 +755,13 @@ export default function SuperAdminPage() {
 
   // Delete Organization
   async function handleDeleteOrg(orgId: string, name: string) {
-    if (!confirm(`Are you absolutely sure you want to delete organization "${name}"?\nAll users, contacts, messages, and campaigns under this organization will be permanently deleted.`)) {
-      return
-    }
+    const confirmed = await confirm({
+      title: 'Delete Organization',
+      message: `Are you absolutely sure you want to delete organization "${name}"?\nAll users, contacts, messages, and campaigns under this organization will be permanently deleted.`,
+      confirmLabel: 'Delete Permanently',
+      cancelLabel: 'Cancel'
+    })
+    if (!confirmed) return
 
     try {
       const token = authSessionManager.getSession()?.access_token
@@ -846,9 +859,13 @@ export default function SuperAdminPage() {
 
   // Delete User
   async function handleDeleteUser(userId: string, email: string) {
-    if (!confirm(`Are you sure you want to delete user "${email}"?\nThis action will delete their profile and disable their authentication credentials.`)) {
-      return
-    }
+    const confirmed = await confirm({
+      title: 'Delete User',
+      message: `Are you sure you want to delete user "${email}"?\nThis action will delete their profile and disable their authentication credentials.`,
+      confirmLabel: 'Delete User',
+      cancelLabel: 'Cancel'
+    })
+    if (!confirmed) return
 
     try {
       const token = authSessionManager.getSession()?.access_token

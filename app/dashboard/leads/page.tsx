@@ -3,16 +3,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { Lead, PipelineStage, Contact, User } from '@/lib/types'
+import { Lead, PipelineStage, Contact, User as SupabaseUser } from '@/lib/types'
 import {
   Plus, DollarSign, X, Trash2, MessageCircle, Save, Search,
   Calendar, TrendingUp, Trophy, XCircle, Pause, Filter,
   ChevronDown, ChevronUp, ArrowUpDown, Flame, Sun, Snowflake,
   BarChart3, Target, Clock, Grip, CheckCircle2, Ban,
   ExternalLink, Phone, Mail, Building2, Package, Loader2,
-  List, LayoutGrid, Eye, Sparkles
+  List, LayoutGrid, Eye, Sparkles, User
 } from 'lucide-react'
 import Link from 'next/link'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  AreaChart, Area, PieChart, Pie, Cell, Legend
+} from 'recharts'
 
 // ─── Types ───
 interface LeadWithContact extends Lead {
@@ -22,7 +26,8 @@ interface LeadWithContact extends Lead {
 
 type StatusFilter = 'all' | 'active' | 'won' | 'lost' | 'on_hold'
 type PriorityFilter = 'all' | 'high' | 'medium' | 'low'
-type ViewMode = 'list' | 'board' | 'performance'
+type ViewMode = 'list' | 'analytics' | 'performance'
+type DrawerTab = 'overview' | 'discussions' | 'ai_summary'
 type SortField = 'title' | 'value' | 'created_at' | 'last_activity_at' | 'expected_close_date'
 type SortDir = 'asc' | 'desc'
 
@@ -64,7 +69,7 @@ export default function LeadsPage() {
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [users, setUsers] = useState<{ id: string; full_name: string | null; email: string; role?: string }[]>([])
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [features, setFeatures] = useState({
     enable_ai: true,
@@ -72,6 +77,7 @@ export default function LeadsPage() {
     enable_messages: true,
     enable_phone_calls: true,
   })
+  const [currency, setCurrency] = useState('USD')
 
   // ─── Contact Search State ───
   const [contactSearchInput, setContactSearchInput] = useState('')
@@ -89,20 +95,46 @@ export default function LeadsPage() {
   // ─── Filters & View ───
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all')
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [showAnalytics, setShowAnalytics] = useState(false)
+  const [analyticsChartView, setAnalyticsChartView] = useState<'month' | 'week' | 'pipeline' | 'source'>('month')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminSeeAll, setAdminSeeAll] = useState(true)
+  const [readOnlyMode, setReadOnlyMode] = useState(false)
 
   // ─── Date Range Filter ───
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [dateFilterApplied, setDateFilterApplied] = useState(false)
 
+  // ─── Popover Overlay Filter ───
+  const [showFilterPopover, setShowFilterPopover] = useState(false)
+  const filterPopoverRef = useRef<HTMLDivElement>(null)
+
+  // Handle click outside for filter popover
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(event.target as Node)) {
+        setShowFilterPopover(false)
+      }
+    }
+    if (showFilterPopover) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showFilterPopover])
+
   // ─── Modals ───
   const [showAddModal, setShowAddModal] = useState(false)
+  const [isOfflineLead, setIsOfflineLead] = useState(false)
+  const [offlineContact, setOfflineContact] = useState({ first_name: '', last_name: '', phone_number: '', company: '' })
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
+  const [activeDrawerTab, setActiveDrawerTab] = useState<DrawerTab>('overview')
   const [showWonLostModal, setShowWonLostModal] = useState<{ leadId: string; action: 'won' | 'lost' } | null>(null)
   const [wonLostReason, setWonLostReason] = useState('')
   const [wonLostNote, setWonLostNote] = useState('')
@@ -127,6 +159,31 @@ export default function LeadsPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiSuccess, setAiSuccess] = useState(false)
+  const [activities, setActivities] = useState<any[]>([])
+  const [activityNote, setActivityNote] = useState('')
+
+  async function fetchActivities(leadId: string) {
+    const { data } = await supabase.from('lead_activities').select('*, user:users(full_name)').eq('lead_id', leadId).order('created_at', { ascending: false })
+    if (data) setActivities(data)
+  }
+
+  async function handleAddNote() {
+    if (!activityNote.trim() || !selectedLeadId || !user) return
+    setIsSaving(true)
+    try {
+      await supabase.from('lead_activities').insert([{
+        organization_id: user.organization_id,
+        lead_id: selectedLeadId,
+        user_id: user.id,
+        activity_type: 'note',
+        content: activityNote
+      }])
+      setActivityNote('')
+      await fetchActivities(selectedLeadId)
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   // ─── New Lead Form ───
   const [newLead, setNewLead] = useState({
@@ -156,6 +213,7 @@ export default function LeadsPage() {
         // Reset AI states
         setAiError(null)
         setAiSuccess(false)
+        fetchActivities(selectedLeadId)
       }
     }
   }, [selectedLeadId, leads])
@@ -176,6 +234,13 @@ export default function LeadsPage() {
       const userData = await ensureUserProfile(userId, email)
       if (!userData) return
       setUser(userData)
+      // ── Role-based access ──────────────────────────────────────────────────
+      // Admin/Manager roles: full pipeline + analytics visibility
+      // sales_employee: only sees assigned leads unless see_all is true
+      const isAdminRole = ['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userData.role || '')
+      setIsAdmin(isAdminRole)
+      setAdminSeeAll(userData.see_all !== false)
+      setReadOnlyMode(userData.read_only === true)
 
       // Fetch stages
       const { data: stagesData } = await supabase
@@ -203,7 +268,7 @@ export default function LeadsPage() {
       // Fetch organization features
       const { data: orgData } = await supabase
         .from('organizations')
-        .select('enable_ai, enable_email, enable_messages, enable_phone_calls')
+        .select('enable_ai, enable_email, enable_messages, enable_phone_calls, currency')
         .eq('id', userData.organization_id)
         .maybeSingle()
       if (orgData) {
@@ -213,12 +278,13 @@ export default function LeadsPage() {
           enable_messages: orgData.enable_messages !== false,
           enable_phone_calls: orgData.enable_phone_calls !== false,
         })
+        if (orgData.currency) setCurrency(orgData.currency)
       }
 
       // Fetch dynamic lists
       await Promise.all([
         loadLeads(userData, 1, searchQuery, statusFilter, priorityFilter, fromDate, toDate, dateFilterApplied, sortField, sortDir),
-        loadAnalyticsLeads(userData.organization_id, userData.id, userData.role)
+        loadAnalyticsLeads(userData.organization_id, userData.id, userData.see_all !== false)
       ])
 
     } catch (error) {
@@ -254,15 +320,15 @@ export default function LeadsPage() {
     }
   }, [])
 
-  async function loadAnalyticsLeads(orgId: string, userId: string, role: string) {
+  async function loadAnalyticsLeads(orgId: string, userId: string, seeAll: boolean) {
     try {
       let aq = supabase
         .from('leads')
         .select('value, status, priority, source, created_at, last_activity_at, updated_at, won_at, lost_at, assigned_to')
         .eq('organization_id', orgId)
 
-      if (role === 'salesemployees' || role === 'saleslead') {
-        aq = aq.or(`assigned_to.eq.${userId},assigned_to.is.null`)
+      if (!seeAll) {
+        aq = aq.eq('assigned_to', userId)
       }
 
       const { data, error } = await aq
@@ -274,7 +340,7 @@ export default function LeadsPage() {
   }
 
   async function loadLeads(
-    currentUser: User,
+    currentUser: SupabaseUser,
     page: number,
     queryText: string,
     status: StatusFilter,
@@ -308,8 +374,9 @@ export default function LeadsPage() {
         `, { count: 'exact' })
         .eq('organization_id', currentUser.organization_id)
 
-      if (currentUser.role === 'salesemployees' || currentUser.role === 'saleslead') {
-        q = q.or(`assigned_to.eq.${currentUser.id},assigned_to.is.null`)
+      const seeAll = currentUser.see_all !== false
+      if (!seeAll) {
+        q = q.eq('assigned_to', currentUser.id)
       }
 
       if (queryText.trim()) {
@@ -601,12 +668,32 @@ export default function LeadsPage() {
 
   // ─── CRUD Operations ───
   async function handleAddLead() {
-    if (!user || !newLead.title || !newLead.contact_id) return
+    if (!user || !newLead.title) return
+    if (!isOfflineLead && !newLead.contact_id) return
+    if (isOfflineLead && !offlineContact.first_name) return // require at least a name
+    
     setActionLoading(true)
     try {
-      const { error } = await supabase.from('leads').insert([{
+      let finalContactId = newLead.contact_id
+      
+      if (isOfflineLead) {
+        // Create offline contact
+        const { data: contactData, error: contactError } = await supabase.from('contacts').insert([{
+          organization_id: user.organization_id,
+          first_name: offlineContact.first_name,
+          last_name: offlineContact.last_name || null,
+          phone_number: offlineContact.phone_number || 'Offline',
+          company: offlineContact.company || null,
+          created_by: user.id
+        }]).select().single()
+        
+        if (contactError) throw contactError
+        finalContactId = contactData.id
+      }
+
+      const { data: newLeadData, error } = await supabase.from('leads').insert([{
         organization_id: user.organization_id,
-        contact_id: newLead.contact_id,
+        contact_id: finalContactId,
         title: newLead.title,
         description: newLead.description,
         value: newLead.value ? parseFloat(newLead.value) : null,
@@ -620,9 +707,22 @@ export default function LeadsPage() {
         pipeline_stage_id: stages[0]?.id,
         created_by: user.id,
         last_activity_at: new Date().toISOString(),
-      }])
+      }]).select().single()
+      
       if (error) throw error
+      
+      // Log creation activity
+      await supabase.from('lead_activities').insert([{
+        organization_id: user.organization_id,
+        lead_id: newLeadData.id,
+        user_id: user.id,
+        activity_type: 'creation',
+        content: 'Lead created'
+      }])
+
       setShowAddModal(false)
+      setIsOfflineLead(false)
+      setOfflineContact({ first_name: '', last_name: '', phone_number: '', company: '' })
       setNewLead({ title: '', description: '', value: '', contact_id: '', priority: 'medium', source: 'other', expected_close_date: '', notes: '', product_service: '', assigned_to: '' })
       await loadData()
     } catch (error) {
@@ -633,9 +733,10 @@ export default function LeadsPage() {
   }
 
   async function handleSaveChanges() {
-    if (!selectedLeadId) return
+    if (!selectedLeadId || !user) return
     setIsSaving(true)
     try {
+      const currentLead = leads.find(l => l.id === selectedLeadId)
       const { error } = await supabase.from('leads').update({
         title: editTitle,
         description: editDescription,
@@ -651,6 +752,19 @@ export default function LeadsPage() {
         updated_at: new Date().toISOString(),
       }).eq('id', selectedLeadId)
       if (error) throw error
+      
+      // Log stage change if applicable
+      if (currentLead && currentLead.pipeline_stage_id !== editStageId) {
+        const newStage = stages.find(s => s.id === editStageId)
+        await supabase.from('lead_activities').insert([{
+          organization_id: user.organization_id,
+          lead_id: selectedLeadId,
+          user_id: user.id,
+          activity_type: 'stage_change',
+          content: `Moved to ${newStage?.name || 'new stage'}`
+        }])
+      }
+
       await loadData()
       setSelectedLeadId(null)
     } catch (error) {
@@ -768,6 +882,17 @@ export default function LeadsPage() {
         last_activity_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', leadId)
+      
+      if (user) {
+        await supabase.from('lead_activities').insert([{
+          organization_id: user.organization_id,
+          lead_id: leadId,
+          user_id: user.id,
+          activity_type: 'status_change',
+          content: `Status changed to ${newStatus}`
+        }])
+      }
+
       await loadData()
     } catch (error) {
       console.error('Error updating status:', error)
@@ -789,6 +914,17 @@ export default function LeadsPage() {
         last_activity_at: now,
         updated_at: now,
       }).eq('id', leadId)
+      
+      if (user) {
+        await supabase.from('lead_activities').insert([{
+          organization_id: user.organization_id,
+          lead_id: leadId,
+          user_id: user.id,
+          activity_type: 'status_change',
+          content: `Marked as ${action.toUpperCase()}${wonLostReason ? ` - ${wonLostReason}` : ''}${wonLostNote ? ` - ${wonLostNote}` : ''}`
+        }])
+      }
+
       await loadData()
       setShowWonLostModal(null)
       setWonLostReason('')
@@ -872,6 +1008,104 @@ export default function LeadsPage() {
   }) : []
   const dateFilteredRevenue = dateFilteredWon.reduce((s, l) => s + (l.value || 0), 0)
 
+  // ── Week-wise analytics breakdown (last 8 weeks) ──
+  const weeklyBreakdown = Array.from({ length: 8 }, (_, i) => {
+    const weekOffset = 7 - i
+    const wEnd = new Date(now)
+    wEnd.setDate(now.getDate() - (7 - i) * 7 + 6)
+    wEnd.setHours(23, 59, 59, 999)
+    const wStart = new Date(wEnd)
+    wStart.setDate(wEnd.getDate() - 6)
+    wStart.setHours(0, 0, 0, 0)
+    const wWon = wonLeads.filter(l => {
+      const t = new Date(l.won_at || l.updated_at).getTime()
+      return t >= wStart.getTime() && t <= wEnd.getTime()
+    })
+    const wCreated = allLeadsForAnalytics.filter(l => {
+      const t = new Date(l.created_at).getTime()
+      return t >= wStart.getTime() && t <= wEnd.getTime()
+    })
+    const weekLabel = `W${i + 1} (${wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
+    return {
+      week: weekLabel,
+      sales: wWon.length,
+      revenue: wWon.reduce((s, l) => s + (l.value || 0), 0),
+      newLeads: wCreated.length,
+    }
+  })
+
+  // ── Current month: daily deals count + revenue ──
+  const currentDay = now.getDate()
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dailyRevenueData = Array.from({ length: currentDay }, (_, i) => {
+    const day = i + 1
+    const dateStart = new Date(now.getFullYear(), now.getMonth(), day, 0, 0, 0).getTime()
+    const dateEnd = new Date(now.getFullYear(), now.getMonth(), day, 23, 59, 59).getTime()
+    const wonToday = wonThisMonth.filter(l => {
+      const t = new Date(l.won_at || l.updated_at).getTime()
+      return t >= dateStart && t <= dateEnd
+    })
+    return {
+      day: day.toString(),
+      revenue: wonToday.reduce((s, l) => s + (l.value || 0), 0),
+      sales: wonToday.length,
+    }
+  })
+
+  // ── Month-end prediction using linear trend ──
+  const daysElapsed = currentDay
+  const avgDailyRevenue = daysElapsed > 0 ? wonRevenueThisMonth / daysElapsed : 0
+  const avgDailySales = daysElapsed > 0 ? wonThisMonth.length / daysElapsed : 0
+  const predictedMonthRevenue = Math.round(avgDailyRevenue * daysInMonth)
+  const predictedMonthSales = Math.round(avgDailySales * daysInMonth)
+  const revenueGrowthVsLast = wonRevenueLastMonth > 0
+    ? Math.round(((predictedMonthRevenue - wonRevenueLastMonth) / wonRevenueLastMonth) * 100) : 0
+  const projectionConfidence = Math.min(Math.round((daysElapsed / daysInMonth) * 100), 95)
+
+  // ── Daily chart incl. projected remaining days ──
+  const fullMonthChart = Array.from({ length: daysInMonth }, (_, i) => {
+    const day = i + 1
+    if (day <= currentDay) {
+      const actual = dailyRevenueData[i] || { revenue: 0, sales: 0 }
+      return { day: day.toString(), revenue: actual.revenue, sales: actual.sales, projected: null as number | null }
+    }
+    return { day: day.toString(), revenue: 0, sales: 0, projected: Math.round(avgDailyRevenue) }
+  })
+
+  // Data for Sales Performance Graphs
+  const teamPerformanceData = users.map((u: any) => {
+    const userWon = wonLeads.filter(l => l.assigned_to === u.id)
+    return {
+      name: u.full_name || 'Unknown',
+      revenue: userWon.reduce((s, l) => s + (l.value || 0), 0),
+      deals: userWon.length
+    }
+  }).sort((a, b) => b.revenue - a.revenue).slice(0, 5) // Top 5
+
+  // Data for Sales Analytics Graphs
+  const pipelineByStageData = stages.map(s => {
+    const stageLeads = activeLeads.filter(l => l.pipeline_stage_id === s.id)
+    return {
+      name: s.name,
+      value: stageLeads.reduce((sum, l) => sum + (l.value || 0), 0),
+      count: stageLeads.length,
+      fill: s.color || '#8696a0'
+    }
+  })
+
+  const sourceCounts = allLeadsForAnalytics.reduce((acc, l) => {
+    const src = (l.source || 'other').replace('_', ' ')
+    acc[src] = (acc[src] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const SOURCE_COLORS = ['#00a884', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b']
+  const leadsBySourceData = Object.entries(sourceCounts).map(([name, value], idx) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    value,
+    color: SOURCE_COLORS[idx % SOURCE_COLORS.length]
+  })).sort((a, b) => b.value - a.value)
+
   // Stale leads (no activity > 7 days)
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).getTime()
   const staleLeads = activeLeads.filter(l => new Date(l.last_activity_at || l.created_at).getTime() < sevenDaysAgo)
@@ -951,9 +1185,14 @@ export default function LeadsPage() {
     `${lead.contact?.first_name || 'Unknown'} ${lead.contact?.last_name || ''}`.trim()
 
   const formatCurrency = (val: number) => {
-    if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`
-    if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`
-    return `$${val.toLocaleString()}`
+    let symbol = '$'
+    if (currency === 'INR') symbol = '₹'
+    else if (currency === 'EUR') symbol = '€'
+    else if (currency === 'GBP') symbol = '£'
+    
+    if (val >= 1000000) return `${symbol}${(val / 1000000).toFixed(1)}M`
+    if (val >= 1000) return `${symbol}${(val / 1000).toFixed(1)}K`
+    return `${symbol}${val.toLocaleString()}`
   }
 
   const daysSince = (date: string) => {
@@ -979,249 +1218,679 @@ export default function LeadsPage() {
   return (
     <div className="h-full flex flex-col bg-[#eae6df]/30 overflow-hidden leads-page-container">
       {/* ━━━ TOP BAR ━━━ */}
-      <div className="flex-shrink-0 bg-white border-b border-[#e9edef] px-4 md:px-6 py-2.5">
-        <div className="flex flex-col gap-3">
-          {/* Row 1: Title + Actions */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#111b21] flex items-center gap-2">
-                <TrendingUp size={20} className="text-[#00a884]" />
-                Sales Pipeline
-              </h1>
-              <p className="text-[10px] text-[#667781] font-medium mt-0.5">
-                {totalLeadsCount} total leads · {activeLeads.length} active · {formatCurrency(totalPipelineValue)} in pipeline
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* View Toggle */}
-              <div className="bg-[#f0f2f5] p-0.5 rounded-lg flex items-center border border-[#e9edef]">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-md transition-all cursor-pointer ${viewMode === 'list' ? 'bg-white text-[#008069] shadow-sm' : 'text-[#8696a0] hover:text-[#54656f]'}`}
-                  title="List View"
-                >
-                  <List size={15} />
-                </button>
-                <button
-                  onClick={() => setViewMode('board')}
-                  className={`p-1.5 rounded-md transition-all cursor-pointer ${viewMode === 'board' ? 'bg-white text-[#008069] shadow-sm' : 'text-[#8696a0] hover:text-[#54656f]'}`}
-                  title="Board View"
-                >
-                  <LayoutGrid size={15} />
-                </button>
-                <button
-                  onClick={() => setViewMode('performance')}
-                  className={`p-1.5 rounded-md transition-all cursor-pointer ${viewMode === 'performance' ? 'bg-white text-[#008069] shadow-sm' : 'text-[#8696a0] hover:text-[#54656f]'}`}
-                  title="Team Performance"
-                >
-                  <BarChart3 size={15} />
-                </button>
-              </div>
-              <button
-                onClick={() => {
-                  setContactSearchInput('')
-                  setNewLead(prev => ({ ...prev, contact_id: '' }))
-                  setShowAddModal(true)
-                }}
-                className="bg-[#00a884] hover:bg-[#008069] text-white px-3.5 py-2 rounded-lg flex items-center gap-1.5 text-xs font-bold shadow-sm transition-all cursor-pointer"
-              >
-                <Plus size={15} />
-                <span className="hidden sm:inline">New Lead</span>
-              </button>
-            </div>
+      <div className="flex-shrink-0 bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] px-4 md:px-6 pt-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-[#111b21] dark:text-slate-100 flex items-center gap-2">
+              <TrendingUp size={20} className="text-[#00a884] dark:text-[#00e676]" />
+              Sales Pipeline
+            </h1>
+            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium mt-0.5">
+              {totalLeadsCount} total leads · {activeLeads.length} active · {formatCurrency(totalPipelineValue)} in pipeline
+            </p>
           </div>
-
-          {/* Row 2: Search + Filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            {viewMode !== 'performance' ? (
-              <>
-                {/* Search */}
-                <div className="relative flex-1 min-w-[180px] max-w-[280px]">
-                  <Search size={14} className="absolute left-2.5 top-2.5 text-[#8696a0]" />
-                  <input
-                    type="text"
-                    placeholder="Search leads..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-[#f0f2f5] border border-[#e9edef] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:bg-white font-medium text-[#111b21] transition-all"
-                  />
-                </div>
-
-                {/* Status Tabs */}
-                <div className="flex items-center bg-[#f0f2f5] rounded-lg p-0.5 border border-[#e9edef]">
-                  {(['all', 'active', 'won', 'lost', 'on_hold'] as StatusFilter[]).map(s => (
-                    <button
-                      key={s}
-                      onClick={() => setStatusFilter(s)}
-                      className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        statusFilter === s
-                          ? 'bg-white shadow-sm text-[#111b21]'
-                          : 'text-[#8696a0] hover:text-[#54656f]'
-                      }`}
-                    >
-                      {s === 'all' ? 'All' : s === 'on_hold' ? 'On Hold' : s.charAt(0).toUpperCase() + s.slice(1)}
-                      <span className="ml-1 text-[9px] opacity-60">{statusCounts[s]}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Priority Filter */}
-                <div className="flex items-center bg-[#f0f2f5] rounded-lg p-0.5 border border-[#e9edef]">
-                  {(['all', 'high', 'medium', 'low'] as PriorityFilter[]).map(p => {
-                    const cfg = p !== 'all' ? PRIORITY_CONFIG[p] : null
-                    return (
-                      <button
-                        key={p}
-                        onClick={() => setPriorityFilter(p)}
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                          priorityFilter === p
-                            ? 'bg-white shadow-sm text-[#111b21]'
-                            : 'text-[#8696a0] hover:text-[#54656f]'
-                        }`}
-                      >
-                        {cfg && <cfg.icon size={10} className={cfg.color} />}
-                        {p === 'all' ? 'All' : cfg?.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            ) : null}
-
-            {/* Date Range Filter */}
-            <div className="flex items-center gap-1 bg-[#f0f2f5] rounded-lg p-0.5 border border-[#e9edef] text-[10px]">
-              <Calendar size={11} className="text-[#8696a0] ml-1 shrink-0" />
-              <input
-                type="date"
-                value={fromDate}
-                onChange={e => {
-                  setFromDate(e.target.value)
-                  setDateFilterApplied(true)
-                }}
-                className="bg-transparent border-none text-[#111b21] outline-none font-bold text-[9px] cursor-pointer py-0.5 w-[90px] shrink-0"
-                placeholder="From"
-              />
-              <span className="text-[#8696a0] font-bold shrink-0">-</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={e => {
-                  setToDate(e.target.value)
-                  setDateFilterApplied(true)
-                }}
-                className="bg-transparent border-none text-[#111b21] outline-none font-bold text-[9px] cursor-pointer py-0.5 w-[90px] shrink-0"
-                placeholder="To"
-              />
-              {dateFilterApplied && (
-                <button
-                  onClick={() => {
-                    setDateFilterApplied(false)
-                    setFromDate('')
-                    setToDate('')
-                  }}
-                  className="text-rose-500 hover:text-[#ef4444] font-bold text-[9px] cursor-pointer px-1 shrink-0"
-                >
-                  <X size={10} />
-                </button>
-              )}
-            </div>
-
-            {/* Quick Date Presets */}
-            <div className="flex items-center bg-[#f0f2f5] rounded-lg p-0.5 border border-[#e9edef] text-[10px]">
-              <button
-                onClick={() => setDateRangePreset('this_month')}
-                className={`px-2 py-1 rounded-md text-[9px] font-bold cursor-pointer transition-all ${
-                  fromDate && toDate && dateFilterApplied &&
-                  fromDate === thisMonthStartStr &&
-                  toDate === thisMonthEndStr
-                    ? 'bg-white shadow-sm text-[#111b21]'
-                    : 'text-[#8696a0] hover:text-[#54656f]'
-                }`}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setDateRangePreset('last_month')}
-                className={`px-2 py-1 rounded-md text-[9px] font-bold cursor-pointer transition-all ${
-                  fromDate && toDate && dateFilterApplied &&
-                  fromDate === lastMonthStartStr &&
-                  toDate === lastMonthEndStr
-                    ? 'bg-white shadow-sm text-[#111b21]'
-                    : 'text-[#8696a0] hover:text-[#54656f]'
-                }`}
-              >
-                Last Month
-              </button>
-            </div>
-
-            {viewMode !== 'performance' ? (
-              /* Toggle Analytics */
-              <button
-                onClick={() => setShowAnalytics(!showAnalytics)}
-                className={`p-2 rounded-lg border transition-all cursor-pointer ${showAnalytics ? 'bg-[#e7f7f4] border-[#00a884]/20 text-[#008069]' : 'bg-[#f0f2f5] border-[#e9edef] text-[#8696a0]'}`}
-                title="Toggle Analytics"
-              >
-                <BarChart3 size={14} />
-              </button>
-            ) : null}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setContactSearchInput('')
+                setNewLead(prev => ({ ...prev, contact_id: '' }))
+                setShowAddModal(true)
+              }}
+              className="bg-[#00a884] dark:bg-[#00a884] hover:bg-[#008069] dark:hover:bg-[#009270] text-white px-3.5 py-2 rounded-lg flex items-center gap-1.5 text-xs font-bold shadow-sm transition-all cursor-pointer"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New Lead</span>
+            </button>
           </div>
+        </div>
+
+        {/* Radix-style Navigation Tabs */}
+        <div className="flex items-center gap-6 overflow-x-auto hide-scrollbar">
+          {(
+            [
+              { id: 'list', label: 'Pipeline List', icon: List },
+              { id: 'analytics', label: 'Sales Analytics', icon: BarChart3 },
+              { id: 'performance', label: 'Team Performance', icon: Target }
+            ] as const
+          ).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setViewMode(tab.id as ViewMode)}
+              className={`flex items-center gap-2 pb-3 px-1 border-b-2 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                viewMode === tab.id
+                  ? 'border-[#00a884] dark:border-[#00e676] text-[#00a884] dark:text-[#00e676]'
+                  : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-slate-300 hover:border-[#e9edef] dark:hover:border-slate-700'
+              }`}
+            >
+              <tab.icon size={14} />
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ━━━ ANALYTICS DASHBOARD ━━━ */}
-      {showAnalytics && viewMode !== 'performance' && (
-        <div className="flex-shrink-0 bg-white border-b border-[#e9edef] px-4 md:px-6 py-2.5 animate-in slide-in-from-top-2 duration-200">
-          {/* Stat Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-2">
-            <StatCard label="Pipeline Value" value={formatCurrency(totalPipelineValue)} icon={<DollarSign size={13} />} color="text-[#111b21]" />
-            <StatCard label="Won This Month" value={formatCurrency(wonRevenueThisMonth)} icon={<Trophy size={13} />} color="text-[#00a884]" sub={`${wonThisMonth.length} deals`} />
-            <StatCard label="Won Last Month" value={formatCurrency(wonRevenueLastMonth)} icon={<Calendar size={13} />} color="text-amber-600" sub={`${wonLastMonth.length} deals`} />
-            <StatCard label="Won YTD" value={formatCurrency(wonRevenueYTD)} icon={<TrendingUp size={13} />} color="text-blue-600" sub={`${wonYTD.length} deals`} />
-            <StatCard label="Conversion Rate" value={`${conversionRate}%`} icon={<Target size={13} />} color="text-violet-600" sub={`${wonLeads.length}W / ${lostLeads.length}L`} />
-            <StatCard label="Avg Deal Size" value={formatCurrency(avgDealSize)} icon={<BarChart3 size={13} />} color="text-pink-600" sub={`${wonLeads.length} won`} />
-          </div>
-
-          {/* Date Range + Activity Stats */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-[#f5f6f6] text-[10px]">
-            <div className="flex items-center gap-1.5 bg-[#f8f9fa] px-2 py-1 rounded-md border border-[#e9edef]">
-              <span className="text-[8px] font-black text-[#667781] uppercase">From</span>
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                className="bg-transparent border-none text-[#111b21] outline-none font-bold text-[9px] cursor-pointer" />
-              <span className="text-[8px] font-black text-[#667781] uppercase ml-1">To</span>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                className="bg-transparent border-none text-[#111b21] outline-none font-bold text-[9px] cursor-pointer" />
-              <button onClick={() => setDateFilterApplied(true)}
-                className="bg-[#00a884] hover:bg-[#008069] text-white px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer text-[8px] ml-1">
-                Apply
-              </button>
-              {dateFilterApplied && (
-                <button onClick={() => { setDateFilterApplied(false); setFromDate(''); setToDate('') }}
-                  className="text-rose-500 hover:text-rose-600 font-bold text-[8px] cursor-pointer ml-1">
-                  Clear
-                </button>
-              )}
+      {/* ── ACTION BAR (Search & Filters) ── */}
+      {viewMode === 'list' && (
+        <div className="bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-sm z-30 relative">
+          <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+            {/* Search */}
+            <div className="relative flex-1 md:flex-none min-w-[200px] md:w-[280px]">
+              <Search size={14} className="absolute left-2.5 top-2.5 text-[#8696a0]" />
+              <input
+                type="text"
+                placeholder="Search leads..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-[#f0f2f5] dark:bg-slate-900 border border-[#e9edef] dark:border-slate-800 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] focus:bg-white dark:focus:bg-[#182229] font-medium text-[#111b21] dark:text-white transition-all"
+              />
             </div>
-            {dateFilterApplied && (
-              <div className="bg-[#e7f7f4] border border-[#00a884]/20 px-2 py-0.5 rounded-md text-[#008069] font-bold text-[9px] animate-in fade-in duration-200">
-                Won in range: <span className="font-black font-mono">{formatCurrency(dateFilteredRevenue)}</span> ({dateFilteredWon.length} deals)
-              </div>
-            )}
-            <div className="flex items-center gap-3 font-semibold text-[#667781] text-[9px]">
-              <span className="flex items-center gap-1">
-                <Plus size={9} className="text-[#00a884]" />
-                {leadsThisWeek.length} new this week
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock size={9} className={staleLeads.length > 0 ? 'text-amber-500' : 'text-[#8696a0]'} />
-                {staleLeads.length} stale (&gt;7d)
-              </span>
+            
+            {/* Unified Filter Button */}
+            <div className="relative" ref={filterPopoverRef}>
+              <button
+                onClick={() => setShowFilterPopover(!showFilterPopover)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  statusFilter !== 'all' || priorityFilter !== 'all' || dateFilterApplied
+                    ? 'bg-[#e7f7f4] dark:bg-emerald-950/30 border-[#00a884]/20 text-[#008069] dark:text-[#00e676]'
+                    : 'bg-white dark:bg-[#111b21] border-[#e9edef] dark:border-slate-800 text-[#667781] dark:text-slate-300 hover:bg-[#f0f2f5] dark:hover:bg-slate-900'
+                }`}
+              >
+                <Filter size={14} />
+                <span>Filters</span>
+                {(statusFilter !== 'all' || priorityFilter !== 'all' || dateFilterApplied) && (
+                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-[#00a884] text-white text-[9px]">
+                    {(statusFilter !== 'all' ? 1 : 0) + (priorityFilter !== 'all' ? 1 : 0) + (dateFilterApplied ? 1 : 0)}
+                  </span>
+                )}
+                {showFilterPopover ? <ChevronUp size={14} className="ml-1 opacity-50" /> : <ChevronDown size={14} className="ml-1 opacity-50" />}
+              </button>
+
+              {/* Popover Overlay */}
+              {showFilterPopover && (
+                <div className="absolute top-[calc(100%+8px)] left-0 md:left-auto md:right-0 w-[280px] md:w-[320px] bg-white dark:bg-slate-900 border border-[#e9edef] dark:border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-top-2 duration-200 z-50">
+                  <div className="p-3 border-b border-[#e9edef] dark:border-slate-800 flex items-center justify-between bg-[#f8f9fa] dark:bg-slate-950/50">
+                    <h3 className="text-xs font-bold text-[#111b21] dark:text-slate-200">Filter Leads</h3>
+                    <button
+                      onClick={() => {
+                        setStatusFilter('all')
+                        setPriorityFilter('all')
+                        setFromDate('')
+                        setToDate('')
+                        setDateFilterApplied(false)
+                      }}
+                      className="text-[10px] font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
+                    >
+                      Reset All
+                    </button>
+                  </div>
+                  
+                  <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                    {/* Status */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-[#8696a0] tracking-wider">Status</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['all', 'active', 'won', 'lost', 'on_hold'] as StatusFilter[]).map(s => (
+                          <button
+                            key={s}
+                            onClick={() => setStatusFilter(s)}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer border ${
+                              statusFilter === s
+                                ? 'bg-[#111b21] dark:bg-white text-white dark:text-[#111b21] border-transparent'
+                                : 'bg-transparent text-[#667781] dark:text-slate-300 border-[#e9edef] dark:border-slate-700 hover:border-[#111b21] dark:hover:border-slate-400'
+                            }`}
+                          >
+                            {s === 'all' ? 'All' : s === 'on_hold' ? 'On Hold' : s.charAt(0).toUpperCase() + s.slice(1)}
+                            <span className="ml-1 opacity-50 text-[9px]">{statusCounts[s]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Temperature / Priority */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-[#8696a0] tracking-wider">Temperature</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['all', 'high', 'medium', 'low'] as PriorityFilter[]).map(p => {
+                          const cfg = p !== 'all' ? PRIORITY_CONFIG[p] : null
+                          return (
+                            <button
+                              key={p}
+                              onClick={() => setPriorityFilter(p)}
+                              className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                priorityFilter === p
+                                  ? 'bg-[#111b21] dark:bg-white text-white dark:text-[#111b21] border-transparent'
+                                  : 'bg-transparent text-[#667781] dark:text-slate-300 border-[#e9edef] dark:border-slate-700 hover:border-[#111b21] dark:hover:border-slate-400'
+                              }`}
+                            >
+                              {cfg && <cfg.icon size={10} className={priorityFilter === p ? '' : cfg.color} />}
+                              {p === 'all' ? 'All' : cfg?.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Date Range */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-[#8696a0] tracking-wider">Date Range</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <span className="text-[9px] text-[#667781] font-bold">From</span>
+                          <div className="flex items-center gap-1 bg-[#f0f2f5] dark:bg-slate-950 rounded-lg p-1.5 border border-[#e9edef] dark:border-slate-800">
+                            <Calendar size={12} className="text-[#8696a0]" />
+                            <input
+                              type="date"
+                              value={fromDate}
+                              onChange={e => { setFromDate(e.target.value); setDateFilterApplied(true) }}
+                              className="bg-transparent border-none text-[#111b21] dark:text-white outline-none font-bold text-[10px] w-full cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] text-[#667781] font-bold">To</span>
+                          <div className="flex items-center gap-1 bg-[#f0f2f5] dark:bg-slate-950 rounded-lg p-1.5 border border-[#e9edef] dark:border-slate-800">
+                            <Calendar size={12} className="text-[#8696a0]" />
+                            <input
+                              type="date"
+                              value={toDate}
+                              onChange={e => { setToDate(e.target.value); setDateFilterApplied(true) }}
+                              className="bg-transparent border-none text-[#111b21] dark:text-white outline-none font-bold text-[10px] w-full cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => setDateRangePreset('this_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[9px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
+                          This Month
+                        </button>
+                        <button onClick={() => setDateRangePreset('last_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[9px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
+                          Last Month
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
+      {/* ━━━ ANALYTICS DASHBOARD ━━━ */}
+      {viewMode === 'analytics' && (
+        <div className="flex-1 bg-[#f0f2f5] dark:bg-[#111b21] overflow-y-auto animate-in fade-in duration-200">
+          <div className="max-w-6xl mx-auto px-4 md:px-6 py-5 space-y-6">
+
+            {/* ── Header + Chart Switcher ── */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-black text-[#111b21] dark:text-white">Sales Analytics</h2>
+                <p className="text-[11px] text-[#667781] dark:text-slate-400 mt-0.5">
+                  {now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} · {daysElapsed} of {daysInMonth} days elapsed
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 shadow-sm">
+                {([
+                  { id: 'month', label: 'Monthly' },
+                  { id: 'week', label: 'Weekly' },
+                  { id: 'pipeline', label: 'Pipeline' },
+                  { id: 'source', label: 'Sources' },
+                ] as const).map(v => (
+                  <button
+                    key={v.id}
+                    onClick={() => setAnalyticsChartView(v.id)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                      analyticsChartView === v.id
+                        ? 'bg-[#00a884] text-white shadow-sm'
+                        : 'text-[#54656f] dark:text-slate-400 hover:bg-[#f0f2f5] dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── KPI Cards Row ── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {/* This Month Sales */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Sales This Month</span>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center">
+                    <Trophy size={14} className="text-[#00a884]" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-[#111b21] dark:text-white">{wonThisMonth.length}</p>
+                <p className="text-[10px] text-[#8696a0] mt-1">{formatCurrency(wonRevenueThisMonth)} won</p>
+              </div>
+              {/* This Week Sales */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Sales This Week</span>
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
+                    <BarChart3 size={14} className="text-blue-500" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-[#111b21] dark:text-white">
+                  {wonLeads.filter(l => new Date(l.won_at || l.updated_at).getTime() >= startOfWeek.getTime()).length}
+                </p>
+                <p className="text-[10px] text-[#8696a0] mt-1">{leadsThisWeek.length} new leads in</p>
+              </div>
+              {/* Prediction */}
+              <div className="bg-gradient-to-br from-[#00a884] to-[#008069] rounded-xl p-4 shadow-sm text-white">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-white/70">Predicted Revenue</span>
+                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+                    <TrendingUp size={14} className="text-white" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-white">{formatCurrency(predictedMonthRevenue)}</p>
+                <p className="text-[10px] text-white/70 mt-1">
+                  {revenueGrowthVsLast >= 0 ? '↑' : '↓'} {Math.abs(revenueGrowthVsLast)}% vs last month · {projectionConfidence}% confidence
+                </p>
+              </div>
+              {/* Predicted Deals */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Predicted Deals</span>
+                  <div className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center">
+                    <Target size={14} className="text-violet-500" />
+                  </div>
+                </div>
+                <p className="text-2xl font-black text-[#111b21] dark:text-white">{predictedMonthSales}</p>
+                <p className="text-[10px] text-[#8696a0] mt-1">avg {formatCurrency(avgDealSize)} / deal</p>
+              </div>
+            </div>
+
+            {/* ── Secondary KPIs ── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0"><Calendar size={15} className="text-amber-500" /></div>
+                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Last Month Won</p><p className="text-sm font-black text-[#111b21] dark:text-white">{wonLastMonth.length} <span className="text-[10px] font-semibold text-[#8696a0]">deals</span></p></div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center flex-shrink-0"><Target size={15} className="text-pink-500" /></div>
+                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Conversion Rate</p><p className="text-sm font-black text-[#111b21] dark:text-white">{conversionRate}%</p></div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><TrendingUp size={15} className="text-blue-500" /></div>
+                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Revenue YTD</p><p className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(wonRevenueYTD)}</p></div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0"><Clock size={15} className="text-rose-500" /></div>
+                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Stale Leads</p><p className="text-sm font-black text-[#111b21] dark:text-white">{staleLeads.length} <span className="text-[10px] font-semibold text-[#8696a0]">&gt;7d</span></p></div>
+              </div>
+            </div>
+
+            {/* ── Main Chart Area ── */}
+            {analyticsChartView === 'month' && (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                      <TrendingUp size={15} className="text-[#00a884]" />
+                      This Month — Revenue & Sales Count
+                    </h3>
+                    <p className="text-[10px] text-[#8696a0] mt-0.5">Solid = actual · Dashed = projected</p>
+                  </div>
+                  <div className="flex gap-3 text-[10px] font-bold">
+                    <span className="flex items-center gap-1"><span className="w-3 h-1 bg-[#00a884] rounded-full inline-block" />Revenue</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-1 bg-blue-400 rounded-full inline-block" />Sales</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-1 border-t-2 border-dashed border-amber-400 inline-block" />Projected</span>
+                  </div>
+                </div>
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={fullMonthChart} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#00a884" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#00a884" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="projGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.10} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f2f5" />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0', fontWeight: 600 }} interval={2} />
+                      <YAxis yAxisId="rev" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0' }} tickFormatter={(v: any) => `${formatCurrency(v)}`} width={60} />
+                      <YAxis yAxisId="cnt" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0' }} width={25} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: '11px', fontWeight: 600 }}
+                        formatter={(value: any, name: any) => {
+                          if (name === 'revenue') return [formatCurrency(value), 'Revenue']
+                          if (name === 'projected') return [formatCurrency(value), 'Projected/day']
+                          return [value, 'Sales']
+                        }}
+                        labelFormatter={(label: any) => `Day ${label}`}
+                      />
+                      <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke="#00a884" strokeWidth={2.5} fill="url(#revGrad)" dot={false} activeDot={{ r: 4, fill: '#00a884' }} />
+                      <Area yAxisId="rev" type="monotone" dataKey="projected" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4" fill="url(#projGrad)" dot={false} />
+                      <Bar yAxisId="cnt" dataKey="sales" fill="#3b82f6" opacity={0.5} radius={[3, 3, 0, 0]} barSize={8} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {analyticsChartView === 'week' && (
+              <div className="space-y-6">
+                {/* Week-wise Revenue Bar */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-5">
+                    <BarChart3 size={15} className="text-[#00a884]" />
+                    Weekly Revenue — Last 8 Weeks
+                  </h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={weeklyBreakdown} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f2f5" />
+                        <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0', fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0' }} tickFormatter={(v: any) => formatCurrency(v)} width={60} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: '11px', fontWeight: 600 }}
+                          formatter={(value: any, name: any) => {
+                            if (name === 'revenue') return [formatCurrency(value), 'Revenue']
+                            return [value, name === 'sales' ? 'Deals Won' : 'New Leads']
+                          }}
+                        />
+                        <Bar dataKey="revenue" fill="#00a884" radius={[5, 5, 0, 0]} barSize={28} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                {/* Week-wise Deals Won vs New Leads */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-5">
+                    <Target size={15} className="text-blue-500" />
+                    Weekly — Deals Won vs New Leads
+                  </h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={weeklyBreakdown} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f2f5" />
+                        <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0', fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0' }} width={25} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: '11px', fontWeight: 600 }}
+                          formatter={(value: any, name: any) => [value, name === 'sales' ? 'Deals Won' : 'New Leads']}
+                        />
+                        <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 600 }} />
+                        <Bar dataKey="sales" name="Deals Won" fill="#00a884" radius={[4, 4, 0, 0]} barSize={16} />
+                        <Bar dataKey="newLeads" name="New Leads" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={16} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                {/* Weekly Summary Table */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm overflow-x-auto">
+                  <h3 className="text-sm font-bold text-[#111b21] dark:text-white mb-4">Week-by-Week Summary</h3>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[#e9edef] dark:border-slate-800">
+                        <th className="text-left pb-2 font-black text-[#8696a0] text-[10px] uppercase tracking-wider">Week</th>
+                        <th className="text-right pb-2 font-black text-[#8696a0] text-[10px] uppercase tracking-wider">Deals Won</th>
+                        <th className="text-right pb-2 font-black text-[#8696a0] text-[10px] uppercase tracking-wider">New Leads</th>
+                        <th className="text-right pb-2 font-black text-[#8696a0] text-[10px] uppercase tracking-wider">Revenue</th>
+                        <th className="text-right pb-2 font-black text-[#8696a0] text-[10px] uppercase tracking-wider">Avg Deal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weeklyBreakdown.map((w, i) => (
+                        <tr key={i} className="border-b border-[#f0f2f5] dark:border-slate-800/50 hover:bg-[#f8f9fa] dark:hover:bg-slate-800/30 transition-colors">
+                          <td className="py-2.5 font-semibold text-[#111b21] dark:text-white">{w.week}</td>
+                          <td className="py-2.5 text-right font-bold text-[#00a884]">{w.sales}</td>
+                          <td className="py-2.5 text-right font-semibold text-[#667781] dark:text-slate-400">{w.newLeads}</td>
+                          <td className="py-2.5 text-right font-bold text-[#111b21] dark:text-white">{formatCurrency(w.revenue)}</td>
+                          <td className="py-2.5 text-right text-[#667781] dark:text-slate-400">{w.sales > 0 ? formatCurrency(Math.round(w.revenue / w.sales)) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {analyticsChartView === 'pipeline' && (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-5">
+                  <BarChart3 size={15} className="text-[#00a884]" />
+                  Pipeline Value by Stage (Active Deals)
+                </h3>
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={pipelineByStageData} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f2f5" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#8696a0', fontWeight: 600 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#8696a0' }} tickFormatter={(v: any) => formatCurrency(v)} width={65} />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(0,168,132,0.05)' }}
+                        contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: '11px', fontWeight: 600 }}
+                        formatter={(value: any, name: any, props: any) => [`${formatCurrency(value)} (${props.payload.count} deals)`, 'Pipeline Value']}
+                      />
+                      <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={36}>
+                        {pipelineByStageData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Stage detail rows */}
+                <div className="mt-4 space-y-2">
+                  {pipelineByStageData.map((s, i) => {
+                    const pct = totalPipelineValue > 0 ? Math.round((s.value / totalPipelineValue) * 100) : 0
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.fill }} />
+                        <span className="text-[11px] font-semibold text-[#667781] dark:text-slate-400 w-28 truncate">{s.name}</span>
+                        <div className="flex-1 h-1.5 bg-[#f0f2f5] dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: s.fill }} />
+                        </div>
+                        <span className="text-[11px] font-black text-[#111b21] dark:text-white w-16 text-right">{formatCurrency(s.value)}</span>
+                        <span className="text-[10px] text-[#8696a0] w-14 text-right">{s.count} deals</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {analyticsChartView === 'source' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-4">
+                    <LayoutGrid size={15} className="text-[#00a884]" />
+                    Lead Sources — All Time
+                  </h3>
+                  <div className="h-64 relative">
+                    {leadsBySourceData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={leadsBySourceData} innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value">
+                            {leadsBySourceData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontSize: '11px', fontWeight: 600 }} formatter={(value: any) => [value, 'Leads']} />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 600, color: '#667781' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs text-[#8696a0]">No source data</div>
+                    )}
+                  </div>
+                </div>
+                {/* Source breakdown table */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="text-sm font-bold text-[#111b21] dark:text-white mb-4">Source Breakdown</h3>
+                  <div className="space-y-3">
+                    {leadsBySourceData.map((s, i) => {
+                      const pct = allLeadsForAnalytics.length > 0 ? Math.round((s.value / allLeadsForAnalytics.length) * 100) : 0
+                      return (
+                        <div key={i} className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                          <span className="text-[11px] font-semibold text-[#667781] dark:text-slate-400 w-24 capitalize">{s.name}</span>
+                          <div className="flex-1 h-1.5 bg-[#f0f2f5] dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: s.color }} />
+                          </div>
+                          <span className="text-[11px] font-black text-[#111b21] dark:text-white w-8 text-right">{s.value}</span>
+                          <span className="text-[10px] text-[#8696a0] w-8 text-right">{pct}%</span>
+                        </div>
+                      )
+                    })}
+                    {leadsBySourceData.length === 0 && <p className="text-xs text-[#8696a0] text-center py-4">No source data available</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Prediction Insight Card ── */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-4">
+                <Sparkles size={15} className="text-[#00a884]" />
+                Month-End Forecast & Insights
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Forecast progress */}
+                <div className="col-span-2 space-y-4">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px] font-bold">
+                      <span className="text-[#667781] dark:text-slate-400">Revenue Progress</span>
+                      <span className="text-[#111b21] dark:text-white">{formatCurrency(wonRevenueThisMonth)} <span className="font-normal text-[#8696a0]">/ {formatCurrency(predictedMonthRevenue)} predicted</span></span>
+                    </div>
+                    <div className="h-3 bg-[#f0f2f5] dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#00a884] to-[#00e5b0] transition-all duration-700"
+                        style={{ width: `${predictedMonthRevenue > 0 ? Math.min(Math.round((wonRevenueThisMonth / predictedMonthRevenue) * 100), 100) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px] font-bold">
+                      <span className="text-[#667781] dark:text-slate-400">Sales Count Progress</span>
+                      <span className="text-[#111b21] dark:text-white">{wonThisMonth.length} <span className="font-normal text-[#8696a0]">/ {predictedMonthSales} predicted</span></span>
+                    </div>
+                    <div className="h-3 bg-[#f0f2f5] dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500 transition-all duration-700"
+                        style={{ width: `${predictedMonthSales > 0 ? Math.min(Math.round((wonThisMonth.length / predictedMonthSales) * 100), 100) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px] font-bold">
+                      <span className="text-[#667781] dark:text-slate-400">Month Elapsed</span>
+                      <span className="text-[#111b21] dark:text-white">{daysElapsed} / {daysInMonth} days ({projectionConfidence}%)</span>
+                    </div>
+                    <div className="h-3 bg-[#f0f2f5] dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-700"
+                        style={{ width: `${projectionConfidence}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* Trend metrics */}
+                <div className="space-y-3 border-t md:border-t-0 md:border-l border-[#e9edef] dark:border-slate-800 pt-3 md:pt-0 md:pl-4">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Daily Revenue Avg</p>
+                    <p className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(Math.round(avgDailyRevenue))}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Daily Deals Avg</p>
+                    <p className="text-sm font-black text-[#111b21] dark:text-white">{avgDailySales.toFixed(1)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">vs Last Month</p>
+                    <p className={`text-sm font-black ${revenueGrowthVsLast >= 0 ? 'text-[#00a884]' : 'text-rose-500'}`}>
+                      {revenueGrowthVsLast >= 0 ? '+' : ''}{revenueGrowthVsLast}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Pipeline at Risk</p>
+                    <p className="text-sm font-black text-amber-600">{staleLeads.length} leads</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Priority Distribution ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-4">
+                  <BarChart3 size={15} className="text-[#00a884]" />
+                  Priority Distribution (Active)
+                </h3>
+                <div className="space-y-4">
+                  {(['high', 'medium', 'low'] as const).map(p => {
+                    const count = activeLeads.filter(l => l.priority === p).length
+                    const totalActive = activeLeads.length || 1
+                    const percentage = Math.round((count / totalActive) * 100)
+                    const cfg = PRIORITY_CONFIG[p]
+                    return (
+                      <div key={p} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-semibold text-[#667781] dark:text-slate-400 flex items-center gap-1.5">
+                            <cfg.icon size={12} className={cfg.color} />
+                            {cfg.label}
+                          </span>
+                          <span className="font-black text-[#111b21] dark:text-white">{count} <span className="font-normal text-[10px] text-[#8696a0]">({percentage}%)</span></span>
+                        </div>
+                        <div className="w-full bg-[#f0f2f5] dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${p === 'high' ? 'bg-rose-500' : p === 'medium' ? 'bg-amber-500' : 'bg-blue-400'}`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-4">
+                  <TrendingUp size={15} className="text-[#00a884]" />
+                  Pipeline Activity
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-[#f8f9fa] dark:bg-slate-800/50 rounded-lg border border-[#e9edef] dark:border-slate-700/50">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-[#111b21] dark:text-slate-200">
+                      <Plus size={14} className="text-[#00a884]" />New Leads This Week
+                    </span>
+                    <span className="text-sm font-black text-[#111b21] dark:text-white">{leadsThisWeek.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-100 dark:border-amber-900/30">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-400">
+                      <Clock size={14} className="text-amber-600" />Stale Leads (&gt;7 days)
+                    </span>
+                    <span className="text-sm font-black text-amber-800 dark:text-amber-400">{staleLeads.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-blue-800 dark:text-blue-400">
+                      <Target size={14} className="text-blue-500" />Total Active Pipeline
+                    </span>
+                    <span className="text-sm font-black text-blue-800 dark:text-blue-400">{activeLeads.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-[#f8f9fa] dark:bg-slate-800/50 rounded-lg border border-[#e9edef] dark:border-slate-700/50">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-[#667781] dark:text-slate-400">
+                      <DollarSign size={14} className="text-[#8696a0]" />Total Pipeline Value
+                    </span>
+                    <span className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(totalPipelineValue)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* ━━━ MAIN CONTENT ━━━ */}
-      <div className="flex-1 overflow-auto">
+      <div className={viewMode === 'analytics' ? 'hidden' : 'flex-1 overflow-auto'}>
         {totalLeadsCount === 0 && viewMode !== 'performance' ? (
           <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
             <div className="max-w-md bg-white p-8 rounded-2xl border border-[#e9edef] shadow-sm flex flex-col items-center animate-in zoom-in-95 duration-200">
@@ -1259,7 +1928,7 @@ export default function LeadsPage() {
             ) : (
               <div className="bg-white dark:bg-[#111b21] rounded-xl border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden">
                 {/* Table Header (Desktop only) */}
-                <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f8f9fa] dark:bg-[#182229] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_110px_90px_100px] gap-0 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f8f9fa] dark:bg-[#182229] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
                   <button onClick={() => handleSort('title')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors text-left border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
                     Contact / Deal {sortField === 'title' && <ArrowUpDown size={9} />}
                   </button>
@@ -1270,6 +1939,7 @@ export default function LeadsPage() {
                   <span>Status</span>
                   <span>Priority</span>
                   <span>Source</span>
+                  <span>Assigned To</span>
                   <button onClick={() => handleSort('last_activity_at')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
                     Activity {sortField === 'last_activity_at' && <ArrowUpDown size={9} />}
                   </button>
@@ -1286,9 +1956,13 @@ export default function LeadsPage() {
                   return (
                     <div
                       key={lead.id}
-                      onClick={() => setSelectedLeadId(lead.id)}
-                      className={`px-4 py-4 md:py-3 border-b border-[#f5f6f6] dark:border-[#202d36] last:border-b-0 cursor-pointer transition-all hover:bg-[#f8f9fa] dark:hover:bg-[#182229]/60 ${
+                      onClick={() => { setSelectedLeadId(lead.id); setActiveDrawerTab('overview') }}
+                      className={`px-4 py-4 md:py-3 border-b border-[#f5f6f6] dark:border-[#202d36] last:border-b-0 cursor-pointer transition-all hover:bg-[#f8f9fa] dark:hover:bg-[#182229]/60 group relative ${
                         isSelected ? 'bg-[#e7f7f4]/30 dark:bg-emerald-950/20' : ''
+                      } ${
+                        lead.priority === 'high' ? 'border-l-4 border-l-rose-500' :
+                        lead.priority === 'medium' ? 'border-l-4 border-l-amber-500' :
+                        'border-l-4 border-l-blue-400'
                       }`}
                     >
                       {/* MOBILE CARD LAYOUT (visible on mobile only) */}
@@ -1328,6 +2002,10 @@ export default function LeadsPage() {
                           <span className="text-[9px] text-[#667781] dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
                             {(lead.source || 'other').replace('_', ' ')}
                           </span>
+                          <span className="text-[9px] font-bold text-[#54656f] dark:text-slate-300 bg-[#f0f2f5] dark:bg-slate-800 px-1.5 py-0.5 rounded border border-[#e9edef] dark:border-slate-700/50 flex items-center gap-1">
+                            <User size={9} />
+                            {lead.assigned_to ? users.find((u: any) => u.id === lead.assigned_to)?.full_name || 'Unknown' : 'Unassigned'}
+                          </span>
                         </div>
 
                         {/* Footer Row: Activity + Actions */}
@@ -1364,7 +2042,7 @@ export default function LeadsPage() {
                       </div>
 
                       {/* DESKTOP TABLE ROW LAYOUT (hidden on mobile) */}
-                      <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_90px_100px] gap-0 items-center">
+                      <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_110px_90px_100px] gap-0 items-center">
                         {/* Contact / Deal */}
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="h-8 w-8 rounded-full bg-[#dfe5e7] dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-[#54656f] dark:text-slate-350 flex-shrink-0 border border-[#e9edef] dark:border-slate-800">
@@ -1409,13 +2087,18 @@ export default function LeadsPage() {
                           {(lead.source || 'other').replace('_', ' ')}
                         </div>
 
+                        {/* Assigned To */}
+                        <div className="flex items-center text-[10px] text-[#667781] dark:text-[#8696a0] font-medium truncate pr-2">
+                          {lead.assigned_to ? users.find((u: any) => u.id === lead.assigned_to)?.full_name || 'Unknown' : 'Unassigned'}
+                        </div>
+
                         {/* Activity */}
                         <div className="flex items-center text-[10px] text-[#8696a0] dark:text-[#8696a0] font-medium">
                           {daysSince(lead.last_activity_at || lead.created_at)}
                         </div>
 
                         {/* Quick Actions */}
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-200" onClick={e => e.stopPropagation()}>
                           {lead.status === 'active' && (
                             <>
                               <button onClick={() => handleStatusChange(lead.id, 'won')}
@@ -1496,104 +2179,7 @@ export default function LeadsPage() {
               </div>
             )}
           </div>
-        ) : viewMode === 'board' ? (
-          /* ── BOARD VIEW ── */
-          <div className="flex flex-row gap-4 p-4 md:p-6 overflow-x-auto h-full pb-8">
-            {stages.map(stage => {
-              const stageLeads = sortedLeads.filter(l => l.pipeline_stage_id === stage.id && l.status === 'active')
-              const isDragOver = dragOverStage === stage.id
-              const stageValue = stageLeads.reduce((s, l) => s + (l.value || 0), 0)
-
-              return (
-                <div
-                  key={stage.id}
-                  onDragOver={e => { e.preventDefault(); setDragOverStage(stage.id) }}
-                  onDragLeave={() => setDragOverStage(null)}
-                  onDrop={e => {
-                    e.preventDefault()
-                    setDragOverStage(null)
-                    if (dragLeadId.current) handleMoveStage(dragLeadId.current, stage.id)
-                  }}
-                  className={`flex-shrink-0 w-72 bg-[#f8f9fa] border rounded-xl flex flex-col max-h-full transition-all duration-200 ${
-                    isDragOver ? 'border-2 border-dashed border-[#00a884] bg-[#e7f7f4]/30 scale-[1.01]' : 'border-[#e9edef]'
-                  }`}
-                >
-                  {/* Stage Header */}
-                  <div className="p-3 border-b border-[#e9edef] flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />
-                        <h3 className="text-[10px] font-black text-[#111b21] uppercase tracking-wider">{stage.name}</h3>
-                      </div>
-                      <span className="text-[9px] font-bold text-[#667781] bg-white px-2 py-0.5 rounded-full border border-[#e9edef]">
-                        {stageLeads.length}
-                      </span>
-                    </div>
-                    {stageValue > 0 && (
-                      <p className="text-[10px] font-bold text-[#008069] font-mono mt-1">{formatCurrency(stageValue)}</p>
-                    )}
-                  </div>
-
-                  {/* Cards */}
-                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                    {stageLeads.length === 0 ? (
-                      <div className="text-center py-8 text-[10px] text-[#8696a0] font-medium border border-dashed border-[#e9edef] rounded-lg">
-                        No active deals
-                      </div>
-                    ) : stageLeads.map(lead => {
-                      const name = contactName(lead)
-                      const priorityCfg = PRIORITY_CONFIG[lead.priority || 'medium']
-                      const PriorityIcon = priorityCfg.icon
-                      return (
-                        <div
-                          key={lead.id}
-                          draggable
-                          onDragStart={() => { dragLeadId.current = lead.id }}
-                          onDragEnd={() => { dragLeadId.current = null }}
-                          onClick={() => setSelectedLeadId(lead.id)}
-                          className="bg-white rounded-lg p-3 border border-[#e9edef] shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-all group"
-                          style={{ borderLeftWidth: '3px', borderLeftColor: stage.color }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[11px] font-bold text-[#111b21] truncate">{lead.title}</p>
-                              <p className="text-[10px] text-[#667781] font-medium truncate mt-0.5">{name}</p>
-                            </div>
-                            <span className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-bold flex-shrink-0 ${priorityCfg.bg} ${priorityCfg.color}`}>
-                              <PriorityIcon size={8} />
-                              {priorityCfg.label}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#f5f6f6]">
-                            <span className="text-[11px] font-bold text-[#008069] font-mono">
-                              {lead.value ? formatCurrency(lead.value) : '—'}
-                            </span>
-                            <span className="text-[9px] text-[#8696a0] font-medium">
-                              {daysSince(lead.last_activity_at || lead.created_at)}
-                            </span>
-                          </div>
-
-                          {/* Quick actions on hover */}
-                          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                            <button onClick={() => handleStatusChange(lead.id, 'won')}
-                              className="flex-1 py-1 rounded-md bg-green-50 text-green-600 hover:bg-green-100 border border-green-100 text-[9px] font-bold cursor-pointer transition-all flex items-center justify-center gap-0.5">
-                              <CheckCircle2 size={10} /> Won
-                            </button>
-                            <button onClick={() => handleStatusChange(lead.id, 'lost')}
-                              className="flex-1 py-1 rounded-md bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 text-[9px] font-bold cursor-pointer transition-all flex items-center justify-center gap-0.5">
-                              <Ban size={10} /> Lost
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
+        ) : viewMode === 'performance' ? (
           /* ── PERFORMANCE VIEW ── */
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
             {/* Team Stats Summary */}
@@ -1630,6 +2216,61 @@ export default function LeadsPage() {
                 <span className="text-[10px] text-[#8696a0] font-medium mt-1">
                   Across {activeTeamLeadsFiltered.length} active deals
                 </span>
+              </div>
+            </div>
+
+            {/* Sales Performance Graphs */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Daily Revenue Trend */}
+              <div className="bg-white dark:bg-slate-900 border border-[#e9edef] dark:border-slate-800 rounded-xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-6">
+                  <TrendingUp size={16} className="text-[#00a884]" />
+                  This Month's Revenue Trend
+                </h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dailyRevenueData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#00a884" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#00a884" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9edef" />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#8696a0' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#8696a0' }} tickFormatter={(val) => `$${val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val}`} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
+                        formatter={(value: any) => [formatCurrency(value), 'Revenue']}
+                        labelFormatter={(label) => `Day ${label}`}
+                      />
+                      <Area type="monotone" dataKey="revenue" stroke="#00a884" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Team Performance */}
+              <div className="bg-white dark:bg-slate-900 border border-[#e9edef] dark:border-slate-800 rounded-xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2 mb-6">
+                  <Trophy size={16} className="text-[#00a884]" />
+                  Top Performers (Revenue)
+                </h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={teamPerformanceData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e9edef" />
+                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#8696a0' }} tickFormatter={(val) => `$${val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val}`} />
+                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#111b21', fontWeight: 600 }} width={80} />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(0, 168, 132, 0.05)' }}
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: 'bold' }}
+                        formatter={(value: any) => [formatCurrency(value), 'Revenue']}
+                      />
+                      <Bar dataKey="revenue" fill="#00a884" radius={[0, 4, 4, 0]} barSize={24} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
 
@@ -1720,7 +2361,7 @@ export default function LeadsPage() {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ━━━ ADD LEAD MODAL ━━━ */}
@@ -1740,98 +2381,129 @@ export default function LeadsPage() {
 
             {/* Form */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Contact Searchable Select */}
-              <FormField label="Contact">
-                <div className="relative">
-                  {newLead.contact_id ? (
-                    // Selected state
-                    <div className="flex items-center justify-between form-input bg-[#e7f7f4]/40 border-[#00a884]/30">
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-bold text-[#111b21]">
-                          {(() => {
-                            const sel = contacts.find(c => c.id === newLead.contact_id)
-                            return sel ? `${sel.first_name} ${sel.last_name || ''}` : 'Selected Contact'
-                          })()}
-                        </span>
-                        <span className="text-[10px] text-[#667781] truncate">
-                          {(() => {
-                            const sel = contacts.find(c => c.id === newLead.contact_id)
-                            return sel ? `${sel.phone_number} ${sel.company ? `· ${sel.company}` : ''}` : ''
-                          })()}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewLead(prev => ({ ...prev, contact_id: '' }))
-                          setContactSearchInput('')
-                          setShowContactDropdown(true)
-                        }}
-                        className="p-1 hover:bg-[#dfe5e7] rounded-full text-[#8696a0] transition-colors cursor-pointer"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    // Search input state
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search by name, phone, or company..."
-                        value={contactSearchInput}
-                        onChange={e => {
-                          setContactSearchInput(e.target.value)
-                          setShowContactDropdown(true)
-                        }}
-                        onFocus={() => setShowContactDropdown(true)}
-                        className="form-input pr-8"
-                        required
-                      />
-                      {searchingContacts ? (
-                        <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-[#00a884]" />
-                      ) : (
-                        <Search size={14} className="absolute right-3 top-3 text-[#8696a0]" />
-                      )}
-                    </div>
-                  )}
+              {/* Contact Search or Create */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-[#667781] uppercase tracking-wider">Contact</label>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setIsOfflineLead(!isOfflineLead)
+                      if (!isOfflineLead) setNewLead(prev => ({ ...prev, contact_id: '' }))
+                    }}
+                    className="text-[10px] font-bold text-[#00a884] hover:text-[#008f6f] cursor-pointer"
+                  >
+                    {isOfflineLead ? 'Search Existing Contacts' : '+ Create Offline Contact'}
+                  </button>
+                </div>
 
-                  {/* Dropdown list */}
-                  {showContactDropdown && !newLead.contact_id && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setShowContactDropdown(false)}
-                      />
-                      <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-[#e9edef] rounded-lg shadow-lg z-20 animate-in fade-in slide-in-from-top-1 duration-100">
-                        {contacts.length === 0 ? (
-                          <div className="p-3 text-xs text-[#8696a0] text-center font-medium">
-                            No contacts found
-                          </div>
+                {isOfflineLead ? (
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-[#f8f9fa] rounded-lg border border-[#e9edef]">
+                    <div className="col-span-2 sm:col-span-1">
+                      <input type="text" placeholder="First Name *" required={isOfflineLead} className="form-input" value={offlineContact.first_name} onChange={e => setOfflineContact({...offlineContact, first_name: e.target.value})} />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <input type="text" placeholder="Last Name" className="form-input" value={offlineContact.last_name} onChange={e => setOfflineContact({...offlineContact, last_name: e.target.value})} />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <input type="tel" placeholder="Phone Number" className="form-input" value={offlineContact.phone_number} onChange={e => setOfflineContact({...offlineContact, phone_number: e.target.value})} />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <input type="text" placeholder="Company" className="form-input" value={offlineContact.company} onChange={e => setOfflineContact({...offlineContact, company: e.target.value})} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {newLead.contact_id ? (
+                      // Selected state
+                      <div className="flex items-center justify-between form-input bg-[#e7f7f4]/40 border-[#00a884]/30">
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-[#111b21]">
+                            {(() => {
+                              const sel = contacts.find(c => c.id === newLead.contact_id)
+                              return sel ? `${sel.first_name} ${sel.last_name || ''}` : 'Selected Contact'
+                            })()}
+                          </span>
+                          <span className="text-[10px] text-[#667781] truncate">
+                            {(() => {
+                              const sel = contacts.find(c => c.id === newLead.contact_id)
+                              return sel ? `${sel.phone_number} ${sel.company ? `· ${sel.company}` : ''}` : ''
+                            })()}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewLead(prev => ({ ...prev, contact_id: '' }))
+                            setContactSearchInput('')
+                            setShowContactDropdown(true)
+                          }}
+                          className="p-1 hover:bg-[#dfe5e7] rounded-full text-[#8696a0] transition-colors cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      // Search input state
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Search by name, phone, or company..."
+                          value={contactSearchInput}
+                          onChange={e => {
+                            setContactSearchInput(e.target.value)
+                            setShowContactDropdown(true)
+                          }}
+                          onFocus={() => setShowContactDropdown(true)}
+                          className="form-input pr-8"
+                          required={!isOfflineLead}
+                        />
+                        {searchingContacts ? (
+                          <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-[#00a884]" />
                         ) : (
-                          contacts.map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => {
-                                setNewLead(prev => ({ ...prev, contact_id: c.id }))
-                                setShowContactDropdown(false)
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-[#f0f2f5] transition-colors border-b border-[#f5f6f6] last:border-b-0 flex flex-col gap-0.5 cursor-pointer"
-                            >
-                              <span className="text-xs font-bold text-[#111b21]">
-                                {c.first_name} {c.last_name || ''}
-                              </span>
-                              <span className="text-[10px] text-[#667781] truncate">
-                                {c.phone_number} {c.company ? `· ${c.company}` : ''}
-                              </span>
-                            </button>
-                          ))
+                          <Search size={14} className="absolute right-3 top-3 text-[#8696a0]" />
                         )}
                       </div>
-                    </>
-                  )}
-                </div>
-              </FormField>
+                    )}
+
+                    {/* Dropdown list */}
+                    {showContactDropdown && !newLead.contact_id && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowContactDropdown(false)}
+                        />
+                        <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-[#e9edef] rounded-lg shadow-lg z-20 animate-in fade-in slide-in-from-top-1 duration-100">
+                          {contacts.length === 0 ? (
+                            <div className="p-3 text-xs text-[#8696a0] text-center font-medium">
+                              No contacts found
+                            </div>
+                          ) : (
+                            contacts.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setNewLead(prev => ({ ...prev, contact_id: c.id }))
+                                  setShowContactDropdown(false)
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-[#f0f2f5] transition-colors border-b border-[#f5f6f6] last:border-b-0 flex flex-col gap-0.5 cursor-pointer"
+                              >
+                                <span className="text-xs font-bold text-[#111b21]">
+                                  {c.first_name} {c.last_name || ''}
+                                </span>
+                                <span className="text-[10px] text-[#667781] truncate">
+                                  {c.phone_number} {c.company ? `· ${c.company}` : ''}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Deal Title */}
               <FormField label="Deal Title">
@@ -2024,19 +2696,50 @@ export default function LeadsPage() {
               )}
             </div>
 
+            {/* Tab Navigation */}
+            <div className="flex border-b border-[#e9edef] px-5 gap-6 flex-shrink-0 bg-white">
+              <button 
+                onClick={() => setActiveDrawerTab('overview')}
+                className={`py-3 text-[11px] font-bold border-b-2 transition-all cursor-pointer ${
+                  activeDrawerTab === 'overview' ? 'border-[#00a884] text-[#00a884]' : 'border-transparent text-[#54656f] hover:text-[#111b21]'
+                }`}
+              >
+                Overview
+              </button>
+              <button 
+                onClick={() => setActiveDrawerTab('discussions')}
+                className={`py-3 text-[11px] font-bold border-b-2 transition-all cursor-pointer ${
+                  activeDrawerTab === 'discussions' ? 'border-[#00a884] text-[#00a884]' : 'border-transparent text-[#54656f] hover:text-[#111b21]'
+                }`}
+              >
+                Discussions
+              </button>
+              <button 
+                onClick={() => setActiveDrawerTab('ai_summary')}
+                className={`py-3 text-[11px] font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeDrawerTab === 'ai_summary' ? 'border-[#00a884] text-[#00a884]' : 'border-transparent text-[#54656f] hover:text-[#111b21]'
+                }`}
+              >
+                <Sparkles size={12} className={activeDrawerTab === 'ai_summary' ? 'text-[#00a884]' : 'text-[#8696a0]'} />
+                AI Summary
+              </button>
+            </div>
+
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
-              {aiError && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-rose-700 text-xs font-semibold">
-                  ⚠️ {aiError}
-                </div>
-              )}
-              {aiSuccess && (
-                <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-[#008069] text-xs font-semibold">
-                  ✨ AI successfully profiled this lead! Suggested details are pre-filled below. Review and click Save to apply.
-                </div>
-              )}
-              {/* Deal Title */}
+              {activeDrawerTab === 'overview' && (
+                <>
+                  {aiError && (
+                    <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-rose-700 text-xs font-semibold">
+                      ⚠️ {aiError}
+                    </div>
+                  )}
+                  {aiSuccess && (
+                    <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-[#008069] text-xs font-semibold">
+                      ✨ AI successfully profiled this lead! Suggested details are pre-filled below. Review and click Save to apply.
+                    </div>
+                  )}
+                  {/* Deal Title */}
               <FormField label="Deal Title">
                 <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="form-input" />
               </FormField>
@@ -2161,6 +2864,100 @@ export default function LeadsPage() {
                   </Link>
                 </div>
               )}
+                </>
+              )}
+
+              {activeDrawerTab === 'discussions' && (
+                <>
+
+              {/* Activity Timeline & Notes */}
+              <div className="pt-4 mt-2 border-t border-[#e9edef]">
+                <h4 className="text-xs font-bold text-[#111b21] mb-3 flex items-center gap-1.5">
+                  <MessageCircle size={14} className="text-[#00a884]" />
+                  Activity & Notes
+                </h4>
+                
+                <div className="bg-[#f0f2f5] p-2 rounded-lg mb-3">
+                  <textarea 
+                    value={activityNote}
+                    onChange={e => setActivityNote(e.target.value)}
+                    placeholder="Add a note or update..." 
+                    className="form-input text-xs w-full bg-white border-transparent focus:border-[#00a884]"
+                    rows={2}
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button 
+                      onClick={handleAddNote}
+                      disabled={!activityNote.trim() || isSaving}
+                      className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white rounded text-[10px] font-bold cursor-pointer transition-all shadow-sm"
+                    >
+                      Post Note
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 no-scrollbar">
+                  {activities.map(act => (
+                    <div key={act.id} className="flex gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[#e7f7f4] flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {act.activity_type === 'note' ? (
+                          <MessageCircle size={10} className="text-[#00a884]" />
+                        ) : (
+                          <Sparkles size={10} className="text-[#00a884]" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 bg-white p-2.5 rounded-lg border border-[#e9edef] shadow-sm">
+                        <div className="flex justify-between items-start mb-0.5">
+                          <span className="text-[10px] font-bold text-[#111b21]">{act.user?.full_name || 'System'}</span>
+                          <span className="text-[8px] text-[#8696a0] whitespace-nowrap ml-2">
+                            {new Date(act.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#54656f] leading-relaxed break-words whitespace-pre-wrap">
+                          {act.content}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {activities.length === 0 && (
+                    <div className="text-center py-4 text-[10px] text-[#8696a0] font-medium italic bg-[#f8f9fa] rounded-lg border border-dashed border-[#e9edef]">
+                      No activity recorded yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+                </>
+              )}
+
+              {activeDrawerTab === 'ai_summary' && (
+                <div className="flex flex-col items-center justify-center min-h-[300px] text-center space-y-4 px-4 py-8">
+                  <div className="w-16 h-16 rounded-full bg-[#e7f7f4] flex items-center justify-center">
+                    <Sparkles size={24} className="text-[#00a884]" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-[#111b21] mb-1">AI Lead Intelligence</h4>
+                    <p className="text-[11px] text-[#667781] max-w-xs mx-auto">
+                      Automatically analyze all notes, activities, and contact data to generate a comprehensive profile and pre-fill the form fields.
+                    </p>
+                  </div>
+                  {features.enable_ai ? (
+                    <button 
+                      onClick={handleAISummarize} 
+                      disabled={isSaving || aiLoading}
+                      className="px-6 py-2.5 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                    >
+                      {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      {aiLoading ? 'Analyzing Data...' : 'Generate AI Summary'}
+                    </button>
+                  ) : (
+                    <div className="text-xs text-[#8696a0] bg-[#f8f9fa] p-3 rounded-lg border border-[#e9edef]">
+                      AI features are currently disabled in your organization settings.
+                    </div>
+                  )}
+                  {aiError && <p className="text-xs text-rose-600 font-medium mt-2">⚠️ {aiError}</p>}
+                  {aiSuccess && <p className="text-xs text-[#008069] font-medium mt-2">✨ Lead profiled successfully! Check the Overview tab.</p>}
+                </div>
+              )}
 
               {/* Timestamps */}
               <div className="text-[9px] text-[#8696a0] font-medium space-y-1 pt-2 border-t border-[#e9edef]">
@@ -2176,13 +2973,6 @@ export default function LeadsPage() {
                   className="p-2 rounded-lg border border-red-100 bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer transition-all disabled:opacity-50" title="Delete">
                   <Trash2 size={15} />
                 </button>
-                {features.enable_ai && (
-                  <button type="button" onClick={handleAISummarize} disabled={isSaving || aiLoading}
-                    className="px-3 py-2 rounded-lg border border-[#00a884]/20 bg-[#e7f7f4] text-[#008069] hover:bg-[#d4f0e8] cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1 text-xs font-bold" title="AI Profile">
-                    {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-[#00a884]" />}
-                    <span>AI Profile</span>
-                  </button>
-                )}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setSelectedLeadId(null)} disabled={aiLoading}

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
+import { canSeeAll } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
@@ -11,11 +12,13 @@ import {
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
+import { useAlert } from '@/lib/dialog-context'
 
 function ConversationsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const conversationIdParam = searchParams.get('conversationId')
+  const alert = useAlert()
 
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
   const [unreadCount, setUnreadCount] = useState<number>(0)
@@ -26,6 +29,13 @@ function ConversationsPageContent() {
       setSelectedConversation(conversationIdParam)
     }
   }, [conversationIdParam])
+
+  useEffect(() => {
+    const event = new CustomEvent('active-conversation-changed', {
+      detail: { hasActiveConversation: selectedConversation !== null }
+    })
+    window.dispatchEvent(event)
+  }, [selectedConversation])
 
   useEffect(() => {
     const handleReset = () => {
@@ -42,12 +52,26 @@ function ConversationsPageContent() {
   const [messages, setMessages] = useState<Message[]>([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('auth_user')
+      if (stored) {
+        try {
+          return JSON.parse(stored)
+        } catch (e) {
+          return null
+        }
+      }
+    }
+    return null
+  })
   
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('')
   const [unreadFilter, setUnreadFilter] = useState(false)
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest')
+  // For sales_employee without see_all, restrict conversations to only their assigned ones
+  const [userAssignedToFilter, setUserAssignedToFilter] = useState<string | null>(null)
   const [convPage, setConvPage] = useState(1)
   const [hasMoreConvs, setHasMoreConvs] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -135,6 +159,16 @@ function ConversationsPageContent() {
     conversationsRef.current = conversations
   }, [conversations])
 
+  const searchTermRef = useRef(searchTerm)
+  const unreadFilterRef = useRef(unreadFilter)
+  const userAssignedToFilterRef = useRef(userAssignedToFilter)
+
+  useEffect(() => {
+    searchTermRef.current = searchTerm
+    unreadFilterRef.current = unreadFilter
+    userAssignedToFilterRef.current = userAssignedToFilter
+  }, [searchTerm, unreadFilter, userAssignedToFilter])
+
   // Tick every 60s to keep the 24h free window timer accurate
   useEffect(() => {
     const timer = setInterval(() => setWindowTick(t => t + 1), 60_000)
@@ -170,9 +204,12 @@ function ConversationsPageContent() {
     orgId: string, 
     pageNum = 1, 
     searchVal = '', 
-    unreadOnly = false
+    unreadOnly = false,
+    assignedTo?: string | null
   ): Promise<{ conversations: ConversationWithContact[]; count: number; hasMore: boolean }> => {
-    const res = await fetch(`/api/conversations?organizationId=${orgId}&page=${pageNum}&limit=12&search=${encodeURIComponent(searchVal)}&unread=${unreadOnly}`)
+    let url = `/api/conversations?organizationId=${orgId}&page=${pageNum}&limit=12&search=${encodeURIComponent(searchVal)}&unread=${unreadOnly}`
+    if (assignedTo) url += `&assignedTo=${encodeURIComponent(assignedTo)}`
+    const res = await fetch(url)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Failed to fetch conversations')
     return { 
@@ -182,17 +219,33 @@ function ConversationsPageContent() {
     }
   }, [])
 
-  const loadUnreadCount = useCallback(async (orgId: string) => {
+  const lastFetchedUnreadKeyRef = useRef('')
+
+  const loadUnreadCount = useCallback(async (orgId: string, force = false) => {
     try {
-      const res = await fetch(`/api/conversations?organizationId=${orgId}&unread=true&limit=1`)
+      const seeAll = user ? canSeeAll(user) : true
+      const assignedTo = seeAll ? '' : (user?.id || '')
+      const fetchKey = `${orgId}-${assignedTo}`
+      if (!force && fetchKey === lastFetchedUnreadKeyRef.current) {
+        return
+      }
+      if (!force) {
+        lastFetchedUnreadKeyRef.current = fetchKey
+      }
+      const url = assignedTo 
+        ? `/api/conversations?organizationId=${orgId}&unread=true&assignedTo=${assignedTo}&limit=1`
+        : `/api/conversations?organizationId=${orgId}&unread=true&limit=1`
+      const res = await fetch(url)
       const data = await res.json()
-      if (res.ok && data.count !== undefined) {
+      if (res.ok && data.unreadMessagesCount !== undefined) {
+        setUnreadCount(data.unreadMessagesCount)
+      } else if (res.ok && data.count !== undefined) {
         setUnreadCount(data.count)
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching unread count:', err)
     }
-  }, [])
+  }, [user])
 
   const fetchContacts = useCallback(async (orgId: string): Promise<Contact[]> => {
     const res = await fetch(`/api/contacts?organizationId=${orgId}&limit=100`)
@@ -216,16 +269,28 @@ function ConversationsPageContent() {
 
   // ─── State Update Helpers ───
 
+  const lastFetchedKeyRef = useRef('')
+
   const loadConversations = useCallback(async (
     orgId: string, 
     pageNum = 1, 
     append = false, 
-    searchVal = searchTerm, 
-    unreadOnly = unreadFilter
+    searchVal = '', 
+    unreadOnly = false,
+    assignedTo?: string | null,
+    force = false
   ) => {
+    const fetchKey = `${orgId}-${pageNum}-${append}-${searchVal}-${unreadOnly}-${assignedTo || ''}`
+    if (!force && fetchKey === lastFetchedKeyRef.current) {
+      return
+    }
+    if (!force) {
+      lastFetchedKeyRef.current = fetchKey
+    }
+
     try {
       if (pageNum > 1) setLoadingMore(true)
-      const result = await fetchConversations(orgId, pageNum, searchVal, unreadOnly)
+      const result = await fetchConversations(orgId, pageNum, searchVal, unreadOnly, assignedTo)
       
       setConversations((prev) => {
         if (append) {
@@ -263,13 +328,13 @@ function ConversationsPageContent() {
         return !append && result.conversations.length > 0 ? result.conversations[0].id : prev
       })
       // Also load unread count
-      loadUnreadCount(orgId)
+      loadUnreadCount(orgId, force)
     } catch (err) {
       console.error('[Dashboard] Error loading conversations:', err)
     } finally {
       setLoadingMore(false)
     }
-  }, [fetchConversations, searchTerm, unreadFilter, loadUnreadCount])
+  }, [fetchConversations, loadUnreadCount])
 
   const loadContacts = useCallback(async (orgId: string) => {
     try {
@@ -346,7 +411,7 @@ function ConversationsPageContent() {
         console.error('[Dashboard] Error resetting unread count in DB:', error)
       } else {
         if (user?.organization_id) {
-          loadUnreadCount(user.organization_id)
+          loadUnreadCount(user.organization_id, true)
         }
       }
     } catch (err) {
@@ -430,6 +495,12 @@ function ConversationsPageContent() {
 
         setUser(userData)
 
+        // ── Role-based conversation filtering ──────────────────────────────────
+        // sales_employee without see_all can only see conversations assigned to them
+        const seeAll = canSeeAll(userData)
+        const assignedToFilter = seeAll ? null : userData.id
+        setUserAssignedToFilter(assignedToFilter)
+
         // Fetch organization features
         const { data: orgData } = await supabase
           .from('organizations')
@@ -446,7 +517,7 @@ function ConversationsPageContent() {
           })
         }
         await Promise.all([
-          loadConversations(userData.organization_id, 1, false),
+          loadConversations(userData.organization_id, 1, false, searchTerm, unreadFilter, seeAll ? null : userData.id),
           loadContacts(userData.organization_id),
         ])
       } catch (error) {
@@ -457,7 +528,7 @@ function ConversationsPageContent() {
     }
 
     init()
-  }, [router, loadConversations, loadContacts])
+  }, [router])
 
   // ─── Search & Filter Change Reloads ───
 
@@ -465,11 +536,11 @@ function ConversationsPageContent() {
     if (!user) return
     const delayDebounceFn = setTimeout(() => {
       setConvPage(1)
-      loadConversations(user.organization_id, 1, false, searchTerm, unreadFilter)
+      loadConversations(user.organization_id, 1, false, searchTerm, unreadFilter, userAssignedToFilter)
     }, 300)
 
     return () => clearTimeout(delayDebounceFn)
-  }, [searchTerm, unreadFilter, user, loadConversations])
+  }, [searchTerm, unreadFilter, user, loadConversations, userAssignedToFilter])
 
   // ─── Realtime Subscriptions ───
 
@@ -485,7 +556,7 @@ function ConversationsPageContent() {
         { event: 'INSERT', schema: 'public', table: 'conversations' },
         async (payload) => {
           console.log('[WS] New conversation:', payload.new)
-          await loadConversations(orgId, 1, false)
+          await loadConversations(orgId, 1, false, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
           await loadContacts(orgId)
         }
       )
@@ -507,7 +578,7 @@ function ConversationsPageContent() {
             )
             return newList
           })
-          loadUnreadCount(orgId)
+          loadUnreadCount(orgId, true)
         }
       )
       .subscribe((status) => {
@@ -530,7 +601,7 @@ function ConversationsPageContent() {
             const exists = prev.some((c) => c.id === newMsg.conversation_id)
             if (!exists) {
               // If conversation doesn't exist in our list yet, reload to fetch it
-              loadConversations(orgId, 1, false)
+              loadConversations(orgId, 1, false, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
               return prev
             }
             return prev.map((c) =>
@@ -553,7 +624,7 @@ function ConversationsPageContent() {
             // Reset unread count for the active conversation
             clearUnreadCount(selectedConvRef.current)
           } else {
-            loadUnreadCount(orgId)
+            loadUnreadCount(orgId, true)
           }
         }
       )
@@ -580,7 +651,7 @@ function ConversationsPageContent() {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(contactsChannel)
     }
-  }, [user, loadConversations, loadContacts, loadUnreadCount])
+  }, [user])
 
   // ─── Load Messages ───
 
@@ -687,7 +758,7 @@ function ConversationsPageContent() {
       })
     } catch (err) {
       console.error('[Upload] Error:', err)
-      alert('File upload failed. Please try again.')
+      alert({ title: 'Upload Failed', message: 'File upload failed. Please try again.' })
     } finally {
       setUploading(false)
     }
@@ -892,7 +963,7 @@ function ConversationsPageContent() {
 
   // ─── Rendering ───
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
@@ -914,6 +985,11 @@ function ConversationsPageContent() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">Inbox</h2>
+              {unreadCount > 0 && (
+                <span className="bg-[#ef4444] text-white text-[10px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse select-none">
+                  {unreadCount}
+                </span>
+              )}
               <span className="flex items-center" title={`Realtime: ${realtimeStatus}`}>
                 {realtimeStatus === 'connected' ? (
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1143,8 +1219,9 @@ function ConversationsPageContent() {
         </div>
 
       {/* Main Chat Panel */}
-      {selectedContact ? (
-        <div className={`flex-1 bg-slate-50 dark:bg-[#090d16] flex flex-col overflow-hidden relative transition-all duration-300 ${
+      {selectedConversation ? (
+        selectedContact ? (
+          <div className={`flex-1 bg-slate-50 dark:bg-[#090d16] flex flex-col overflow-hidden relative transition-all duration-300 ${
           selectedConversation ? 'flex' : 'hidden md:flex'
         }`}>
           {/* Chat Header */}
@@ -1161,9 +1238,9 @@ function ConversationsPageContent() {
               <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 text-xs shadow-xs select-none">
                 {selectedContact.first_name ? selectedContact.first_name.substring(0, 2).toUpperCase() : 'CO'}
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-slate-800 dark:text-white leading-tight">
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-white leading-tight truncate">
                     {selectedContact.first_name || 'Unknown'} {selectedContact.last_name || ''}
                   </h3>
                   <button
@@ -1174,17 +1251,19 @@ function ConversationsPageContent() {
                       setRenameError(null)
                       setShowRenameModal(true)
                     }}
-                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-emerald-500 transition-colors"
+                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-emerald-500 transition-colors shrink-0"
                     title="Rename Contact"
                   >
                     <Edit2 size={11} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none">
-                    <Phone size={9} />
-                    {selectedContact.phone_number}
-                  </p>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
+                  {!(selectedContact.first_name && (selectedContact.first_name.startsWith('+') || selectedContact.first_name.match(/^\d+$/))) && (
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none truncate max-w-[120px] sm:max-w-none">
+                      <Phone size={9} className="shrink-0" />
+                      <span className="truncate">{selectedContact.phone_number}</span>
+                    </p>
+                  )}
                   
                   {/* Status Indicator inside header */}
                   {(() => {
@@ -1206,9 +1285,9 @@ function ConversationsPageContent() {
                     const isClosingSoon = isOpen && remaining < 4 * 60 * 60 * 1000
 
                     return (
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wide border ${
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wide border shrink-0 ${
                         !isOpen
-                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-650 dark:text-rose-400 border-rose-200/40'
+                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-650 dark:text-rose-455 border-rose-200/40'
                           : isClosingSoon
                             ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-650 dark:text-amber-450 border-amber-200/40'
                             : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-650 dark:text-emerald-400 border-emerald-250/30'
@@ -1230,7 +1309,7 @@ function ConversationsPageContent() {
             </div>
 
             {/* Right Side Header Controls */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4 shrink-0">
               {/* AI Suggestions Trigger */}
               {features.enable_ai && selectedConversation && (
                 <button
@@ -1240,7 +1319,7 @@ function ConversationsPageContent() {
                       fetchSuggestions(selectedConversation)
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`px-2 py-1 md:px-3 md:py-1.5 rounded-xl text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all cursor-pointer ${
                     showAiPanel
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/15 dark:text-indigo-400 border border-indigo-500/10 hover:bg-indigo-550/20'
@@ -1253,7 +1332,7 @@ function ConversationsPageContent() {
 
               {/* Auto-Reply Chatbot Toggle Override */}
               {selectedConversation && (
-                <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-800 pl-4">
+                <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-2 md:pl-4">
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none hidden sm:inline">
                     Auto-Reply Chatbot
                   </span>
@@ -1388,7 +1467,7 @@ function ConversationsPageContent() {
           )}
 
           {/* Chat Messages */}
-          <div id="chat-messages-container" className="flex-1 overflow-y-auto p-6 space-y-4 wa-chat-wallpaper z-0">
+          <div id="chat-messages-container" className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-4 wa-chat-wallpaper z-0">
             {loadingMessages ? (
               <div className="flex flex-col space-y-6 pt-4 relative z-10 w-full max-w-3xl mx-auto opacity-70">
                 <div className="flex justify-start w-full">
@@ -1786,7 +1865,7 @@ function ConversationsPageContent() {
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                       placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : attachedFile ? "Add a caption..." : "Type a message..."}
                       disabled={isSmsDisabled || isExpired}
-                      className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200"
+                              className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200"
                     />
                     <button
                       onClick={handleSendMessage}
@@ -1802,6 +1881,13 @@ function ConversationsPageContent() {
           })()}
         </div>
       ) : (
+        <div className="flex-1 bg-slate-50 dark:bg-[#090d16] flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 border-l border-slate-100 dark:border-slate-800/80">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="animate-spin text-emerald-500" size={24} />
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold tracking-wider uppercase">Loading Chat...</p>
+          </div>
+        </div>
+      ) ) : (
         <div className="hidden md:flex flex-1 bg-slate-50 dark:bg-[#090d16] flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 border-l border-slate-100 dark:border-slate-800/80 relative">
           {/* Decorative background glow blobs */}
           <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none" />

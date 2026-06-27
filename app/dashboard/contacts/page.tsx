@@ -5,8 +5,11 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { Contact, User } from '@/lib/types'
 import { Plus, Mail, Phone, Building2, Trash2, Edit2, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { useConfirm, useAlert } from '@/lib/dialog-context'
 
 export default function ContactsPage() {
+  const confirm = useConfirm()
+  const alert = useAlert()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,7 +66,9 @@ export default function ContactsPage() {
       setUser(userData)
 
       const limit = 10
-      const res = await fetch(`/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}&organizationId=${userData.organization_id}`)
+      const res = await fetch(`/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}&organizationId=${userData.organization_id}&_t=${Date.now()}`, {
+        cache: 'no-store'
+      })
       const resData = await res.json()
       if (!res.ok) {
         throw new Error(resData.error || 'Failed to fetch contacts')
@@ -166,7 +171,13 @@ export default function ContactsPage() {
   }
 
   async function handleDeleteContact(id: string) {
-    if (!confirm('Are you sure you want to delete this contact?')) return
+    const confirmed = await confirm({
+      title: 'Delete Contact',
+      message: 'Are you sure you want to delete this contact?',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel'
+    })
+    if (!confirmed) return
 
     try {
       const response = await fetch(`/api/contacts?id=${id}`, {
@@ -180,7 +191,10 @@ export default function ContactsPage() {
       loadData(currentPage, searchTerm)
     } catch (err) {
       console.error('Error deleting contact:', err)
-      alert(err instanceof Error ? err.message : 'Failed to delete contact')
+      await alert({
+        title: 'Delete Failed',
+        message: err instanceof Error ? err.message : 'Failed to delete contact'
+      })
     }
   }
 
@@ -261,7 +275,8 @@ export default function ContactsPage() {
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        {/* Desktop View: Table */}
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-850">
@@ -342,6 +357,64 @@ export default function ContactsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="block md:hidden divide-y divide-slate-150 dark:divide-slate-800">
+          {contacts.length === 0 ? (
+            <div className="px-6 py-12 text-center text-slate-450 dark:text-slate-500 text-xs font-medium">
+              No contacts found. Click "Add Contact" to create one.
+            </div>
+          ) : (
+            contacts.map((contact) => {
+              const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
+              return (
+                <div key={contact.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
+                        {contactName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight">{contactName}</p>
+                        {contact.company && (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{contact.company}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEditContact(contact)}
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-blue-600 hover:text-blue-400 transition-colors"
+                        title="Edit"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteContact(contact.id)}
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-rose-600 hover:text-rose-450 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Phone size={12} className="text-slate-400 shrink-0" />
+                      <span className="truncate">{contact.phone_number}</span>
+                    </div>
+                    {contact.email && (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Mail size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{contact.email}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
 
         {/* Pagination Bar */}

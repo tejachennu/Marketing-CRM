@@ -621,7 +621,7 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                       .maybeSingle()
 
                     if (!existingTicket) {
-                      await supabase
+                      const { data: newTicket } = await supabase
                         .from('tickets')
                         .insert([
                           {
@@ -632,7 +632,29 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                             status: 'open'
                           }
                         ])
+                        .select('id')
+                        .maybeSingle()
+
                       console.log('[Facebook Webhook Chatbot] Created active support ticket for conversation:', conversation.id)
+
+                      if (newTicket) {
+                        const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+                        const contactPhone = contact.phone_number || contact.whatsapp_number || ''
+                        const originUrl = request.nextUrl ? request.nextUrl.origin : new URL(request.url).origin
+
+                        // Trigger notifications asynchronously without blocking the webhook execution
+                        fetch(`${originUrl}/api/tickets/notify`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            organizationId: orgId,
+                            ticketSubject: messageBody ? (messageBody.length > 100 ? messageBody.substring(0, 97) + '...' : messageBody) : 'Support Request',
+                            contactName,
+                            contactPhone,
+                            ticketId: newTicket.id
+                          })
+                        }).catch(err => console.error('[Facebook Webhook Notification] Failed to trigger ticket notification:', err))
+                      }
                     }
                   } catch (ticketErr: any) {
                     console.error('[Facebook Webhook Chatbot] Failed to create support ticket:', ticketErr.message)

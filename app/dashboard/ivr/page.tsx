@@ -5,8 +5,10 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
 import { Phone, ArrowLeft, Check, X, Plus, Loader2, Trash2 } from 'lucide-react'
+import { useConfirm } from '@/lib/dialog-context'
 
 export default function IVRWorkflowsPage() {
+  const confirm = useConfirm()
   const [user, setUser] = useState<User | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
@@ -178,7 +180,14 @@ export default function IVRWorkflowsPage() {
   }
 
   async function handleDeleteWorkflow(id: string) {
-    if (!user || !confirm('Are you sure you want to delete this voice workflow? This action cannot be undone.')) return
+    if (!user) return
+    const confirmed = await confirm({
+      title: 'Delete Workflow',
+      message: 'Are you sure you want to delete this voice workflow? This action cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel'
+    })
+    if (!confirmed) return
     try {
       const res = await fetch(`/api/voice-workflows?id=${id}`, {
         method: 'DELETE'

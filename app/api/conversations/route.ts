@@ -23,6 +23,9 @@ export async function GET(request: NextRequest) {
     const unreadOnly = searchParams.get('unread') === 'true'
     const search = searchParams.get('search') || ''
     const specificId = searchParams.get('id')
+    // assignedTo: when set, restrict conversations to ones assigned to this userId
+    // Used for sales_employee role — they only see their own conversations unless see_all is granted
+    const assignedTo = searchParams.get('assignedTo') || null
     const offset = (page - 1) * limit
 
     if (!orgId) {
@@ -68,6 +71,59 @@ export async function GET(request: NextRequest) {
     if (specificId) {
       query = query.eq('id', specificId)
     }
+
+    // ── Role-based filtering: only show assigned conversations, active leads, and open tickets for restricted users ──
+    let contactIds: string[] = []
+    let ticketConvIds: string[] = []
+
+    if (assignedTo && !specificId) {
+      // 1. Fetch active leads assigned to the user (map by contact_id!)
+      const { data: activeLeads } = await supabase
+        .from('leads')
+        .select('contact_id')
+        .eq('assigned_to', assignedTo)
+        .eq('status', 'active')
+      contactIds = (activeLeads || []).map((l: any) => l.contact_id).filter(Boolean)
+
+      // 2. Fetch open tickets assigned to the user
+      const { data: openTickets } = await supabase
+        .from('tickets')
+        .select('conversation_id')
+        .eq('assigned_to', assignedTo)
+        .eq('status', 'open')
+      ticketConvIds = (openTickets || []).map((t: any) => t.conversation_id).filter(Boolean)
+
+      let orConditions = `assigned_to.eq.${assignedTo}`
+      if (contactIds.length > 0) {
+        orConditions += `,contact_id.in.(${contactIds.map((id: string) => `"${id}"`).join(',')})`
+      }
+      if (ticketConvIds.length > 0) {
+        orConditions += `,id.in.(${ticketConvIds.map((id: string) => `"${id}"`).join(',')})`
+      }
+      query = query.or(orConditions)
+    }
+
+    // ── Calculate unread messages count (total unread messages for matching conversations) ──
+    let unreadMessagesCount = 0
+    let sumQuery = supabase
+      .from('conversations')
+      .select('unread_count')
+      .eq('organization_id', orgId)
+      .gt('unread_count', 0)
+
+    if (assignedTo && !specificId) {
+      let orConditions = `assigned_to.eq.${assignedTo}`
+      if (contactIds.length > 0) {
+        orConditions += `,contact_id.in.(${contactIds.map((id: string) => `"${id}"`).join(',')})`
+      }
+      if (ticketConvIds.length > 0) {
+        orConditions += `,id.in.(${ticketConvIds.map((id: string) => `"${id}"`).join(',')})`
+      }
+      sumQuery = sumQuery.or(orConditions)
+    }
+
+    const { data: sumData } = await sumQuery
+    unreadMessagesCount = (sumData || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0)
 
     if (unreadOnly && !specificId) {
       query = query.gt('unread_count', 0)
@@ -138,6 +194,7 @@ export async function GET(request: NextRequest) {
       success: true,
       conversations: conversationsWithLastMsg,
       count: count || 0,
+      unreadMessagesCount,
       page,
       limit,
       hasMore: (count || 0) > offset + formatted.length,

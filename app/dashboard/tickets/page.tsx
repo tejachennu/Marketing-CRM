@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { useAlert } from '@/lib/dialog-context'
 import { Ticket, Clock, CheckCircle2, MessageSquare, TrendingUp, Search, Calendar, X, ChevronLeft, ChevronRight, Loader2, User, Users } from 'lucide-react'
 
 interface TicketItem {
@@ -13,6 +14,7 @@ interface TicketItem {
   created_at: string
   conversation_id: string
   contact_id: string
+  assigned_to: string | null
   contacts?: {
     first_name: string | null
     last_name: string | null
@@ -35,8 +37,24 @@ interface OrgUser {
 
 export default function TicketsPage() {
   const router = useRouter()
+  const alert = useAlert()
   const [orgId, setOrgId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<string>('')
+  const [adminSeeAll, setAdminSeeAll] = useState<boolean>(true)
+  const [readOnlyMode, setReadOnlyMode] = useState<boolean>(false)
+
+  const toggleSeeAll = () => {
+    const newVal = !adminSeeAll
+    setAdminSeeAll(newVal)
+    localStorage.setItem('admin_see_all', String(newVal))
+  }
+
+  const toggleReadOnly = () => {
+    const newVal = !readOnlyMode
+    setReadOnlyMode(newVal)
+    localStorage.setItem('admin_read_only', String(newVal))
+  }
   
   // UI states
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active')
@@ -88,12 +106,17 @@ export default function TicketsPage() {
 
         const { data: profile } = await supabase
           .from('users')
-          .select('organization_id')
+          .select('organization_id, role, see_all, read_only')
           .eq('id', storedUser.id)
           .maybeSingle()
 
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
+        }
+        if (profile?.role) {
+          setUserRole(profile.role)
+          setAdminSeeAll(profile.see_all !== false)
+          setReadOnlyMode(profile.read_only === true)
         }
       } catch (err) {
         console.error('Error initializing user in tickets page:', err)
@@ -135,41 +158,54 @@ export default function TicketsPage() {
   const fetchStats = useCallback(async () => {
     if (!orgId) return
     try {
-      // Fetch Total
-      const { count: total } = await supabase
+      const seeAll = adminSeeAll
+
+      let totalQ = supabase
         .from('tickets')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
 
-      // Fetch Active
-      const { count: active } = await supabase
+      let activeQ = supabase
         .from('tickets')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
         .eq('status', 'open')
 
-      // Fetch Resolved
-      const { count: resolved } = await supabase
+      let resolvedQ = supabase
         .from('tickets')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
         .eq('status', 'resolved')
 
+      if (!seeAll && userId) {
+        totalQ = totalQ.eq('assigned_to', userId)
+        activeQ = activeQ.eq('assigned_to', userId)
+        resolvedQ = resolvedQ.eq('assigned_to', userId)
+      }
+
+      const [totalRes, activeRes, resolvedRes] = await Promise.all([
+        totalQ,
+        activeQ,
+        resolvedQ
+      ])
+
       setStats({
-        total: total || 0,
-        active: active || 0,
-        resolved: resolved || 0
+        total: totalRes.count || 0,
+        active: activeRes.count || 0,
+        resolved: resolvedRes.count || 0
       })
     } catch (err) {
       console.error('Error fetching tickets stats:', err)
     }
-  }, [orgId])
+  }, [orgId, userId, userRole, adminSeeAll])
 
   // Main Tickets Fetcher
   const fetchTickets = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
     try {
+      const seeAll = adminSeeAll
+
       let query = supabase
         .from('tickets')
         .select(`
@@ -179,6 +215,7 @@ export default function TicketsPage() {
           created_at,
           conversation_id,
           contact_id,
+          assigned_to,
           contacts (
             first_name,
             last_name,
@@ -188,6 +225,10 @@ export default function TicketsPage() {
         `, { count: 'exact' })
         .eq('organization_id', orgId)
         .eq('status', activeTab === 'active' ? 'open' : 'resolved')
+
+      if (!seeAll && userId) {
+        query = query.eq('assigned_to', userId)
+      }
 
       // Apply search scoping
       if (searchTerm.trim()) {
@@ -237,7 +278,7 @@ export default function TicketsPage() {
     } finally {
       setLoading(false)
     }
-  }, [orgId, activeTab, searchTerm, fromDate, toDate, currentPage])
+  }, [orgId, activeTab, searchTerm, fromDate, toDate, currentPage, userId, userRole, adminSeeAll])
 
   // Refetch when dependencies change
   useEffect(() => {
@@ -275,6 +316,10 @@ export default function TicketsPage() {
 
   // Resolve Ticket Action
   const handleResolveTicket = async (ticketId: string) => {
+    if (readOnlyMode) {
+      alert({ title: 'Read-Only Mode', message: 'You cannot resolve tickets while Read-Only Mode is active.' })
+      return
+    }
     setActionLoading(ticketId)
     try {
       const res = await fetch('/api/tickets', {
@@ -294,6 +339,33 @@ export default function TicketsPage() {
     }
   }
 
+  const [assignLoading, setAssignLoading] = useState<string | null>(null)
+
+  // Assign Ticket to Teamate Action
+  const handleAssignTicket = async (ticketId: string, assignedToId: string | null) => {
+    if (readOnlyMode) {
+      alert({ title: 'Read-Only Mode', message: 'You cannot assign tickets while Read-Only Mode is active.' })
+      return
+    }
+    setAssignLoading(ticketId)
+    try {
+      const { error } = await supabase
+        .from('tickets')
+        .update({ assigned_to: assignedToId || null })
+        .eq('id', ticketId)
+      
+      if (error) throw error
+      
+      setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, assigned_to: assignedToId } : t))
+      fetchStats()
+    } catch (err) {
+      console.error('Failed to assign ticket:', err)
+      alert({ title: 'Error', message: 'Failed to assign ticket.' })
+    } finally {
+      setAssignLoading(null)
+    }
+  }
+
   // Convert/Move Ticket to Lead
   const handleOpenLeadModal = (ticket: TicketItem) => {
     setLeadForm({
@@ -309,6 +381,10 @@ export default function TicketsPage() {
 
   const handleConvertLead = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (readOnlyMode) {
+      alert({ title: 'Read-Only Mode', message: 'You cannot convert tickets to leads while Read-Only Mode is active.' })
+      return
+    }
     if (!showLeadModal || !orgId) return
     setModalLoading(true)
     try {
@@ -382,7 +458,7 @@ export default function TicketsPage() {
     <div className="p-4 pb-20 md:pb-6 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-6 relative">
       
       {/* Header */}
-      <div className="flex items-center justify-between select-none">
+      <div className="flex items-center justify-between select-none flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#111b21] dark:text-white">Support Tickets</h1>
           <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold">Manage, resolve, and convert customer support inquiries.</p>
@@ -536,13 +612,15 @@ export default function TicketsPage() {
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try adjusting your filters or search terms.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-left border-collapse text-xs select-none">
               <thead>
                 <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
                   <th className="px-6 py-3.5">Ticket / Inquiry Subject</th>
                   <th className="px-6 py-3.5">Contact Customer</th>
                   <th className="px-6 py-3.5">Date Created</th>
+                  <th className="px-6 py-3.5">Assigned To</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-center">Actions</th>
                 </tr>
@@ -569,7 +647,7 @@ export default function TicketsPage() {
                       {/* Contact */}
                       <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-350">
                         <div>{name}</div>
-                        <div className="text-[10px] text-slate-450 dark:text-slate-500 font-medium">
+                        <div className="text-[10px] text-slate-455 dark:text-slate-500 font-medium">
                           {ticket.contacts?.phone_number || ''}
                         </div>
                       </td>
@@ -579,6 +657,29 @@ export default function TicketsPage() {
                         {formatTime(ticket.created_at)}
                       </td>
 
+                      {/* Assigned To */}
+                      <td className="px-6 py-4">
+                        {['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userRole) && !readOnlyMode ? (
+                          <select
+                            value={ticket.assigned_to || ''}
+                            onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}
+                            disabled={assignLoading === ticket.id}
+                            className="px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#00a884] disabled:opacity-50"
+                          >
+                            <option value="">Unassigned</option>
+                            {orgUsers.map(u => (
+                              <option key={u.id} value={u.id}>
+                                {u.full_name || u.email}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="font-semibold text-slate-700 dark:text-slate-350">
+                            {orgUsers.find(u => u.id === ticket.assigned_to)?.full_name || 'Unassigned'}
+                          </span>
+                        )}
+                      </td>
+
                       {/* Status */}
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${
@@ -586,7 +687,7 @@ export default function TicketsPage() {
                             ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
                             : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30'
                         }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${ticket.status === 'open' ? 'bg-amber-505' : 'bg-emerald-505'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${ticket.status === 'open' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                           <span>{ticket.status === 'open' ? 'Active' : 'Resolved'}</span>
                         </span>
                       </td>
@@ -605,16 +706,18 @@ export default function TicketsPage() {
                           </button>
 
                           {/* Move to Lead */}
-                          <button
-                            onClick={() => handleOpenLeadModal(ticket)}
-                            title="Move to Pipeline Lead"
-                            className="p-1.5 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-500 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <TrendingUp size={14} />
-                          </button>
+                          {!readOnlyMode && (
+                            <button
+                              onClick={() => handleOpenLeadModal(ticket)}
+                              title="Move to Pipeline Lead"
+                              className="p-1.5 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-500 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <TrendingUp size={14} />
+                            </button>
+                          )}
 
                           {/* Resolve inline */}
-                          {ticket.status === 'open' && (
+                          {ticket.status === 'open' && !readOnlyMode && (
                             <button
                               onClick={() => handleResolveTicket(ticket.id)}
                               disabled={actionLoading === ticket.id}
@@ -638,7 +741,109 @@ export default function TicketsPage() {
               </tbody>
             </table>
           </div>
-        )}
+
+          {/* Mobile View: Cards */}
+          <div className="block md:hidden divide-y divide-[#e9edef] dark:divide-[#2a3942]">
+            {tickets.map((ticket) => {
+              const name = ticket.contacts 
+                ? `${ticket.contacts.first_name || ''} ${ticket.contacts.last_name || ''}`.trim() || 'Unknown'
+                : 'Unknown'
+              
+              return (
+                <div key={ticket.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-xs text-[#111b21] dark:text-white leading-relaxed break-words">{ticket.subject}</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono">ID: {ticket.id}</p>
+                    </div>
+                    
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase border shrink-0 ${
+                      ticket.status === 'open'
+                        ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
+                        : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-450 border-emerald-200/40 dark:border-emerald-900/30'
+                    }`}>
+                      <span>{ticket.status === 'open' ? 'Active' : 'Resolved'}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-350">
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400 dark:text-slate-500 font-bold">Contact:</span>
+                      <span>{name}</span>
+                      {ticket.contacts?.phone_number && (
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                      )}
+                      <span className="font-mono text-[10px] text-slate-500">{ticket.contacts?.phone_number || ''}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400 dark:text-slate-500 font-bold">Assignee:</span>
+                      {['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userRole) && !readOnlyMode ? (
+                        <select
+                          value={ticket.assigned_to || ''}
+                          onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}
+                          disabled={assignLoading === ticket.id}
+                          className="px-2 py-1 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#00a884] disabled:opacity-50"
+                        >
+                          <option value="">Unassigned</option>
+                          {orgUsers.map(u => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name || u.email}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{orgUsers.find(u => u.id === ticket.assigned_to)?.full_name || 'Unassigned'}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-slate-455 dark:text-slate-500 text-[10px]">
+                      <Clock size={11} />
+                      <span>{formatTime(ticket.created_at)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-dashed border-[#e9edef]/60 dark:border-[#2a3942]/60">
+                    {/* Open Chat */}
+                    <button
+                      onClick={() => router.push(`/dashboard?conversationId=${ticket.conversation_id}`)}
+                      className="p-2 hover:bg-[#00a884]/10 text-slate-500 hover:text-[#00a884] dark:hover:text-[#00e676] rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                    >
+                      <MessageSquare size={13} />
+                      <span>Chat</span>
+                    </button>
+
+                    {/* Move to Lead */}
+                    {!readOnlyMode && (
+                      <button
+                        onClick={() => handleOpenLeadModal(ticket)}
+                        className="p-2 hover:bg-indigo-500/10 text-slate-500 hover:text-indigo-500 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                      >
+                        <TrendingUp size={13} />
+                        <span>Pipeline</span>
+                      </button>
+                    )}
+
+                    {/* Resolve inline */}
+                    {ticket.status === 'open' && !readOnlyMode && (
+                      <button
+                        onClick={() => handleResolveTicket(ticket.id)}
+                        disabled={actionLoading === ticket.id}
+                        className="p-2 hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-500 rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1 text-[10px] font-bold"
+                      >
+                        {actionLoading === ticket.id ? (
+                          <Loader2 size={13} className="animate-spin text-emerald-500" />
+                        ) : (
+                          <CheckCircle2 size={13} />
+                        )}
+                        <span>Resolve</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
