@@ -356,14 +356,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-[#202d36] text-center">
-            <p className="text-xs text-slate-555 dark:text-[#8696a0] font-semibold">
-              Don't have an account?{' '}
-              <Link href="/signup" className="text-[#00a884] hover:text-[#008069] font-bold transition-colors">
-                Sign up
-              </Link>
-            </p>
-          </div>
         </div>
       </div>
     </div>

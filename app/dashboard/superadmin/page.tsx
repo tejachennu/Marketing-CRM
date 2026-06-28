@@ -174,6 +174,10 @@ export default function SuperAdminPage() {
   const [contactEmail, setContactEmail] = useState('')
   const [contactAddress, setContactAddress] = useState('')
 
+  // Organization Info states
+  const [orgName, setOrgName] = useState('')
+  const [orgSlug, setOrgSlug] = useState('')
+
   // Webhook URLs
   const [webhookUrl, setWebhookUrl] = useState('')
   const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
@@ -227,6 +231,8 @@ export default function SuperAdminPage() {
       setContactPhone(selectedOrgSettings.contact_phone || '')
       setContactEmail(selectedOrgSettings.contact_email || '')
       setContactAddress(selectedOrgSettings.contact_address || '')
+      setOrgName(selectedOrgSettings.name || '')
+      setOrgSlug(selectedOrgSettings.slug || '')
 
       if (typeof window !== 'undefined') {
         const orgSlug = selectedOrgSettings.slug || 'org'
@@ -444,6 +450,8 @@ export default function SuperAdminPage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
+          name: orgName.trim() || null,
+          slug: orgSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '') || null,
           twilio_account_sid: twilioAccountSid.trim() || null,
           twilio_auth_token: twilioAuthToken.trim() || null,
           twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
@@ -473,6 +481,8 @@ export default function SuperAdminPage() {
 
       setSelectedOrgSettings({
         ...selectedOrgSettings,
+        name: orgName.trim() || selectedOrgSettings.name,
+        slug: orgSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '') || selectedOrgSettings.slug,
         twilio_account_sid: twilioAccountSid.trim() || null,
         twilio_auth_token: twilioAuthToken.trim() || null,
         twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
@@ -1406,9 +1416,9 @@ export default function SuperAdminPage() {
                       </label>
                       <input
                         type="text"
-                        value={selectedOrgSettings.name}
-                        disabled
-                        className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317]/50 text-neutral-500 dark:text-[#8696a0] rounded-xl text-xs font-semibold cursor-not-allowed"
+                        value={orgName}
+                        onChange={(e) => setOrgName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
                       />
                     </div>
                     
@@ -1418,9 +1428,9 @@ export default function SuperAdminPage() {
                       </label>
                       <input
                         type="text"
-                        value={selectedOrgSettings.slug}
-                        disabled
-                        className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317]/50 text-neutral-500 dark:text-[#8696a0] rounded-xl text-xs font-semibold cursor-not-allowed"
+                        value={orgSlug}
+                        onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, ''))}
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
                       />
                     </div>
                   </div>
