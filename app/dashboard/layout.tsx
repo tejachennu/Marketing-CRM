@@ -503,8 +503,8 @@ export default function DashboardLayout({
       return false
     }
 
-    // Role-based restriction: hide Campaigns, Contacts, and Settings if no full access
-    if (!seeAll && (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts' || item.href === '/dashboard/settings')) {
+    // Role-based restriction: hide Campaigns, Contacts, Settings, and Sales Pipeline if no full access
+    if (!seeAll && (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts' || item.href === '/dashboard/settings' || item.href === '/dashboard/leads')) {
       return false
     }
 
@@ -527,7 +527,7 @@ export default function DashboardLayout({
     if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
 
     // Role-based page access protection
-    if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings'))) {
+    if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings') || pathname.startsWith('/dashboard/leads'))) {
       return false
     }
 

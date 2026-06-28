@@ -1218,7 +1218,7 @@ export default function LeadsPage() {
               { id: 'analytics', label: 'Sales Analytics', icon: BarChart3 },
               { id: 'performance', label: 'Team Performance', icon: Target }
             ] as const
-          ).map(tab => (
+          ).filter(tab => isAdmin || tab.id === 'list').map(tab => (
             <button
               key={tab.id}
               onClick={() => setViewMode(tab.id as ViewMode)}
