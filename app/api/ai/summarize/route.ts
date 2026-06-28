@@ -14,43 +14,44 @@ function getSupabaseClient() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { conversationId } = body
-    if (!conversationId) {
-      return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
-    }
-
-    const authResult = await verifyRecordAccess(request, 'conversations', conversationId)
-    if (!authResult.authorized) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    const { leadId, conversationId: providedConvId } = body
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing leadId' }, { status: 400 })
     }
 
     const supabase = getSupabaseClient()
 
-    // 1. Fetch conversation details to get organization_id
-    const { data: conv, error: convErr } = await supabase
-      .from('conversations')
-      .select('organization_id')
-      .eq('id', conversationId)
+    // 1. Fetch lead details (description, notes, title, value, status, priority, contact_id)
+    const { data: lead, error: leadErr } = await supabase
+      .from('leads')
+      .select('id, organization_id, contact_id, title, description, notes, value, status, priority, product_service, source, expected_close_date, assigned_to, created_at')
+      .eq('id', leadId)
       .single()
 
-    if (convErr || !conv) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    if (leadErr || !lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
     }
 
-    // Load custom credentials per organization
+    // 2. Auth check
+    const authResult = await verifyRecordAccess(request, 'leads', leadId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    // 3. Load org OpenAI key
     let openAiKey = process.env.OPENAI_API_KEY || ''
-    if (conv.organization_id) {
+    if (lead.organization_id) {
       try {
         const { data: orgData } = await supabase
           .from('organizations')
           .select('openai_api_key')
-          .eq('id', conv.organization_id)
+          .eq('id', lead.organization_id)
           .single()
-        if (orgData && orgData.openai_api_key) {
+        if (orgData?.openai_api_key) {
           openAiKey = orgData.openai_api_key
         }
       } catch (dbErr) {
-        console.error('[Summarize] Error loading organization OpenAI key:', dbErr)
+        console.error('[AI Summarize] Error loading organization OpenAI key:', dbErr)
       }
     }
 
@@ -58,42 +59,149 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'OpenAI API key is not configured' }, { status: 400 })
     }
 
-    // Fetch all messages for the conversation
-    const { data: messages, error: msgErr } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
+    // 4. Find conversation for this lead
+    let conversationId = providedConvId || null
+    if (!conversationId) {
+      const { data: convByLead } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('lead_id', leadId)
+        .maybeSingle()
+
+      if (convByLead?.id) {
+        conversationId = convByLead.id
+      } else if (lead.contact_id) {
+        const { data: convByContact } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_id', lead.contact_id)
+          .maybeSingle()
+        if (convByContact?.id) {
+          conversationId = convByContact.id
+        }
+      }
+    }
+
+    // 5. Check for previous analysis to enable incremental reading
+    let lastMessageAt: string | null = null
+    const { data: prevAnalysis } = await supabase
+      .from('lead_ai_analyses')
+      .select('id, last_message_at, summary')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (prevAnalysis?.last_message_at) {
+      lastMessageAt = prevAnalysis.last_message_at
+    }
+
+    // 6. Fetch messages (incrementally if previous analysis exists)
+    let transcript = ''
+    let latestMessageId: string | null = null
+    let latestMessageAt: string | null = null
+
+    if (conversationId) {
+      let msgQuery = supabase
+        .from('messages')
+        .select('id, body, sender_type, created_at')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+
+      if (lastMessageAt) {
+        msgQuery = msgQuery.gt('created_at', lastMessageAt)
+      }
+
+      const { data: messages } = await msgQuery
+
+      if (messages && messages.length > 0) {
+        transcript = messages.map(m => {
+          const sender = m.sender_type === 'user' ? 'Operator' : 'Client'
+          return `${sender}: ${m.body || '[Media/Attachment]'}`
+        }).join('\n')
+
+        const lastMsg = messages[messages.length - 1]
+        latestMessageId = lastMsg.id
+        latestMessageAt = lastMsg.created_at
+      }
+    }
+
+    // 7. Fetch lead activities (notes, status changes)
+    const { data: activities } = await supabase
+      .from('lead_activities')
+      .select('activity_type, content, created_at, user:users(full_name)')
+      .eq('lead_id', leadId)
       .order('created_at', { ascending: true })
 
-    if (msgErr) {
-      throw msgErr
-    }
-
-    if (!messages || messages.length === 0) {
-      return NextResponse.json({ error: 'No message history available to summarize' }, { status: 400 })
-    }
-
-    // Format transcript
-    const transcript = messages.map(m => {
-      const sender = m.sender_type === 'user' ? 'Operator' : 'Client'
-      return `${sender}: ${m.body || '[Media/Attachment]'}`
+    const activitiesText = (activities || []).map(a => {
+      const userName = (a.user as any)?.full_name || 'System'
+      const date = new Date(a.created_at).toLocaleDateString()
+      return `[${date}] ${userName} - ${a.activity_type}: ${a.content || ''}`
     }).join('\n')
 
-    const systemPrompt = `You are a CRM sales analyst. Analyze the following WhatsApp chat transcript and extract lead details.
-Format the output strictly as a JSON object with these keys:
-1. "title": A short deal title (e.g. "US Visa Help" or "Passport Renewal")
-2. "value": Estimated deal value as a number if mentioned (e.g. 150), else null
-3. "priority": "high", "medium", or "low" (High/Hot for immediate intent, Medium/Warm for interest, Low/Cold for queries)
-4. "product_service": Name of product/service they want (e.g. "Consular Consulting")
-5. "notes": A brief bulleted list of notes (next steps, deadlines, client requests)
-6. "status": 'active', 'won', 'lost', or 'on_hold' (default to 'active' unless chat clearly shows transaction is completed/won or abandoned/lost)
-7. "summary": A brief 2-sentence executive summary of the chat
+    // 8. Build comprehensive context
+    const leadContext = [
+      `Lead Title: ${lead.title || 'Untitled'}`,
+      `Status: ${lead.status}`,
+      `Priority: ${lead.priority}`,
+      `Value: ${lead.value || 'Not set'}`,
+      `Product/Service: ${lead.product_service || 'Not specified'}`,
+      `Source: ${lead.source || 'Unknown'}`,
+      `Expected Close: ${lead.expected_close_date || 'Not set'}`,
+      `Description: ${lead.description || 'None'}`,
+      `Notes: ${lead.notes || 'None'}`,
+      `Created: ${new Date(lead.created_at).toLocaleDateString()}`,
+    ].join('\n')
 
-Return ONLY the JSON object.`
+    const previousSummary = prevAnalysis?.summary
+      ? `\n\nPrevious AI Analysis Summary:\n${prevAnalysis.summary}`
+      : ''
 
-    const userPrompt = `Here is the chat history:\n${transcript}\n\nExtract the JSON lead profile.`
+    // Check if we have enough data to analyze
+    const hasTranscript = transcript.length > 0
+    const hasActivities = activitiesText.length > 0
+    const hasLeadData = lead.description || lead.notes
 
-    // Call OpenAI API
+    if (!hasTranscript && !hasActivities && !hasLeadData) {
+      return NextResponse.json({
+        error: 'No data available to analyze. Add notes, activities, or have a WhatsApp conversation first.'
+      }, { status: 400 })
+    }
+
+    // 9. Build GPT prompt
+    const systemPrompt = `You are a senior CRM sales analyst and strategist. Analyze all available data about this sales lead and provide a comprehensive intelligence report.
+
+Your analysis must include:
+1. "summary": A 3-4 sentence executive summary about where this lead stands, key developments, and overall trajectory.
+2. "suggestions": 3-5 specific, actionable next steps the sales team should take. Be concrete (e.g., "Send follow-up pricing proposal within 48 hours" not "Follow up").
+3. "lead_rating": Rate the lead as "Hot", "Warm", or "Cold" with a brief 1-sentence justification.
+4. "closure_probability": Assess as "High", "Medium", or "Low" whether this deal is moving towards closure. Include a 1-sentence reasoning.
+5. "key_insights": 3-5 bullet points highlighting the most important observations from the data (buying signals, objections, timeline clues, budget indicators, etc.)
+
+Return ONLY a JSON object with these exact keys: summary, suggestions, lead_rating, closure_probability, key_insights.
+- "suggestions" should be a string with numbered items (1. ... 2. ... etc.)
+- "key_insights" should be a string with bullet points (• ... )
+- "lead_rating" format: "Hot - <reason>" or "Warm - <reason>" or "Cold - <reason>"
+- "closure_probability" format: "High - <reason>" or "Medium - <reason>" or "Low - <reason>"`
+
+    let userPrompt = `=== LEAD INFORMATION ===\n${leadContext}`
+
+    if (previousSummary) {
+      userPrompt += `\n\n=== PREVIOUS AI ANALYSIS ===\n${previousSummary}`
+    }
+
+    if (activitiesText) {
+      userPrompt += `\n\n=== ACTIVITY LOG & NOTES ===\n${activitiesText}`
+    }
+
+    if (transcript) {
+      const label = lastMessageAt ? '=== NEW CHAT MESSAGES (since last analysis) ===' : '=== CHAT TRANSCRIPT ==='
+      userPrompt += `\n\n${label}\n${transcript}`
+    }
+
+    userPrompt += '\n\nAnalyze all available data and generate the JSON intelligence report.'
+
+    // 10. Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -108,30 +216,90 @@ Return ONLY the JSON object.`
         ],
         response_format: { type: 'json_object' },
         temperature: 0.3,
-        max_tokens: 400
+        max_tokens: 800
       })
     })
 
     const data = await response.json()
     if (response.status !== 200 || data.error) {
-      console.error('[Summarize OpenAI Error]', data.error || data)
+      console.error('[AI Summarize OpenAI Error]', data.error || data)
       return NextResponse.json({
         error: data.error?.message || 'OpenAI API call failed'
       }, { status: response.status || 500 })
     }
+
     const contentText = data.choices?.[0]?.message?.content || '{}'
-    
-    let leadProfile = {}
+    let analysis: any = {}
     try {
-      leadProfile = JSON.parse(contentText)
+      analysis = JSON.parse(contentText)
     } catch (e) {
-      console.error('[Summarize] Failed to parse GPT output:', e)
-      return NextResponse.json({ error: 'Failed to generate profile structure' }, { status: 500 })
+      console.error('[AI Summarize] Failed to parse GPT output:', e)
+      return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
     }
 
-    return NextResponse.json({ profile: leadProfile })
+    // 11. Save analysis to lead_ai_analyses table
+    const { data: saved, error: saveErr } = await supabase
+      .from('lead_ai_analyses')
+      .insert({
+        lead_id: leadId,
+        organization_id: lead.organization_id,
+        conversation_id: conversationId,
+        last_message_id: latestMessageId,
+        last_message_at: latestMessageAt,
+        summary: analysis.summary || '',
+        suggestions: analysis.suggestions || '',
+        lead_rating: analysis.lead_rating || '',
+        closure_probability: analysis.closure_probability || '',
+        raw_analysis: analysis,
+        created_by: authResult.user?.id || null,
+      })
+      .select()
+      .single()
+
+    if (saveErr) {
+      console.error('[AI Summarize] Error saving analysis:', saveErr)
+      // Return the analysis even if saving fails
+      return NextResponse.json({
+        analysis,
+        saved: false,
+        error: 'Analysis generated but failed to save'
+      })
+    }
+
+    return NextResponse.json({
+      analysis: saved,
+      saved: true
+    })
   } catch (error: any) {
-    console.error('[Summarize API] Error:', error)
+    console.error('[AI Summarize API] Error:', error)
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+  }
+}
+
+// GET: Fetch analysis history for a lead
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const leadId = searchParams.get('leadId')
+
+    if (!leadId) {
+      return NextResponse.json({ error: 'Missing leadId' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseClient()
+
+    const { data, error } = await supabase
+      .from('lead_ai_analyses')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (error) throw error
+
+    return NextResponse.json({ analyses: data || [] })
+  } catch (error: any) {
+    console.error('[AI Summarize GET] Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }

@@ -161,10 +161,26 @@ export default function LeadsPage() {
   const [aiSuccess, setAiSuccess] = useState(false)
   const [activities, setActivities] = useState<any[]>([])
   const [activityNote, setActivityNote] = useState('')
+  const [aiAnalyses, setAiAnalyses] = useState<any[]>([])
 
   async function fetchActivities(leadId: string) {
     const { data } = await supabase.from('lead_activities').select('*, user:users(full_name)').eq('lead_id', leadId).order('created_at', { ascending: false })
     if (data) setActivities(data)
+  }
+
+  async function fetchAiAnalyses(leadId: string) {
+    try {
+      const res = await fetch(`/api/ai/summarize?leadId=${leadId}`)
+      const data = await res.json()
+      if (res.ok && data.analyses) {
+        setAiAnalyses(data.analyses)
+      } else {
+        setAiAnalyses([])
+      }
+    } catch (err) {
+      console.error('Error fetching AI analyses:', err)
+      setAiAnalyses([])
+    }
   }
 
   async function handleAddNote() {
@@ -213,7 +229,9 @@ export default function LeadsPage() {
         // Reset AI states
         setAiError(null)
         setAiSuccess(false)
+        setAiAnalyses([])
         fetchActivities(selectedLeadId)
+        fetchAiAnalyses(selectedLeadId)
       }
     }
   }, [selectedLeadId, leads])
@@ -795,73 +813,21 @@ export default function LeadsPage() {
     setAiSuccess(false)
 
     try {
-      // 1. Try to find a conversation for this lead
-      let conversationId = null
-
-      const { data: convByLead, error: leadErr } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('lead_id', selectedLeadData.id)
-        .maybeSingle()
-
-      if (leadErr) console.error('Error fetching conv by lead:', leadErr)
-
-      if (convByLead?.id) {
-        conversationId = convByLead.id
-      } else {
-        // Fallback to fetching by contact_id
-        const { data: convByContact, error: contactErr } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('contact_id', selectedLeadData.contact_id)
-          .maybeSingle()
-
-        if (contactErr) console.error('Error fetching conv by contact:', contactErr)
-        if (convByContact?.id) {
-          conversationId = convByContact.id
-        }
-      }
-
-      if (!conversationId) {
-        throw new Error('No WhatsApp conversation history found for this lead or contact. AI cannot extract profile data without message history.')
-      }
-
-      // 2. Call the summarize API
       const res = await fetch('/api/ai/summarize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ leadId: selectedLeadData.id }),
       })
 
       const result = await res.json()
       if (!res.ok) {
-        throw new Error(result.error || 'Failed to analyze transcript.')
+        throw new Error(result.error || 'Failed to analyze lead data.')
       }
 
-      const profile = result.profile
-      if (profile) {
-        if (profile.title) setEditTitle(profile.title)
-        if (profile.value !== undefined && profile.value !== null) {
-          setEditValue(String(profile.value))
-        }
-        if (profile.priority && (profile.priority === 'high' || profile.priority === 'medium' || profile.priority === 'low')) {
-          setEditPriority(profile.priority)
-        }
-        if (profile.product_service) setEditProductService(profile.product_service)
-        if (profile.summary) setEditDescription(profile.summary)
-        if (profile.notes) {
-          if (Array.isArray(profile.notes)) {
-            setEditNotes(profile.notes.join('\n'))
-          } else {
-            setEditNotes(profile.notes)
-          }
-        }
-        setAiSuccess(true)
-      } else {
-        throw new Error('No profile data returned from AI.')
-      }
+      setAiSuccess(true)
+      await fetchAiAnalyses(selectedLeadData.id)
     } catch (err: any) {
       console.error('AI Profile Error:', err)
       setAiError(err.message || 'An error occurred during AI profiling.')
@@ -2930,32 +2896,175 @@ export default function LeadsPage() {
               )}
 
               {activeDrawerTab === 'ai_summary' && (
-                <div className="flex flex-col items-center justify-center min-h-[300px] text-center space-y-4 px-4 py-8">
-                  <div className="w-16 h-16 rounded-full bg-[#e7f7f4] flex items-center justify-center">
-                    <Sparkles size={24} className="text-[#00a884]" />
+                <div className="flex flex-col space-y-4 px-1 py-2 h-full overflow-hidden">
+                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#e7f7f4] dark:bg-emerald-950/50 flex items-center justify-center flex-shrink-0">
+                        <Sparkles size={18} className="text-[#00a884]" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="text-xs font-bold text-[#111b21] dark:text-slate-100">AI Lead Intelligence</h4>
+                        <p className="text-[10px] text-[#667781] dark:text-slate-400">
+                          Analyze chats, notes, and activity log to extract actionable insights.
+                        </p>
+                      </div>
+                    </div>
+                    {features.enable_ai ? (
+                      <button 
+                        onClick={handleAISummarize} 
+                        disabled={isSaving || aiLoading}
+                        className="px-4 py-2 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-[11px] font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+                      >
+                        {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        {aiLoading ? 'Analyzing...' : aiAnalyses.length > 0 ? 'Refresh Analysis' : 'Run Analysis'}
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-rose-500 font-medium">
+                        Disabled
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#111b21] mb-1">AI Lead Intelligence</h4>
-                    <p className="text-[11px] text-[#667781] max-w-xs mx-auto">
-                      Automatically analyze all notes, activities, and contact data to generate a comprehensive profile and pre-fill the form fields.
-                    </p>
-                  </div>
-                  {features.enable_ai ? (
-                    <button 
-                      onClick={handleAISummarize} 
-                      disabled={isSaving || aiLoading}
-                      className="px-6 py-2.5 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
-                    >
-                      {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {aiLoading ? 'Analyzing Data...' : 'Generate AI Summary'}
-                    </button>
-                  ) : (
-                    <div className="text-xs text-[#8696a0] bg-[#f8f9fa] p-3 rounded-lg border border-[#e9edef]">
-                      AI features are currently disabled in your organization settings.
+
+                  {aiError && (
+                    <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 text-xs font-medium flex-shrink-0 flex gap-1.5 items-center">
+                      <span>⚠️</span> {aiError}
                     </div>
                   )}
-                  {aiError && <p className="text-xs text-rose-600 font-medium mt-2">⚠️ {aiError}</p>}
-                  {aiSuccess && <p className="text-xs text-[#008069] font-medium mt-2">✨ Lead profiled successfully! Check the Overview tab.</p>}
+
+                  {aiSuccess && (
+                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 text-[#008069] dark:text-emerald-400 text-xs font-medium flex-shrink-0 flex gap-1.5 items-center">
+                      <span>✨</span> Analysis updated successfully!
+                    </div>
+                  )}
+
+                  {/* Scrollable Analyses History */}
+                  <div className="flex-1 overflow-y-auto pr-1 space-y-4 max-h-[420px] pb-6 no-scrollbar">
+                    {aiAnalyses.map((analysis: any, index: number) => {
+                      // Parse lead rating and closure probability
+                      const ratingParts = (analysis.lead_rating || '').split(' - ');
+                      const ratingVal = ratingParts[0] || '';
+                      const ratingReason = ratingParts.slice(1).join(' - ');
+
+                      const closureParts = (analysis.closure_probability || '').split(' - ');
+                      const closureVal = closureParts[0] || '';
+                      const closureReason = closureParts.slice(1).join(' - ');
+
+                      // Helper colors for badges
+                      const getRatingBadgeColor = (val: string) => {
+                        const v = val.toLowerCase();
+                        if (v.includes('hot')) return 'bg-red-50 text-red-700 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30';
+                        if (v.includes('warm')) return 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30';
+                        return 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/30';
+                      };
+
+                      const getClosureBadgeColor = (val: string) => {
+                        const v = val.toLowerCase();
+                        if (v.includes('high')) return 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30';
+                        if (v.includes('medium')) return 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30';
+                        return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30';
+                      };
+
+                      return (
+                        <div key={analysis.id} className={`p-4 bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm space-y-4 relative ${index === 0 ? 'ring-1 ring-[#00a884]/30' : ''}`}>
+                          {/* Header */}
+                          <div className="flex justify-between items-center border-b border-[#e9edef] dark:border-slate-800/50 pb-2">
+                            <span className="text-[10px] font-bold text-[#00a884] flex items-center gap-1">
+                              <Sparkles size={11} /> {index === 0 ? 'LATEST INTELLIGENCE' : `REPORT #${aiAnalyses.length - index}`}
+                            </span>
+                            <span className="text-[9px] text-[#8696a0] flex items-center gap-1 font-medium">
+                              <Clock size={11} /> {new Date(analysis.created_at).toLocaleString()}
+                            </span>
+                          </div>
+
+                          {/* Summary */}
+                          <div>
+                            <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1 uppercase tracking-wider text-left">Executive Summary</h5>
+                            <p className="text-[11px] text-[#54656f] dark:text-slate-300 leading-relaxed font-medium text-left">
+                              {analysis.summary}
+                            </p>
+                          </div>
+
+                          {/* Ratings Grid */}
+                          <div className="grid grid-cols-2 gap-3 text-left">
+                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/40 border border-[#e9edef] dark:border-slate-800/50">
+                              <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-1 uppercase tracking-wider">Lead Rating</h5>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${getRatingBadgeColor(ratingVal)}`}>
+                                  {ratingVal || 'N/A'}
+                                </span>
+                                {ratingReason && (
+                                  <span className="text-[9px] text-[#54656f] dark:text-slate-400 leading-tight mt-0.5">
+                                    {ratingReason}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/40 border border-[#e9edef] dark:border-slate-800/50">
+                              <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-1 uppercase tracking-wider">Closure Prob.</h5>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${getClosureBadgeColor(closureVal)}`}>
+                                  {closureVal || 'N/A'}
+                                </span>
+                                {closureReason && (
+                                  <span className="text-[9px] text-[#54656f] dark:text-slate-400 leading-tight mt-0.5">
+                                    {closureReason}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Key Insights */}
+                          {analysis.raw_analysis?.key_insights && (
+                            <div>
+                              <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1 uppercase tracking-wider text-left">Key Observations</h5>
+                              <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-1 pl-1 text-left">
+                                {String(analysis.raw_analysis.key_insights).split('\n').map((insight: string, idx: number) => (
+                                  <div key={idx} className="flex gap-1.5 items-start leading-relaxed">
+                                    <span className="text-[#00a884] font-bold mt-0.5 flex-shrink-0">•</span>
+                                    <span>{insight.replace(/^[•\s\-\*]+/, '')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Suggestions */}
+                          {analysis.suggestions && (
+                            <div className="pt-2 border-t border-[#e9edef] dark:border-slate-800/50">
+                              <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1.5 uppercase tracking-wider flex items-center gap-1 text-left">
+                                <TrendingUp size={12} className="text-[#00a884]" /> Recommended Actions
+                              </h5>
+                              <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-1.5 pl-1 text-left">
+                                {analysis.suggestions.split('\n').filter(Boolean).map((sugg: string, idx: number) => (
+                                  <div key={idx} className="flex gap-2 items-start leading-relaxed bg-[#f8f9fa] dark:bg-slate-950/20 p-2 rounded-lg border border-[#e9edef] dark:border-slate-800/40">
+                                    <span className="w-4 h-4 rounded-full bg-[#e7f7f4] dark:bg-emerald-950/40 flex items-center justify-center text-[9px] font-bold text-[#00a884] flex-shrink-0 mt-0.5">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="flex-1 font-medium">{sugg.replace(/^\d+[\.\s\-]+/, '')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {aiAnalyses.length === 0 && (
+                      <div className="text-center py-12 px-4 space-y-3 bg-[#f8f9fa] dark:bg-slate-900/40 rounded-xl border border-dashed border-[#e9edef] dark:border-slate-800/50">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-[#8696a0]">
+                          <Sparkles size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-[#111b21] dark:text-slate-300">No AI Intelligence Generated Yet</p>
+                          <p className="text-[10px] text-[#8696a0] dark:text-slate-400 max-w-xs mx-auto mt-1">
+                            Click "Run Analysis" above to generate a smart intelligence report based on WhatsApp chats, notes, and activity records.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

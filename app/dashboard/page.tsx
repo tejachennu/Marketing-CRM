@@ -323,9 +323,7 @@ function ConversationsPageContent() {
           if (matched) return matched.id
         }
 
-        if (prev) return prev
-        if (unreadOnly) return null
-        return !append && result.conversations.length > 0 ? result.conversations[0].id : prev
+        return prev  // Don't auto-select — user must click to open a conversation
       })
       // Also load unread count
       loadUnreadCount(orgId, force)
@@ -422,7 +420,7 @@ function ConversationsPageContent() {
   // Dynamically fetch selected conversation if it is not in the active conversations list
   useEffect(() => {
     if (!selectedConversation || !user) return
-    const exists = conversations.some((c) => c.id === selectedConversation)
+    const exists = conversationsRef.current.some((c) => c.id === selectedConversation)
     if (!exists) {
       const fetchSingleConv = async () => {
         try {
@@ -470,7 +468,7 @@ function ConversationsPageContent() {
       }
       fetchSingleConv()
     }
-  }, [selectedConversation, user, conversations])
+  }, [selectedConversation, user])
 
   // ─── Initial Data Load ───
 
@@ -1837,7 +1835,7 @@ function ConversationsPageContent() {
                   </div>
                 )}
                 
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/85 backdrop-blur-md z-10">
+                <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/85 backdrop-blur-md z-10 flex-shrink-0">
                   <div className="flex gap-3 items-center max-w-5xl mx-auto w-full">
                     <input 
                       type="file" 
