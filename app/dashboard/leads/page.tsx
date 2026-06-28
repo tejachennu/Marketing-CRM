@@ -1215,10 +1215,12 @@ export default function LeadsPage() {
           {(
             [
               { id: 'list', label: 'Pipeline List', icon: List },
-              { id: 'analytics', label: 'Sales Analytics', icon: BarChart3 },
-              { id: 'performance', label: 'Team Performance', icon: Target }
+              ...(adminSeeAll ? [
+                { id: 'analytics', label: 'Sales Analytics', icon: BarChart3 },
+                { id: 'performance', label: 'Team Performance', icon: Target }
+              ] : [])
             ] as const
-          ).filter(tab => isAdmin || tab.id === 'list').map(tab => (
+          ).map(tab => (
             <button
               key={tab.id}
               onClick={() => setViewMode(tab.id as ViewMode)}
@@ -2896,15 +2898,15 @@ export default function LeadsPage() {
               )}
 
               {activeDrawerTab === 'ai_summary' && (
-                <div className="flex flex-col space-y-4 px-1 py-2 h-full overflow-hidden">
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+                <div className="flex flex-col space-y-4 px-1 py-2">
+                  <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-[#e7f7f4] dark:bg-emerald-950/50 flex items-center justify-center flex-shrink-0">
                         <Sparkles size={18} className="text-[#00a884]" />
                       </div>
                       <div className="text-left">
-                        <h4 className="text-xs font-bold text-[#111b21] dark:text-slate-100">AI Lead Intelligence</h4>
-                        <p className="text-[10px] text-[#667781] dark:text-slate-400">
+                        <h4 className="text-xs font-bold text-[#111b21] dark:text-slate-100 mb-0.5">AI Lead Intelligence</h4>
+                        <p className="text-[10px] text-[#667781] dark:text-slate-400 max-w-[200px] sm:max-w-none leading-relaxed">
                           Analyze chats, notes, and activity log to extract actionable insights.
                         </p>
                       </div>
@@ -2913,7 +2915,7 @@ export default function LeadsPage() {
                       <button 
                         onClick={handleAISummarize} 
                         disabled={isSaving || aiLoading}
-                        className="px-4 py-2 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-[11px] font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-[11px] font-bold cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center sm:justify-start gap-1.5 shadow-sm flex-shrink-0 whitespace-nowrap"
                       >
                         {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                         {aiLoading ? 'Analyzing...' : aiAnalyses.length > 0 ? 'Refresh Analysis' : 'Run Analysis'}
@@ -2937,8 +2939,8 @@ export default function LeadsPage() {
                     </div>
                   )}
 
-                  {/* Scrollable Analyses History */}
-                  <div className="flex-1 overflow-y-auto pr-1 space-y-4 max-h-[420px] pb-6 no-scrollbar">
+                  {/* Analyses History */}
+                  <div className="flex flex-col space-y-4 pb-6">
                     {aiAnalyses.map((analysis: any, index: number) => {
                       // Parse lead rating and closure probability
                       const ratingParts = (analysis.lead_rating || '').split(' - ');
@@ -2965,89 +2967,107 @@ export default function LeadsPage() {
                       };
 
                       return (
-                        <div key={analysis.id} className={`p-4 bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm space-y-4 relative ${index === 0 ? 'ring-1 ring-[#00a884]/30' : ''}`}>
-                          {/* Header */}
-                          <div className="flex justify-between items-center border-b border-[#e9edef] dark:border-slate-800/50 pb-2">
-                            <span className="text-[10px] font-bold text-[#00a884] flex items-center gap-1">
-                              <Sparkles size={11} /> {index === 0 ? 'LATEST INTELLIGENCE' : `REPORT #${aiAnalyses.length - index}`}
-                            </span>
-                            <span className="text-[9px] text-[#8696a0] flex items-center gap-1 font-medium">
-                              <Clock size={11} /> {new Date(analysis.created_at).toLocaleString()}
-                            </span>
-                          </div>
-
-                          {/* Summary */}
-                          <div>
-                            <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1 uppercase tracking-wider text-left">Executive Summary</h5>
-                            <p className="text-[11px] text-[#54656f] dark:text-slate-300 leading-relaxed font-medium text-left">
-                              {analysis.summary}
-                            </p>
-                          </div>
-
-                          {/* Ratings Grid */}
-                          <div className="grid grid-cols-2 gap-3 text-left">
-                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/40 border border-[#e9edef] dark:border-slate-800/50">
-                              <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-1 uppercase tracking-wider">Lead Rating</h5>
-                              <div className="flex flex-col gap-1 items-start">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${getRatingBadgeColor(ratingVal)}`}>
-                                  {ratingVal || 'N/A'}
-                                </span>
-                                {ratingReason && (
-                                  <span className="text-[9px] text-[#54656f] dark:text-slate-400 leading-tight mt-0.5">
-                                    {ratingReason}
-                                  </span>
-                                )}
-                              </div>
+                        <details key={analysis.id} open={index === 0} className={`group bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800/80 shadow-sm relative overflow-hidden transition-all duration-200 ${index === 0 ? 'ring-2 ring-[#00a884]/30' : 'hover:border-[#00a884]/50'}`}>
+                          {/* Header / Summary */}
+                          <summary className="flex justify-between items-center p-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden outline-none bg-gradient-to-r from-transparent to-[#f8f9fa] dark:to-slate-950/40 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors select-none">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] font-bold text-[#00a884] flex items-center gap-1.5 uppercase tracking-wider">
+                                <Sparkles size={13} /> {index === 0 ? 'LATEST INTELLIGENCE' : `REPORT #${aiAnalyses.length - index}`}
+                              </span>
+                              <span className="text-[10px] text-[#8696a0] flex items-center gap-1 font-medium">
+                                <Clock size={11} /> {new Date(analysis.created_at).toLocaleString()}
+                              </span>
                             </div>
-                            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950/40 border border-[#e9edef] dark:border-slate-800/50">
-                              <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-1 uppercase tracking-wider">Closure Prob.</h5>
-                              <div className="flex flex-col gap-1 items-start">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${getClosureBadgeColor(closureVal)}`}>
-                                  {closureVal || 'N/A'}
-                                </span>
-                                {closureReason && (
-                                  <span className="text-[9px] text-[#54656f] dark:text-slate-400 leading-tight mt-0.5">
-                                    {closureReason}
-                                  </span>
-                                )}
-                              </div>
+                            <div className="w-7 h-7 rounded-full bg-white dark:bg-slate-800 border border-[#e9edef] dark:border-slate-700 flex items-center justify-center group-open:bg-[#e7f7f4] group-open:border-[#00a884]/30 dark:group-open:bg-emerald-950/50 transition-all shadow-sm">
+                              <ChevronDown size={14} className="text-[#8696a0] group-open:text-[#00a884] group-open:rotate-180 transition-transform duration-300" />
                             </div>
-                          </div>
+                          </summary>
 
-                          {/* Key Insights */}
-                          {analysis.raw_analysis?.key_insights && (
+                          {/* Body */}
+                          <div className="p-4 pt-0 border-t border-[#e9edef] dark:border-slate-800/50 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300 mt-4">
+                            {/* Summary */}
                             <div>
-                              <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1 uppercase tracking-wider text-left">Key Observations</h5>
-                              <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-1 pl-1 text-left">
-                                {String(analysis.raw_analysis.key_insights).split('\n').map((insight: string, idx: number) => (
-                                  <div key={idx} className="flex gap-1.5 items-start leading-relaxed">
-                                    <span className="text-[#00a884] font-bold mt-0.5 flex-shrink-0">•</span>
-                                    <span>{insight.replace(/^[•\s\-\*]+/, '')}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Suggestions */}
-                          {analysis.suggestions && (
-                            <div className="pt-2 border-t border-[#e9edef] dark:border-slate-800/50">
-                              <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1.5 uppercase tracking-wider flex items-center gap-1 text-left">
-                                <TrendingUp size={12} className="text-[#00a884]" /> Recommended Actions
+                              <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-1.5 uppercase tracking-wider text-left flex items-center gap-1.5">
+                                <LayoutGrid size={12} className="text-[#00a884]" /> Executive Summary
                               </h5>
-                              <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-1.5 pl-1 text-left">
-                                {analysis.suggestions.split('\n').filter(Boolean).map((sugg: string, idx: number) => (
-                                  <div key={idx} className="flex gap-2 items-start leading-relaxed bg-[#f8f9fa] dark:bg-slate-950/20 p-2 rounded-lg border border-[#e9edef] dark:border-slate-800/40">
-                                    <span className="w-4 h-4 rounded-full bg-[#e7f7f4] dark:bg-emerald-950/40 flex items-center justify-center text-[9px] font-bold text-[#00a884] flex-shrink-0 mt-0.5">
-                                      {idx + 1}
+                              <p className="text-[11px] text-[#54656f] dark:text-slate-300 leading-relaxed font-medium text-left p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-[#e9edef] dark:border-slate-800/50">
+                                {analysis.summary}
+                              </p>
+                            </div>
+
+                            {/* Ratings Grid */}
+                            <div className="grid grid-cols-2 gap-4 text-left">
+                              <div className="p-3 rounded-xl bg-gradient-to-b from-slate-50 to-white dark:from-slate-950/60 dark:to-slate-900 border border-[#e9edef] dark:border-slate-800/60 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-[#00a884]/20" />
+                                <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                                  <Flame size={10} className="text-amber-500" /> Lead Rating
+                                </h5>
+                                <div className="flex flex-col gap-1.5 items-start">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-sm ${getRatingBadgeColor(ratingVal)}`}>
+                                    {ratingVal || 'N/A'}
+                                  </span>
+                                  {ratingReason && (
+                                    <span className="text-[10px] text-[#54656f] dark:text-slate-400 leading-snug">
+                                      {ratingReason}
                                     </span>
-                                    <span className="flex-1 font-medium">{sugg.replace(/^\d+[\.\s\-]+/, '')}</span>
-                                  </div>
-                                ))}
+                                  )}
+                                </div>
+                              </div>
+                              <div className="p-3 rounded-xl bg-gradient-to-b from-slate-50 to-white dark:from-slate-950/60 dark:to-slate-900 border border-[#e9edef] dark:border-slate-800/60 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/20" />
+                                <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                                  <Target size={10} className="text-blue-500" /> Closure Prob.
+                                </h5>
+                                <div className="flex flex-col gap-1.5 items-start">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-sm ${getClosureBadgeColor(closureVal)}`}>
+                                    {closureVal || 'N/A'}
+                                  </span>
+                                  {closureReason && (
+                                    <span className="text-[10px] text-[#54656f] dark:text-slate-400 leading-snug">
+                                      {closureReason}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          )}
-                        </div>
+
+                            {/* Key Insights */}
+                            {analysis.raw_analysis?.key_insights && (
+                              <div>
+                                <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-2 uppercase tracking-wider text-left flex items-center gap-1.5">
+                                  <Eye size={12} className="text-[#00a884]" /> Key Observations
+                                </h5>
+                                <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-2 pl-1 text-left">
+                                  {String(analysis.raw_analysis.key_insights).split('\n').filter(s => s.trim().length > 0).map((insight: string, idx: number) => (
+                                    <div key={idx} className="flex gap-2 items-start leading-relaxed bg-white dark:bg-slate-900">
+                                      <span className="text-[#00a884] font-bold mt-0.5 flex-shrink-0">•</span>
+                                      <span className="pt-0.5">{insight.replace(/^[•\s\-\*]+/, '')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Suggestions */}
+                            {analysis.suggestions && (
+                              <div className="pt-4 border-t border-[#e9edef] dark:border-slate-800/50">
+                                <h5 className="text-[10px] font-bold text-[#111b21] dark:text-slate-100 mb-3 uppercase tracking-wider flex items-center gap-1.5 text-left">
+                                  <TrendingUp size={12} className="text-[#00a884]" /> Recommended Actions
+                                </h5>
+                                <div className="text-[11px] text-[#54656f] dark:text-slate-300 space-y-2 text-left">
+                                  {analysis.suggestions.split('\n').filter(Boolean).map((sugg: string, idx: number) => (
+                                    <div key={idx} className="flex gap-3 items-start leading-relaxed bg-gradient-to-r from-[#f8f9fa] to-white dark:from-slate-950/40 dark:to-slate-900 p-2.5 rounded-lg border border-[#e9edef] dark:border-slate-800/40 shadow-sm">
+                                      <span className="w-5 h-5 rounded-full bg-white dark:bg-slate-800 border border-[#e9edef] dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-[#00a884] flex-shrink-0 shadow-sm mt-0.5">
+                                        {idx + 1}
+                                      </span>
+                                      <span className="flex-1 font-medium pt-0.5 text-[#111b21] dark:text-slate-300">{sugg.replace(/^\d+[\.\s\-]+/, '')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </details>
                       );
                     })}
 

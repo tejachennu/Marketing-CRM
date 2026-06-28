@@ -95,10 +95,10 @@ export async function GET(request: NextRequest) {
 
       let orConditions = `assigned_to.eq.${assignedTo}`
       if (contactIds.length > 0) {
-        orConditions += `,contact_id.in.(${contactIds.map((id: string) => `"${id}"`).join(',')})`
+        orConditions += `,contact_id.in.(${contactIds.join(',')})`
       }
       if (ticketConvIds.length > 0) {
-        orConditions += `,id.in.(${ticketConvIds.map((id: string) => `"${id}"`).join(',')})`
+        orConditions += `,id.in.(${ticketConvIds.join(',')})`
       }
       query = query.or(orConditions)
     }

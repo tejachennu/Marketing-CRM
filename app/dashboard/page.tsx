@@ -52,6 +52,7 @@ function ConversationsPageContent() {
   const [messages, setMessages] = useState<Message[]>([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
+  const [fetchingConvs, setFetchingConvs] = useState(false)
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('auth_user')
@@ -289,7 +290,11 @@ function ConversationsPageContent() {
     }
 
     try {
-      if (pageNum > 1) setLoadingMore(true)
+      if (pageNum > 1) {
+        setLoadingMore(true)
+      } else {
+        setFetchingConvs(true)
+      }
       const result = await fetchConversations(orgId, pageNum, searchVal, unreadOnly, assignedTo)
       
       setConversations((prev) => {
@@ -331,6 +336,7 @@ function ConversationsPageContent() {
       console.error('[Dashboard] Error loading conversations:', err)
     } finally {
       setLoadingMore(false)
+      setFetchingConvs(false)
     }
   }, [fetchConversations, loadUnreadCount])
 
@@ -418,55 +424,119 @@ function ConversationsPageContent() {
   }, [user, loadUnreadCount])
 
   // Dynamically fetch selected conversation if it is not in the active conversations list
+  // OR fetch/create conversation if contactId is in the URL and no conversation is selected
   useEffect(() => {
-    if (!selectedConversation || !user) return
-    const exists = conversationsRef.current.some((c) => c.id === selectedConversation)
-    if (!exists) {
-      const fetchSingleConv = async () => {
+    if (!user) return
+    const urlParams = new URLSearchParams(window.location.search)
+    const contactIdParam = urlParams.get('contactId')
+
+    if (selectedConversation) {
+      const exists = conversationsRef.current.some((c) => c.id === selectedConversation)
+      if (!exists) {
+        const fetchSingleConv = async () => {
+          try {
+            const { data, error } = await supabase
+              .from('conversations')
+              .select(`
+                id,
+                organization_id,
+                contact_id,
+                lead_id,
+                is_active,
+                last_message_at,
+                unread_count,
+                assigned_to,
+                created_at,
+                updated_at,
+                contact:contact_id (
+                  id,
+                  first_name,
+                  last_name,
+                  phone_number,
+                  whatsapp_number,
+                  email,
+                  company
+                )
+              `)
+              .eq('id', selectedConversation)
+              .single()
+
+            if (error) throw error
+            if (data) {
+              const conv = {
+                ...data,
+                contact: Array.isArray(data.contact) ? data.contact[0] : data.contact
+              } as ConversationWithContact
+
+              setConversations((prev) => {
+                if (prev.some((c) => c.id === conv.id)) return prev
+                return [conv, ...prev]
+              })
+            }
+          } catch (err) {
+            console.error('[Dashboard] Error fetching selected conversation:', err)
+          }
+        }
+        fetchSingleConv()
+      }
+    } else if (contactIdParam && !window.sessionStorage.getItem(`conv_tried_${contactIdParam}`)) {
+      const fetchOrCreateByContact = async () => {
         try {
+          window.sessionStorage.setItem(`conv_tried_${contactIdParam}`, 'true')
+          const existingConv = conversationsRef.current.find(c => c.contact_id === contactIdParam)
+          if (existingConv) {
+            setSelectedConversation(existingConv.id)
+            return
+          }
+          
           const { data, error } = await supabase
             .from('conversations')
             .select(`
-              id,
-              organization_id,
-              contact_id,
-              lead_id,
-              is_active,
-              last_message_at,
-              unread_count,
-              assigned_to,
-              created_at,
-              updated_at,
-              contact:contact_id (
-                id,
-                first_name,
-                last_name,
-                phone_number,
-                whatsapp_number,
-                email,
-                company
-              )
+              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+              contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
             `)
-            .eq('id', selectedConversation)
-            .single()
-
-          if (error) throw error
+            .eq('contact_id', contactIdParam)
+            .eq('organization_id', user.organization_id)
+            .maybeSingle()
+            
+          if (error && error.code !== 'PGRST116') throw error
+          
           if (data) {
             const conv = {
               ...data,
               contact: Array.isArray(data.contact) ? data.contact[0] : data.contact
             } as ConversationWithContact
-
-            setConversations((prev) => {
-              if (prev.some((c) => c.id === conv.id)) return prev
+            setConversations(prev => {
+              if (prev.some(c => c.id === conv.id)) return prev
               return [conv, ...prev]
             })
+            setSelectedConversation(conv.id)
+          } else {
+            // Create new conversation
+            const { data: newConv, error: createError } = await supabase
+              .from('conversations')
+              .insert([{ organization_id: user.organization_id, contact_id: contactIdParam, is_active: true }])
+              .select(`
+                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+                contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
+              `)
+              .single()
+              
+            if (createError) throw createError
+            if (newConv) {
+              const conv = {
+                ...newConv,
+                contact: Array.isArray(newConv.contact) ? newConv.contact[0] : newConv.contact
+              } as ConversationWithContact
+              setConversations(prev => [conv, ...prev])
+              setSelectedConversation(conv.id)
+            }
           }
         } catch (err) {
-          console.error('[Dashboard] Error fetching selected conversation:', err)
+          console.error('[Dashboard] Error fetching/creating conversation by contactId:', err)
         }
       }
-      fetchSingleConv()
+      fetchOrCreateByContact()
     }
   }, [selectedConversation, user])
 
@@ -1063,7 +1133,19 @@ function ConversationsPageContent() {
 
         {/* Conversations list area */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-white/30 dark:bg-slate-900/30">
-          {sortedConversations.length === 0 ? (
+          {fetchingConvs ? (
+            <div className="space-y-2 p-2">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="w-full p-3 flex items-center gap-3 rounded-xl border border-transparent animate-pulse">
+                  <div className="h-10 w-10 rounded-xl bg-slate-200 dark:bg-slate-800 shrink-0" />
+                  <div className="flex-1 space-y-2.5 py-1">
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
+                    <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : sortedConversations.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-xs font-medium space-y-2">
               <p>No conversations found.</p>
               <p className="text-[10px] text-slate-400">New WhatsApp contacts appear here.</p>

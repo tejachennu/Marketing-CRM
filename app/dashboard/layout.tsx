@@ -503,8 +503,8 @@ export default function DashboardLayout({
       return false
     }
 
-    // Role-based restriction: hide Campaigns, Contacts, Settings, and Sales Pipeline if no full access
-    if (!seeAll && (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts' || item.href === '/dashboard/settings' || item.href === '/dashboard/leads')) {
+    // Role-based restriction: hide Campaigns, Contacts, and Settings if no full access
+    if (!seeAll && (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts' || item.href === '/dashboard/settings')) {
       return false
     }
 
@@ -527,7 +527,7 @@ export default function DashboardLayout({
     if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
 
     // Role-based page access protection
-    if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings') || pathname.startsWith('/dashboard/leads'))) {
+    if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings'))) {
       return false
     }
 
@@ -539,7 +539,7 @@ export default function DashboardLayout({
 
   return (
     <DialogProvider>
-      <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
+      <div className="flex flex-col h-[100dvh] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
 
 
       {/* Main Body below app bar */}
