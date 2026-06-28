@@ -84,7 +84,7 @@ export async function checkSuperAdmin(request: NextRequest) {
     }
 
     // 4. Auto-upgrade developer email if role check fails
-    if (profile.role !== 'superadmin' && (authEmail === 'tejachennu@gmail.com' || authEmail === 'tejachennu@blsindia-canada.ca')) {
+    if (profile.role !== 'superadmin' && (authEmail === 'tejachennu223@gmail.com' || authEmail === 'tejachennu@blsindia-canada.ca')) {
       await adminClient
         .from('users')
         .update({ role: 'superadmin' })

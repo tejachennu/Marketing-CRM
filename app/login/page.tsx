@@ -74,7 +74,17 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed')
       }
 
-      if (data.otpRequired) {
+      if (data.session) {
+        localStorage.setItem('auth_session', JSON.stringify(data.session))
+        sessionStorage.setItem('auth_session', JSON.stringify(data.session))
+        localStorage.setItem('auth_user', JSON.stringify(data.user))
+
+        await new Promise(resolve => setTimeout(resolve, 150))
+        router.push('/dashboard')
+        
+        await new Promise(resolve => setTimeout(resolve, 250))
+        router.refresh()
+      } else if (data.otpRequired) {
         setOtpSentEmail(data.email || email)
         setOtpRequired(true)
         setResendTimer(60) // Start 60s cooldown

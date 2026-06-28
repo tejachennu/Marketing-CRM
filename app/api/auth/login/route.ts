@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // OTP logic disabled for testing
+    /*
     // 2. Generate a secure 6-digit OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes expiration
@@ -99,12 +101,14 @@ export async function POST(request: NextRequest) {
       html: emailHtml,
       text: `Your OmniCRM verification code is: ${otpCode}. It expires in 5 minutes.`
     })
+    */
 
-    // Return indicating OTP is required
+    // Return session directly (bypassing OTP)
     return NextResponse.json({
       success: true,
-      otpRequired: true,
-      email: email.trim().toLowerCase()
+      otpRequired: false,
+      session: data.session,
+      user: data.user
     })
   } catch (error) {
     console.error('[v0] Login error:', error)

@@ -80,7 +80,7 @@ export async function getAuthenticatedUser(request: NextRequest) {
       .maybeSingle()
 
     // Auto-upgrade developer email if role check fails (matching superadmin-auth.ts behaviour)
-    if (profile && profile.role !== 'superadmin' && (authEmail === 'tejachennu@gmail.com' || authEmail === 'tejachennu@blsindia-canada.ca')) {
+    if (profile && profile.role !== 'superadmin' && (authEmail === 'tejachennu223@gmail.com' || authEmail === 'tejachennu@blsindia-canada.ca')) {
       await adminClient
         .from('users')
         .update({ role: 'superadmin' })
