@@ -32,6 +32,7 @@ export const authSessionManager = {
   // Get the current session from storage
   getSession: (): AuthSession | null => {
     try {
+      if (typeof window === 'undefined') return null
       // Try sessionStorage first (in-memory, cleared on tab close)
       const sessionData = sessionStorage.getItem('auth_session')
       if (sessionData) {
@@ -51,6 +52,7 @@ export const authSessionManager = {
   // Get the current user
   getUser: (): AuthUser | null => {
     try {
+      if (typeof window === 'undefined') return null
       const userData = localStorage.getItem('auth_user')
       if (userData) {
         return JSON.parse(userData)
@@ -64,34 +66,35 @@ export const authSessionManager = {
   // Save session to storage
   setSession: (session: AuthSession) => {
     try {
+      if (typeof window === 'undefined') return
       const sessionStr = JSON.stringify(session)
       localStorage.setItem('auth_session', sessionStr)
       sessionStorage.setItem('auth_session', sessionStr)
       
-      // Also sync to cookies for server-side middleware compatibility
-      if (typeof document !== 'undefined') {
-        const maxAge = 60 * 60 * 24 * 7 // 7 days
-        const secure = window.location.protocol === 'https:' ? '; secure' : ''
-        document.cookie = `supabase-auth-token=${session.access_token}; path=/; max-age=${maxAge}; samesite=lax${secure}`
-        document.cookie = `user-logged-in=true; path=/; max-age=${maxAge}; samesite=lax${secure}`
-      }
+      // Sync the user-logged-in flag cookie for middleware compatibility
+      // Do NOT set the access_token as a client-side cookie — the login API sets it httpOnly
+      const maxAge = 60 * 60 * 24 * 7 // 7 days
+      const secure = window.location.protocol === 'https:' ? '; secure' : ''
+      document.cookie = `user-logged-in=true; path=/; max-age=${maxAge}; samesite=lax${secure}`
     } catch (error) {
-      console.error('[v0] Failed to save session:', error)
+      console.error('[Auth] Failed to save session:', error)
     }
   },
 
   // Save user to storage
   setUser: (user: AuthUser) => {
     try {
+      if (typeof window === 'undefined') return
       localStorage.setItem('auth_user', JSON.stringify(user))
     } catch (error) {
-      console.error('[v0] Failed to save user:', error)
+      console.error('[Auth] Failed to save user:', error)
     }
   },
 
   // Clear session on logout
   clearSession: () => {
     try {
+      if (typeof window === 'undefined') return
       localStorage.removeItem('auth_session')
       localStorage.removeItem('auth_user')
       sessionStorage.removeItem('auth_session')
@@ -101,28 +104,28 @@ export const authSessionManager = {
       document.cookie = 'supabase-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;'
       document.cookie = 'user-logged-in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;'
     } catch (error) {
-      console.error('[v0] Failed to clear session:', error)
+      console.error('[Auth] Failed to clear session:', error)
     }
   },
 
-  // Check if user is logged in
+  // Check if user is logged in (pure read — no side effects)
   isLoggedIn: (): boolean => {
     const session = authSessionManager.getSession()
-    if (!session) return false
+    if (!session?.access_token) return false
     
-    // Check if session has expired
+    // If we have a refresh token, Supabase autoRefreshToken will handle renewal
+    // So we consider the session valid as long as tokens exist
+    if (session.refresh_token) return true
+
+    // No refresh token — check if access token has expired
     if (session.expires_at) {
       const now = Math.floor(Date.now() / 1000)
       if (now > session.expires_at) {
-        // If we have a refresh token, we can still restore/refresh the session
-        if (!session.refresh_token) {
-          authSessionManager.clearSession()
-          return false
-        }
+        return false
       }
     }
     
-    return !!session.access_token
+    return true
   },
 
   // Get auth header for API calls
@@ -133,6 +136,54 @@ export const authSessionManager = {
     }
     return `Bearer ${session.access_token}`
   },
+}
+
+/**
+ * Start a periodic session health watcher.
+ * Checks every 30 seconds if the session is still valid.
+ * If the session has expired and cannot be refreshed, redirects to login.
+ * Returns a cleanup function to stop the watcher.
+ */
+let sessionWatcherInterval: ReturnType<typeof setInterval> | null = null
+
+export function startSessionWatcher(): () => void {
+  // Don't start multiple watchers
+  if (sessionWatcherInterval) return () => {}
+
+  sessionWatcherInterval = setInterval(() => {
+    const session = authSessionManager.getSession()
+
+    if (!session) {
+      // No session at all — redirect to login
+      stopSessionWatcher()
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
+        authSessionManager.clearSession()
+        window.location.href = '/login'
+      }
+      return
+    }
+
+    // If no refresh token and access token expired, force logout
+    if (!session.refresh_token && session.expires_at) {
+      const now = Math.floor(Date.now() / 1000)
+      if (now > session.expires_at) {
+        stopSessionWatcher()
+        authSessionManager.clearSession()
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login'
+        }
+      }
+    }
+  }, 30000) // Check every 30 seconds
+
+  return () => stopSessionWatcher()
+}
+
+function stopSessionWatcher() {
+  if (sessionWatcherInterval) {
+    clearInterval(sessionWatcherInterval)
+    sessionWatcherInterval = null
+  }
 }
 
 // Custom hook for auth state (use in client components)
@@ -147,7 +198,6 @@ export function useAuth() {
     isLoggedIn,
     logout: () => {
       authSessionManager.clearSession()
-      // Force reload to reset all state
       if (typeof window !== 'undefined') {
         window.location.href = '/login'
       }

@@ -104,12 +104,26 @@ export async function POST(request: NextRequest) {
     */
 
     // Return session directly (bypassing OTP)
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       otpRequired: false,
       session: data.session,
       user: data.user
     })
+
+    if (data.session) {
+      // Set a flag cookie to indicate user is logged in (for middleware route protection)
+      // The actual access_token is managed client-side via localStorage and the Supabase SDK
+      const maxAge = 60 * 60 * 24 * 7 // 7 days
+      response.cookies.set('user-logged-in', 'true', {
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge,
+        path: '/',
+      })
+    }
+
+    return response
   } catch (error) {
     console.error('[v0] Login error:', error)
     return NextResponse.json(

@@ -246,7 +246,7 @@ export default function LeadsPage() {
         const storedUser = authSessionManager.getUser()
         if (storedUser?.id) userId = storedUser.id
       }
-      if (!userId) { window.location.href = '/login'; return }
+      if (!userId) { return }
 
       const email = authUser?.email || authSessionManager.getUser()?.email || ''
       const userData = await ensureUserProfile(userId, email)

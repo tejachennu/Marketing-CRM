@@ -88,17 +88,8 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     )
 
-    // Set secure HTTP-only cookie with the session
-    const maxAge = 60 * 60 * 24 * 5 // 5 days
-    response.cookies.set('supabase-auth-token', authData.session.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge,
-      path: '/',
-    })
-
-    // Also set a flag cookie to indicate user is logged in
+    // Set a flag cookie to indicate user is logged in (for middleware route protection)
+    const maxAge = 60 * 60 * 24 * 7 // 7 days
     response.cookies.set('user-logged-in', 'true', {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
-import { authSessionManager } from '@/lib/auth-context'
+import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import Link from 'next/link'
 import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase } from 'lucide-react'
@@ -121,21 +121,56 @@ export default function DashboardLayout({
     window.dispatchEvent(new Event('theme-changed'))
   }
 
-  // Global fetch interceptor to catch 401 Unauthorized errors and force logout
+  // Global fetch interceptor to:
+  // 1. Inject Authorization header with access token into outgoing requests
+  // 2. Catch 401 Unauthorized errors and force logout
   useEffect(() => {
+    let isRedirecting = false
     const originalFetch = window.fetch
-    window.fetch = async (...args) => {
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      let finalInput = input
+      let finalInit = init || {}
+
+      const session = authSessionManager.getSession()
+      if (session?.access_token) {
+        if (typeof input === 'string' || input instanceof URL) {
+          finalInit.headers = finalInit.headers || {}
+          if (finalInit.headers instanceof Headers) {
+            if (!finalInit.headers.has('Authorization')) {
+              finalInit.headers.set('Authorization', `Bearer ${session.access_token}`)
+            }
+          } else if (Array.isArray(finalInit.headers)) {
+            const hasAuth = finalInit.headers.some(h => h[0].toLowerCase() === 'authorization')
+            if (!hasAuth) {
+              finalInit.headers.push(['Authorization', `Bearer ${session.access_token}`])
+            }
+          } else {
+            const headersObj = finalInit.headers as Record<string, string>
+            const hasAuth = Object.keys(headersObj).some(k => k.toLowerCase() === 'authorization')
+            if (!hasAuth) {
+              headersObj['Authorization'] = `Bearer ${session.access_token}`
+            }
+          }
+        } else if (input instanceof Request) {
+          if (!input.headers.has('Authorization')) {
+            const newHeaders = new Headers(input.headers)
+            newHeaders.set('Authorization', `Bearer ${session.access_token}`)
+            finalInput = new Request(input, { headers: newHeaders })
+          }
+        }
+      }
+
       try {
-        const response = await originalFetch(...args)
+        const response = await originalFetch(finalInput, finalInit)
         
-        if (response.status === 401 && !window.location.pathname.includes('/login')) {
+        if (response.status === 401 && !isRedirecting && !window.location.pathname.includes('/login')) {
           const clone = response.clone()
           try {
             const data = await clone.json()
-            if (data?.error?.includes('No active session found') || data?.error?.includes('Unauthorized') || data?.error?.includes('session')) {
+            if (data?.error?.includes('No active session found') || data?.error?.includes('expired') || data?.error?.includes('JWT')) {
+              isRedirecting = true
               authSessionManager.clearSession()
-              supabase.auth.signOut().catch(() => {})
-              window.location.href = '/login?expired=true'
+              window.location.href = '/login'
             }
           } catch (e) {
             // Ignore JSON parse errors
@@ -154,8 +189,17 @@ export default function DashboardLayout({
   }, [])
 
   useEffect(() => {
+    let cleanupWatcher: (() => void) | null = null
+
     const getUserEmail = async () => {
-      await restoreSupabaseSession()
+      const restored = await restoreSupabaseSession()
+
+      // If session restore failed completely, redirect to login
+      if (!restored && !authSessionManager.isLoggedIn()) {
+        authSessionManager.clearSession()
+        window.location.href = '/login'
+        return
+      }
 
       let email = ''
       let id = ''
@@ -179,32 +223,35 @@ export default function DashboardLayout({
       if (id) {
         const { data: profile } = await supabase
           .from('users')
-          .select('id, full_name, organization_id, role, see_all')
+          .select('role, organization_id, see_all, full_name')
           .eq('id', id)
           .maybeSingle()
         if (profile) {
-          setUserId(profile.id)
-          setUserSeeAll(profile.see_all !== false)
-          if (profile.full_name) {
-            setUserFullName(profile.full_name)
-          }
-          if (profile.organization_id) {
-            setOrgId(profile.organization_id)
-          }
-          if (profile.role) {
-            setUserRole(profile.role)
-          }
+          setUserRole(profile.role || '')
+          setOrgId(profile.organization_id || '')
+          setUserId(id)
+          setUserSeeAll(profile.see_all || false)
+          setUserFullName(profile.full_name || '')
         }
       }
+
+      // Start session health watcher (auto-logout on expiry)
+      cleanupWatcher = startSessionWatcher()
     }
+
     getUserEmail()
+
+    return () => {
+      if (cleanupWatcher) cleanupWatcher()
+    }
   }, [])
 
   useEffect(() => {
     if (userRole === 'superadmin' && pathname === '/dashboard') {
       router.push('/dashboard/superadmin')
     }
-  }, [userRole, pathname, router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole, pathname])
 
   useEffect(() => {
     if (!orgId) return
@@ -473,11 +520,14 @@ export default function DashboardLayout({
   }, [orgId, userId, userRole, userSeeAll])
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    await supabase.auth.signOut()
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      await supabase.auth.signOut().catch(() => {})
+    } catch (e) {
+      // Best-effort cleanup
+    }
     authSessionManager.clearSession()
-    router.push('/login')
-    router.refresh()
+    window.location.href = '/login'
   }
 
   const seeAll = canSeeAll({ role: userRole, see_all: userSeeAll } as any)

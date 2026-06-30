@@ -551,7 +551,7 @@ function ConversationsPageContent() {
         const authUser = authSessionManager.getUser()
 
         if (!isLoggedIn || !authUser) {
-          router.push('/login')
+          // Layout handles auth redirect — just bail silently
           return
         }
 
@@ -596,7 +596,8 @@ function ConversationsPageContent() {
     }
 
     init()
-  }, [router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── Search & Filter Change Reloads ───
 
@@ -912,13 +913,12 @@ function ConversationsPageContent() {
     setLogoutLoading(true)
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
-      authSessionManager.clearSession()
-      router.push('/login')
+      await supabase.auth.signOut().catch(() => {})
     } catch (error) {
       console.error('[Dashboard] Logout error:', error)
-    } finally {
-      setLogoutLoading(false)
     }
+    authSessionManager.clearSession()
+    window.location.href = '/login'
   }
 
   const handleRenameContact = async () => {

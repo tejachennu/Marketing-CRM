@@ -79,11 +79,10 @@ export default function LoginPage() {
         sessionStorage.setItem('auth_session', JSON.stringify(data.session))
         localStorage.setItem('auth_user', JSON.stringify(data.user))
 
-        await new Promise(resolve => setTimeout(resolve, 150))
+        // Set cookie so middleware allows dashboard access immediately
+        document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
+
         router.push('/dashboard')
-        
-        await new Promise(resolve => setTimeout(resolve, 250))
-        router.refresh()
       } else if (data.otpRequired) {
         setOtpSentEmail(data.email || email)
         setOtpRequired(true)
@@ -128,12 +127,9 @@ export default function LoginPage() {
         localStorage.setItem('auth_user', JSON.stringify(data.user))
       }
 
-      // Delay briefly for cookie sync, then redirect
-      await new Promise(resolve => setTimeout(resolve, 150))
+      // Redirect to dashboard
+      document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
       router.push('/dashboard')
-      
-      await new Promise(resolve => setTimeout(resolve, 250))
-      router.refresh()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Verification failed'
       setError(message)

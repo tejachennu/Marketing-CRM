@@ -4,6 +4,7 @@ import { authSessionManager } from './auth-context'
 
 let supabaseClient: SupabaseClient | null = null
 let sessionRestored = false
+let isRestoringSession = false // Guard: suppress onAuthStateChange during restore
 
 export function getSupabase(): SupabaseClient {
   if (supabaseClient) return supabaseClient
@@ -25,7 +26,11 @@ export function getSupabase(): SupabaseClient {
 
   // Listen for auth state changes (like token refreshes) to keep our localStorage session updated
   supabaseClient.auth.onAuthStateChange((event, session) => {
-    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+    // Skip updates during session restoration to prevent re-renders and race conditions
+    if (isRestoringSession) return
+
+    if (event === 'TOKEN_REFRESHED') {
+      // Token was refreshed in the background — silently update stored session
       if (session) {
         authSessionManager.setSession({
           access_token: session.access_token,
@@ -45,7 +50,14 @@ export function getSupabase(): SupabaseClient {
       }
     } else if (event === 'SIGNED_OUT') {
       authSessionManager.clearSession()
+      // Auto-redirect to login on sign out (only if on a dashboard page)
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
+        window.location.href = '/login'
+      }
     }
+    // Intentionally do NOT handle 'SIGNED_IN' — we handle login/restore ourselves
+    // This prevents the onAuthStateChange from writing to localStorage during setSession(),
+    // which was causing re-renders and the "chat loads twice" bug.
   })
 
   return supabaseClient
@@ -59,6 +71,19 @@ export function getSupabase(): SupabaseClient {
  */
 export async function restoreSupabaseSession(): Promise<boolean> {
   if (sessionRestored) return true
+
+  // Prevent concurrent restore calls
+  if (isRestoringSession) {
+    // Wait for the in-progress restore to finish
+    let retries = 0
+    while (isRestoringSession && retries < 50) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+      retries++
+    }
+    return sessionRestored
+  }
+
+  isRestoringSession = true
 
   try {
     const client = getSupabase()
@@ -79,38 +104,29 @@ export async function restoreSupabaseSession(): Promise<boolean> {
     const session = JSON.parse(storedSession)
     if (!session?.access_token || !session?.refresh_token) return false
 
-    // Check if token has expired and we cannot refresh
-    if (session.expires_at) {
-      const now = Math.floor(Date.now() / 1000)
-      if (now > session.expires_at && !session.refresh_token) {
-        // Session expired and no refresh token, clear it
-        localStorage.removeItem('auth_session')
-        localStorage.removeItem('auth_user')
-        sessionStorage.removeItem('auth_session')
-        return false
-      }
-    }
-
-    // Set the session on the Supabase client
+    // Set the session on the Supabase client (this triggers onAuthStateChange, but our guard suppresses it)
     const { error } = await client.auth.setSession({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
     })
 
     if (error) {
-      console.error('[v0] Failed to restore Supabase session:', error.message)
-      // Clear invalid session
+      console.error('[Auth] Failed to restore session:', error.message)
+      // Clear invalid session data
       localStorage.removeItem('auth_session')
       localStorage.removeItem('auth_user')
       sessionStorage.removeItem('auth_session')
+      authSessionManager.clearSession()
       return false
     }
 
     sessionRestored = true
     return true
   } catch (error) {
-    console.error('[v0] Error restoring session:', error)
+    console.error('[Auth] Error restoring session:', error)
     return false
+  } finally {
+    isRestoringSession = false
   }
 }
 

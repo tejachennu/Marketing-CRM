@@ -16,15 +16,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes that require authentication
-  const protectedRoutes = ['/dashboard', '/contacts', '/leads', '/settings']
+  const isProtectedRoute = pathname.startsWith('/dashboard')
 
-  // Check if current route is protected
-  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route))
-
-  // Check for auth session (check both cookie names for compatibility)
-  const supabaseAuth = request.cookies.get('supabase-auth-token') || request.cookies.get('sb-auth-token')
+  // Check for auth session — use the user-logged-in flag cookie only
+  // The actual token validation happens client-side and in API routes
   const userLoggedIn = request.cookies.get('user-logged-in')
-  const isAuthenticated = !!supabaseAuth || !!userLoggedIn
+  const isAuthenticated = !!userLoggedIn
 
   // If user is not authenticated and trying to access protected route, redirect to login
   if (isProtectedRoute && !isAuthenticated) {

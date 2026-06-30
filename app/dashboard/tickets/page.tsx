@@ -99,7 +99,6 @@ export default function TicketsPage() {
         await restoreSupabaseSession()
         const storedUser = authSessionManager.getUser()
         if (!storedUser?.id) {
-          router.push('/login')
           return
         }
         setUserId(storedUser.id)
@@ -123,7 +122,8 @@ export default function TicketsPage() {
       }
     }
     initUser()
-  }, [router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Fetch reference data for Lead Conversion modal
   useEffect(() => {

@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
 import { getRoleDisplay, ASSIGNABLE_ROLES, canManageTeam, isManager } from '@/lib/rbac'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
@@ -73,6 +73,12 @@ export default function SettingsPage() {
   const [itemsPerPage] = useState(10)
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [ragSearchQuery, setRagSearchQuery] = useState('')
+
+  // Reset page when RAG search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [ragSearchQuery])
 
   // Teammates management state
   const [teammates, setTeammates] = useState<any[]>([])
@@ -559,9 +565,18 @@ export default function SettingsPage() {
     }
   }
 
-  const totalPages = Math.ceil(articles.length / itemsPerPage)
+  const filteredArticles = articles.filter(art => {
+    const query = ragSearchQuery.toLowerCase().trim()
+    if (!query) return true
+    return (
+      (art.title?.toLowerCase() || '').includes(query) ||
+      (art.content?.toLowerCase() || '').includes(query)
+    )
+  })
+
+  const totalPages = Math.ceil(filteredArticles.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedArticles = articles.slice(startIndex, startIndex + itemsPerPage)
+  const paginatedArticles = filteredArticles.slice(startIndex, startIndex + itemsPerPage)
 
   if (loading) {
     return (
@@ -1548,16 +1563,27 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Indexed Knowledge panel */}
           <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Indexed Knowledge Base</h3>
                 <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
-                  {articles.length} items
+                  {filteredArticles.length === articles.length ? `${articles.length} items` : `${filteredArticles.length} of ${articles.length} found`}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              
+              <div className="flex items-center gap-2 flex-1 max-w-sm">
+                <div className="relative w-full">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#667781] dark:text-[#8696a0]" />
+                  <input
+                    type="text"
+                    value={ragSearchQuery}
+                    onChange={e => setRagSearchQuery(e.target.value)}
+                    placeholder="Search FAQs & policies..."
+                    className="w-full pl-9 pr-3.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-[11px] font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                  />
+                </div>
+                
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1568,10 +1594,10 @@ export default function SettingsPage() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={importProgress !== null || loadingArticles}
-                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   <Upload size={12} />
-                  <span>Import Excel</span>
+                  <span>Import</span>
                 </button>
               </div>
             </div>
@@ -1580,11 +1606,11 @@ export default function SettingsPage() {
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={24} className="animate-spin text-[#00a884]" />
               </div>
-            ) : articles.length === 0 ? (
+            ) : filteredArticles.length === 0 ? (
               <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
                 <BookOpen size={36} className="text-[#e9edef] dark:text-[#202d36] mx-auto mb-3" />
-                <p className="text-xs font-bold">No knowledge items added yet</p>
-                <p className="text-[10px] font-medium mt-1">Add your first FAQ item above to build your knowledge base.</p>
+                <p className="text-xs font-bold">No matching items found</p>
+                <p className="text-[10px] font-medium mt-1">Try refining your search query.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1627,7 +1653,7 @@ export default function SettingsPage() {
                 {totalPages > 1 && (
                   <div className="px-6 py-4 border-t border-[#e9edef] dark:border-[#202d36]/50 bg-[#f0f2f5] dark:bg-[#1f2c34]/20 flex items-center justify-between select-none text-[11px] text-[#667781] dark:text-[#8696a0]">
                     <div className="font-semibold">
-                      Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} items
+                      Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredArticles.length)} of {filteredArticles.length} items
                     </div>
                     <div className="flex items-center gap-2">
                       <button

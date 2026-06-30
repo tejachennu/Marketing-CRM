@@ -52,8 +52,7 @@ export default function ContactsPage() {
       }
 
       if (!userId) {
-        console.log('[v0] No auth user in contacts')
-        window.location.href = '/login'
+        console.log('[Contacts] No auth user found')
         return
       }
 

@@ -120,7 +120,6 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
 
       if (!session?.user) {
-        router.push('/login')
         return
       }
 
@@ -225,13 +224,12 @@ export default function ProfilePage() {
     setLoggingOut(true)
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
-      await supabase.auth.signOut()
-      authSessionManager.clearSession()
-      router.push('/login')
+      await supabase.auth.signOut().catch(() => {})
     } catch (err) {
       console.error('Logout error:', err)
-      setLoggingOut(false)
     }
+    authSessionManager.clearSession()
+    window.location.href = '/login'
   }
 
   const passwordStrength = getPasswordStrength(newPassword)
