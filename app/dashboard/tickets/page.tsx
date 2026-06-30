@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { canSeeAll } from '@/lib/rbac'
 import { useAlert } from '@/lib/dialog-context'
 import { Ticket, Clock, CheckCircle2, MessageSquare, TrendingUp, Search, Calendar, X, ChevronLeft, ChevronRight, Loader2, User, Users } from 'lucide-react'
 
@@ -114,7 +115,7 @@ export default function TicketsPage() {
         }
         if (profile?.role) {
           setUserRole(profile.role)
-          setAdminSeeAll(profile.see_all !== false)
+          setAdminSeeAll(canSeeAll({ role: profile.role, see_all: profile.see_all } as any))
           setReadOnlyMode(profile.read_only === true)
         }
       } catch (err) {

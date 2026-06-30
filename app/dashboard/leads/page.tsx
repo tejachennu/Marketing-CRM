@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { canSeeAll } from '@/lib/rbac'
 import { Lead, PipelineStage, Contact, User as SupabaseUser } from '@/lib/types'
 import {
   Plus, DollarSign, X, Trash2, MessageCircle, Save, Search,
@@ -257,7 +258,7 @@ export default function LeadsPage() {
       // sales_employee: only sees assigned leads unless see_all is true
       const isAdminRole = ['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userData.role || '')
       setIsAdmin(isAdminRole)
-      setAdminSeeAll(userData.see_all !== false)
+      setAdminSeeAll(canSeeAll(userData))
       setReadOnlyMode(userData.read_only === true)
 
       // Fetch stages
@@ -302,7 +303,7 @@ export default function LeadsPage() {
       // Fetch dynamic lists
       await Promise.all([
         loadLeads(userData, 1, searchQuery, statusFilter, priorityFilter, fromDate, toDate, dateFilterApplied, sortField, sortDir),
-        loadAnalyticsLeads(userData.organization_id, userData.id, userData.see_all !== false)
+        loadAnalyticsLeads(userData.organization_id, userData.id, canSeeAll(userData))
       ])
 
     } catch (error) {
@@ -392,7 +393,7 @@ export default function LeadsPage() {
         `, { count: 'exact' })
         .eq('organization_id', currentUser.organization_id)
 
-      const seeAll = currentUser.see_all !== false
+      const seeAll = canSeeAll(currentUser)
       if (!seeAll) {
         q = q.eq('assigned_to', currentUser.id)
       }
