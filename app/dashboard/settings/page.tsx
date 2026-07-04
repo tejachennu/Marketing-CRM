@@ -42,6 +42,8 @@ export default function SettingsPage() {
   const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
   const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
   const [currency, setCurrency] = useState('USD')
+  const [ticketEmailEnabled, setTicketEmailEnabled] = useState(false)
+  const [ticketEmailRecipients, setTicketEmailRecipients] = useState<string[]>([])
 
   // RAG Knowledge Base State
   const [activeTab, setActiveTab] = useState<'general' | 'knowledge' | 'teammates' | 'appearance'>('general')
@@ -112,11 +114,11 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    if (user?.organization_id && activeTab === 'knowledge') {
-      loadArticles(user.organization_id)
-    }
-    if (user?.organization_id && activeTab === 'teammates') {
+    if (user?.organization_id) {
       loadTeammates(user.organization_id)
+      if (activeTab === 'knowledge') {
+        loadArticles(user.organization_id)
+      }
     }
   }, [user, activeTab])
 
@@ -485,6 +487,8 @@ export default function SettingsPage() {
         setWhatsappPhoneNumberId(orgData.whatsapp_phone_number_id || '')
         setWhatsappBusinessAccountId(orgData.whatsapp_business_account_id || '')
         setCurrency(orgData.currency || 'USD')
+        setTicketEmailEnabled(orgData.ticket_email_enabled === true)
+        setTicketEmailRecipients(orgData.ticket_email_recipients || [])
 
         // Set organization-specific dynamic webhook URL
         if (typeof window !== 'undefined') {
@@ -527,6 +531,8 @@ export default function SettingsPage() {
           whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
           whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
           currency: currency,
+          ticket_email_enabled: ticketEmailEnabled,
+          ticket_email_recipients: ticketEmailRecipients,
         })
         .eq('id', organization.id)
 
@@ -553,6 +559,8 @@ export default function SettingsPage() {
         whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
         whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
         currency: currency,
+        ticket_email_enabled: ticketEmailEnabled,
+        ticket_email_recipients: ticketEmailRecipients,
       })
 
       showNotification('success', 'Organization credentials updated successfully.', 'Credentials Saved')
@@ -867,6 +875,92 @@ export default function SettingsPage() {
                 <span>Save Preferences</span>
               </button>
             </div>
+          </div>
+
+          {/* Ticket Email Notifications */}
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-[#202d36] pb-4">
+              <div className="flex items-center gap-2">
+                <Bell size={20} className="text-[#00a884]" />
+                <h2 className="text-base font-bold text-[#111b21] dark:text-white">Ticket Email Notifications</h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveCredentials}
+                disabled={savingCredentials}
+                className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
+                <span>Save Notifications</span>
+              </button>
+            </div>
+
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
+              Configure automated email alerts when new customer support tickets are opened.
+            </p>
+
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-[#f8f9fa] dark:bg-[#1f2c34]">
+              <div className="flex flex-col gap-0.5 pr-2">
+                <span className="text-xs font-bold text-[#111b21] dark:text-white">Enable Ticket Alert Emails</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Sends a structured HTML email alert containing ticket details, contact info, and a quick dashboard link</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTicketEmailEnabled(!ticketEmailEnabled)}
+                className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
+                  ticketEmailEnabled ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
+                    ticketEmailEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {ticketEmailEnabled && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                  Notification Recipients
+                </label>
+                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">Select which organization members should receive email notifications:</p>
+                
+                {teammates.length === 0 ? (
+                  <div className="text-xs text-[#667781] dark:text-[#8696a0] py-2 italic font-semibold">
+                    No active teammates found. Please add team members in the "Manage Teammates" tab first.
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-3 bg-[#f8f9fa] dark:bg-[#0b0f19] space-y-3">
+                    {teammates.map((member) => {
+                      const isChecked = ticketEmailRecipients.includes(member.id)
+                      return (
+                        <label key={member.id} className="flex items-center gap-3 text-xs font-semibold text-[#111b21] dark:text-white cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTicketEmailRecipients([...ticketEmailRecipients, member.id])
+                              } else {
+                                setTicketEmailRecipients(ticketEmailRecipients.filter(id => id !== member.id))
+                              }
+                            }}
+                            className="rounded border-[#e9edef] dark:border-[#2a3942] text-[#00a884] focus:ring-[#00a884] accent-[#00a884] h-4 w-4"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-bold">{member.full_name || 'Unnamed Teammate'}</span>
+                            <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium">
+                              {member.email} • <span className="uppercase text-[8px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-black">{member.role}</span>
+                            </span>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Custom Credentials & Integrations Settings */}

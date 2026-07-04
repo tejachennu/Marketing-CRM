@@ -129,6 +129,7 @@ function ConversationsPageContent() {
   // Reply To Message State
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
+  const [togglingAutoReply, setTogglingAutoReply] = useState(false)
   
   // AI Suggestions (RAG)
   type AiSuggestion = { text: string; article_title?: string | null; source_url?: string | null }
@@ -780,6 +781,8 @@ function ConversationsPageContent() {
   }
 
   const toggleAutoReply = async (convId: string, currentVal: boolean) => {
+    if (togglingAutoReply) return // Guard against rapid clicks
+    setTogglingAutoReply(true)
     const newVal = !currentVal
     
     // Optimistic update of local conversations state
@@ -800,6 +803,8 @@ function ConversationsPageContent() {
       setConversations((prev) => 
         prev.map((c) => c.id === convId ? { ...c, auto_reply_enabled: currentVal } : c)
       )
+    } finally {
+      setTogglingAutoReply(false)
     }
   }
 
@@ -1423,7 +1428,8 @@ function ConversationsPageContent() {
                         toggleAutoReply(selectedConversation, conv.auto_reply_enabled !== false)
                       }
                     }}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    disabled={togglingAutoReply}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-wait ${
                       conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
                         ? 'bg-emerald-500'
                         : 'bg-slate-200 dark:bg-slate-700'
@@ -1938,14 +1944,24 @@ function ConversationsPageContent() {
                         <Paperclip size={18} className="rotate-45" />
                       )}
                     </button>
-                    <input
-                      type="text"
+                    <textarea
                       value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : attachedFile ? "Add a caption..." : "Type a message..."}
+                      onChange={(e) => {
+                        setMessageText(e.target.value)
+                        // Auto-resize textarea
+                        e.target.style.height = 'auto'
+                        e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px'
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.shiftKey) {
+                          e.preventDefault()
+                          handleSendMessage()
+                        }
+                      }}
+                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
                       disabled={isSmsDisabled || isExpired}
-                              className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200"
+                      rows={1}
+                      className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200 resize-none overflow-y-auto max-h-24"
                     />
                     <button
                       onClick={handleSendMessage}

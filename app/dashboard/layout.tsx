@@ -48,6 +48,44 @@ export default function DashboardLayout({
   const [hasUnreadAssistantNotif, setHasUnreadAssistantNotif] = useState(false)
   const [showSideDrawer, setShowSideDrawer] = useState(false)
   const [hasActiveChat, setHasActiveChat] = useState(false)
+  const [isNavigating, setIsNavigating] = useState<string | null>(null)
+
+  useEffect(() => {
+    setIsNavigating(null)
+  }, [pathname])
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, targetHref: string) => {
+    const currentPath = pathname.replace(/\/$/, '') || '/'
+    const normalizedTarget = targetHref.replace(/\/$/, '') || '/'
+
+    // If we're already on this page, prevent default navigation
+    if (currentPath === normalizedTarget) {
+      e.preventDefault()
+      if (targetHref === '/dashboard') {
+        window.dispatchEvent(new Event('reset-active-chat'))
+      }
+      return
+    }
+
+    // If a transition is already in progress for this destination, prevent duplicate trigger
+    if (isNavigating === targetHref) {
+      e.preventDefault()
+      return
+    }
+
+    // Block consecutive clicks on different nav links during transition
+    if (isNavigating !== null) {
+      e.preventDefault()
+      return
+    }
+
+    // Dispatch reset event when leaving/entering chat page to clean active conversation state
+    if (targetHref === '/dashboard' || pathname === '/dashboard') {
+      window.dispatchEvent(new Event('reset-active-chat'))
+    }
+
+    setIsNavigating(targetHref)
+  }
 
   // Listen for active chat selections to dynamically auto-hide the mobile bottom navigation bar
   useEffect(() => {
@@ -65,6 +103,22 @@ export default function DashboardLayout({
       setHasActiveChat(false)
     }
   }, [pathname])
+
+  // Prevent mobile back button from navigating away from dashboard (which causes logout)
+  useEffect(() => {
+    // Push a sentinel history entry so back button stays within the app
+    window.history.pushState({ dashboard: true }, '', window.location.href)
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (window.location.pathname.startsWith('/dashboard')) {
+        // Re-push sentinel to keep user on dashboard
+        window.history.pushState({ dashboard: true }, '', window.location.href)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const addAssistantNotification = (msg: string) => {
     const newNotif = {
@@ -609,18 +663,7 @@ export default function DashboardLayout({
                     <Link
                       href={item.href}
                       title={item.label}
-                      onClick={(e) => {
-                        if (pathname === item.href) {
-                          e.preventDefault()
-                          if (item.href === '/dashboard') {
-                            window.dispatchEvent(new Event('reset-active-chat'))
-                          }
-                          return
-                        }
-                        if (item.href === '/dashboard') {
-                          window.dispatchEvent(new Event('reset-active-chat'))
-                        }
-                      }}
+                      onClick={(e) => handleNavClick(e, item.href)}
                       className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                         isActive
                           ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
@@ -732,14 +775,7 @@ export default function DashboardLayout({
           {features.enable_messages && (
             <Link
               href="/dashboard"
-              onClick={(e) => {
-                if (pathname === '/dashboard') {
-                  e.preventDefault()
-                  window.dispatchEvent(new Event('reset-active-chat'))
-                  return
-                }
-                window.dispatchEvent(new Event('reset-active-chat'))
-              }}
+              onClick={(e) => handleNavClick(e, '/dashboard')}
               className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative"
             >
               <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
@@ -764,7 +800,7 @@ export default function DashboardLayout({
           {features.enable_messages && (
             <Link
               href="/dashboard/tickets"
-              onClick={(e) => { if (pathname === '/dashboard/tickets') e.preventDefault() }}
+              onClick={(e) => handleNavClick(e, '/dashboard/tickets')}
               className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative"
             >
               <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
@@ -788,7 +824,7 @@ export default function DashboardLayout({
           {/* Pipeline */}
           <Link
             href="/dashboard/leads"
-            onClick={(e) => { if (pathname === '/dashboard/leads') e.preventDefault() }}
+            onClick={(e) => handleNavClick(e, '/dashboard/leads')}
             className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative"
           >
             <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${

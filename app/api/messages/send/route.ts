@@ -395,10 +395,55 @@ export async function POST(request: NextRequest) {
         }
 
         if (msgMediaUrl) {
-          const publicMediaUrl = msgMediaUrl.startsWith('http')
-            ? msgMediaUrl
-            : `${process.env.V0_RUNTIME_URL || ''}${msgMediaUrl}`
-          twilioParams.mediaUrl = [publicMediaUrl]
+          let publicMediaUrl = '';
+          if (msgMediaUrl.startsWith('http')) {
+            publicMediaUrl = msgMediaUrl;
+          } else if (msgMediaUrl.startsWith('data:')) {
+            try {
+              const mediaInfo = await getMediaBufferAndType(msgMediaUrl);
+              if (mediaInfo) {
+                const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+                const ext = mediaInfo.mimeType.split('/')[1] || 'bin';
+                const storagePath = `${uniqueId}.${ext}`;
+                
+                // Try to upload. If bucket doesn't exist, we will create it in catch or check
+                const { error: uploadError } = await supabase.storage
+                  .from('media-attachments')
+                  .upload(storagePath, mediaInfo.buffer, {
+                    contentType: mediaInfo.mimeType,
+                    upsert: true
+                  });
+
+                if (uploadError && uploadError.message?.includes('not found')) {
+                  console.log('[Messages Send] Creating storage bucket media-attachments');
+                  await supabase.storage.createBucket('media-attachments', { public: true });
+                  const { error: retryError } = await supabase.storage
+                    .from('media-attachments')
+                    .upload(storagePath, mediaInfo.buffer, {
+                      contentType: mediaInfo.mimeType,
+                      upsert: true
+                    });
+                  if (retryError) throw retryError;
+                } else if (uploadError) {
+                  throw uploadError;
+                }
+
+                const { data: { publicUrl } } = supabase.storage
+                  .from('media-attachments')
+                  .getPublicUrl(storagePath);
+                  
+                publicMediaUrl = publicUrl;
+                console.log('[Messages Send] Uploaded data URL to Supabase Storage. Public URL:', publicMediaUrl);
+              }
+            } catch (storageErr) {
+              console.error('[Messages Send] Failed to upload media to Supabase storage:', storageErr);
+            }
+          }
+
+          if (!publicMediaUrl) {
+            publicMediaUrl = `${process.env.V0_RUNTIME_URL || ''}${msgMediaUrl}`;
+          }
+          twilioParams.mediaUrl = [publicMediaUrl];
         }
 
         const twilioMsg = await twilioClient.messages.create(twilioParams)

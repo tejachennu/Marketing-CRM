@@ -82,7 +82,7 @@ export default function LoginPage() {
         // Set cookie so middleware allows dashboard access immediately
         document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
 
-        router.push('/dashboard')
+        router.replace('/dashboard')
       } else if (data.otpRequired) {
         setOtpSentEmail(data.email || email)
         setOtpRequired(true)
@@ -129,7 +129,7 @@ export default function LoginPage() {
 
       // Redirect to dashboard
       document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
-      router.push('/dashboard')
+      router.replace('/dashboard')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Verification failed'
       setError(message)
