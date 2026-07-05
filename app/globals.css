@@ -175,32 +175,32 @@
   background-color: rgba(100, 116, 139, 0.4);
 }
 
-/* Elegant CSS Chat Wallpaper resembling premium SaaS grid patterns */
+/* Authentic WhatsApp Tiled Wallpaper Pattern */
 .wa-chat-wallpaper {
-  background-color: #f8fafc;
-  background-image: radial-gradient(#cbd5e1 0.75px, transparent 0.75px);
-  background-size: 16px 16px;
+  background-color: #efeae2;
   position: relative;
   transition: background-color 0.3s ease;
 }
 
 .dark .wa-chat-wallpaper {
-  background-color: #090d16;
-  background-image: radial-gradient(#1e293b 1px, transparent 1px);
+  background-color: #0b141a;
 }
 
 .wa-chat-wallpaper::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 120%, rgba(16, 185, 129, 0.08), transparent 60%);
+  background-image: url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png");
+  background-repeat: repeat;
+  background-size: 400px;
+  opacity: 0.35;
   pointer-events: none;
   z-index: 0;
 }
 
 .dark .wa-chat-wallpaper::before {
-  background: radial-gradient(circle at 50% 120%, rgba(16, 185, 129, 0.05), transparent 60%),
-              radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.03), transparent 40%);
+  opacity: 0.06;
+  filter: invert(100%) brightness(80%) contrast(120%);
 }
 
 /* Dark Mode Overrides for Sales Pipeline Page */

@@ -8,7 +8,7 @@ import { canSeeAll } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock
+  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
@@ -139,6 +139,19 @@ function ConversationsPageContent() {
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null)
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [windowTick, setWindowTick] = useState(0) // Forces re-render for 24h window timer
+  const [currentTicket, setCurrentTicket] = useState<any | null>(null)
+  const [showConvertModal, setShowConvertModal] = useState<any | null>(null)
+  const [pipelineStages, setPipelineStages] = useState<any[]>([])
+  const [teammates, setTeammates] = useState<any[]>([])
+  const [modalLoading, setModalLoading] = useState(false)
+  const [leadForm, setLeadForm] = useState({
+    title: '',
+    value: '',
+    stageId: '',
+    priority: 'medium' as 'low' | 'medium' | 'high',
+    assignedTo: '',
+    resolveTicket: true
+  })
   const fetchSuggestionsRef = useRef<any>(null)
 
   const [features, setFeatures] = useState({
@@ -762,6 +775,7 @@ function ConversationsPageContent() {
       setMessages([])
       setAiSuggestions([])
       setAiSuggestionsError(null)
+      setCurrentTicket(null)
       return
     }
     loadMessages(selectedConversation)
@@ -769,6 +783,25 @@ function ConversationsPageContent() {
     // Clear suggestions when switching conversation
     setAiSuggestions([])
     setAiSuggestionsError(null)
+    setCurrentTicket(null)
+
+    const fetchOpenTicket = async () => {
+      try {
+        const { data: ticketData, error } = await supabase
+          .from('tickets')
+          .select('*')
+          .eq('conversation_id', selectedConversation)
+          .eq('status', 'open')
+          .maybeSingle()
+          
+        if (!error && ticketData) {
+          setCurrentTicket(ticketData)
+        }
+      } catch (err) {
+        console.error('Error fetching ticket:', err)
+      }
+    }
+    fetchOpenTicket()
   }, [selectedConversation, loadMessages, clearUnreadCount])
 
   // ─── Actions ───
@@ -805,6 +838,112 @@ function ConversationsPageContent() {
       )
     } finally {
       setTogglingAutoReply(false)
+    }
+  }
+
+  const handleResolveTicket = async (ticketId: string) => {
+    try {
+      const res = await fetch('/api/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId, status: 'resolved' })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to resolve ticket')
+      setCurrentTicket(null)
+    } catch (err) {
+      console.error('[Ticket Resolve] Error:', err)
+      alert({ title: 'Error', message: err instanceof Error ? err.message : 'Failed to resolve ticket' })
+    }
+  }
+
+  const openConvertModal = async (ticket: any) => {
+    const orgId = user?.organization_id || ticket.organization_id
+    setLeadForm({
+      title: ticket.subject || 'New Lead',
+      value: '',
+      stageId: '',
+      priority: 'medium',
+      assignedTo: user?.id || '',
+      resolveTicket: true
+    })
+    setShowConvertModal(ticket)
+    
+    try {
+      if (orgId) {
+        // Fetch stages
+        const { data: stages } = await supabase
+          .from('pipeline_stages')
+          .select('*')
+          .eq('organization_id', orgId)
+          .order('order_index', { ascending: true })
+        if (stages) {
+          setPipelineStages(stages)
+          if (stages.length > 0) {
+            setLeadForm(prev => ({ ...prev, stageId: stages[0].id }))
+          }
+        }
+
+        // Fetch teammates
+        const res = await fetch(`/api/teammates?organizationId=${orgId}`)
+        const data = await res.json()
+        if (data.success) {
+          setTeammates(data.teammates || [])
+        }
+      }
+    } catch (err) {
+      console.error('Error preparing lead conversion:', err)
+    }
+  }
+
+  const handleConvertTicketToLead = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!showConvertModal || !user) return
+    setModalLoading(true)
+    try {
+      // 1. Create lead record
+      const { data: lead, error: leadErr } = await supabase
+        .from('leads')
+        .insert([{
+          organization_id: user.organization_id,
+          contact_id: showConvertModal.contact_id,
+          title: leadForm.title,
+          description: `Converted from Ticket: ${showConvertModal.subject}`,
+          pipeline_stage_id: leadForm.stageId || null,
+          value: leadForm.value ? parseFloat(leadForm.value) : null,
+          priority: leadForm.priority,
+          status: 'active',
+          source: 'whatsapp',
+          assigned_to: leadForm.assignedTo || null,
+          created_by: user.id,
+          last_activity_at: new Date().toISOString()
+        }])
+        .select()
+        .single()
+
+      if (leadErr) throw leadErr
+
+      // 2. Link conversation to lead
+      if (lead) {
+        const { error: convErr } = await supabase
+          .from('conversations')
+          .update({ lead_id: lead.id })
+          .eq('id', showConvertModal.conversation_id)
+
+        if (convErr) console.error('Error linking lead to conversation:', convErr)
+      }
+
+      // 3. Resolve ticket
+      if (leadForm.resolveTicket) {
+        await handleResolveTicket(showConvertModal.id)
+      }
+
+      setShowConvertModal(null)
+    } catch (err: any) {
+      console.error('Failed to convert ticket to lead:', err)
+      alert({ title: 'Error', message: err.message || 'Failed to convert ticket to lead' })
+    } finally {
+      setModalLoading(false)
     }
   }
 
@@ -937,6 +1076,7 @@ function ConversationsPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: selectedContact.id,
+          organizationId: user?.organization_id || selectedContact.organization_id,
           phone_number: selectedContact.phone_number,
           first_name: renameFirst,
           last_name: renameLast,
@@ -1048,60 +1188,65 @@ function ConversationsPageContent() {
   }
 
   return (
-    <div className="h-full w-full bg-slate-100 dark:bg-slate-950 flex overflow-hidden animate-in fade-in duration-300 relative font-sans text-slate-800 dark:text-slate-100">
-      {/* Sidebar: Conversations List */}
-      <div className={`w-full md:w-[350px] bg-white/70 dark:bg-slate-900/70 backdrop-blur-md border-r border-slate-200/50 dark:border-slate-800/50 flex flex-col overflow-hidden transition-all duration-300 ${
+    <div className="h-full w-full bg-[#efeae2] dark:bg-[#0b141a] flex overflow-hidden animate-in fade-in duration-300 relative font-sans text-slate-800 dark:text-slate-100">
+       {/* Sidebar: Conversations List */}
+      <div className={`w-full md:w-[350px] bg-white dark:bg-[#111b21] border-r border-[#e9edef] dark:border-[#2a3942] flex flex-col overflow-hidden transition-all duration-300 ${
         selectedConversation ? 'hidden md:flex' : 'flex'
       }`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-150 dark:border-slate-800/80 space-y-4 bg-white/40 dark:bg-slate-900/40">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">Inbox</h2>
-              {unreadCount > 0 && (
-                <span className="bg-[#ef4444] text-white text-[10px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse select-none">
-                  {unreadCount}
-                </span>
-              )}
-              <span className="flex items-center" title={`Realtime: ${realtimeStatus}`}>
-                {realtimeStatus === 'connected' ? (
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                ) : (
-                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                )}
-              </span>
+        <div className="px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between h-[60px] flex-shrink-0 select-none border-b border-[#e9edef] dark:border-[#2a3942]/60">
+          <div className="flex items-center gap-3">
+            {/* User Profile Avatar */}
+            <div className="h-10 w-10 rounded-full bg-slate-350 dark:bg-[#111b21] flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-sm border border-[#e9edef] dark:border-[#2a3942] select-none">
+              {user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'ME'}
             </div>
-            <div className="flex items-center gap-1.5">
-              {user && (
-                <AddContactDialog
-                  organizationId={user.organization_id}
-                  onContactAdded={reloadAll}
-                />
-              )}
-            </div>
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Chats</h2>
           </div>
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <span className="bg-[#ef4444] text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse select-none" title={`${unreadCount} unread messages`}>
+                {unreadCount}
+              </span>
+            )}
+            <span className="flex items-center" title={`Realtime: ${realtimeStatus}`}>
+              {realtimeStatus === 'connected' ? (
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              ) : (
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
+              )}
+            </span>
+            {user && (
+              <AddContactDialog
+                organizationId={user.organization_id}
+                onContactAdded={reloadAll}
+              />
+            )}
+          </div>
+        </div>
 
+        {/* Search & Filter section */}
+        <div className="p-2 border-b border-[#e9edef] dark:border-[#2a3942]/60 bg-white dark:bg-[#111b21] space-y-2 flex-shrink-0">
           {/* Search bar */}
           <div className="relative group">
-            <Search size={14} className="absolute left-3 top-3 text-slate-400 dark:text-slate-500 group-focus-within:text-emerald-500 transition-colors" />
+            <Search size={15} className="absolute left-3.5 top-2.5 text-[#667781] dark:text-[#8696a0] group-focus-within:text-[#00a884] transition-colors" />
             <input
               type="text"
               placeholder="Search or start new chat"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs font-medium placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-100 shadow-inner transition-all duration-200"
+              className="w-full pl-10 pr-4 py-1.5 bg-[#f0f2f5] dark:bg-[#202c33] border-none rounded-lg focus:outline-none focus:ring-0 text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-slate-800 dark:text-slate-100 transition-all duration-200"
             />
           </div>
 
-          {/* Filters and Sort */}
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-2">
+          {/* Filters */}
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1 pt-1 select-none">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setUnreadFilter(false)}
                 className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold cursor-pointer ${
                   !unreadFilter 
-                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold' 
-                    : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/80'
+                    ? 'bg-[#e7f8f2] dark:bg-[#0b3c2d]/60 text-[#00a884] dark:text-[#00e676] font-bold' 
+                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942]'
                 }`}
               >
                 All
@@ -1110,16 +1255,16 @@ function ConversationsPageContent() {
                 onClick={() => setUnreadFilter(true)}
                 className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold flex items-center gap-1.5 cursor-pointer ${
                   unreadFilter 
-                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold' 
-                    : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/80'
+                    ? 'bg-[#e7f8f2] dark:bg-[#0b3c2d]/60 text-[#00a884] dark:text-[#00e676] font-bold' 
+                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942]'
                 }`}
               >
                 <span>Unread</span>
                 {unreadCount > 0 && (
                   <span className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[9px] font-bold transition-all ${
                     unreadFilter 
-                      ? 'bg-emerald-550 dark:bg-emerald-500 text-white' 
-                      : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                      ? 'bg-[#00a884] text-white' 
+                      : 'bg-slate-250 dark:bg-slate-700 text-slate-650 dark:text-slate-400'
                   }`}>
                     {unreadCount}
                   </span>
@@ -1128,24 +1273,23 @@ function ConversationsPageContent() {
             </div>
             <button
               onClick={() => setSortBy((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
-              className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 hover:text-slate-800 dark:hover:text-slate-200 px-3 py-1.5 rounded-xl border border-slate-200/35 dark:border-slate-700/35 transition-all duration-200 font-semibold"
+              className="text-[10px] font-bold text-[#667781] hover:text-[#00a884] dark:text-[#8696a0] dark:hover:text-[#00e676] cursor-pointer tracking-wide uppercase transition-colors"
             >
-              <span>{sortBy === 'newest' ? 'Newest' : 'Oldest'}</span>
-              <ChevronDown size={12} className={`transition-transform duration-250 ${sortBy === 'oldest' ? 'rotate-180' : ''}`} />
+              Sort: {sortBy}
             </button>
           </div>
         </div>
 
         {/* Conversations list area */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-white/30 dark:bg-slate-900/30">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
           {fetchingConvs ? (
-            <div className="space-y-2 p-2">
+            <div className="animate-pulse">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="w-full p-3 flex items-center gap-3 rounded-xl border border-transparent animate-pulse">
-                  <div className="h-10 w-10 rounded-xl bg-slate-200 dark:bg-slate-800 shrink-0" />
-                  <div className="flex-1 space-y-2.5 py-1">
-                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
-                    <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                <div key={i} className="w-full px-4 py-3 flex items-center gap-3 border-b border-[#e9edef] dark:border-[#2a3942]/60">
+                  <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
+                    <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
                   </div>
                 </div>
               ))}
@@ -1166,30 +1310,25 @@ function ConversationsPageContent() {
                 <div
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv.id)}
-                  className={`w-full p-3 text-left flex items-center gap-3 rounded-xl transition-all duration-200 border relative cursor-pointer group/item ${
+                  className={`w-full px-4 py-3 text-left flex items-center gap-3 border-b border-[#e9edef] dark:border-[#2a3942]/30 relative cursor-pointer transition-colors duration-150 group/item ${
                     isSelected
-                      ? 'bg-slate-100/80 dark:bg-slate-800/70 border-slate-200/50 dark:border-slate-700/50 shadow-xs'
-                      : 'bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/30 border-transparent'
+                      ? 'bg-[#f0f2f5] dark:bg-[#2a3942] text-[#111b21] dark:text-white'
+                      : 'bg-transparent hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]/70'
                   }`}
                 >
-                  {/* Left Accent Indicator inside selected item */}
-                  {isSelected && (
-                    <div className="absolute left-1 top-3.5 bottom-3.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-full" />
-                  )}
-
                   {/* Avatar */}
                   <div className="relative flex-shrink-0 select-none">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 text-xs shadow-xs">
+                    <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-[#202c33] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 border border-[#e9edef] dark:border-[#2a3942] text-sm shrink-0">
                       {contactName.substring(0, 2).toUpperCase()}
                     </div>
                   </div>
 
                   {/* Conv metadata */}
                   <div className="flex-1 min-w-0 pr-2 select-none">
-                    <p className="font-bold text-xs text-slate-855 dark:text-slate-100 truncate">
+                    <p className="font-semibold text-[14px] text-[#111b21] dark:text-[#e9edef] truncate">
                       {contactName}
                     </p>
-                    <div className="flex items-center gap-1 text-[10px] text-slate-450 dark:text-slate-500 mt-1 font-medium min-w-0">
+                    <div className="flex items-center gap-1 text-[12.5px] text-[#667781] dark:text-[#8696a0] mt-0.5 font-normal min-w-0">
                       {conv.last_message ? (
                         <>
                           {conv.last_message.sender_type === 'user' && (() => {
@@ -1228,9 +1367,9 @@ function ConversationsPageContent() {
                   </div>
                   
                   {/* Right side column for Time, Pinned, Unread count */}
-                  <div className="flex flex-col items-end justify-between h-9 select-none flex-shrink-0 min-w-[50px] relative">
+                  <div className="flex flex-col items-end justify-between h-10 select-none flex-shrink-0 min-w-[65px] relative">
                     {conv.last_message_at && (
-                      <p className={`text-[9px] font-bold ${conv.unread_count > 0 ? 'text-emerald-550 dark:text-emerald-400' : 'text-slate-450 dark:text-slate-500'}`}>
+                      <p className={`text-[11.5px] font-medium ${conv.unread_count > 0 ? 'text-[#25d366] dark:text-[#00e676]' : 'text-[#667781] dark:text-[#8696a0]'}`}>
                         {new Date(conv.last_message_at).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -1242,14 +1381,14 @@ function ConversationsPageContent() {
                     <div className="flex items-center gap-1.5 mt-1 justify-end w-full">
                       {/* Pinned Icon (always visible if pinned) */}
                       {pinnedConvs.includes(conv.id) && (
-                        <span className="text-emerald-600 dark:text-emerald-400" title="Pinned">
-                          <Pin size={10} className="fill-current" />
+                        <span className="text-[#8696a0]" title="Pinned">
+                          <Pin size={12} className="fill-current rotate-45" />
                         </span>
                       )}
                       
                       {/* Unread count badge */}
                       {conv.unread_count > 0 && (
-                        <span className="bg-gradient-to-tr from-emerald-500 to-teal-500 text-white text-[9px] font-black rounded-full h-4.5 min-w-[18px] px-1 flex items-center justify-center shadow-xs">
+                        <span className="bg-[#25d366] dark:bg-[#00a884] text-white text-[11px] font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-sm">
                           {conv.unread_count}
                         </span>
                       )}
@@ -1304,28 +1443,27 @@ function ConversationsPageContent() {
         </div>
 
       {/* Main Chat Panel */}
-      {selectedConversation ? (
-        selectedContact ? (
+      {selectedConversation && selectedContact ? (
           <div className={`flex-1 bg-slate-50 dark:bg-[#090d16] flex flex-col overflow-hidden relative transition-all duration-300 ${
           selectedConversation ? 'flex' : 'hidden md:flex'
         }`}>
           {/* Chat Header */}
-          <div className="p-4 bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between h-[64px] flex-shrink-0 select-none z-10">
+          <div className="px-4 py-2 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between h-[60px] flex-shrink-0 select-none z-10">
             <div className="flex items-center gap-3">
               {/* Back Button for mobile */}
               <button
                 onClick={() => setSelectedConversation(null)}
-                className="md:hidden p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-550 dark:text-slate-400 mr-1 flex items-center justify-center transition-colors"
+                className="md:hidden p-1.5 hover:bg-slate-200 dark:hover:bg-[#2a3942] rounded-full text-[#667781] dark:text-slate-400 mr-1 flex items-center justify-center transition-colors"
                 title="Back to inbox"
               >
                 <ArrowLeft size={18} />
               </button>
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 text-xs shadow-xs select-none">
+              <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 text-xs shadow-sm select-none">
                 {selectedContact.first_name ? selectedContact.first_name.substring(0, 2).toUpperCase() : 'CO'}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-slate-800 dark:text-white leading-tight truncate">
+                  <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef] leading-tight truncate">
                     {selectedContact.first_name || 'Unknown'} {selectedContact.last_name || ''}
                   </h3>
                   <button
@@ -1413,6 +1551,29 @@ function ConversationsPageContent() {
                   <Sparkles size={10} className={loadingSuggestions ? 'animate-spin' : ''} />
                   <span className="hidden sm:inline">AI Suggestions</span>
                 </button>
+              )}
+
+              {/* Ticket Controls */}
+              {selectedConversation && currentTicket && (
+                <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-2 md:pl-4">
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
+                    🎫 Open Ticket
+                  </span>
+                  <button
+                    onClick={() => handleResolveTicket(currentTicket.id)}
+                    className="px-2 py-1 text-[9px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-all cursor-pointer"
+                    title="Mark ticket as resolved"
+                  >
+                    Resolve
+                  </button>
+                  <button
+                    onClick={() => openConvertModal(currentTicket)}
+                    className="px-2 py-1 text-[9px] font-bold text-white bg-indigo-500 hover:bg-indigo-650 rounded transition-all cursor-pointer"
+                    title="Convert ticket to a sales lead"
+                  >
+                    Make Lead
+                  </button>
+                </div>
               )}
 
               {/* Auto-Reply Chatbot Toggle Override */}
@@ -1630,14 +1791,16 @@ function ConversationsPageContent() {
 
                     <div
                       id={`msg-${msg.id}`}
-                      className={`max-w-[70%] sm:max-w-[450px] rounded-2xl border transition-all duration-200 relative text-xs leading-relaxed overflow-hidden ${
+                      className={`max-w-[70%] sm:max-w-[450px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] transition-all duration-200 relative text-[13.5px] leading-[19px] overflow-hidden ${
                         (mediaType === 'image' || mediaType === 'video')
                           ? (displayBody ? 'p-1 pb-2' : 'p-1')
-                          : 'px-4 py-2.5'
+                          : mediaType === 'document'
+                            ? 'p-1.5 pb-2'
+                            : 'px-3 py-1.5'
                       } ${
                         isUser
-                          ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-emerald-500/25 text-white shadow-emerald-500/10 rounded-tr-none'
-                          : 'bg-wa-bubble-in border-wa-border text-wa-text-primary rounded-tl-none shadow-sm dark:shadow-none'
+                          ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] rounded-tr-none'
+                          : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none'
                       }`}
                     >
                       {/* Reply quote preview block */}
@@ -1749,20 +1912,20 @@ function ConversationsPageContent() {
                             <a
                               href={getDisplayUrl(msg.media_url)}
                               download={getDownloadName(msg.media_url)}
-                              className={`flex items-center justify-between gap-3 p-3 rounded-xl text-[11px] font-bold border transition-all duration-200 ${
+                              className={`flex items-center justify-between gap-3 p-2.5 rounded-lg transition-colors duration-150 ${
                                 isUser
-                                  ? 'bg-black/15 hover:bg-black/25 border-white/10 text-white'
-                                  : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-850 border-slate-150 dark:border-slate-800/80 text-slate-700 dark:text-slate-250'
+                                  ? 'bg-[#bfe5be] dark:bg-[#025141] hover:bg-[#a9dbb2] dark:hover:bg-[#03614e] text-[#111b21] dark:text-[#e9edef]'
+                                  : 'bg-[#f0f2f5] dark:bg-[#182229] hover:bg-[#e1e3e6] dark:hover:bg-[#1f2c34] text-[#192e38] dark:text-[#e9edef]'
                               }`}
                               title="Click to Download"
                             >
                               <div className="flex items-center gap-2 truncate">
-                                <File size={16} className="flex-shrink-0" />
-                                <span className="truncate max-w-[150px]">
+                                <File size={18} className="flex-shrink-0 text-[#192e38] dark:text-[#e9edef]/85" />
+                                <span className="truncate text-[13px] font-normal select-all max-w-[170px] sm:max-w-[200px]">
                                   {getDownloadName(msg.media_url)}
                                 </span>
                               </div>
-                              <Download size={13} className="opacity-60 hover:opacity-100 transition-opacity flex-shrink-0" />
+                              <Download size={14} className="opacity-80 hover:opacity-100 transition-opacity flex-shrink-0 text-[#667781] dark:text-[#aebac1]" />
                             </a>
                           )}
                         </div>
@@ -1770,7 +1933,7 @@ function ConversationsPageContent() {
 
                       {/* Text Body */}
                       {displayBody && (
-                        <p className={`text-xs font-normal break-words whitespace-pre-wrap leading-relaxed ${
+                        <p className={`text-[14.2px] leading-[19px] font-normal break-words whitespace-pre-wrap ${
                           (mediaType === 'image' || mediaType === 'video') ? 'px-3 pt-2 pb-0.5' : ''
                         }`}>
                           {displayBody}
@@ -1778,10 +1941,10 @@ function ConversationsPageContent() {
                       )}
                       
                       {/* Message Footer (Time & Status) */}
-                      <div className={`flex items-center justify-end gap-1 mt-1.5 text-[9px] select-none ${
+                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10.5px] select-none ${
                         (mediaType === 'image' || mediaType === 'video') ? 'px-3 pb-0.5' : ''
                       } ${
-                        isUser ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'
+                        isUser ? 'text-[#667781] dark:text-[#e9edef]/60' : 'text-[#667781] dark:text-[#8696a0]'
                       }`}>
                         <span>
                           {new Date(msg.created_at).toLocaleTimeString([], {
@@ -1795,8 +1958,8 @@ function ConversationsPageContent() {
                             return (
                               <div className="relative group/tooltip flex items-center">
                                 <AlertCircle 
-                                  size={12} 
-                                  className="text-rose-450 ml-0.5 flex-shrink-0 cursor-help"
+                                  size={13} 
+                                  className="text-rose-500 ml-0.5 flex-shrink-0 cursor-help"
                                 />
                                 {msg.error_message && (
                                   <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/tooltip:block bg-red-650 text-white text-[10px] p-2 rounded shadow-md z-30 whitespace-normal min-w-[200px] max-w-[280px] break-words pointer-events-none text-left">
@@ -1807,12 +1970,12 @@ function ConversationsPageContent() {
                             )
                           }
                           if (msg.status === 'read' || msg.read_at) {
-                            return <CheckCheck size={13} className="text-sky-300 dark:text-sky-300 ml-0.5 flex-shrink-0" />
+                            return <CheckCheck size={14} className="text-[#53bdeb] ml-0.5 flex-shrink-0" />
                           }
                           if (msg.status === 'delivered') {
-                            return <CheckCheck size={13} className="text-white/60 ml-0.5 flex-shrink-0" />
+                            return <CheckCheck size={14} className="text-[#8696a0] dark:text-[#e9edef]/65 ml-0.5 flex-shrink-0" />
                           }
-                          return <Check size={13} className="text-white/60 ml-0.5 flex-shrink-0" />
+                          return <Check size={14} className="text-[#8696a0] dark:text-[#e9edef]/65 ml-0.5 flex-shrink-0" />
                         })()}
                       </div>
                     </div>
@@ -1890,6 +2053,7 @@ function ConversationsPageContent() {
           {(() => {
             const isWhatsApp = selectedContact?.phone_number?.startsWith('whatsapp:') || selectedContact?.whatsapp_number?.startsWith('whatsapp:')
             const isSmsDisabled = !isWhatsApp && !features.enable_sms
+            const isChatbotActive = selectedConvData?.auto_reply_enabled !== false && features.enable_ai
             
             const lastInbound = [...messages]
               .reverse()
@@ -1922,24 +2086,32 @@ function ConversationsPageContent() {
                     </span>
                   </div>
                 )}
+
+                {isChatbotActive && !isSmsDisabled && (
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-900/40 flex items-center gap-2 select-none z-10 animate-in fade-in duration-200">
+                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400">
+                      🤖 Chatbot auto-reply is active. Disable "Auto-Reply Chatbot" in the header to chat manually.
+                    </span>
+                  </div>
+                )}
                 
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/85 backdrop-blur-md z-10 flex-shrink-0">
-                  <div className="flex gap-3 items-center max-w-5xl mx-auto w-full">
+                <div className="py-2.5 px-4 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
+                  <div className="flex gap-3.5 items-center max-w-5xl mx-auto w-full">
                     <input 
                       type="file" 
                       ref={fileInputRef} 
                       onChange={handleFileChange} 
                       className="hidden" 
-                      disabled={isSmsDisabled || isExpired}
+                      disabled={isSmsDisabled || isExpired || isChatbotActive}
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading || isSmsDisabled || isExpired}
-                      className="hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
-                      title={isExpired ? "Support window expired" : "Attach Media"}
+                      disabled={uploading || isSmsDisabled || isExpired || isChatbotActive}
+                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+                      title={isExpired ? "Support window expired" : isChatbotActive ? "Disable Auto-Reply to send media" : "Attach Media"}
                     >
                       {uploading ? (
-                        <Loader2 className="animate-spin text-slate-400" size={18} />
+                        <Loader2 className="animate-spin text-[#667781]" size={18} />
                       ) : (
                         <Paperclip size={18} className="rotate-45" />
                       )}
@@ -1958,15 +2130,15 @@ function ConversationsPageContent() {
                           handleSendMessage()
                         }
                       }}
-                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
-                      disabled={isSmsDisabled || isExpired}
+                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
+                      disabled={isSmsDisabled || isExpired || isChatbotActive}
                       rows={1}
-                      className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-inner font-medium disabled:opacity-50 transition-all duration-200 resize-none overflow-y-auto max-h-24"
+                      className="flex-1 px-4 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
                     />
                     <button
                       onClick={handleSendMessage}
-                      disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled || isExpired}
-                      className="bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
+                      disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled || isExpired || isChatbotActive}
+                      className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white p-2.5 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 disabled:scale-100 disabled:shadow-none"
                     >
                       <Send size={16} />
                     </button>
@@ -1976,33 +2148,34 @@ function ConversationsPageContent() {
             )
           })()}
         </div>
-      ) : (
-        <div className="flex-1 bg-slate-50 dark:bg-[#090d16] flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 border-l border-slate-100 dark:border-slate-800/80">
+      ) : selectedConversation && (loading || fetchingConvs) ? (
+        <div className="flex-1 bg-[#f8f9fa] dark:bg-[#222e35] flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 border-l border-[#e9edef] dark:border-[#2a3942]">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="animate-spin text-emerald-500" size={24} />
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold tracking-wider uppercase">Loading Chat...</p>
+            <Loader2 className="animate-spin text-[#00a884]" size={24} />
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] font-semibold tracking-wider uppercase">Loading Chat...</p>
           </div>
         </div>
-      ) ) : (
-        <div className="hidden md:flex flex-1 bg-slate-50 dark:bg-[#090d16] flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 border-l border-slate-100 dark:border-slate-800/80 relative">
-          {/* Decorative background glow blobs */}
-          <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/5 dark:bg-blue-500/2 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="max-w-md text-center space-y-5 relative z-10">
-            <div className="mx-auto h-20 w-20 rounded-2xl bg-white dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-300 border border-slate-100 dark:border-slate-700 shadow-sm shadow-slate-200/50 dark:shadow-none animate-bounce duration-1000">
-              <MessageCircle size={36} className="text-emerald-500" />
+      ) : (
+        <div className="hidden md:flex flex-1 bg-[#f8f9fa] dark:bg-[#222e35] flex-col items-center justify-between p-12 border-l border-[#e9edef] dark:border-[#2a3942] relative select-none">
+          <div /> {/* Spacer to center the content vertically */}
+          <div className="max-w-md text-center space-y-6 relative z-10">
+            <div className="mx-auto h-24 w-24 rounded-full bg-emerald-500/10 dark:bg-emerald-500/5 flex items-center justify-center text-emerald-500 border border-[#00a884]/20 shadow-xs">
+              <MessageCircle size={44} className="text-[#00a884] dark:text-[#00e676]" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-slate-800 dark:text-white text-xl font-extrabold tracking-tight">WhatsApp CRM</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed max-w-sm mx-auto font-medium">
-                Send and receive messages on your WhatsApp and SMS numbers. A unified dashboard designed for sales, support, and marketing automation.
+              <h2 className="text-[#111b21] dark:text-[#e9edef] text-[28px] font-light tracking-tight">WhatsApp CRM</h2>
+              <p className="text-[14px] text-[#667781] dark:text-[#8696a0] leading-relaxed max-w-sm mx-auto font-normal">
+                Send and receive messages without keeping your phone online. Use WhatsApp CRM with AI-powered suggestions, leads conversion, and automatic ticket resolution.
               </p>
             </div>
-            <div className="pt-4 flex items-center justify-center gap-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 px-3 py-1 rounded-full w-max mx-auto border border-emerald-500/10">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+            <div className="pt-2 flex items-center justify-center gap-2 text-[11px] font-semibold text-[#00a884] dark:text-[#00e676] bg-[#e7f8f2] dark:bg-[#0b3c2d]/40 px-3 py-1 rounded-full w-max mx-auto border border-[#00a884]/20">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00a884] dark:bg-[#00e676] animate-ping" />
               <span>Realtime Gateway Active</span>
             </div>
+          </div>
+          <div className="text-xs text-[#8696a0] flex items-center gap-1 opacity-70">
+            <span>🔒</span>
+            <span>End-to-end encrypted</span>
           </div>
         </div>
       )}
@@ -2098,6 +2271,128 @@ function ConversationsPageContent() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Convert Ticket to Lead Modal */}
+      {showConvertModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <form onSubmit={handleConvertTicketToLead} className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 text-[#111b21] dark:text-white">
+            <div className="p-6 border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-1.5 font-bold">
+                <Ticket size={16} className="text-[#00a884]" />
+                Convert Ticket to Lead
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowConvertModal(null)}
+                className="text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white transition-colors p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Lead Title</label>
+                <input
+                  type="text"
+                  required
+                  value={leadForm.title}
+                  onChange={(e) => setLeadForm({ ...leadForm, title: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white"
+                  placeholder="e.g. Website Query - Goku"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Lead Value ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={leadForm.value}
+                    onChange={(e) => setLeadForm({ ...leadForm, value: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white"
+                    placeholder="e.g. 500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Priority</label>
+                  <select
+                    value={leadForm.priority}
+                    onChange={(e) => setLeadForm({ ...leadForm, priority: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white cursor-pointer"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Pipeline Stage</label>
+                <select
+                  required
+                  value={leadForm.stageId}
+                  onChange={(e) => setLeadForm({ ...leadForm, stageId: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white cursor-pointer"
+                >
+                  {pipelineStages.length === 0 ? (
+                    <option value="">No stages available</option>
+                  ) : (
+                    pipelineStages.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Assign To</label>
+                <select
+                  value={leadForm.assignedTo}
+                  onChange={(e) => setLeadForm({ ...leadForm, assignedTo: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white cursor-pointer"
+                >
+                  <option value="">Unassigned</option>
+                  {teammates.map((member) => (
+                    <option key={member.id} value={member.id}>{member.full_name || member.email}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 select-none">
+                <input
+                  type="checkbox"
+                  id="resolveTicket"
+                  checked={leadForm.resolveTicket}
+                  onChange={(e) => setLeadForm({ ...leadForm, resolveTicket: e.target.checked })}
+                  className="rounded border-[#e9edef] dark:border-[#2a3942] text-[#00a884] focus:ring-[#00a884] accent-[#00a884] cursor-pointer"
+                />
+                <label htmlFor="resolveTicket" className="text-xs font-bold text-slate-650 dark:text-slate-350 cursor-pointer">
+                  Mark this ticket as resolved automatically
+                </label>
+              </div>
+            </div>
+            <div className="p-6 bg-[#f0f2f5] dark:bg-[#1c282f] border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConvertModal(null)}
+                className="px-4 py-2 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-slate-300 rounded-xl text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={modalLoading}
+                className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/10"
+              >
+                {modalLoading && <Loader2 size={13} className="animate-spin" />}
+                <span>Create Lead</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
