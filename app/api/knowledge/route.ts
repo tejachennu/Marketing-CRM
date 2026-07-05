@@ -188,3 +188,87 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, title, content } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing article id' }, { status: 400 })
+    }
+
+    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
+    if (!title || !content) {
+      return NextResponse.json({ error: 'Missing title or content' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseClient()
+
+    // Fetch the existing record to get organizationId
+    const { data: existing, error: fetchErr } = await supabase
+      .from('knowledge_base')
+      .select('organization_id')
+      .eq('id', id)
+      .single()
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: 'FAQ item not found' }, { status: 404 })
+    }
+
+    const organizationId = existing.organization_id
+
+    // Resolve OpenAI API key (organization-level or global)
+    let openAiKey = process.env.OPENAI_API_KEY || ''
+    try {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('openai_api_key')
+        .eq('id', organizationId)
+        .single()
+      if (orgData?.openai_api_key) {
+        openAiKey = orgData.openai_api_key
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Generate vector embedding for the FAQ content
+    let embedding: number[] | null = null
+    if (openAiKey) {
+      const textToEmbed = `${title}\n${content}`
+      embedding = await generateEmbedding(textToEmbed, openAiKey)
+    }
+
+    // Update the FAQ article title and content
+    const { data, error } = await supabase
+      .from('knowledge_base')
+      .update({ title, content })
+      .eq('id', id)
+      .select()
+
+    if (error) throw error
+
+    // If we generated an embedding, update the row with it via RPC
+    if (embedding && data && data[0]) {
+      const embeddingStr = `[${embedding.join(',')}]`
+      try {
+        await supabase.rpc('update_faq_embedding', {
+          faq_id: data[0].id,
+          new_embedding: embeddingStr
+        })
+      } catch (rpcErr) {
+        console.warn('[Knowledge PATCH] RPC update_faq_embedding not available.')
+      }
+    }
+
+    return NextResponse.json({ success: true, article: data?.[0] || null })
+  } catch (error: any) {
+    console.error('[Knowledge PATCH] Error:', error)
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+  }
+}

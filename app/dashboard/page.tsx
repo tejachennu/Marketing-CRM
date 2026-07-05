@@ -1778,17 +1778,6 @@ function ConversationsPageContent() {
                     key={msg.id}
                     className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-200 group relative mb-1.5`}
                   >
-                    {/* Hover Reply Button */}
-                    <button
-                      onClick={() => setReplyingTo(msg)}
-                      className={`absolute top-1/2 -translate-y-1/2 p-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/60 rounded-full shadow-sm text-slate-400 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity z-10 ${
-                        isUser ? 'left-[-35px]' : 'right-[-35px]'
-                      }`}
-                      title="Reply"
-                    >
-                      <Reply size={12} />
-                    </button>
-
                     <div
                       id={`msg-${msg.id}`}
                       className={`max-w-[70%] sm:max-w-[450px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] transition-all duration-200 relative text-[13.5px] leading-[19px] overflow-hidden ${
@@ -1803,44 +1792,6 @@ function ConversationsPageContent() {
                           : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none'
                       }`}
                     >
-                      {/* Reply quote preview block */}
-                      {isReply && (
-                        <div 
-                          onClick={() => repliedMsg && scrollToMessage(replyId)}
-                          className={`mb-2 p-2 rounded-lg border-l-4 text-[10px] cursor-pointer transition-colors text-left ${
-                            (mediaType === 'image' || mediaType === 'video') ? 'mx-2 mt-2' : ''
-                          } ${
-                            isUser
-                              ? 'bg-white/15 border-l-white/60 text-white/90'
-                              : 'bg-slate-50 dark:bg-slate-900 border-l-slate-400 dark:border-l-slate-650 text-slate-600 dark:text-slate-300'
-                          }`}
-                        >
-                          <p className="font-bold mb-0.5 text-slate-900 dark:text-white">
-                            {repliedMsg 
-                              ? (repliedMsg.sender_type === 'user' ? 'You' : (selectedContact?.first_name || 'Contact'))
-                              : 'Message'
-                            }
-                          </p>
-                          <p className="line-clamp-2 italic">
-                            {repliedMsg 
-                              ? (repliedMsg.body 
-                                  ? (repliedMsg.body.startsWith('[reply:') 
-                                      ? repliedMsg.body.replace(/^\[reply:[^\]]+\]/, '') 
-                                      : repliedMsg.body)
-                                  : (repliedMsg.media_url 
-                                      ? (getMediaType(repliedMsg.media_url) === 'image' ? '📷 Photo'
-                                          : getMediaType(repliedMsg.media_url) === 'video' ? '🎥 Video'
-                                          : getMediaType(repliedMsg.media_url) === 'audio' ? '🎵 Voice note'
-                                          : '📄 Document')
-                                      : 'Media Attachment'
-                                    )
-                                )
-                              : 'Quoted message not found'
-                            }
-                          </p>
-                        </div>
-                      )}
-
                       {/* Media Renderers */}
                       {msg.media_url && (
                         <div className={`max-w-full relative group ${displayBody ? 'mb-1' : ''}`}>
@@ -1987,36 +1938,7 @@ function ConversationsPageContent() {
           <div ref={messagesEndRef} />
         </div>
 
-          {/* Reply Preview Area */}
-          {replyingTo && (
-            <div className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-150 dark:border-slate-850 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 border-l-4 border-l-emerald-500 z-10">
-              <div className="overflow-hidden text-left">
-                <p className="text-[10px] font-bold text-emerald-500">
-                  Replying to {replyingTo.sender_type === 'user' ? 'yourself' : (selectedContact?.first_name || 'Contact')}
-                </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[500px] italic">
-                  {replyingTo.body 
-                    ? (replyingTo.body.startsWith('[reply:') 
-                        ? replyingTo.body.replace(/^\[reply:[^\]]+\]/, '') 
-                        : replyingTo.body)
-                    : (replyingTo.media_url 
-                        ? (getMediaType(replyingTo.media_url) === 'image' ? '📷 Photo'
-                            : getMediaType(replyingTo.media_url) === 'video' ? '🎥 Video'
-                            : getMediaType(replyingTo.media_url) === 'audio' ? '🎵 Voice note'
-                            : '📄 Document')
-                        : 'Media Attachment'
-                      )
-                  }
-                </p>
-              </div>
-              <button 
-                onClick={() => setReplyingTo(null)}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
+
 
           {/* Attachment Preview Area */}
           {attachedFile && (

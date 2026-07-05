@@ -13,6 +13,7 @@ import {
   Upload, 
   X, 
   ChevronRight, 
+  ChevronLeft, 
   ArrowLeft, 
   RefreshCw, 
   Eye, 
@@ -32,7 +33,10 @@ import {
   ExternalLink,
   Copy,
   FileText,
-  Play
+  Play,
+  Send,
+  TrendingUp,
+  Target
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -111,10 +115,14 @@ export default function CampaignsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalCampaignsCount, setTotalCampaignsCount] = useState(0)
 
-  // Wizard state
   const [wizardStep, setWizardStep] = useState(1)
   const [newCampaignName, setNewCampaignName] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  
+  // Dashboard Search & Filters
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterChannel, setFilterChannel] = useState<'all' | 'whatsapp' | 'sms' | 'email'>('all')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
   
   const [audienceSource, setAudienceSource] = useState<'db' | 'excel'>('excel')
   const [excelFile, setExcelFile] = useState<File | null>(null)
@@ -414,6 +422,36 @@ export default function CampaignsPage() {
     } finally {
       setIsLoadingLogs(false)
     }
+  }
+
+  const handleDownloadLogsReport = () => {
+    if (!selectedCampaign || selectedCampaignLogs.length === 0) return
+
+    // Format log records for the spreadsheet
+    const reportData = selectedCampaignLogs.map((log) => {
+      const variables = Object.entries(log.variables_mapped || {})
+        .map(([k, v]) => `${k}:${v}`)
+        .join(', ')
+
+      return {
+        Recipient: selectedCampaign.channel === 'email' 
+          ? (log.email_address || log.phone_number || '-') 
+          : (log.phone_number || log.email_address || '-'),
+        Status: log.status,
+        'Message SID / ID': log.message_sid || '-',
+        'Variables Mapped': variables,
+        'Error / Details': log.error_message || '-',
+        'Sent At': new Date(log.created_at).toLocaleString()
+      }
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(reportData)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Delivery Logs')
+
+    // Save and download file
+    const fileName = `${selectedCampaign.name.toLowerCase().replace(/\s+/g, '_')}_delivery_logs.xlsx`
+    XLSX.writeFile(workbook, fileName)
   }
 
   // Handle Excel File Drop/Upload
@@ -742,258 +780,446 @@ export default function CampaignsPage() {
   const totalContacts = campaigns.reduce((acc, c) => acc + c.total_contacts, 0)
   const successRate = totalSent + totalFailed > 0 ? Math.round((totalSent / (totalSent + totalFailed)) * 100) : 0
 
-  return (
-    <div className="h-full flex flex-col md:flex-row bg-[#eae6df] dark:bg-[#0b141a] select-none">
-      {/* Sidebar List Section */}
-      <div className={`w-full md:w-[380px] bg-white dark:bg-[#111b21] border-r border-[#e9edef] dark:border-[#202d36] flex flex-col h-full flex-shrink-0 ${
-        selectedCampaign ? 'hidden md:flex' : 'flex'
-      }`}>
+  // Filter campaigns locally based on search query, channel selection, and status selection
+  const filteredCampaigns = campaigns.filter(c => {
+    const nameMatch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                      c.template_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const chan = c.channel || 'whatsapp'
+    const channelMatch = filterChannel === 'all' || chan === filterChannel
+    const statusMatch = filterStatus === 'all' || 
+                        (filterStatus === 'sending' && (c.status === 'PROCESSING' || c.status === 'PENDING')) ||
+                        (filterStatus === 'completed' && c.status === 'COMPLETED') ||
+                        (filterStatus === 'failed' && c.status === 'FAILED')
+    return nameMatch && channelMatch && statusMatch
+  })
+
+  // Sub-renderers for clean structure and to avoid truncation errors
+  const renderHeader = () => (
+    <div className="bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#2a3942] p-4 md:py-5 md:px-6 relative flex-shrink-0">
+      <div className="max-w-6xl mx-auto flex flex-row items-center justify-between gap-3 relative z-10">
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-2">
+            <Megaphone size={18} className="text-[#008069] dark:text-emerald-400 stroke-[2.5] shrink-0" />
+            <h1 className="text-base md:text-xl font-bold text-[#111b21] dark:text-white tracking-tight">
+              Bulk Campaigns
+            </h1>
+          </div>
+          <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+            {totalCampaigns} total campaigns · {campaigns.filter(c => c.status === 'COMPLETED').length} completed · {campaigns.filter(c => c.status === 'PROCESSING' || c.status === 'PENDING').length} active
+          </p>
+        </div>
         
-        {/* Panel Header */}
-        <div className="h-[59px] bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] flex items-center justify-between px-4">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-full bg-[#00a884]/10 flex items-center justify-center text-[#008069]">
-              <Megaphone size={18} />
-            </div>
-            <h1 className="text-base font-bold text-[#111b21] dark:text-white">Bulk Campaigns</h1>
-          </div>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="p-2 hover:bg-[#e9edef] rounded-full text-[#54656f] dark:text-[#8696a0] transition-all cursor-pointer"
-              title="Refresh campaigns"
-            >
-              <RefreshCw size={17} className={`${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-            <button 
-              onClick={startNewCampaign}
-              className="h-8 px-3 rounded-lg bg-[#00a884] hover:bg-[#008f72] text-white flex items-center gap-1.5 text-xs font-semibold shadow-sm transition-all cursor-pointer"
-            >
-              <Plus size={14} />
-              <span>Create</span>
-            </button>
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="h-9 px-3 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[#008069] dark:text-emerald-400 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer disabled:opacity-40"
+            title="Refresh campaigns"
+          >
+            <RefreshCw size={12} className={`${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Sync</span>
+          </button>
+          <button 
+            onClick={startNewCampaign}
+            className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white flex items-center gap-1.5 text-xs font-bold shadow-sm transition-all cursor-pointer hover:scale-[1.01]"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            <span>Launch Campaign</span>
+          </button>
         </div>
+      </div>
+    </div>
+  )
 
-        {/* Overview metrics card */}
-        <div className="p-4 bg-[#f8f9fa] dark:bg-[#0c1317] border-b border-[#e9edef] dark:border-[#202d36] grid grid-cols-2 gap-3">
-          <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-sm flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-[#667781] dark:text-[#8696a0]">Total Sent</span>
-            <span className="text-xl font-bold text-[#111b21] dark:text-white mt-0.5">{totalSent}</span>
-          </div>
-          <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-sm flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-[#667781] dark:text-[#8696a0]">Success Rate</span>
-            <span className="text-xl font-bold text-[#008069] dark:text-emerald-400 mt-0.5">{successRate}%</span>
-          </div>
+  const renderStatsGrid = () => (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
+        <div className="h-10 w-10 rounded-lg bg-emerald-500 flex items-center justify-center text-white shrink-0">
+          <Send size={15} />
         </div>
+        <div className="min-w-0">
+          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Delivered</span>
+          <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalSent}</p>
+        </div>
+      </div>
+      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
+        <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
+          <TrendingUp size={15} />
+        </div>
+        <div className="min-w-0">
+          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Avg Success</span>
+          <p className="text-lg font-black text-blue-600 dark:text-blue-400 leading-none mt-1">{successRate}%</p>
+        </div>
+      </div>
+      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
+        <div className="h-10 w-10 rounded-lg bg-red-500 flex items-center justify-center text-white shrink-0">
+          <AlertCircle size={15} />
+        </div>
+        <div className="min-w-0">
+          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Failed</span>
+          <p className="text-lg font-black text-red-500 dark:text-red-400 leading-none mt-1">{totalFailed}</p>
+        </div>
+      </div>
+      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
+        <div className="h-10 w-10 rounded-lg bg-slate-600 flex items-center justify-center text-white shrink-0">
+          <Target size={15} />
+        </div>
+        <div className="min-w-0">
+          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Total Dispatched</span>
+          <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalContacts}</p>
+        </div>
+      </div>
+    </div>
+  )
 
-        {/* Campaign List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-[#f5f6f6] dark:divide-[#202d36]/50 min-h-0 bg-[#f8f9fa] dark:bg-[#0c1317]">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-[#667781] dark:text-[#8696a0]">
-              <Loader2 className="animate-spin text-[#00a884] mb-2" size={24} />
-              <p className="text-xs">Loading campaign jobs...</p>
-            </div>
-          ) : campaigns.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center p-8 py-16 text-[#667781] dark:text-[#8696a0]">
-              <Megaphone className="text-[#8696a0] mb-3" size={40} />
-              <p className="font-semibold text-sm text-[#111b21] dark:text-white">No campaigns created yet</p>
-              <p className="text-xs mt-1 max-w-[200px] leading-relaxed">Broadcast Meta templates to Excel sheets or database contacts bulkily.</p>
-              <button 
-                onClick={startNewCampaign}
-                className="mt-4 px-4 py-2 bg-[#00a884] hover:bg-[#008f72] text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+  const renderFiltersBar = () => (
+    <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex-1 max-w-sm">
+        <input 
+          type="text" 
+          placeholder="Search campaigns..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full px-3 py-2 bg-slate-50 dark:bg-[#202d36]/40 border border-[#e9edef] dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] text-[#111b21] dark:text-white"
+        />
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex bg-slate-100 dark:bg-[#202d36] p-0.5 rounded-lg border border-slate-150 dark:border-slate-800">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'whatsapp', label: 'WhatsApp' },
+            { value: 'sms', label: 'SMS' },
+            { value: 'email', label: 'Email' }
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setFilterChannel(opt.value as any)}
+              className={`px-3 py-1 text-[11px] font-bold rounded transition-all cursor-pointer ${
+                filterChannel === opt.value
+                  ? 'bg-white dark:bg-[#2a3942] text-[#008069] dark:text-emerald-400 shadow-xs'
+                  : 'text-[#667781] dark:text-[#8696a0]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-2 py-1.5 bg-slate-50 dark:bg-[#202d36] border border-[#e9edef] dark:border-slate-700 rounded-lg text-xs text-[#111b21] dark:text-white font-semibold cursor-pointer"
+        >
+          <option value="all">All Statuses</option>
+          <option value="completed">Completed</option>
+          <option value="sending">Sending</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+    </div>
+  )
+
+  const renderCampaignList = () => (
+    <div className="space-y-3.5">
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl shadow-xs">
+          <Loader2 className="animate-spin text-[#00a884] mb-2" size={24} />
+          <span className="text-xs text-[#8696a0]">Loading campaign records...</span>
+        </div>
+      ) : filteredCampaigns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center p-12 py-16 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl shadow-xs">
+          <Megaphone className="text-[#8696a0] mb-3 opacity-60" size={24} />
+          <p className="font-bold text-xs text-[#111b21] dark:text-white">No campaigns match search filters</p>
+          <p className="text-[10px] mt-1 text-[#667781] dark:text-[#8696a0]">Launch a new campaign using the top right button.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {filteredCampaigns.map((c) => {
+            const isProcessing = c.status === 'PROCESSING' || c.status === 'PENDING'
+            const progressPct = c.total_contacts > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_contacts) * 100) : 0
+            
+            const channelIcon = (() => {
+              const chan = c.channel || 'whatsapp'
+              if (chan === 'email') return <Mail size={13} className="text-blue-600" />
+              if (chan === 'sms') return <MessageSquare size={13} className="text-amber-600" />
+              return <Phone size={13} className="text-[#008069]" />
+            })()
+
+            const channelBadgeColor = (() => {
+              const chan = c.channel || 'whatsapp'
+              if (chan === 'email') return 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-100 dark:border-blue-900/30'
+              if (chan === 'sms') return 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 border-amber-100 dark:border-amber-900/30'
+              return 'bg-[#e7f7f4] dark:bg-emerald-950/20 text-[#008069] border-[#00a884]/20'
+            })()
+
+            return (
+              <div 
+                key={c.id}
+                onClick={() => fetchCampaignDetails(c.id)}
+                className="bg-white dark:bg-[#1f2c34] p-3 md:p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 group"
               >
-                Launch First Campaign
-              </button>
-            </div>
-          ) : (
-            campaigns.map((c) => {
-              const isActive = selectedCampaign?.id === c.id
-              const isProcessing = c.status === 'PROCESSING' || c.status === 'PENDING'
-              
-              const channelIcon = (() => {
-                const chan = c.channel || 'whatsapp'
-                if (chan === 'email') return <Mail size={12} className="text-blue-600" />
-                if (chan === 'sms') return <MessageSquare size={12} className="text-amber-600" />
-                return <Phone size={12} className="text-[#008069]" />
-              })()
-
-              const channelLabel = (() => {
-                const chan = c.channel || 'whatsapp'
-                if (chan === 'email') return 'Email'
-                if (chan === 'sms') return 'SMS'
-                return 'WhatsApp'
-              })()
-
-              const channelBadgeColor = (() => {
-                const chan = c.channel || 'whatsapp'
-                if (chan === 'email') return 'bg-blue-50 border-blue-100'
-                if (chan === 'sms') return 'bg-amber-50 border-amber-100'
-                return 'bg-[#e7f7f4] border-[#00a884]/20'
-              })()
-              
-              return (
-                <div 
-                  key={c.id}
-                  onClick={() => fetchCampaignDetails(c.id)}
-                  className={`p-3.5 hover:bg-[#f5f6f6] dark:hover:bg-[#202d36]/50 transition-all cursor-pointer flex flex-col gap-1.5 ${
-                    isActive ? 'bg-[#f0f2f5] dark:bg-[#202d36]' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col gap-1 truncate max-w-[200px]">
-                      <h3 className="font-bold text-sm text-[#111b21] dark:text-white truncate">{c.name}</h3>
-                      <div className={`flex items-center gap-1 border self-start px-1.5 py-0.5 rounded-md ${channelBadgeColor}`}>
-                        {channelIcon}
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#54656f] dark:text-[#8696a0]">{channelLabel}</span>
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      c.status === 'COMPLETED' ? 'bg-[#e7f7f4] text-[#008069]' :
-                      c.status === 'PROCESSING' ? 'bg-amber-50 text-amber-600 animate-pulse' :
-                      c.status === 'FAILED' ? 'bg-red-50 text-red-600' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {c.status}
-                    </span>
+                <div className="flex-1 min-w-0 flex items-start gap-2.5">
+                  <div className={`h-8 w-8 md:h-9 md:w-9 rounded-lg flex items-center justify-center shrink-0 border ${channelBadgeColor}`}>
+                    {channelIcon}
                   </div>
-
-                  <p className="text-xs text-[#667781] dark:text-[#8696a0] truncate">Template: <span className="font-medium text-[#54656f] dark:text-[#8696a0]">{c.template_name}</span></p>
-                  
-                  {/* Progress bar */}
-                  <div className="mt-1 flex flex-col gap-1">
-                    <div className="flex justify-between text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
-                      <span>Progress: {c.sent_count + c.failed_count} / {c.total_contacts}</span>
-                      {c.failed_count > 0 && <span className="text-red-500">{c.failed_count} failed</span>}
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-xs text-[#111b21] dark:text-white truncate group-hover:text-[#008069] dark:group-hover:text-emerald-400 transition-colors">{c.name}</h3>
+                    <div className="flex flex-wrap items-center gap-x-1.5 mt-0.5 text-[9px] md:text-[10px] text-[#8696a0] font-semibold">
+                      <span>Template: <strong className="text-[#54656f] dark:text-[#8696a0]">{c.template_name}</strong></span>
+                      <span>•</span>
+                      <span>{new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
-                    <div className="h-1.5 bg-[#e9edef] dark:bg-[#202d36] rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-500 ${c.status === 'FAILED' ? 'bg-red-500' : 'bg-[#00a884]'}`}
-                        style={{ width: `${c.total_contacts > 0 ? ((c.sent_count + c.failed_count) / c.total_contacts) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
- 
-                  <div className="flex justify-between items-center text-[10px] text-[#8696a0] mt-1">
-                    <span>{new Date(c.created_at).toLocaleDateString()}</span>
-                    <span>Sent: <span className="text-[#008069] dark:text-emerald-400 font-bold">{c.sent_count}</span></span>
                   </div>
                 </div>
-              )
-            })
-          )}
+
+                <div className="w-full md:w-56 shrink-0 space-y-1">
+                  <div className="flex justify-between items-center text-[9px] text-[#667781] dark:text-[#8696a0] font-bold">
+                    <span>Dispatch progress:</span>
+                    <span className="font-mono">{c.sent_count + c.failed_count} / {c.total_contacts} ({progressPct}%)</span>
+                  </div>
+                  <div className="h-1.5 bg-[#e9edef] dark:bg-[#202d36] rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        c.status === 'FAILED' ? 'bg-red-500' :
+                        isProcessing ? 'bg-amber-400' :
+                        'bg-[#008069]'
+                      }`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between md:justify-end gap-3 shrink-0">
+                  <span className={`text-[9px] font-black px-2 py-0.5 md:py-1 rounded border ${
+                    c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-100 dark:border-emerald-900/30' :
+                    c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-100 dark:border-amber-900/30 animate-pulse' :
+                    c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-150 dark:border-red-900/30' :
+                    'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-150'
+                  }`}>
+                    {c.status}
+                  </span>
+                  
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      try {
+                        const res = await fetch(`/api/campaigns?id=${c.id}`)
+                        const data = await res.json()
+                        if (data.success && data.logs) {
+                          const reportData = data.logs.map((log: any) => {
+                            const variables = Object.entries(log.variables_mapped || {})
+                              .map(([k, v]) => `${k}:${v}`)
+                              .join(', ')
+                            return {
+                              Recipient: c.channel === 'email' 
+                                ? (log.email_address || log.phone_number || '-') 
+                                : (log.phone_number || log.email_address || '-'),
+                              Status: log.status,
+                              'Message SID / ID': log.message_sid || '-',
+                              'Variables Mapped': variables,
+                              'Error / Details': log.error_message || '-',
+                              'Sent At': new Date(log.created_at).toLocaleString()
+                            }
+                          })
+                          const worksheet = XLSX.utils.json_to_sheet(reportData)
+                          const workbook = XLSX.utils.book_new()
+                          XLSX.utils.book_append_sheet(workbook, worksheet, 'Logs')
+                          XLSX.writeFile(workbook, `${c.name.toLowerCase().replace(/\s+/g, '_')}_report.xlsx`)
+                        }
+                      } catch (err) {
+                        console.error('Error downloading log report from card:', err)
+                      }
+                    }}
+                    className="h-7 md:h-8 w-7 md:w-8 rounded border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#8696a0] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
+                    title="Download Excel Report"
+                  >
+                    <FileSpreadsheet size={12} className="text-[#008069] dark:text-emerald-400" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      fetchCampaignDetails(c.id)
+                    }}
+                    className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] text-[9px] md:text-[10px] font-bold text-[#54656f] dark:text-[#8696a0] flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Eye size={11} className="md:size-3" />
+                    <span>Stats</span>
+                  </button>
+                </div>
+
+              </div>
+            )
+          })}
         </div>
- 
-        {/* Pagination Footer */}
-        {totalPages > 1 && (
-          <div className="h-[52px] bg-[#f0f2f5] dark:bg-[#111b21] border-t border-[#e9edef] dark:border-[#202d36] flex items-center justify-between px-4 flex-shrink-0 select-none">
-            <span className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0]">
-              Page {currentPage} of {totalPages} ({totalCampaignsCount})
-            </span>
+      )}
+    </div>
+  )
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null
+
+    const pageNumbers = []
+    const maxVisiblePages = 5
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1)
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i)
+    }
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
+        <div className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0]">
+          Showing <span className="text-[#111b21] dark:text-white">{(currentPage - 1) * 10 + 1}</span> to{' '}
+          <span className="text-[#111b21] dark:text-white">{Math.min(currentPage * 10, totalCampaignsCount)}</span> of{' '}
+          <span className="text-[#111b21] dark:text-white">{totalCampaignsCount}</span> campaigns
+        </div>
+        
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={currentPage === 1}
+            onClick={() => fetchCampaigns(currentPage - 1)}
+            className="h-8 w-8 flex items-center justify-center rounded-lg border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+            title="Previous page"
+          >
+            <ChevronLeft size={14} />
+          </button>
+
+          {startPage > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => fetchCampaigns(1)}
+                className={`h-8 px-3 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  currentPage === 1
+                    ? 'bg-[#008069] text-white shadow-xs'
+                    : 'border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#8696a0]'
+                }`}
+              >
+                1
+              </button>
+              {startPage > 2 && (
+                <span className="text-[11px] font-bold text-[#8696a0] px-1 select-none">...</span>
+              )}
+            </>
+          )}
+
+          {pageNumbers.map((page) => (
+            <button
+              key={page}
+              type="button"
+              onClick={() => fetchCampaigns(page)}
+              className={`h-8 w-8 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                currentPage === page
+                  ? 'bg-[#008069] text-white shadow-xs font-black'
+                  : 'border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#8696a0]'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+
+          {endPage < totalPages && (
+            <>
+              {endPage < totalPages - 1 && (
+                <span className="text-[11px] font-bold text-[#8696a0] px-1 select-none">...</span>
+              )}
+              <button
+                type="button"
+                onClick={() => fetchCampaigns(totalPages)}
+                className={`h-8 px-3 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                  currentPage === totalPages
+                    ? 'bg-[#008069] text-white shadow-xs'
+                    : 'border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#8696a0]'
+                }`}
+              >
+                {totalPages}
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            disabled={currentPage === totalPages}
+            onClick={() => fetchCampaigns(currentPage + 1)}
+            className="h-8 w-8 flex items-center justify-center rounded-lg border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+            title="Next page"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const renderDetailsModal = () => {
+    if (!selectedCampaign) return null
+
+    return (
+      <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-4 md:p-6 select-none animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-[#1c282f] rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 border dark:border-[#2a3942]">
+          
+          {/* Modal Header */}
+          <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] border-b border-[#e9edef] dark:border-[#2a3942] px-5 py-4 flex items-center justify-between flex-shrink-0 relative">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#008069] via-[#00a884] to-[#00c49a]" />
+            <div className="min-w-0">
+              <h2 className="text-base font-extrabold text-[#111b21] dark:text-white truncate leading-tight">{selectedCampaign.name}</h2>
+              <div className="flex flex-wrap items-center gap-x-2 mt-1.5 text-[10px] font-bold text-[#8696a0]">
+                <span>{new Date(selectedCampaign.created_at).toLocaleString()}</span>
+                <span>•</span>
+                <span className="uppercase text-[#008069]">{(selectedCampaign.channel || 'whatsapp')}</span>
+                {selectedCampaign.sender && (
+                  <>
+                    <span>•</span>
+                    <span className="font-mono truncate max-w-[150px]">sender: {selectedCampaign.sender}</span>
+                  </>
+                )}
+              </div>
+            </div>
             <div className="flex items-center gap-1.5">
               <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => fetchCampaigns(currentPage - 1)}
-                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+                onClick={() => fetchCampaignDetails(selectedCampaign.id)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-[#8696a0] cursor-pointer transition-colors"
+                title="Reload data"
               >
-                Prev
+                <RefreshCw size={14} />
               </button>
-              <button
-                type="button"
-                disabled={currentPage === totalPages}
-                onClick={() => fetchCampaigns(currentPage + 1)}
-                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] disabled:opacity-40 transition-all cursor-pointer text-[#54656f] dark:text-[#8696a0] disabled:cursor-not-allowed"
+              <button 
+                onClick={() => setSelectedCampaign(null)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-[#54656f] dark:text-[#8696a0] cursor-pointer transition-colors"
               >
-                Next
+                <X size={16} />
               </button>
             </div>
           </div>
-        )}
-      </div>
- 
-      {/* Main Details Panel */}
-      <div className={`flex-1 bg-[#f8f9fa] dark:bg-[#0c1317] flex flex-col h-full overflow-y-auto scrollbar-thin ${
-        selectedCampaign ? 'flex' : 'hidden md:flex'
-      }`}>
-        {selectedCampaign ? (
-          <div className="flex flex-col min-h-full">
-            {/* Header Details */}
-            <div className="bg-[#f0f2f5] dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] p-4 flex gap-3 items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSelectedCampaign(null)}
-                  className="md:hidden p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 mr-1"
-                  title="Back to campaigns"
-                >
-                  <ArrowLeft size={18} />
-                </button>
-                <div>
-                  <h2 className="text-base font-bold text-[#111b21] dark:text-white leading-tight">{selectedCampaign.name}</h2>
-                <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <span className="text-xs text-[#667781] dark:text-[#8696a0]">
-                    Launched on {new Date(selectedCampaign.created_at).toLocaleString()}
-                  </span>
-                  <span className="text-xs text-[#8696a0]">•</span>
-                  <span className="text-xs text-[#54656f] dark:text-[#8696a0] font-semibold">
-                    Channel: <span className="text-[#111b21] dark:text-white font-bold uppercase">{selectedCampaign.channel || 'whatsapp'}</span>
-                  </span>
-                  {selectedCampaign.sender && (
-                    <>
-                      <span className="text-xs text-[#8696a0]">•</span>
-                      <span className="text-xs text-[#54656f] dark:text-[#8696a0] font-semibold">
-                        Sender: <span className="text-[#111b21] dark:text-white font-mono">{selectedCampaign.sender}</span>
-                      </span>
-                    </>
-                  )}
-                  {selectedCampaign.subject && (
-                    <>
-                      <span className="text-xs text-[#8696a0]">•</span>
-                      <span className="text-xs text-[#54656f] dark:text-[#8696a0] font-semibold text-blue-600">
-                        Subject: <span className="text-[#111b21] dark:text-white italic font-bold">"{selectedCampaign.subject}"</span>
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  selectedCampaign.status === 'COMPLETED' ? 'bg-[#e7f7f4] text-[#008069]' :
-                  selectedCampaign.status === 'PROCESSING' ? 'bg-amber-50 text-amber-600' :
-                  selectedCampaign.status === 'FAILED' ? 'bg-red-50 text-red-600' :
-                  'bg-gray-100 text-gray-600'
-                }`}>
-                  {selectedCampaign.status}
-                </span>
-                <button
-                  onClick={() => fetchCampaignDetails(selectedCampaign.id)}
-                  className="p-2 hover:bg-[#e9edef] rounded-full text-[#54656f] dark:text-[#8696a0]"
-                  title="Reload details"
-                >
-                  <RefreshCw size={15} />
-                </button>
-              </div>
-            </div>
 
-            {/* Campaign Summary & Metrics */}
-            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] flex-shrink-0">
-              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Total Targets</div>
-                <div className="text-2xl font-black text-[#111b21] dark:text-white mt-1">{selectedCampaign.total_contacts}</div>
+          {/* Scrollable contents */}
+          <div className="flex-1 overflow-y-auto space-y-4 p-5 pb-8 scrollbar-thin bg-slate-50/35 dark:bg-[#121b22]/20">
+            
+            {/* Modal Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
+                <div className="text-[8px] font-black uppercase text-[#8696a0]">Targets</div>
+                <div className="text-base font-black text-[#111b21] dark:text-white mt-1">{selectedCampaign.total_contacts}</div>
               </div>
-              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[#008069] dark:text-emerald-400">Successfully Sent</div>
-                <div className="text-2xl font-black text-[#008069] dark:text-emerald-400 mt-1">{selectedCampaign.sent_count}</div>
+              <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
+                <div className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400">Sent</div>
+                <div className="text-base font-black text-[#008069] dark:text-emerald-400 mt-1">{selectedCampaign.sent_count}</div>
               </div>
-              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-red-500 dark:text-red-400">Dispatch Failed</div>
-                <div className="text-2xl font-black text-red-500 dark:text-red-400 mt-1">{selectedCampaign.failed_count}</div>
+              <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
+                <div className="text-[8px] font-black uppercase text-red-500">Failed</div>
+                <div className="text-base font-black text-red-500 mt-1">{selectedCampaign.failed_count}</div>
               </div>
-              <div className="bg-[#f8f9fa] dark:bg-[#1f2c34] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942]">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Delivery Success</div>
-                <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">
+              <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
+                <div className="text-[8px] font-black uppercase text-blue-600 dark:text-blue-400">Success</div>
+                <div className="text-base font-black text-blue-600 dark:text-blue-400 mt-1">
                   {selectedCampaign.total_contacts > 0 
                     ? Math.round((selectedCampaign.sent_count / selectedCampaign.total_contacts) * 100) 
                     : 0}%
@@ -1001,125 +1227,178 @@ export default function CampaignsPage() {
               </div>
             </div>
 
-            {/* Template Body Card */}
-            <div className="p-4 bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#202d36] flex-shrink-0">
-              <div className="flex justify-between items-center max-w-2xl">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Template body sent</span>
+            {/* Message Content Preview */}
+            <div className="p-4 bg-white dark:bg-[#1f2c34] rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
+              <div className="flex justify-between items-center mb-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#667781] dark:text-[#8696a0]">
+                  <FileText size={14} className="text-[#00a884]" />
+                  <span>MESSAGE CONTENT</span>
+                </div>
                 {selectedCampaign.channel === 'email' && /<[a-z][\s\S]*>/i.test(selectedCampaign.template_body || '') && (
-                  <div className="flex bg-[#f0f2f5] dark:bg-[#111b21] p-0.5 rounded-lg border border-[#e9edef] dark:border-[#2a3942]">
+                  <div className="flex bg-[#f0f2f5] dark:bg-[#202d36] p-0.5 rounded-lg border border-[#e9edef] dark:border-[#2a3942]">
                     <button
                       type="button"
                       onClick={() => setDetailsPreviewMode('preview')}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded transition-all cursor-pointer ${
                         detailsPreviewMode === 'preview'
-                          ? 'bg-white text-[#111b21] dark:text-white shadow-sm'
-                          : 'text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:text-white'
+                          ? 'bg-white dark:bg-slate-700 text-[#111b21] dark:text-white shadow-xs'
+                          : 'text-[#667781] dark:text-[#8696a0]'
                       }`}
                     >
-                      Rendered Preview
+                      Preview
                     </button>
                     <button
                       type="button"
                       onClick={() => setDetailsPreviewMode('raw')}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded transition-all cursor-pointer ${
                         detailsPreviewMode === 'raw'
-                          ? 'bg-white text-[#111b21] dark:text-white shadow-sm'
-                          : 'text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:text-white'
+                          ? 'bg-white dark:bg-slate-700 text-[#111b21] dark:text-white shadow-xs'
+                          : 'text-[#667781] dark:text-[#8696a0]'
                       }`}
                     >
-                      Raw Code
+                      HTML
                     </button>
                   </div>
                 )}
               </div>
+
               {selectedCampaign.channel === 'email' && /<[a-z][\s\S]*>/i.test(selectedCampaign.template_body || '') && detailsPreviewMode === 'preview' ? (
-                <div className="mt-1.5 border border-[#e9edef] dark:border-[#2a3942] rounded-xl overflow-hidden bg-white dark:bg-slate-900 max-w-2xl shadow-sm">
+                <div className="border border-[#e9edef] dark:border-[#2a3942] rounded-lg overflow-hidden bg-white dark:bg-slate-900 max-w-full shadow-inner">
                   <iframe
                     srcDoc={selectedCampaign.template_body}
                     title="Email Template Preview"
-                    className="w-full h-[400px] border-0"
+                    className="w-full h-60 border-0"
                     sandbox="allow-same-origin"
                   />
                 </div>
+              ) : selectedCampaign.channel === 'whatsapp' ? (
+                <div className="flex justify-start">
+                  <div className="bg-[#efeae2] dark:bg-[#0b141a]/60 p-4 rounded-xl border border-emerald-100 dark:border-emerald-950/20 max-w-lg w-full shadow-inner relative">
+                    <div className="bg-white dark:bg-[#1f2c34] rounded-lg p-3 text-xs leading-relaxed text-[#111b21] dark:text-white shadow-sm relative rounded-tl-none font-sans max-w-[90%]">
+                      <p className="whitespace-pre-wrap break-words">{selectedCampaign.template_body}</p>
+                      <div className="text-[8px] text-[#8696a0] text-right mt-1 font-semibold">
+                        {new Date(selectedCampaign.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <div className="mt-1.5 p-3 rounded-lg bg-[#f0f2f5] dark:bg-[#1c282f] border border-[#e9edef] dark:border-[#2a3942] text-xs font-mono text-[#54656f] dark:text-[#8696a0] max-w-2xl whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
+                <div className="p-3 rounded-lg bg-[#f8f9fa] dark:bg-[#1c282f] border border-[#e9edef] dark:border-[#2a3942] text-xs font-mono text-[#54656f] dark:text-[#8696a0] whitespace-pre-wrap max-h-40 overflow-y-auto shadow-inner">
                   {selectedCampaign.template_body}
                 </div>
               )}
             </div>
 
-            {/* Logs Table */}
-            <div className="p-4 flex flex-col bg-[#f8f9fa] dark:bg-[#0c1317]">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0] mb-2">Detailed Delivery Logs</h3>
-              <div className="bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#202d36] rounded-xl overflow-x-auto shadow-sm">
+            {/* Delivery Logs Table */}
+            <div className="p-4 bg-white dark:bg-[#1f2c34] rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col">
+              <div className="flex items-center justify-between mb-3 text-xs font-bold text-[#667781] dark:text-[#8696a0]">
+                <div className="flex items-center gap-2">
+                  <Database size={14} className="text-[#00a884]" />
+                  <span>DELIVERY LOGS</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedCampaignLogs.length > 0 && (
+                    <button
+                      onClick={handleDownloadLogsReport}
+                      className="h-7 px-2.5 rounded border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/25 hover:bg-[#e7f7f4] dark:hover:bg-[#008069]/10 text-[9px] md:text-[10px] font-bold text-[#008069] dark:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Export logs to Excel"
+                    >
+                      <FileSpreadsheet size={11} />
+                      <span>Download Report</span>
+                    </button>
+                  )}
+                  <span className="text-[10px] bg-slate-100 dark:bg-[#2a3942] px-2 py-0.5 rounded text-[#54656f] dark:text-[#8696a0]">
+                    {selectedCampaignLogs.length} messages
+                  </span>
+                </div>
+              </div>
+
+              <div className="border border-[#e9edef] dark:border-[#2a3942] rounded-lg overflow-hidden shadow-xs">
                 {isLoadingLogs ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-[#667781] dark:text-[#8696a0]">
-                    <Loader2 className="animate-spin text-[#00a884] mb-2" />
-                    <span className="text-xs">Loading logs...</span>
+                  <div className="flex flex-col items-center justify-center h-40 bg-[#f8f9fa] dark:bg-[#202d36]/20">
+                    <Loader2 className="animate-spin text-[#00a884] mb-2" size={20} />
+                    <span className="text-xs text-[#8696a0]">Loading log entries...</span>
                   </div>
                 ) : selectedCampaignLogs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-[#8696a0] text-xs">
-                    No logs found. Campaign logs are generated as messages go out.
+                  <div className="flex flex-col items-center justify-center h-32 bg-[#f8f9fa] dark:bg-[#202d36]/20 text-[#8696a0] text-xs">
+                    No logs found.
                   </div>
                 ) : (
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="sticky top-0 bg-[#f0f2f5] dark:bg-[#1c282f] border-b border-[#e9edef] dark:border-[#2a3942] text-[#54656f] dark:text-[#8696a0] font-bold">
-                      <tr>
-                        <th className="p-3">Recipient</th>
-                        <th className="p-3">Status</th>
-                        <th className="p-3">Message SID / ID</th>
-                        <th className="p-3">Mapped Variables</th>
-                        <th className="p-3">Error / Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f5f6f6] dark:divide-[#2a3942]/60">
-                      {selectedCampaignLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#1f2c34] transition-all">
-                          <td className="p-3 font-semibold text-[#111b21] dark:text-white">
-                            {selectedCampaign.channel === 'email' 
-                              ? (log.email_address || log.phone_number || '-') 
-                              : (log.phone_number || log.email_address || '-')}
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-emerald-950/30 text-[#008069] dark:text-emerald-400' :
-                              log.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400' :
-                              'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400'
-                            }`}>
-                              {log.status}
-                            </span>
-                          </td>
-                          <td className="p-3 text-[#54656f] dark:text-[#8696a0] font-mono select-text">{log.message_sid || '-'}</td>
-                          <td className="p-3">
-                            <div className="flex flex-wrap gap-1">
-                              {Object.entries(log.variables_mapped).map(([k, v]) => (
-                                <span key={k} className="bg-[#f0f2f5] dark:bg-[#2a3942] px-1.5 py-0.5 rounded text-[10px] border border-[#e9edef] dark:border-[#2a3942]">
-                                  {k}: {v}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="p-3 text-red-555 dark:text-red-400 max-w-[200px] truncate" title={log.error_message || ''}>
-                            {log.error_message || '-'}
-                          </td>
+                  <div className="overflow-x-auto max-h-60 overflow-y-auto scrollbar-thin">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-[#f8f9fa] dark:bg-[#202d36] border-b border-[#e9edef] dark:border-[#2a3942] text-[#667781] dark:text-[#8696a0] font-bold sticky top-0 z-10">
+                          <th className="p-2.5 font-bold">Recipient</th>
+                          <th className="p-2.5 font-bold">Status</th>
+                          <th className="p-2.5 font-bold">Variables</th>
+                          <th className="p-2.5 font-bold">Details</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#f5f6f6] dark:divide-[#2a3942]/65 bg-white dark:bg-[#1f2c34]">
+                        {selectedCampaignLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-[#f8f9fa]/50 dark:hover:bg-[#2a3942]/20">
+                            <td className="p-2.5 font-bold text-[#111b21] dark:text-white truncate max-w-[140px]">
+                              {selectedCampaign.channel === 'email' 
+                                ? (log.email_address || log.phone_number || '-') 
+                                : (log.phone_number || log.email_address || '-')}
+                            </td>
+                            <td className="p-2.5">
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[9px] ${
+                                log.status === 'SENT' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-[#008069]' : 'bg-red-50 dark:bg-red-950/20 text-red-650'
+                              }`}>
+                                {log.status}
+                              </span>
+                            </td>
+                            <td className="p-2.5">
+                              <div className="flex flex-wrap gap-1 max-w-[160px]">
+                                {Object.entries(log.variables_mapped).map(([k, v]) => (
+                                  <span key={k} className="bg-slate-50 dark:bg-slate-850 px-1 py-0.5 rounded text-[8px] border border-slate-100 dark:border-slate-800 text-[#54656f] dark:text-[#8696a0] font-bold font-mono">
+                                    {k}:{String(v)}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-red-500 max-w-[120px] truncate" title={log.error_message || ''}>
+                              {log.error_message || log.message_sid || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
+
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-1 text-center p-8 text-[#667781] dark:text-[#8696a0]">
-            <Megaphone size={60} className="text-[#8696a0] mb-4 opacity-50" />
-            <h2 className="text-base font-bold text-[#111b21] dark:text-white">Broadcast Campaigns Summary</h2>
-            <p className="text-xs mt-1 max-w-[360px] leading-relaxed">
-              Select a campaign from the left column to view dynamic placeholders mapping, total recipient details, error codes, and live stats.
-            </p>
+
+          {/* Modal Footer */}
+          <div className="px-5 py-4 bg-[#f0f2f5] dark:bg-[#1f2c34] border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end flex-shrink-0">
+            <button
+              onClick={() => setSelectedCampaign(null)}
+              className="px-4 py-2 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#e9edef] rounded-xl text-xs font-bold transition-all cursor-pointer border border-[#e9edef] dark:border-[#2a3942]"
+            >
+              Close
+            </button>
           </div>
-        )}
+
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] overflow-hidden relative select-none">
+      {renderHeader()}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0 bg-slate-50/50 dark:bg-[#0c1317]">
+        <div className="max-w-6xl mx-auto space-y-6">
+          {renderStatsGrid()}
+          {renderFiltersBar()}
+          {renderCampaignList()}
+          {renderPagination()}
+        </div>
+      </div>
+      {renderDetailsModal()}
 
       {/* Creation Wizard Modal */}
       {isCreateOpen && (

@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
 import { getRoleDisplay, ASSIGNABLE_ROLES, canManageTeam, isManager } from '@/lib/rbac'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
@@ -70,6 +70,9 @@ export default function SettingsPage() {
   const [loadingArticles, setLoadingArticles] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
   const [manualContent, setManualContent] = useState('')
+  const [editingArticle, setEditingArticle] = useState<any | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
@@ -390,6 +393,34 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('Delete article error:', err)
       showNotification('error', 'Failed to delete article.', 'Delete Failed')
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editingArticle || !editTitle.trim() || !editContent.trim() || !user) return
+    setActionLoading(true)
+    try {
+      const res = await fetch('/api/knowledge', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingArticle.id,
+          title: editTitle.trim(),
+          content: editContent.trim()
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update FAQ')
+      setEditingArticle(null)
+      setEditTitle('')
+      setEditContent('')
+      showNotification('success', 'FAQ successfully updated in knowledge base!', 'FAQ Updated')
+      await loadArticles(user.organization_id)
+    } catch (err: any) {
+      console.error('Update FAQ error:', err)
+      showNotification('error', err.message || 'Failed to update FAQ.', 'Error Updating FAQ')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -1730,13 +1761,26 @@ export default function SettingsPage() {
                           {new Date(art.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-3.5 text-center">
-                          <button
-                            onClick={() => handleDeleteArticle(art.id)}
-                            className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingArticle(art)
+                                setEditTitle(art.title || '')
+                                setEditContent(art.content || '')
+                              }}
+                              className="p-1 text-[#008069] dark:text-emerald-400 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
+                              title="Edit"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteArticle(art.id)}
+                              className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2156,6 +2200,61 @@ export default function SettingsPage() {
               >
                 <Moon size={32} className={theme === 'dark' ? 'text-indigo-400' : 'text-[#667781] dark:text-[#8696a0]'} />
                 <span className={`text-xs font-bold ${theme === 'dark' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Dark Mode</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Knowledge Article Modal */}
+      {editingArticle && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 text-[#111b21] dark:text-white">
+            <div className="p-6 border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Edit FAQ / Policy</h3>
+              <button
+                onClick={() => setEditingArticle(null)}
+                className="text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white transition-colors p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg"
+              >
+                <Plus className="rotate-45" size={16} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Question or Title</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Answer or Content</label>
+                <textarea
+                  rows={6}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
+                />
+              </div>
+            </div>
+            <div className="p-6 bg-[#f0f2f5] dark:bg-[#1f2c34]/40 border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end gap-3 select-none">
+              <button
+                type="button"
+                onClick={() => setEditingArticle(null)}
+                className="h-9 px-4 rounded-lg border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-[#2a3942] text-xs font-bold text-[#54656f] dark:text-[#8696a0] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={actionLoading || !editTitle.trim() || !editContent.trim()}
+                className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {actionLoading && <Loader2 size={13} className="animate-spin" />}
+                <span>Save Changes</span>
               </button>
             </div>
           </div>

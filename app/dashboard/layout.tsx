@@ -6,7 +6,7 @@ import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import Link from 'next/link'
 import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
@@ -1095,12 +1095,14 @@ export default function DashboardLayout({
 
            {/* Global AI Assistant Drawer */}
           {seeAll && (
-            <AssistantDrawer
-              isOpen={showAssistant}
-              onClose={() => setShowAssistant(false)}
-              orgId={orgId || ''}
-              orgName={orgName}
-            />
+            <Suspense fallback={null}>
+              <AssistantDrawer
+                isOpen={showAssistant}
+                onClose={() => setShowAssistant(false)}
+                orgId={orgId || ''}
+                orgName={orgName}
+              />
+            </Suspense>
           )}
 
           {/* Support Tickets Drawer */}
