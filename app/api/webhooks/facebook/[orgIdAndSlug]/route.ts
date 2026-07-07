@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -416,7 +417,12 @@ export async function POST(
     ) {
       console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
       try {
-        // 1. Generate query embedding
+        // 1. Expand query with synonym dictionary for better matching
+        const synonyms: SynonymGroup[] = orgData.service_synonyms || []
+        const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(messageBody, synonyms)
+        console.log(`[Facebook Webhook Chatbot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
+
+        // 2. Generate query embedding (using expanded vector query)
         const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
           method: 'POST',
           headers: {
@@ -425,7 +431,7 @@ export async function POST(
           },
           body: JSON.stringify({
             model: 'text-embedding-3-small',
-            input: messageBody.substring(0, 8000)
+            input: vectorQuery.substring(0, 8000)
           })
         })
 
@@ -436,20 +442,66 @@ export async function POST(
           if (embedding) {
             const embeddingStr = `[${embedding.join(',')}]`
 
-            // 2. Query match_faqs similarity search
-            const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
-              query_embedding: embeddingStr,
-              match_threshold: 0.60,
-              match_count: 3,
-              org_id: orgId
-            })
+            // 2. Query match_faqs similarity search and fallback keyword search in parallel
+            let faqs: { title: string; content: string }[] = []
+            try {
+              let vectorFaqs: any[] = []
+              let keywordFaqs: any[] = []
 
-            if (rpcError) {
-              console.error('[Facebook Webhook Chatbot] match_faqs RPC error:', rpcError)
+              // Try vector similarity match
+              try {
+                const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
+                  query_embedding: embeddingStr,
+                  match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
+                  match_count: 3,
+                  org_id: orgId
+                })
+                if (rpcError) {
+                  console.error('[Facebook Webhook Chatbot] match_faqs RPC error:', rpcError)
+                } else {
+                  vectorFaqs = matchedFaqs || []
+                }
+              } catch (vecErr) {
+                console.error('[Facebook Webhook Chatbot] Vector RPC error:', vecErr)
+              }
+
+              // Always fetch keyword matches as well to build a hybrid pool using keywordQuery
+              try {
+                keywordFaqs = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
+              } catch (kwErr) {
+                console.error('[Facebook Webhook Chatbot] Keyword fallback search error:', kwErr)
+              }
+
+              // Combine and deduplicate
+              const merged: any[] = []
+              const seen = new Set<string>()
+
+              for (const f of vectorFaqs) {
+                const titleLower = f.title.toLowerCase().trim()
+                if (!seen.has(titleLower)) {
+                  seen.add(titleLower)
+                  merged.push({ title: f.title, content: f.content })
+                }
+              }
+
+              for (const f of keywordFaqs) {
+                const titleLower = f.title.toLowerCase().trim()
+                if (!seen.has(titleLower)) {
+                  seen.add(titleLower)
+                  merged.push({ title: f.title, content: f.content })
+                }
+              }
+
+              faqs = merged.slice(0, 3)
+              console.log(`[Facebook Webhook Chatbot] Hybrid search merged ${faqs.length} FAQs (vector: ${vectorFaqs.length}, keyword: ${keywordFaqs.length})`)
+            } catch (err) {
+              console.error('[Facebook Webhook Chatbot] Search failed, falling back to simple keyword search:', err)
+              try {
+                faqs = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
+              } catch (kwFallbackErr) {
+                console.error('[Facebook Webhook Chatbot] Ultimate keyword fallback failed:', kwFallbackErr)
+              }
             }
-
-            const faqs = matchedFaqs || []
-            console.log(`[Facebook Webhook Chatbot] Found ${faqs.length} matching FAQs for auto-reply`)
 
             // 3. Format matched context
             const formattedContext = faqs.map((faq: any, i: number) => {
@@ -474,12 +526,22 @@ export async function POST(
 
             console.log(`[Facebook Webhook Chatbot] Including ${chatHistory.length} previous messages as context`)
 
+            // Context-filter synonyms for terminology note
+            const faqsText = faqs.map((f: any) => `${f.title} ${f.content}`).join(' ')
+            const activeRelationships = getActiveSynonymRelationships(messageBody || '', faqsText, synonyms)
+            
+            let synonymContext = ''
+            if (activeRelationships.length > 0) {
+              synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (Use this to match customer terms to FAQ terms):
+${activeRelationships.map(r => `- ${r}`).join('\n')}`
+            }
+
             // 5. Construct System Prompt
             const basePrompt = orgData.chatbot_base_prompt || DEFAULT_BASE_PROMPT
             const systemPrompt = `${basePrompt}
 
 MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
-${formattedContext || '(No matching FAQs found in the knowledge base)'}
+${formattedContext || '(No matching FAQs found in the knowledge base)'}${synonymContext}
 
 CONVERSATION HISTORY:
 The messages below are the recent conversation between you (assistant) and the customer (user).
@@ -678,4 +740,86 @@ You MUST respond in JSON format. The JSON object must contain two keys:
     console.error('[Facebook Webhook] POST Webhook error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+async function fallbackKeywordSearch(
+  supabase: any,
+  queryText: string,
+  orgId: string
+): Promise<{ title: string; content: string }[]> {
+  try {
+    // 1. Search title column first (since it matches user question headers directly)
+    const { data: titleMatches } = await supabase
+      .from('knowledge_base')
+      .select('title, content')
+      .eq('organization_id', orgId)
+      .textSearch('title', queryText, { config: 'english', type: 'websearch' })
+      .limit(3)
+
+    // 2. Search content column (for detail matches)
+    const { data: contentMatches } = await supabase
+      .from('knowledge_base')
+      .select('title, content')
+      .eq('organization_id', orgId)
+      .textSearch('content', queryText, { config: 'english', type: 'websearch' })
+      .limit(3)
+
+    // 3. Combine and deduplicate, prioritizing title matches
+    const merged: any[] = []
+    const seen = new Set<string>()
+
+    if (titleMatches) {
+      for (const item of titleMatches) {
+        const titleLower = item.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({ title: item.title, content: item.content })
+        }
+      }
+    }
+
+    if (contentMatches) {
+      for (const item of contentMatches) {
+        const titleLower = item.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({ title: item.title, content: item.content })
+        }
+      }
+    }
+
+    if (merged.length > 0) {
+      return merged.slice(0, 3)
+    }
+  } catch (err) {
+    console.error('[Keyword Search] Websearch failed, trying ILIKE:', err)
+  }
+
+  // 4. Final fallback: ILIKE on both title and content
+  try {
+    const rawWords = queryText
+      .replace(/OR/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2)
+
+    if (rawWords.length > 0) {
+      const ilikeFilters = rawWords.flatMap((w: string) => [
+        `content.ilike.%${w}%`,
+        `title.ilike.%${w}%`
+      ])
+      const { data: fallbackKb } = await supabase
+        .from('knowledge_base')
+        .select('title, content')
+        .eq('organization_id', orgId)
+        .or(ilikeFilters.join(','))
+        .limit(3)
+
+      return (fallbackKb || []).map((a: any) => ({ title: a.title, content: a.content }))
+    }
+  } catch (e) {
+    console.error('[Keyword Search] ILIKE fallback search failed:', e)
+  }
+
+  return []
 }

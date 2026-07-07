@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { verifyRecordAccess, getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -109,7 +110,12 @@ Standalone search query:`
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { conversationId } = body
+    const { conversationId, playground } = body
+
+    if (playground === true) {
+      return await handlePlayground(request, body)
+    }
+
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
     }
@@ -134,13 +140,15 @@ export async function POST(request: NextRequest) {
 
     // Load custom credentials per organization
     let openAiKey = process.env.OPENAI_API_KEY || ''
+    let orgData: any = null
     if (conv.organization_id) {
       try {
-        const { data: orgData } = await supabase
+        const { data } = await supabase
           .from('organizations')
-          .select('openai_api_key')
+          .select('openai_api_key, service_synonyms')
           .eq('id', conv.organization_id)
           .single()
+        orgData = data
         if (orgData && orgData.openai_api_key) {
           openAiKey = orgData.openai_api_key
         }
@@ -173,13 +181,22 @@ export async function POST(request: NextRequest) {
     // 3. Semantic search — generate embedding for the customer's last message
     const lastMsg = chatHistory[chatHistory.length - 1]
     let kbArticles: { title: string; content: string; similarity: number }[] = []
+    let queryText = ''
+    const synonyms: SynonymGroup[] = orgData?.service_synonyms || []
 
     if (lastMsg && lastMsg.sender_type === 'contact' && lastMsg.body) {
       // Rephrase follow-up query using history to preserve context
-      const queryText = await rephraseQuery(chatHistory, openAiKey)
+      queryText = await rephraseQuery(chatHistory, openAiKey)
 
-      // Generate embedding for the rephrased query
-      const queryEmbedding = await generateQueryEmbedding(queryText, openAiKey)
+      // Expand query with synonym dictionary for better matching
+      const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(queryText, synonyms)
+      console.log(`[Copilot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
+
+      let vectorFaqs: any[] = []
+      let keywordFaqs: any[] = []
+
+      // Generate embedding for the expanded vector query
+      const queryEmbedding = await generateQueryEmbedding(vectorQuery, openAiKey)
 
       if (queryEmbedding) {
         // Use pgvector similarity search via the match_faqs RPC function
@@ -188,32 +205,57 @@ export async function POST(request: NextRequest) {
         try {
           const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
             query_embedding: embeddingStr,
-            match_threshold: 0.65,
+            match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
             match_count: 3,
             org_id: conv.organization_id
           })
 
           if (rpcError) {
             console.error('[Copilot] RPC match_faqs error:', rpcError)
-            // Fallback to keyword search if vector search is not available yet
-            kbArticles = await fallbackKeywordSearch(supabase, queryText, conv.organization_id)
-          } else if (matchedFaqs && matchedFaqs.length > 0) {
-            kbArticles = matchedFaqs.map((faq: any) => ({
-              title: faq.title,
-              content: faq.content,
-              similarity: faq.similarity
-            }))
-            console.log(`[Copilot] Vector search found ${kbArticles.length} matching FAQs (best similarity: ${kbArticles[0]?.similarity?.toFixed(3)})`)
+          } else {
+            vectorFaqs = matchedFaqs || []
           }
         } catch (err) {
-          console.error('[Copilot] Vector search failed, falling back to keyword search:', err)
-          kbArticles = await fallbackKeywordSearch(supabase, queryText, conv.organization_id)
+          console.error('[Copilot] Vector search failed:', err)
         }
-      } else {
-        // Embedding generation failed — fall back to keyword search
-        console.warn('[Copilot] Embedding generation failed, using keyword fallback')
-        kbArticles = await fallbackKeywordSearch(supabase, queryText, conv.organization_id)
       }
+
+      // Always fetch keyword matches too for hybrid pool using keywordQuery
+      try {
+        keywordFaqs = await fallbackKeywordSearch(supabase, keywordQuery, conv.organization_id)
+      } catch (kwErr) {
+        console.error('[Copilot] Keyword fallback search failed:', kwErr)
+      }
+
+      // Combine and deduplicate
+      const merged: any[] = []
+      const seen = new Set<string>()
+
+      for (const f of vectorFaqs) {
+        const titleLower = f.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({
+            title: f.title,
+            content: f.content,
+            similarity: f.similarity
+          })
+        }
+      }
+
+      for (const f of keywordFaqs) {
+        const titleLower = f.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({
+            title: f.title,
+            content: f.content,
+            similarity: null
+          })
+        }
+      }
+      kbArticles = merged.slice(0, 3)
+      console.log(`[Copilot] Hybrid search returned ${kbArticles.length} articles (vector: ${vectorFaqs.length}, keyword: ${keywordFaqs.length})`)
     }
 
     // 4. Format prompt
@@ -235,10 +277,20 @@ export async function POST(request: NextRequest) {
       return parts.join('\n')
     }).join('\n\n---\n\n')
 
+    // Context-filter synonyms for terminology note
+    const faqsText = kbArticles.map(f => `${f.title} ${f.content}`).join(' ')
+    const activeRelationships = getActiveSynonymRelationships(queryText || '', faqsText, synonyms)
+    
+    let synonymContext = ''
+    if (activeRelationships.length > 0) {
+      synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (Use this to match customer terms to FAQ terms):
+${activeRelationships.map(r => `- ${r}`).join('\n')}`
+    }
+
     const systemPrompt = `You are a helpful, professional customer service assistant that helps operators (agents) respond to clients.
 
 MATCHED FAQ ARTICLES:
-${formattedContext || '(No matching FAQs found in the knowledge base)'}
+${formattedContext || '(No matching FAQs found in the knowledge base)'}${synonymContext}
 
 INSTRUCTIONS:
 You must return a JSON object with a "suggestions" array containing exactly 3 suggestion objects.
@@ -344,52 +396,346 @@ RESPONSE FORMAT (strict JSON):
 }
 
 // Fallback keyword search for when vector search is not yet available
+// Fallback keyword search for when vector search is not yet available
 async function fallbackKeywordSearch(
   supabase: any,
   queryText: string,
   orgId: string
 ): Promise<{ title: string; content: string; similarity: number }[]> {
-  const stopWords = new Set([
-    'the', 'a', 'is', 'for', 'to', 'in', 'on', 'at', 'how', 'what', 'why', 'who', 'where', 'when',
-    'i', 'you', 'he', 'she', 'they', 'we', 'it', 'my', 'your', 'and', 'or', 'but', 'of', 'with',
-    'from', 'by', 'an', 'this', 'that', 'these', 'those', 'are', 'was', 'were', 'be', 'been',
-    'have', 'has', 'had', 'do', 'does', 'did', 'please', 'hi', 'hello', 'hey', 'can', 'get',
-    'any', 'me', 'need', 'want', 'will', 'would', 'could', 'should', 'may', 'might',
-    'also', 'just', 'more', 'some', 'about', 'there', 'so', 'not', 'no', 'yes', 'ok'
-  ])
+  try {
+    // 1. Search title column first (since it matches user question headers directly)
+    const { data: titleMatches } = await supabase
+      .from('knowledge_base')
+      .select('title, content')
+      .eq('organization_id', orgId)
+      .textSearch('title', queryText, { config: 'english', type: 'websearch' })
+      .limit(3)
 
-  const words = queryText
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .split(/\s+/)
-    .filter((w: string) => w.length > 2 && !stopWords.has(w))
+    // 2. Search content column (for detail matches)
+    const { data: contentMatches } = await supabase
+      .from('knowledge_base')
+      .select('title, content')
+      .eq('organization_id', orgId)
+      .textSearch('content', queryText, { config: 'english', type: 'websearch' })
+      .limit(3)
 
-  if (words.length === 0) return []
+    // 3. Combine and deduplicate, prioritizing title matches
+    const merged: any[] = []
+    const seen = new Set<string>()
 
-  const tsQuery = words.join(' | ')
+    if (titleMatches) {
+      for (const item of titleMatches) {
+        const titleLower = item.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({ title: item.title, content: item.content, similarity: 0 })
+        }
+      }
+    }
 
-  const { data: kbData } = await supabase
-    .from('knowledge_base')
-    .select('title, content')
-    .eq('organization_id', orgId)
-    .textSearch('content', tsQuery, { config: 'english', type: 'plain' })
-    .limit(3)
+    if (contentMatches) {
+      for (const item of contentMatches) {
+        const titleLower = item.title.toLowerCase().trim()
+        if (!seen.has(titleLower)) {
+          seen.add(titleLower)
+          merged.push({ title: item.title, content: item.content, similarity: 0 })
+        }
+      }
+    }
 
-  if (kbData && kbData.length > 0) {
-    return kbData.map((a: any) => ({ title: a.title, content: a.content, similarity: 0 }))
+    if (merged.length > 0) {
+      return merged.slice(0, 3)
+    }
+  } catch (err) {
+    console.error('[Keyword Search] Websearch failed, trying ILIKE:', err)
   }
 
-  // Final fallback: ILIKE
-  const ilikeFilters = words.flatMap((w: string) => [
-    `content.ilike.%${w}%`,
-    `title.ilike.%${w}%`
-  ])
-  const { data: fallbackKb } = await supabase
-    .from('knowledge_base')
-    .select('title, content')
-    .eq('organization_id', orgId)
-    .or(ilikeFilters.join(','))
-    .limit(3)
+  // 4. Final fallback: ILIKE on both title and content
+  try {
+    const rawWords = queryText
+      .replace(/OR/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2)
 
-  return (fallbackKb || []).map((a: any) => ({ title: a.title, content: a.content, similarity: 0 }))
+    if (rawWords.length > 0) {
+      const ilikeFilters = rawWords.flatMap((w: string) => [
+        `content.ilike.%${w}%`,
+        `title.ilike.%${w}%`
+      ])
+      const { data: fallbackKb } = await supabase
+        .from('knowledge_base')
+        .select('title, content')
+        .eq('organization_id', orgId)
+        .or(ilikeFilters.join(','))
+        .limit(3)
+
+      return (fallbackKb || []).map((a: any) => ({ title: a.title, content: a.content, similarity: 0 }))
+    }
+  } catch (e) {
+    console.error('[Keyword Search] ILIKE fallback search failed:', e)
+  }
+
+  return []
 }
+
+async function handlePlayground(request: NextRequest, body: any) {
+  try {
+    const user = await getAuthenticatedUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const orgId = user.organization_id
+    if (!orgId) {
+      return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
+    }
+
+    const { query } = body
+    if (!query) {
+      return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseClient()
+
+    // Load organization settings
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('openai_api_key, chatbot_base_prompt, service_synonyms')
+      .eq('id', orgId)
+      .maybeSingle()
+
+    const openAiKey = orgData?.openai_api_key || process.env.OPENAI_API_KEY
+    if (!openAiKey) {
+      return NextResponse.json({ error: 'OpenAI API Key is not configured.' }, { status: 400 })
+    }
+
+    // Step 0: Expand query with synonym dictionary
+    const synonyms: SynonymGroup[] = orgData?.service_synonyms || []
+    const { vectorQuery, keywordQuery, matchedSynonyms } = expandQueryWithSynonyms(query, synonyms)
+    console.log(`[Playground API] Query expansion: "${query}" - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}" (${matchedSynonyms.length} synonyms matched)`)
+
+    // Step 1: Generate Embedding (using expanded vector query)
+    let embedding: number[] | null = null
+    try {
+      const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiKey}`
+        },
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          input: vectorQuery.substring(0, 8000)
+        })
+      })
+
+      if (embedRes.ok) {
+        const embedData = await embedRes.json()
+        embedding = embedData.data?.[0]?.embedding || null
+      }
+    } catch (e) {
+      console.error('[Playground API] Embedding error:', e)
+    }
+
+    // Step 2: Query via RPC Vector Search
+    let vectorResults: any[] = []
+    let vectorError: string | null = null
+    if (embedding) {
+      try {
+        const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
+          query_embedding: `[${embedding.join(',')}]`,
+          match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
+          match_count: 3,
+          org_id: orgId
+        })
+        if (rpcError) {
+          vectorError = rpcError.message
+        } else {
+          vectorResults = matchedFaqs || []
+        }
+      } catch (err: any) {
+        vectorError = err.message || 'RPC execution failed'
+      }
+    } else {
+      vectorError = 'Could not generate query embedding'
+    }
+
+    // Step 3: Query via Keyword Search (Fallback mechanism using keywordQuery)
+    let keywordResults: any[] = []
+    try {
+      keywordResults = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
+    } catch (err: any) {
+      console.error('[Playground API] Keyword search error:', err)
+    }
+
+    // Step 4: Combine, Deduplicate and Select FAQ articles
+    const mergedFaqs: any[] = []
+    const seenTitles = new Set<string>()
+
+    for (const faq of vectorResults) {
+      const normalizedTitle = faq.title.toLowerCase().trim()
+      if (!seenTitles.has(normalizedTitle)) {
+        seenTitles.add(normalizedTitle)
+        mergedFaqs.push({
+          title: faq.title,
+          content: faq.content,
+          similarity: faq.similarity,
+          source: 'vector'
+        })
+      }
+    }
+
+    for (const faq of keywordResults) {
+      const normalizedTitle = faq.title.toLowerCase().trim()
+      if (!seenTitles.has(normalizedTitle)) {
+        seenTitles.add(normalizedTitle)
+        mergedFaqs.push({
+          title: faq.title,
+          content: faq.content,
+          similarity: null,
+          source: 'keyword'
+        })
+      }
+    }
+
+    const selectedFaqs = mergedFaqs.slice(0, 3)
+    let retrievalMode: 'vector' | 'keyword' | 'hybrid' | 'none' = 'none'
+    if (vectorResults.length > 0 && keywordResults.length > 0) {
+      retrievalMode = 'hybrid'
+    } else if (vectorResults.length > 0) {
+      retrievalMode = 'vector'
+    } else if (keywordResults.length > 0) {
+      retrievalMode = 'keyword'
+    }
+
+    // Step 5: Format context and prompts
+    const formattedContext = selectedFaqs.map((faq: any, i: number) => {
+      const relevanceStr = faq.similarity ? ` (Similarity: ${(faq.similarity * 100).toFixed(0)}%)` : ''
+      return `[FAQ ${i + 1}]${relevanceStr}\nQuestion: ${faq.title}\nAnswer: ${faq.content}`
+    }).join('\n\n---\n\n')
+
+    const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
+
+CLASSIFICATION AND RESPONSE RULES:
+1. NORMAL COMMUNICATION MESSAGES (Greetings, thanks, simple politeness, acknowledgments):
+   - If the customer's message is a standard greeting, thank you, or simple polite acknowledgment (e.g., "Hi", "Hello", "Hey", "Good morning", "Thanks", "Thank you", "Ok", "Great", "Awesome", "How are you"), reply with a brief, friendly, and natural response (e.g., greeting them back and asking how you can help, or saying you're welcome).
+2. ALL OTHER CONTEXTS (Questions, topic queries, specific inquiries, or any other statements):
+   - You must answer using ONLY the facts directly mentioned in the MATCHED FAQ ARTICLES. Do not assume, extrapolate, or refer to outside knowledge.
+   - If you do not have the knowledge (i.e., the answer is not explicitly written in the matched FAQs, or no matched FAQs are provided), you MUST respond with EXACTLY this text: "Our support team will reply you soon."
+
+ADDITIONAL CONSTRAINTS:
+- Do not make up any facts, procedures, URLs, phone numbers, or fees. Only state what is explicitly written in the matched FAQs.
+- Keep the reply helpful, direct, professional, and under 80 words. Do not add conversational filler to topic answers.`;
+
+    // Context-filter synonyms for terminology note
+    const faqsText = selectedFaqs.map((f: any) => `${f.title} ${f.content}`).join(' ')
+    const activeRelationships = getActiveSynonymRelationships(query || '', faqsText, synonyms)
+    
+    let synonymContext = ''
+    if (activeRelationships.length > 0) {
+      synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (Use this to match customer terms to FAQ terms):
+${activeRelationships.map(r => `- ${r}`).join('\n')}`
+    }
+
+    const basePrompt = orgData?.chatbot_base_prompt || DEFAULT_BASE_PROMPT
+    const systemPrompt = `${basePrompt}
+
+MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
+${formattedContext || '(No matching FAQs found in the knowledge base)'}${synonymContext}
+
+CONVERSATION HISTORY:
+The messages below are the recent conversation between you (assistant) and the customer (user).
+Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.
+
+CRITICAL INSTRUCTIONS:
+You MUST respond in JSON format. The JSON object must contain two keys:
+1. "reply": (string) Your natural conversational reply to the customer. If you cannot answer the query using the matched FAQ articles, or if the user asks to connect with support/a human, or if you need to hand off to a human agent, set "reply" to a friendly notice indicating that the support team will get in touch soon.
+2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.`
+
+    // Step 6: Call OpenAI GPT
+    let gptReply = ''
+    let isRiseTicket = false
+    let callError: string | null = null
+
+    try {
+      const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: query }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+          max_tokens: 300
+        })
+      })
+
+      if (gptResponse.ok) {
+        const gptData = await gptResponse.json()
+        const contentString = gptData.choices?.[0]?.message?.content?.trim() || '{}'
+
+        try {
+          const parsed = JSON.parse(contentString)
+          gptReply = parsed.reply || ''
+          isRiseTicket = !!parsed.isRiseTicket
+        } catch (parseErr) {
+          gptReply = contentString
+        }
+
+        // Apply same text analysis fallback triggers
+        const lowerReply = gptReply.toLowerCase()
+        const lowerIncoming = query.toLowerCase()
+        if (
+          !isRiseTicket &&
+          (lowerReply.includes('support team') ||
+           lowerReply.includes('reply you soon') ||
+           lowerReply.includes('reply soon') ||
+           lowerReply.includes('contact you') ||
+           lowerReply.includes('reach you') ||
+           lowerReply.includes('human agent') ||
+           lowerReply.includes('representative') ||
+           lowerIncoming.includes('support team') ||
+           lowerIncoming.includes('human') ||
+           lowerIncoming.includes('agent') ||
+           lowerIncoming.includes('connect to support') ||
+           lowerIncoming.includes('talk to a person') ||
+           lowerIncoming.includes('representative') ||
+           lowerIncoming.includes('raise ticket') ||
+           lowerIncoming.includes('create ticket'))
+        ) {
+          isRiseTicket = true
+        }
+      } else {
+        callError = `GPT call failed: ${gptResponse.status} ${gptResponse.statusText}`
+      }
+    } catch (err: any) {
+      callError = err.message || 'GPT call exception'
+    }
+
+    return NextResponse.json({
+      query,
+      expandedQuery: vectorQuery,
+      matchedSynonyms,
+      retrievalMode,
+      vectorResults: vectorResults.map(r => ({ id: r.id, title: r.title, content: r.content, similarity: r.similarity })),
+      vectorError,
+      keywordResults: keywordResults.map(r => ({ title: r.title, content: r.content })),
+      selectedFaqs,
+      systemPrompt,
+      gptReply,
+      isRiseTicket,
+      callError
+    })
+
+  } catch (err: any) {
+    console.error('[Playground API] Critical route error:', err)
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
+  }
+}
+

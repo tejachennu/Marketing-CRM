@@ -593,6 +593,7 @@ export default function DashboardLayout({
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+    { href: '/dashboard/playground', label: 'AI Playground', icon: Sparkles },
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
 
@@ -904,6 +905,7 @@ export default function DashboardLayout({
                   ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone }] : []),
                   ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/contacts', label: 'Contacts', icon: Users }] : []),
                   ...(seeAll ? [{ href: '/dashboard/settings', label: 'Settings', icon: Settings }] : []),
+                  ...(seeAll ? [{ href: '/dashboard/playground', label: 'AI Playground', icon: Sparkles }] : []),
                   { href: '/dashboard/profile', label: 'My Profile', icon: User },
                 ].map((item) => {
                   const Icon = item.icon
@@ -1077,7 +1079,7 @@ export default function DashboardLayout({
                         </span>
                       </div>
                       <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
-                        Enables smart message suggestions, sitemap crawling RAG, and voice calling bots.
+                        Enables smart message suggestions, sitemap crawling, and voice calling bots.
                       </p>
                     </div>
                   </div>

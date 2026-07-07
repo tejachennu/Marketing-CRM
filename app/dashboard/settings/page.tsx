@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
 import { getRoleDisplay, ASSIGNABLE_ROLES, canManageTeam, isManager } from '@/lib/rbac'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2 } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
@@ -45,7 +45,6 @@ export default function SettingsPage() {
   const [ticketEmailEnabled, setTicketEmailEnabled] = useState(false)
   const [ticketEmailRecipients, setTicketEmailRecipients] = useState<string[]>([])
 
-  // RAG Knowledge Base State
   const [activeTab, setActiveTab] = useState<'general' | 'knowledge' | 'teammates' | 'appearance'>('general')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -97,6 +96,17 @@ export default function SettingsPage() {
   const [teammateError, setTeammateError] = useState('')
   const [teammateSuccess, setTeammateSuccess] = useState('')
 
+  // Service Synonyms State
+  type SynonymGroup = { canonical: string; aliases: string[] }
+  const [synonymGroups, setSynonymGroups] = useState<SynonymGroup[]>([])
+  const [loadingSynonyms, setLoadingSynonyms] = useState(false)
+  const [savingSynonyms, setSavingSynonyms] = useState(false)
+  const [synonymModalOpen, setSynonymModalOpen] = useState(false)
+  const [editingSynonymIndex, setEditingSynonymIndex] = useState<number | null>(null)
+  const [synonymFormCanonical, setSynonymFormCanonical] = useState('')
+  const [synonymFormAliases, setSynonymFormAliases] = useState<string[]>([])
+  const [synonymAliasInput, setSynonymAliasInput] = useState('')
+
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'info'
     message: string
@@ -121,6 +131,7 @@ export default function SettingsPage() {
       loadTeammates(user.organization_id)
       if (activeTab === 'knowledge') {
         loadArticles(user.organization_id)
+        loadSynonyms(user.organization_id)
       }
     }
   }, [user, activeTab])
@@ -383,7 +394,7 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteArticle(id: string) {
-    if (!user || !confirm('Are you sure you want to delete this article? It will be removed from the AI RAG index.')) return
+    if (!user || !confirm('Are you sure you want to delete this article? It will be removed from the AI search index.')) return
     try {
       const res = await fetch(`/api/knowledge?id=${id}`, {
         method: 'DELETE'
@@ -617,6 +628,151 @@ export default function SettingsPage() {
   const startIndex = (currentPage - 1) * itemsPerPage
   const paginatedArticles = filteredArticles.slice(startIndex, startIndex + itemsPerPage)
 
+  // ── Service Synonyms CRUD ──────────────────────────────────
+  async function loadSynonyms(orgId: string) {
+    setLoadingSynonyms(true)
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('service_synonyms')
+        .eq('id', orgId)
+        .maybeSingle()
+      if (error) throw error
+      setSynonymGroups((data?.service_synonyms as SynonymGroup[]) || [])
+    } catch (err) {
+      console.error('Failed to load service synonyms:', err)
+      showNotification('error', 'Failed to load service synonyms.', 'Load Failed')
+    } finally {
+      setLoadingSynonyms(false)
+    }
+  }
+
+  async function saveSynonyms(updated: SynonymGroup[]) {
+    if (!organization) return
+    setSavingSynonyms(true)
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ service_synonyms: updated })
+        .eq('id', organization.id)
+      if (error) throw error
+      setSynonymGroups(updated)
+      showNotification('success', 'Service synonyms updated successfully.', 'Synonyms Saved')
+    } catch (err: any) {
+      console.error('Failed to save synonyms:', err)
+      showNotification('error', err.message || 'Failed to save synonyms.', 'Save Failed')
+    } finally {
+      setSavingSynonyms(false)
+    }
+  }
+
+  async function triggerReEmbed(changedGroup?: SynonymGroup, oldGroup?: SynonymGroup) {
+    if (!organization) return
+    try {
+      showNotification('info', 'Updating affected article embeddings in the background...', 'Syncing Embeddings')
+      const res = await fetch('/api/knowledge/re-embed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          organizationId: organization.id,
+          changedGroup,
+          oldGroup
+        })
+      })
+
+      if (!res.ok) {
+        throw new Error(await res.text())
+      }
+
+      const data = await res.json()
+      if (data.success) {
+        if (data.total > 0) {
+          showNotification(
+            'success',
+            `Successfully re-embedded ${data.updated} article(s) matching "${changedGroup?.canonical || oldGroup?.canonical}".`,
+            'Sync Complete'
+          )
+        } else {
+          console.log('[Re-Embed] No articles affected by synonym change.')
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to trigger background re-embedding:', err)
+      showNotification(
+        'error',
+        'Could not update all vector embeddings. New synonyms might take a while to match.',
+        'Sync Delayed'
+      )
+    }
+  }
+
+  function openAddSynonymModal() {
+    setEditingSynonymIndex(null)
+    setSynonymFormCanonical('')
+    setSynonymFormAliases([])
+    setSynonymAliasInput('')
+    setSynonymModalOpen(true)
+  }
+
+  function openEditSynonymModal(index: number) {
+    const group = synonymGroups[index]
+    setEditingSynonymIndex(index)
+    setSynonymFormCanonical(group.canonical)
+    setSynonymFormAliases([...group.aliases])
+    setSynonymAliasInput('')
+    setSynonymModalOpen(true)
+  }
+
+  function handleSynonymAliasKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addAliasFromInput()
+    }
+  }
+
+  function addAliasFromInput() {
+    const raw = synonymAliasInput
+    const tags = raw.split(',').map(s => s.trim()).filter(Boolean)
+    const unique = tags.filter(t => !synonymFormAliases.some(a => a.toLowerCase() === t.toLowerCase()))
+    if (unique.length > 0) {
+      setSynonymFormAliases(prev => [...prev, ...unique])
+    }
+    setSynonymAliasInput('')
+  }
+
+  function removeAlias(idx: number) {
+    setSynonymFormAliases(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSaveSynonymForm() {
+    const canonical = synonymFormCanonical.trim()
+    if (!canonical) return
+    // Flush any remaining text in alias input
+    const remaining = synonymAliasInput.split(',').map(s => s.trim()).filter(Boolean)
+    const allAliases = [...synonymFormAliases, ...remaining.filter(t => !synonymFormAliases.some(a => a.toLowerCase() === t.toLowerCase()))]
+
+    const entry: SynonymGroup = { canonical, aliases: allAliases }
+    let updated: SynonymGroup[]
+    if (editingSynonymIndex !== null) {
+      updated = synonymGroups.map((g, i) => (i === editingSynonymIndex ? entry : g))
+    } else {
+      updated = [...synonymGroups, entry]
+    }
+    await saveSynonyms(updated)
+    setSynonymModalOpen(false)
+    triggerReEmbed(entry)
+  }
+
+  async function handleDeleteSynonym(index: number) {
+    if (!confirm('Are you sure you want to delete this synonym group?')) return
+    const oldGroup = synonymGroups[index]
+    const updated = synonymGroups.filter((_, i) => i !== index)
+    await saveSynonyms(updated)
+    triggerReEmbed(undefined, oldGroup)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -674,7 +830,7 @@ export default function SettingsPage() {
             }`}
           >
             <BookOpen size={13} />
-            Knowledge Base (AI RAG)
+            Knowledge Base (AI Search)
           </button>
         )}
         <button
@@ -688,6 +844,7 @@ export default function SettingsPage() {
           <Users size={13} />
           Manage Teammates
         </button>
+
         <button
           onClick={() => setActiveTab('appearance')}
           className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
@@ -743,7 +900,7 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                 <div className="flex flex-col gap-0.5 pr-2">
                   <span className="text-xs font-bold text-[#111b21] dark:text-white">AI Copilot & Knowledge Base</span>
-                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Suggested conversation replies and scraped article RAG indexing</span>
+                  <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">Suggested conversation replies and scraped article indexing</span>
                 </div>
                 <button
                   type="button"
@@ -1541,7 +1698,7 @@ export default function SettingsPage() {
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
                     />
                     <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                      Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your RAG knowledge base.
+                      Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your knowledge base.
                     </p>
                   </div>
                 </div>
@@ -1816,6 +1973,96 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+          {/* Service Synonyms Section */}
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm mt-8">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                  <Tags size={18} className="text-[#00a884]" />
+                  Service Synonyms (Synonym Search)
+                </h2>
+                <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold leading-relaxed max-w-xl">
+                  Add category-wise synonym mappings to help the chatbot align different customer terms (aliases) with your canonical knowledge base terminology.
+                </p>
+              </div>
+              <button
+                onClick={openAddSynonymModal}
+                className="flex-shrink-0 h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                Add Synonym Group
+              </button>
+            </div>
+
+            {loadingSynonyms ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 size={20} className="animate-spin text-[#00a884]" />
+              </div>
+            ) : synonymGroups.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[#e9edef] dark:border-[#2a3942] p-8 flex flex-col items-center justify-center text-center">
+                <div className="w-10 h-10 rounded-full bg-[#00a884]/10 flex items-center justify-center mb-2">
+                  <Tags size={18} className="text-[#00a884]" />
+                </div>
+                <h3 className="text-xs font-bold text-[#111b21] dark:text-white mb-1">No service synonym groups yet</h3>
+                <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold max-w-sm">
+                  Create groups like "PCC" to map alternative keywords such as "Police Clearance Letter" or "Criminal Record Certificate" automatically.
+                </p>
+                <button
+                  onClick={openAddSynonymModal}
+                  className="mt-3 h-8 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Plus size={12} />
+                  Create First Group
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {synonymGroups.map((group, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-slate-50/50 dark:bg-[#1f2c34]/20 rounded-xl border border-[#e9edef] dark:border-[#202d36] p-4 shadow-xs hover:shadow-sm transition-shadow group relative"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] text-[10px] font-bold border border-[#00a884]/20">
+                        <Tags size={11} />
+                        Category: {group.canonical}
+                      </span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => openEditSynonymModal(idx)}
+                          className="p-1 rounded hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#008069] dark:hover:text-[#00e676] transition-colors cursor-pointer"
+                          title="Edit"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSynonym(idx)}
+                          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-[#667781] dark:text-[#8696a0] hover:text-red-500 transition-colors cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    {group.aliases.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {group.aliases.map((alias, aIdx) => (
+                          <span
+                            key={aIdx}
+                            className="inline-block px-2 py-0.5 rounded bg-white dark:bg-[#1f2c34] text-[#54656f] dark:text-[#8696a0] text-[10px] font-semibold border border-[#e9edef] dark:border-[#2a3942]"
+                          >
+                            {alias}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-[#8696a0] dark:text-[#667781] italic font-semibold">No aliases defined</p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -2200,6 +2447,92 @@ export default function SettingsPage() {
               >
                 <Moon size={32} className={theme === 'dark' ? 'text-indigo-400' : 'text-[#667781] dark:text-[#8696a0]'} />
                 <span className={`text-xs font-bold ${theme === 'dark' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Dark Mode</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* ── Synonym Add/Edit Modal ─────────────────────────── */}
+      {synonymModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 text-[#111b21] dark:text-white">
+            <div className="p-6 border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                <Tags size={16} className="text-[#00a884]" />
+                {editingSynonymIndex !== null ? 'Edit Synonym Group' : 'Add Synonym Group'}
+              </h3>
+              <button
+                onClick={() => setSynonymModalOpen(false)}
+                className="text-[#667781] dark:text-slate-400 hover:text-[#111b21] dark:hover:text-white transition-colors p-1 hover:bg-[#e9edef] dark:hover:bg-[#2a3942] rounded-lg cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                  Canonical Term
+                </label>
+                <input
+                  type="text"
+                  value={synonymFormCanonical}
+                  onChange={(e) => setSynonymFormCanonical(e.target.value)}
+                  placeholder='e.g. "PCC" or "Visa Extension"'
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                />
+                <p className="text-[10px] text-[#8696a0] mt-1 font-semibold">The standard term used in your knowledge base</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                  Aliases
+                </label>
+                <div className="flex flex-wrap gap-1.5 p-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus-within:border-[#00a884] rounded-lg transition-colors min-h-[42px]">
+                  {synonymFormAliases.map((alias, aIdx) => (
+                    <span
+                      key={aIdx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] text-[11px] font-bold border border-[#00a884]/20"
+                    >
+                      {alias}
+                      <button
+                        onClick={() => removeAlias(aIdx)}
+                        className="hover:text-red-500 transition-colors cursor-pointer ml-0.5"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={synonymAliasInput}
+                    onChange={(e) => setSynonymAliasInput(e.target.value)}
+                    onKeyDown={handleSynonymAliasKeyDown}
+                    onBlur={addAliasFromInput}
+                    placeholder={synonymFormAliases.length === 0 ? 'Type alias and press Enter or comma to add...' : 'Add more...'}
+                    className="flex-1 min-w-[120px] bg-transparent focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white py-0.5"
+                  />
+                </div>
+                <p className="text-[10px] text-[#8696a0] mt-1 font-semibold">Press Enter or comma to add each alias. These are the alternative terms customers might use.</p>
+              </div>
+            </div>
+            <div className="p-6 bg-[#f0f2f5] dark:bg-[#1f2c34]/40 border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end gap-3 select-none">
+              <button
+                type="button"
+                onClick={() => setSynonymModalOpen(false)}
+                className="h-9 px-4 rounded-lg border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-[#2a3942] text-xs font-bold text-[#54656f] dark:text-[#8696a0] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSynonymForm}
+                disabled={savingSynonyms || !synonymFormCanonical.trim()}
+                className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {savingSynonyms && <Loader2 size={13} className="animate-spin" />}
+                <span>{editingSynonymIndex !== null ? 'Save Changes' : 'Add Group'}</span>
               </button>
             </div>
           </div>

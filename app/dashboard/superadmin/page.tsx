@@ -392,7 +392,7 @@ export default function SuperAdminPage() {
     if (!selectedOrgSettings) return
     const confirmed = await confirm({
       title: 'Delete Article',
-      message: 'Are you sure you want to delete this article? It will be removed from the AI RAG index.',
+      message: 'Are you sure you want to delete this article? It will be removed from the AI search index.',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel'
     })
@@ -1364,7 +1364,7 @@ export default function SuperAdminPage() {
                 </span>
               </h2>
               <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] font-semibold mt-0.5">
-                Configure features, custom credentials, integrations and RAG knowledge base for this organization.
+                Configure features, custom credentials, integrations and knowledge base for this organization.
               </p>
             </div>
           </div>
@@ -1391,7 +1391,7 @@ export default function SuperAdminPage() {
                 }`}
               >
                 <BookOpen size={13} />
-                Knowledge Base (AI RAG)
+                Knowledge Base (AI Search)
               </button>
             )}
           </div>
@@ -1505,7 +1505,7 @@ export default function SuperAdminPage() {
                     <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                       <div className="flex flex-col gap-0.5 pr-2">
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">AI Copilot & Knowledge Base</span>
-                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Suggested conversation replies and scraped article RAG indexing</span>
+                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Suggested conversation replies and scraped article indexing</span>
                       </div>
                       <button
                         type="button"
