@@ -47,7 +47,6 @@ export function expandQueryWithSynonyms(
   const queryLower = query.toLowerCase()
   const matchedSynonyms: { alias: string; canonical: string }[] = []
   const canonicalsToAppend = new Set<string>()
-  const aliasesToAppend = new Set<string>()
 
   for (const group of synonyms) {
     if (!group.canonical || !group.aliases || group.aliases.length === 0) continue
@@ -83,21 +82,10 @@ export function expandQueryWithSynonyms(
       if (!queryLower.includes(canonicalLower)) {
         canonicalsToAppend.add(group.canonical)
       }
-
-      // Append up to 3 descriptive aliases to enrich the embedding/search context
-      let appendedCount = 0
-      for (const alias of sortedAliases) {
-        if (appendedCount >= 3) break
-        const aliasLower = alias.toLowerCase().trim()
-        if (!queryLower.includes(aliasLower)) {
-          aliasesToAppend.add(alias.trim())
-          appendedCount++
-        }
-      }
     }
   }
 
-  if (canonicalsToAppend.size === 0 && aliasesToAppend.size === 0) {
+  if (canonicalsToAppend.size === 0) {
     return {
       expandedQuery: query,
       vectorQuery: query,
@@ -107,27 +95,12 @@ export function expandQueryWithSynonyms(
   }
 
   // 1. Natural language query for vector embeddings
-  // Include both canonical and key aliases to match synonym-enriched article embeddings
-  const vectorTerms: string[] = []
-  if (canonicalsToAppend.size > 0) {
-    vectorTerms.push(...Array.from(canonicalsToAppend))
-  }
-  if (aliasesToAppend.size > 0) {
-    vectorTerms.push(...Array.from(aliasesToAppend))
-  }
-  const vectorQuery = vectorTerms.length > 0
-    ? `${query.trim()}, ${vectorTerms.join(', ')}`
-    : query.trim()
+  // Include canonicals to match synonym-enriched article embeddings
+  const vectorTerms: string[] = Array.from(canonicalsToAppend)
+  const vectorQuery = `${query.trim()}, ${vectorTerms.join(', ')}`
 
   // 2. Websearch syntax query for full-text keyword search
-  const keywordTerms: string[] = []
-  if (canonicalsToAppend.size > 0) {
-    keywordTerms.push(Array.from(canonicalsToAppend).map(c => `"${c}"`).join(' OR '))
-  }
-  if (aliasesToAppend.size > 0) {
-    keywordTerms.push(Array.from(aliasesToAppend).map(a => `"${a}"`).join(' OR '))
-  }
-  const keywordQuery = `${query.trim()} OR ${keywordTerms.join(' OR ')}`
+  const keywordQuery = `${query.trim()} OR ${vectorTerms.map(c => `"${c}"`).join(' OR ')}`
 
   return {
     expandedQuery: vectorQuery,
@@ -147,8 +120,18 @@ export function getActiveSynonymRelationships(
   faqsText: string,
   synonyms: SynonymGroup[]
 ): string[] {
-  const combinedText = `${query} ${faqsText}`.toLowerCase()
+  const combinedOriginal = `${query} ${faqsText}`
+  const combinedText = combinedOriginal.toLowerCase()
   const relationships: string[] = []
+
+  // Helper to find the actual casing of a term in the original text
+  function getActualCasing(term: string): string {
+    const idx = combinedText.indexOf(term.toLowerCase().trim())
+    if (idx !== -1) {
+      return combinedOriginal.substring(idx, idx + term.trim().length)
+    }
+    return term.trim()
+  }
 
   for (const group of synonyms) {
     if (!group.canonical || !group.aliases) continue
@@ -158,7 +141,7 @@ export function getActiveSynonymRelationships(
     // Check if canonical term is present
     const canonicalLower = group.canonical.toLowerCase().trim()
     if (combinedText.includes(canonicalLower)) {
-      presentTerms.add(group.canonical.trim())
+      presentTerms.add(getActualCasing(group.canonical))
     }
 
     // Check which aliases are present
@@ -166,7 +149,7 @@ export function getActiveSynonymRelationships(
       if (!alias || alias.trim().length === 0) continue
       const aliasLower = alias.toLowerCase().trim()
       if (combinedText.includes(aliasLower)) {
-        presentTerms.add(alias.trim())
+        presentTerms.add(getActualCasing(alias))
       }
     }
 

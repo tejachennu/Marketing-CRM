@@ -449,7 +449,7 @@ export async function POST(
             
             let synonymContext = ''
             if (activeRelationships.length > 0) {
-              synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (Use this to match customer terms to FAQ terms):
+              synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (All terms are case-insensitive):
 ${activeRelationships.map(r => `- ${r}`).join('\n')}`
             }
 
