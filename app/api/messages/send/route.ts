@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient()
     const body = await request.json()
-    const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url } = body
+    const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url, templateSid, templateName, templateLanguage, templateComponents, templateVariables } = body
 
     // Support both old and new parameter formats
     const msgBody = messageBody || message || ''
@@ -197,9 +197,9 @@ export async function POST(request: NextRequest) {
 
     const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
 
-    if (!msgBody && !msgMediaUrl) {
+    if (!msgBody && !msgMediaUrl && !templateName && !templateSid) {
       return NextResponse.json(
-        { error: 'Missing message body or media' },
+        { error: 'Missing message body, media, or template selection' },
         { status: 400 }
       )
     }
@@ -316,7 +316,36 @@ export async function POST(request: NextRequest) {
           to: cleanToFb,
         }
 
-        if (publicMediaUrl) {
+        if (templateName || templateSid) {
+          let tName = templateName || ''
+          let tLang = templateLanguage || 'en'
+          if (templateSid && templateSid.startsWith('META_')) {
+            if (!tName) tName = templateSid.replace('META_', '')
+          }
+          tName = tName.replace(/\s*\(Meta Approved\)/i, '').trim()
+
+          payload.type = 'template'
+          payload.template = {
+            name: tName,
+            language: {
+              code: tLang
+            }
+          }
+
+          if (templateComponents && Array.isArray(templateComponents) && templateComponents.length > 0) {
+            payload.template.components = templateComponents
+          } else if (templateVariables && typeof templateVariables === 'object') {
+            const parameters = Object.keys(templateVariables)
+              .sort((a, b) => Number(a) - Number(b))
+              .map(k => ({
+                type: 'text',
+                text: String(templateVariables[k] || '')
+              }))
+            if (parameters.length > 0) {
+              payload.template.components = [{ type: 'body', parameters }]
+            }
+          }
+        } else if (publicMediaUrl) {
           const lowerUrl = publicMediaUrl.toLowerCase()
           const isImage = lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || lowerUrl.endsWith('.png') || lowerUrl.endsWith('.gif') || lowerUrl.endsWith('.webp')
           
@@ -377,7 +406,7 @@ export async function POST(request: NextRequest) {
 
         if (!fbRes.ok) {
           const errText = await fbRes.text()
-          throw new Error(`Facebook API error: ${fbRes.status} ${errText}`)
+          throw new Error(`Facebook API error (${fbRes.status}): ${errText}`)
         }
 
         const fbData = await fbRes.json()
@@ -389,9 +418,17 @@ export async function POST(request: NextRequest) {
         const cleanTo = contactPhone.replace('whatsapp:', '')
 
         const twilioParams: any = {
-          body: msgBody,
           to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,
           from: isWhatsApp ? `whatsapp:${cleanFrom}` : cleanFrom,
+        }
+
+        if (templateSid && /^HX[0-9a-f]{32}$/i.test(templateSid)) {
+          twilioParams.contentSid = templateSid
+          if (templateVariables) {
+            twilioParams.contentVariables = typeof templateVariables === 'string' ? templateVariables : JSON.stringify(templateVariables)
+          }
+        } else {
+          twilioParams.body = msgBody
         }
 
         if (msgMediaUrl) {
@@ -483,6 +520,18 @@ export async function POST(request: NextRequest) {
         auto_reply_enabled: false,
       })
       .eq('id', conversation.id)
+
+    if (sendStatus === 'failed') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: sendError || 'WhatsApp message dispatch failed. Check Meta 24-hour policy window or provider configuration.',
+          message: savedMessage,
+          twilioSent: false,
+        },
+        { status: 400 }
+      )
+    }
 
     return NextResponse.json({
       success: true,

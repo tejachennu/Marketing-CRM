@@ -47,7 +47,7 @@ async function getOrgWhatsappConfig(orgId: string) {
   const supabase = getSupabaseClient()
   const { data: orgData } = await supabase
     .from('organizations')
-    .select('whatsapp_provider, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_business_account_id')
+    .select('whatsapp_provider, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_business_account_id, whatsapp_phone_number_id')
     .eq('id', orgId)
     .single()
 
@@ -58,19 +58,42 @@ async function getOrgWhatsappConfig(orgId: string) {
     apiToken: orgData?.whatsapp_api_token || (isMasterOrg ? (process.env.WHATSAPP_API_TOKEN || '') : ''),
     graphApiVersion: orgData?.whatsapp_graph_api_version || (isMasterOrg ? (process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0') : 'v25.0'),
     businessAccountId: orgData?.whatsapp_business_account_id || (isMasterOrg ? (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '') : ''),
+    phoneNumberId: orgData?.whatsapp_phone_number_id || (isMasterOrg ? (process.env.WHATSAPP_PHONE_NUMBER_ID || '') : ''),
   }
 }
 
 
 // Fetch templates from Meta WhatsApp Business Cloud API
-async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, businessAccountId: string): Promise<any[]> {
-  if (!apiToken || !businessAccountId) {
-    console.warn('[Templates] Missing Meta API token or WABA ID, skipping Meta template fetch')
+async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, businessAccountId: string, phoneNumberId?: string): Promise<any[]> {
+  if (!apiToken) {
+    console.warn('[Templates] Missing Meta API token, skipping Meta template fetch')
+    return []
+  }
+
+  let wabaId = businessAccountId
+  if (!wabaId && phoneNumberId) {
+    try {
+      console.log(`[Templates] Attempting to auto-resolve Meta WABA ID for Phone ID ${phoneNumberId}...`)
+      const phoneRes = await fetch(`https://graph.facebook.com/${graphApiVersion}/${phoneNumberId}?fields=whatsapp_business_account&access_token=${apiToken}`)
+      if (phoneRes.ok) {
+        const phoneData = await phoneRes.json()
+        if (phoneData.whatsapp_business_account?.id) {
+          wabaId = phoneData.whatsapp_business_account.id
+          console.log(`[Templates] Auto-resolved Meta WABA ID: ${wabaId}`)
+        }
+      }
+    } catch (err) {
+      console.warn('[Templates] Failed to resolve WABA ID from Phone ID:', err)
+    }
+  }
+
+  if (!wabaId) {
+    console.warn('[Templates] Missing Meta WABA ID and could not resolve from Phone ID')
     return []
   }
 
   const allTemplates: any[] = []
-  let url: string | null = `https://graph.facebook.com/${graphApiVersion}/${businessAccountId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
+  let url: string | null = `https://graph.facebook.com/${graphApiVersion}/${wabaId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
 
   try {
     while (url) {
@@ -227,6 +250,7 @@ export async function GET(request: NextRequest) {
       apiToken: process.env.WHATSAPP_API_TOKEN || '',
       graphApiVersion: process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0',
       businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     }
 
     if (orgId) {
@@ -240,13 +264,16 @@ export async function GET(request: NextRequest) {
     let twilioList: any[] = []
     let metaList: any[] = []
 
-    if (whatsappConfig.provider === 'facebook') {
+    const shouldFetchMeta = whatsappConfig.provider === 'facebook' || (!!whatsappConfig.apiToken && (!!whatsappConfig.businessAccountId || !!whatsappConfig.phoneNumberId))
+
+    if (shouldFetchMeta) {
       // Fetch templates from Meta WhatsApp Business Cloud API
       try {
         metaList = await fetchMetaTemplates(
           whatsappConfig.apiToken,
           whatsappConfig.graphApiVersion,
-          whatsappConfig.businessAccountId
+          whatsappConfig.businessAccountId,
+          whatsappConfig.phoneNumberId
         )
       } catch (metaErr) {
         console.warn('[Templates] Failed to fetch from Meta WhatsApp API:', metaErr)

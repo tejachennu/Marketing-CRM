@@ -7,7 +7,7 @@ import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
 import { canSeeAll } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
-  Paperclip, File, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
+  Paperclip, File, FileText, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
   Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
@@ -161,6 +161,116 @@ function ConversationsPageContent() {
     enable_phone_calls: true,
     enable_sms: true,
   })
+
+  // Live Chat Template & Error States
+  const [chatSendError, setChatSendError] = useState<string | null>(null)
+  const [showLiveChatTemplateModal, setShowLiveChatTemplateModal] = useState(false)
+  const [liveChatTemplates, setLiveChatTemplates] = useState<any[]>([])
+  const [loadingLiveChatTemplates, setLoadingLiveChatTemplates] = useState(false)
+  const [selectedLiveChatTemplate, setSelectedLiveChatTemplate] = useState<any | null>(null)
+  const [templateVarValues, setTemplateVarValues] = useState<Record<string, string>>({})
+  const [sendingTemplate, setSendingTemplate] = useState(false)
+
+  const fetchLiveChatTemplates = async () => {
+    if (!user?.organization_id) return
+    setLoadingLiveChatTemplates(true)
+    try {
+      const res = await fetch(`/api/templates?organizationId=${user.organization_id}`)
+      const data = await res.json()
+      if (data.templates && Array.isArray(data.templates)) {
+        setLiveChatTemplates(data.templates)
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error fetching live chat templates:', err)
+    } finally {
+      setLoadingLiveChatTemplates(false)
+    }
+  }
+
+  const handleSelectLiveChatTemplate = (tplSid: string) => {
+    const tpl = liveChatTemplates.find(t => t.sid === tplSid) || null
+    setSelectedLiveChatTemplate(tpl)
+    const initialVars: Record<string, string> = {}
+    if (tpl?.variables) {
+      tpl.variables.forEach((v: string) => {
+        initialVars[v] = tpl.sampleValues?.[v] || ''
+      })
+    }
+    setTemplateVarValues(initialVars)
+  }
+
+  const handleSendLiveChatTemplate = async () => {
+    if (!selectedLiveChatTemplate || !selectedConversation || !user) return
+    const selectedConv = conversations.find((c) => c.id === selectedConversation)
+    if (!selectedConv?.contact) return
+
+    setSendingTemplate(true)
+    setChatSendError(null)
+
+    let finalBody = selectedLiveChatTemplate.body || ''
+    Object.entries(templateVarValues).forEach(([k, v]) => {
+      finalBody = finalBody.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v))
+    })
+
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      organization_id: user.organization_id,
+      conversation_id: selectedConversation,
+      sender_type: 'user',
+      sender_id: null,
+      body: finalBody,
+      media_url: null,
+      twilio_message_sid: null,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticMsg])
+
+    try {
+      const response = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: selectedConversation,
+          phoneNumber: selectedConv.contact.phone_number,
+          templateSid: selectedLiveChatTemplate.sid,
+          templateName: selectedLiveChatTemplate.name,
+          templateLanguage: selectedLiveChatTemplate.language || 'en',
+          templateVariables: templateVarValues,
+          message: finalBody,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success || data.twilioSent === false) {
+        if (data.message) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+          )
+        } else {
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+        }
+        throw new Error(data.error || 'Failed to dispatch Meta WhatsApp template')
+      }
+
+      if (data.message) {
+        setMessages((prev) => {
+          const alreadyHasReal = prev.some((m) => m.id === data.message.id)
+          if (alreadyHasReal) {
+            return prev.filter((m) => m.id !== optimisticMsg.id)
+          }
+          return prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+        })
+      }
+      setShowLiveChatTemplateModal(false)
+      setSelectedLiveChatTemplate(null)
+    } catch (err: any) {
+      console.error('[Dashboard] Send template error:', err)
+      setChatSendError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSendingTemplate(false)
+    }
+  }
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedConvRef = useRef<string | null>(null)
@@ -983,6 +1093,7 @@ function ConversationsPageContent() {
     const selectedConv = conversations.find((c) => c.id === selectedConversation)
     if (!selectedConv?.contact) return
 
+    setChatSendError(null)
     let text = messageText.trim()
     const media = attachedFile
     const currentReply = replyingTo
@@ -1025,7 +1136,16 @@ function ConversationsPageContent() {
       })
 
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to send message')
+      if (!response.ok || !data.success || data.twilioSent === false) {
+        if (data.message) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+          )
+        } else {
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+        }
+        throw new Error(data.error || 'Failed to dispatch message via WhatsApp')
+      }
 
       if (data.message) {
         setMessages((prev) => {
@@ -1036,9 +1156,10 @@ function ConversationsPageContent() {
           return prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Dashboard] Send error:', error)
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+      const errMsg = error instanceof Error ? error.message : String(error)
+      setChatSendError(errMsg)
       if (text.startsWith('[reply:')) {
         const match = text.match(/^\[reply:([^\]]+)\](.*)$/)
         if (match) {
@@ -1046,7 +1167,7 @@ function ConversationsPageContent() {
           const oldReply = messages.find(m => m.id === match[1])
           if (oldReply) setReplyingTo(oldReply)
         }
-      } else {
+      } else if (text) {
         setMessageText(text)
       }
       if (media) setAttachedFile(media)
@@ -2001,11 +2122,36 @@ function ConversationsPageContent() {
                   </div>
                 )}
                 
+                {chatSendError && (
+                  <div className="mx-4 mb-2 mt-1 px-3.5 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-3 select-none z-10 animate-in fade-in duration-200 shadow-xs">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-rose-800 dark:text-rose-300">
+                      <AlertCircle size={15} className="flex-shrink-0 text-rose-600 dark:text-rose-400" />
+                      <span>{chatSendError}</span>
+                    </div>
+                    <button
+                      onClick={() => setChatSendError(null)}
+                      className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 text-xs font-bold px-1.5 py-0.5 rounded"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {isExpired && !isSmsDisabled && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex items-center gap-2 select-none z-10 animate-in fade-in duration-200">
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex items-center justify-between gap-2 select-none z-10 animate-in fade-in duration-200">
                     <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455">
-                      ⚠️ The 24-hour WhatsApp support window has expired. You cannot send free-form messages until the user replies.
+                      ⚠️ The 24-hour WhatsApp support window has expired. Free-form text messages will be rejected by Meta until the customer replies.
                     </span>
+                    <button
+                      onClick={() => {
+                        fetchLiveChatTemplates()
+                        setShowLiveChatTemplateModal(true)
+                      }}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 flex-shrink-0 shadow-xs"
+                    >
+                      <FileText size={12} />
+                      <span>Send Template</span>
+                    </button>
                   </div>
                 )}
 
@@ -2018,7 +2164,7 @@ function ConversationsPageContent() {
                 )}
                 
                 <div className="py-2.5 px-4 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
-                  <div className="flex gap-3.5 items-center max-w-5xl mx-auto w-full">
+                  <div className="flex gap-2.5 items-center max-w-5xl mx-auto w-full">
                     <input 
                       type="file" 
                       ref={fileInputRef} 
@@ -2038,6 +2184,17 @@ function ConversationsPageContent() {
                         <Paperclip size={18} className="rotate-45" />
                       )}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetchLiveChatTemplates()
+                        setShowLiveChatTemplateModal(true)
+                      }}
+                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0"
+                      title="Send Meta Approved WhatsApp Template"
+                    >
+                      <FileText size={18} />
+                    </button>
                     <textarea
                       value={messageText}
                       onChange={(e) => {
@@ -2052,7 +2209,7 @@ function ConversationsPageContent() {
                           handleSendMessage()
                         }
                       }}
-                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "WhatsApp support window is expired" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
+                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "Support window expired (Use Template button to message)" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
                       disabled={isSmsDisabled || isExpired || isChatbotActive}
                       rows={1}
                       className="flex-1 px-4 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
@@ -2315,6 +2472,105 @@ function ConversationsPageContent() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {/* Live Chat Template Selector Modal */}
+      {showLiveChatTemplateModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#111b21] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="text-[#00a884]" size={20} />
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-base">Send Meta Approved Template</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowLiveChatTemplateModal(false)
+                  setSelectedLiveChatTemplate(null)
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Select Template</label>
+                {loadingLiveChatTemplates ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
+                    <Loader2 size={14} className="animate-spin text-[#00a884]" />
+                    <span>Loading templates...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedLiveChatTemplate?.sid || ''}
+                    onChange={(e) => handleSelectLiveChatTemplate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#202c33] border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#00a884]"
+                  >
+                    <option value="">Choose a WhatsApp Template...</option>
+                    {liveChatTemplates.map((t) => (
+                      <option key={t.sid} value={t.sid}>
+                        {t.name} ({t.category || 'UTILITY'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {selectedLiveChatTemplate && (
+                <div className="space-y-3 pt-2">
+                  <div className="p-3.5 bg-slate-100/70 dark:bg-[#202c33]/70 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 mb-1">Body Preview:</p>
+                    <p className="whitespace-pre-wrap text-slate-800 dark:text-slate-200 font-normal leading-relaxed">{selectedLiveChatTemplate.body}</p>
+                  </div>
+
+                  {selectedLiveChatTemplate.variables && selectedLiveChatTemplate.variables.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Map Variable Values</p>
+                      {selectedLiveChatTemplate.variables.map((vKey: string) => (
+                        <div key={vKey} className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-[#00a884] bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded border border-emerald-200/50 min-w-[70px] text-center">
+                            {`{{${vKey}}}`}
+                          </span>
+                          <input
+                            type="text"
+                            value={templateVarValues[vKey] || ''}
+                            onChange={(e) =>
+                              setTemplateVarValues((prev) => ({ ...prev, [vKey]: e.target.value }))
+                            }
+                            placeholder={`Value for {{${vKey}}}`}
+                            className="flex-1 px-3 py-1.5 bg-white dark:bg-[#2a3942] border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-[#182229] border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLiveChatTemplateModal(false)
+                  setSelectedLiveChatTemplate(null)
+                }}
+                className="px-4 py-2 hover:bg-slate-200/60 dark:hover:bg-[#2a3942] text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendLiveChatTemplate}
+                disabled={!selectedLiveChatTemplate || sendingTemplate}
+                className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                {sendingTemplate && <Loader2 size={13} className="animate-spin" />}
+                <span>Send WhatsApp Template</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
