@@ -195,8 +195,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
-
     if (!msgBody && !msgMediaUrl && !templateName && !templateSid) {
       return NextResponse.json(
         { error: 'Missing message body, media, or template selection' },
@@ -264,25 +262,51 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
-    }    // Determine channel (WhatsApp vs SMS) dynamically
+    }function normalizePhoneNumberForWhatsApp(raw: string): { fbTo: string; twilioTo: string } {
+  let cleaned = (raw || '').replace('whatsapp:', '').trim()
+  const hasLeadingPlus = cleaned.startsWith('+')
+  let digits = cleaned.replace(/\D/g, '')
+
+  // Handle 10-digit numbers (common for Canada / US / North America without +1 country code)
+  if (!hasLeadingPlus && digits.length === 10) {
+    digits = `1${digits}`
+  }
+
+  const fbTo = digits
+  const twilioTo = `whatsapp:+${digits}`
+
+  return { fbTo, twilioTo }
+}
+
+    // Determine channel (WhatsApp vs SMS) dynamically
+    let targetPhone = contactPhone || ''
     let isWhatsApp = false
-    if (contactPhone && contactPhone.startsWith('whatsapp:')) {
-      isWhatsApp = true
-    } else {
+
+    if (conversation?.contact_id) {
       try {
-        if (conversation?.contact_id) {
-          const { data: contact } = await supabase
-            .from('contacts')
-            .select('whatsapp_number')
-            .eq('id', conversation.contact_id)
-            .maybeSingle()
-          if (contact?.whatsapp_number && contact.whatsapp_number.startsWith('whatsapp:')) {
+        const { data: contactRecord } = await supabase
+          .from('contacts')
+          .select('phone_number, whatsapp_number')
+          .eq('id', conversation.contact_id)
+          .maybeSingle()
+
+        if (contactRecord) {
+          if (contactRecord.whatsapp_number) {
+            targetPhone = contactRecord.whatsapp_number
             isWhatsApp = true
+          } else if (contactRecord.phone_number) {
+            targetPhone = contactRecord.phone_number
           }
         }
       } catch (err) {
         console.warn('[v0] Failed to fetch contact to resolve channel:', err)
       }
+    }
+
+    if (targetPhone.startsWith('whatsapp:')) {
+      isWhatsApp = true
+    } else {
+      isWhatsApp = true
     }
 
     if (!isWhatsApp && !enableSms) {
@@ -297,7 +321,7 @@ export async function POST(request: NextRequest) {
     let sendStatus = 'sent'
     let sendError: string | null = null
     try {
-      const cleanToFb = contactPhone.replace('whatsapp:', '').replace('+', '').trim()
+      const { fbTo, twilioTo } = normalizePhoneNumberForWhatsApp(targetPhone)
 
       if (whatsappProvider === 'facebook') {
         if (!whatsappApiToken || !whatsappPhoneNumberId) {
@@ -313,7 +337,7 @@ export async function POST(request: NextRequest) {
         let payload: any = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
-          to: cleanToFb,
+          to: fbTo,
         }
 
         if (templateName || templateSid) {
@@ -414,12 +438,26 @@ export async function POST(request: NextRequest) {
         console.log('[v0] Message sent via Facebook:', twilioMessageSid)
       } else {
         // Send message via Twilio
-        const cleanFrom = TWILIO_WHATSAPP_NUMBER.replace('whatsapp:', '')
-        const cleanTo = contactPhone.replace('whatsapp:', '')
+        if (!twilioAccountSid || !twilioAuthToken) {
+          throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings')
+        }
+        const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+
+        let cleanFrom = TWILIO_WHATSAPP_NUMBER.replace('whatsapp:', '').trim()
+        if (!cleanFrom.startsWith('+') && !cleanFrom.startsWith('MG') && /^\d+$/.test(cleanFrom)) {
+          cleanFrom = `+${cleanFrom}`
+        }
+
+        const { fbTo, twilioTo } = normalizePhoneNumberForWhatsApp(targetPhone)
 
         const twilioParams: any = {
-          to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,
+          to: isWhatsApp ? twilioTo : targetPhone,
           from: isWhatsApp ? `whatsapp:${cleanFrom}` : cleanFrom,
+        }
+
+        const runtimeUrl = process.env.V0_RUNTIME_URL || ''
+        if (runtimeUrl) {
+          twilioParams.statusCallback = `${runtimeUrl}/api/webhooks/twilio/status`
         }
 
         if (templateSid && /^HX[0-9a-f]{32}$/i.test(templateSid)) {

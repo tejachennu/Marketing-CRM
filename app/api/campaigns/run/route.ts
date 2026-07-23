@@ -175,7 +175,13 @@ async function executeCampaign(campaignId: string) {
       }
     }
 
-    const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+    const getTwilioClient = () => {
+      if (!twilioAccountSid || !twilioAuthToken) {
+        throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings')
+      }
+      return twilio(twilioAccountSid, twilioAuthToken)
+    }
+
     let sentCount = 0
     let failedCount = 0
 
@@ -471,18 +477,28 @@ async function executeCampaign(campaignId: string) {
             twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
             sentCount++
           } else {
+            let cleanTo = (recipientPhone || '').replace('whatsapp:', '').trim()
+            if (!cleanTo.startsWith('+') && /^\d+$/.test(cleanTo)) {
+              cleanTo = `+${cleanTo}`
+            }
+
             const twilioParams: any = {
-              to: recipientPhone.startsWith('whatsapp:') ? recipientPhone : `whatsapp:${recipientPhone}`
+              to: cleanTo.startsWith('whatsapp:') ? cleanTo : `whatsapp:${cleanTo}`
             }
 
             if (campaignSender && campaignSender.startsWith('MG')) {
               twilioParams.messagingServiceSid = campaignSender
             } else {
-              let fromNumber = campaignSender || `whatsapp:${TWILIO_WHATSAPP_NUMBER}`
-              if (!fromNumber.startsWith('whatsapp:')) {
-                fromNumber = `whatsapp:${fromNumber}`
+              let cleanFrom = (campaignSender || TWILIO_WHATSAPP_NUMBER || '').replace('whatsapp:', '').trim()
+              if (!cleanFrom.startsWith('+') && !cleanFrom.startsWith('MG') && /^\d+$/.test(cleanFrom)) {
+                cleanFrom = `+${cleanFrom}`
               }
-              twilioParams.from = fromNumber
+              twilioParams.from = cleanFrom.startsWith('whatsapp:') ? cleanFrom : `whatsapp:${cleanFrom}`
+            }
+
+            const runtimeUrl = process.env.V0_RUNTIME_URL || ''
+            if (runtimeUrl) {
+              twilioParams.statusCallback = `${runtimeUrl}/api/webhooks/twilio/status`
             }
 
             const isRealTwilioSid = campaign.template_sid && /^HX[0-9a-f]{32}$/i.test(campaign.template_sid)
@@ -497,7 +513,7 @@ async function executeCampaign(campaignId: string) {
               twilioParams.body = body
             }
 
-            const messageResponse = await twilioClient.messages.create(twilioParams)
+            const messageResponse = await getTwilioClient().messages.create(twilioParams)
             twilioMessageSid = messageResponse.sid
             sentCount++
           }
@@ -531,7 +547,7 @@ async function executeCampaign(campaignId: string) {
             twilioParams.from = campaignSender
           }
 
-          const messageResponse = await twilioClient.messages.create(twilioParams)
+          const messageResponse = await getTwilioClient().messages.create(twilioParams)
           twilioMessageSid = messageResponse.sid
           sentCount++
         } else if (channel === 'email') {
