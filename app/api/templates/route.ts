@@ -64,13 +64,20 @@ async function getOrgWhatsappConfig(orgId: string) {
 
 
 // Fetch templates from Meta WhatsApp Business Cloud API
-async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, businessAccountId: string, phoneNumberId?: string): Promise<any[]> {
+async function fetchMetaTemplates(
+  apiToken: string, 
+  graphApiVersion: string, 
+  businessAccountId: string, 
+  phoneNumberId?: string
+): Promise<{ templates: any[]; error: string | null }> {
   if (!apiToken) {
     console.warn('[Templates] Missing Meta API token, skipping Meta template fetch')
-    return []
+    return { templates: [], error: 'Missing Meta WhatsApp API Cloud Token in Settings.' }
   }
 
   let wabaId = businessAccountId
+  let resolveErr: string | null = null
+
   if (!wabaId && phoneNumberId) {
     try {
       console.log(`[Templates] Attempting to auto-resolve Meta WABA ID for Phone ID ${phoneNumberId}...`)
@@ -81,36 +88,59 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
           wabaId = phoneData.whatsapp_business_account.id
           console.log(`[Templates] Auto-resolved Meta WABA ID: ${wabaId}`)
         }
+      } else {
+        const pErr = await phoneRes.json().catch(() => null)
+        resolveErr = pErr?.error?.message || `Failed to resolve WABA ID (HTTP ${phoneRes.status})`
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[Templates] Failed to resolve WABA ID from Phone ID:', err)
+      resolveErr = err.message || 'Failed to resolve WABA ID from Phone ID'
     }
   }
 
   if (!wabaId) {
     console.warn('[Templates] Missing Meta WABA ID and could not resolve from Phone ID')
-    return []
+    return { templates: [], error: resolveErr || 'Missing WhatsApp Business Account ID (WABA ID) in Settings.' }
   }
 
   const allTemplates: any[] = []
-  let url: string | null = `https://graph.facebook.com/${graphApiVersion}/${wabaId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
+  let version = graphApiVersion || 'v20.0'
+  let url: string | null = `https://graph.facebook.com/${version}/${wabaId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
+  let lastError: string | null = null
 
   try {
     while (url) {
-      const res: Response = await fetch(url)
+      let res: Response = await fetch(url)
 
       if (!res.ok) {
-        const errText = await res.text()
-        console.error(`[Templates] Meta API error: ${res.status} ${errText}`)
-        break
+        const errData = await res.json().catch(() => null)
+        const errMsg = errData?.error?.message || `Meta API error (${res.status})`
+        console.error(`[Templates] Meta API error: ${res.status}`, errData || errMsg)
+        lastError = `Meta WhatsApp API error: ${errMsg}`
+
+        // If version error (e.g. v25.0 unsupported), try falling back to v20.0
+        if (version !== 'v20.0' && (errData?.error?.code === 15 || errMsg.includes('version'))) {
+          console.log('[Templates] Retrying Meta API with fallback version v20.0...')
+          version = 'v20.0'
+          url = `https://graph.facebook.com/${version}/${wabaId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
+          res = await fetch(url)
+          if (!res.ok) {
+            const errData2 = await res.json().catch(() => null)
+            lastError = `Meta WhatsApp API error: ${errData2?.error?.message || errMsg}`
+            break
+          }
+        } else {
+          break
+        }
       }
 
       const data = await res.json()
       const templates = data.data || []
 
       for (const tpl of templates) {
-        // Only include APPROVED templates
-        if (tpl.status !== 'APPROVED') continue
+        // Only include APPROVED templates (case-insensitive check)
+        const status = (tpl.status || '').toUpperCase()
+        if (status !== 'APPROVED') continue
 
         // Extract body text and scan components for variables/placeholders
         let body = ''
@@ -119,7 +149,7 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
         const sampleValues: Record<string, string> = {}
 
         // 1. Process HEADER component
-        const headerComp = components.find((c: any) => c.type === 'HEADER')
+        const headerComp = components.find((c: any) => (c.type || '').toUpperCase() === 'HEADER')
         if (headerComp) {
           const handle = headerComp.example?.header_handle?.[0] || ''
           if (headerComp.format === 'IMAGE') {
@@ -142,7 +172,7 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
         }
 
         // 2. Process BODY component
-        const bodyComp = components.find((c: any) => c.type === 'BODY')
+        const bodyComp = components.find((c: any) => (c.type || '').toUpperCase() === 'BODY')
         if (bodyComp) {
           body = bodyComp.text || ''
           const varMatches = body.match(/\{\{[^\}]+\}\}/g)
@@ -162,7 +192,7 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
         }
 
         // 3. Process BUTTONS component
-        const buttonsComp = components.find((c: any) => c.type === 'BUTTONS')
+        const buttonsComp = components.find((c: any) => (c.type || '').toUpperCase() === 'BUTTONS')
         if (buttonsComp && Array.isArray(buttonsComp.buttons)) {
           buttonsComp.buttons.forEach((btn: any, idx: number) => {
             if (btn.type === 'URL' && btn.url) {
@@ -200,11 +230,12 @@ async function fetchMetaTemplates(apiToken: string, graphApiVersion: string, bus
       // Handle pagination
       url = data.paging?.next || null
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Templates] Failed to fetch Meta templates:', err)
+    lastError = err.message || 'Error fetching Meta templates'
   }
 
-  return allTemplates
+  return { templates: allTemplates, error: allTemplates.length > 0 ? null : lastError }
 }
 
 const fallbackTemplates = [
@@ -261,22 +292,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    console.log(`[Templates] Config for org ${orgId}: provider=${whatsappConfig.provider}, hasApiToken=${!!whatsappConfig.apiToken}, hasWABA=${!!whatsappConfig.businessAccountId}, hasPhoneId=${!!whatsappConfig.phoneNumberId}, graphVer=${whatsappConfig.graphApiVersion}`)
+
     let twilioList: any[] = []
     let metaList: any[] = []
+    let metaApiError: string | null = null
 
     const shouldFetchMeta = whatsappConfig.provider === 'facebook' || (!!whatsappConfig.apiToken && (!!whatsappConfig.businessAccountId || !!whatsappConfig.phoneNumberId))
+    console.log(`[Templates] shouldFetchMeta=${shouldFetchMeta}`)
 
     if (shouldFetchMeta) {
       // Fetch templates from Meta WhatsApp Business Cloud API
       try {
-        metaList = await fetchMetaTemplates(
+        const metaRes = await fetchMetaTemplates(
           whatsappConfig.apiToken,
           whatsappConfig.graphApiVersion,
           whatsappConfig.businessAccountId,
           whatsappConfig.phoneNumberId
         )
-      } catch (metaErr) {
+        metaList = metaRes.templates
+        metaApiError = metaRes.error
+        console.log(`[Templates] Meta fetch returned ${metaList.length} templates (Error: ${metaApiError || 'none'})`)
+      } catch (metaErr: any) {
         console.warn('[Templates] Failed to fetch from Meta WhatsApp API:', metaErr)
+        metaApiError = metaErr.message || 'Failed to fetch Meta WhatsApp templates'
       }
     } else {
       // Fetch templates from Twilio Content API
@@ -371,10 +410,10 @@ export async function GET(request: NextRequest) {
     const mergedTemplates = [...dbList, ...metaList, ...twilioList]
 
     if (mergedTemplates.length === 0) {
-      return NextResponse.json({ templates: fallbackTemplates })
+      return NextResponse.json({ templates: fallbackTemplates, error: metaApiError, provider: whatsappConfig.provider })
     }
 
-    return NextResponse.json({ templates: mergedTemplates })
+    return NextResponse.json({ templates: mergedTemplates, error: metaApiError, provider: whatsappConfig.provider })
   } catch (error) {
     console.error('Templates fetch general error:', error)
     return NextResponse.json({ templates: fallbackTemplates })

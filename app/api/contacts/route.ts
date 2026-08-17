@@ -13,21 +13,6 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-function formatContactPhoneNumbers(raw: string): { phone: string; whatsapp: string } {
-  let cleaned = (raw || '').replace('whatsapp:', '').trim()
-  const hasPlus = cleaned.startsWith('+')
-  let digits = cleaned.replace(/\D/g, '')
-
-  if (!hasPlus && digits.length === 10) {
-    digits = `1${digits}`
-  }
-
-  const phone = `+${digits}`
-  const whatsapp = `whatsapp:+${digits}`
-
-  return { phone, whatsapp }
-}
-
 // GET: List contacts
 export async function GET(request: NextRequest) {
   try {
@@ -117,18 +102,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { phone: normalizedPhone, whatsapp: whatsappNum } = formatContactPhoneNumbers(phoneNumber)
+    const normalizedPhone = phoneNumber.replace(/[\s-()]/g, '')
 
     // Check if contact already exists in this organization
     const { data: existing, error: existingError } = await supabase
       .from('contacts')
       .select('*')
       .eq('organization_id', organizationId)
-      .or(`phone_number.eq.${normalizedPhone},phone_number.eq.${phoneNumber}`)
-      .limit(1)
-      .maybeSingle()
+      .eq('phone_number', normalizedPhone)
+      .single()
 
-    if (existingError) {
+    if (existingError && existingError.code !== 'PGRST116') {
       throw existingError
     }
 
@@ -148,7 +132,6 @@ export async function POST(request: NextRequest) {
           first_name: firstName || null,
           last_name: lastName || null,
           phone_number: normalizedPhone,
-          whatsapp_number: whatsappNum,
           email: email || null,
           company: company || null,
           tags: [],
@@ -237,7 +220,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const { phone: normalizedPhone, whatsapp: whatsappNum } = formatContactPhoneNumbers(phone_number)
+    const normalizedPhone = phone_number.replace(/[\s-()]/g, '')
 
     // Check if another contact in this organization has this phone number
     const { data: existing, error: existingError } = await supabase
@@ -246,10 +229,9 @@ export async function PUT(request: NextRequest) {
       .eq('organization_id', organizationId)
       .eq('phone_number', normalizedPhone)
       .neq('id', id)
-      .limit(1)
-      .maybeSingle()
+      .single()
 
-    if (existingError) {
+    if (existingError && existingError.code !== 'PGRST116') {
       throw existingError
     }
 
@@ -266,7 +248,6 @@ export async function PUT(request: NextRequest) {
         first_name: first_name || null,
         last_name: last_name || null,
         phone_number: normalizedPhone,
-        whatsapp_number: whatsappNum,
         email: email || null,
         company: company || null,
         updated_at: new Date().toISOString(),

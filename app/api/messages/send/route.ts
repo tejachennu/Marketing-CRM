@@ -16,11 +16,7 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-function getTwilioClient() {
-  const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
-  const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
-  return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-}
+
 
 async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
   try {
@@ -195,6 +191,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+
     if (!msgBody && !msgMediaUrl && !templateName && !templateSid) {
       return NextResponse.json(
         { error: 'Missing message body, media, or template selection' },
@@ -262,51 +259,25 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
-    }function normalizePhoneNumberForWhatsApp(raw: string): { fbTo: string; twilioTo: string } {
-  let cleaned = (raw || '').replace('whatsapp:', '').trim()
-  const hasLeadingPlus = cleaned.startsWith('+')
-  let digits = cleaned.replace(/\D/g, '')
-
-  // Handle 10-digit numbers (common for Canada / US / North America without +1 country code)
-  if (!hasLeadingPlus && digits.length === 10) {
-    digits = `1${digits}`
-  }
-
-  const fbTo = digits
-  const twilioTo = `whatsapp:+${digits}`
-
-  return { fbTo, twilioTo }
-}
-
-    // Determine channel (WhatsApp vs SMS) dynamically
-    let targetPhone = contactPhone || ''
+    }    // Determine channel (WhatsApp vs SMS) dynamically
     let isWhatsApp = false
-
-    if (conversation?.contact_id) {
+    if (contactPhone && contactPhone.startsWith('whatsapp:')) {
+      isWhatsApp = true
+    } else {
       try {
-        const { data: contactRecord } = await supabase
-          .from('contacts')
-          .select('phone_number, whatsapp_number')
-          .eq('id', conversation.contact_id)
-          .maybeSingle()
-
-        if (contactRecord) {
-          if (contactRecord.whatsapp_number) {
-            targetPhone = contactRecord.whatsapp_number
+        if (conversation?.contact_id) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('whatsapp_number')
+            .eq('id', conversation.contact_id)
+            .maybeSingle()
+          if (contact?.whatsapp_number && contact.whatsapp_number.startsWith('whatsapp:')) {
             isWhatsApp = true
-          } else if (contactRecord.phone_number) {
-            targetPhone = contactRecord.phone_number
           }
         }
       } catch (err) {
         console.warn('[v0] Failed to fetch contact to resolve channel:', err)
       }
-    }
-
-    if (targetPhone.startsWith('whatsapp:')) {
-      isWhatsApp = true
-    } else {
-      isWhatsApp = true
     }
 
     if (!isWhatsApp && !enableSms) {
@@ -316,17 +287,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Send message via Twilio or Facebook WhatsApp API
+    // Send message via the appropriate provider
+    // Key isolation rule: SMS always goes through Twilio; WhatsApp checks whatsappProvider
     let twilioMessageSid = null
     let sendStatus = 'sent'
     let sendError: string | null = null
     try {
-      const { fbTo, twilioTo } = normalizePhoneNumberForWhatsApp(targetPhone)
+      // Determine whether to use Facebook or Twilio for this specific message
+      const useFacebookForThisMessage = isWhatsApp && whatsappProvider === 'facebook'
 
-      if (whatsappProvider === 'facebook') {
+      if (useFacebookForThisMessage) {
+        // ── Facebook WhatsApp Cloud API path ──────────────────────
         if (!whatsappApiToken || !whatsappPhoneNumberId) {
           throw new Error('Facebook WhatsApp API credentials (API Token & Phone ID) must be configured in settings')
         }
+
+        const cleanToFb = contactPhone.replace('whatsapp:', '').replace('+', '').trim()
 
         const publicMediaUrl = msgMediaUrl
           ? (msgMediaUrl.startsWith('http')
@@ -337,7 +313,7 @@ export async function POST(request: NextRequest) {
         let payload: any = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
-          to: fbTo,
+          to: cleanToFb,
         }
 
         if (templateName || templateSid) {
@@ -437,27 +413,18 @@ export async function POST(request: NextRequest) {
         twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
         console.log('[v0] Message sent via Facebook:', twilioMessageSid)
       } else {
-        // Send message via Twilio
+        // ── Twilio path (WhatsApp via Twilio OR SMS) ──────────────
         if (!twilioAccountSid || !twilioAuthToken) {
-          throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings')
+          throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings to send ' + (isWhatsApp ? 'WhatsApp messages via Twilio' : 'SMS messages'))
         }
+
         const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
-
-        let cleanFrom = TWILIO_WHATSAPP_NUMBER.replace('whatsapp:', '').trim()
-        if (!cleanFrom.startsWith('+') && !cleanFrom.startsWith('MG') && /^\d+$/.test(cleanFrom)) {
-          cleanFrom = `+${cleanFrom}`
-        }
-
-        const { fbTo, twilioTo } = normalizePhoneNumberForWhatsApp(targetPhone)
+        const cleanFrom = TWILIO_WHATSAPP_NUMBER.replace('whatsapp:', '')
+        const cleanTo = contactPhone.replace('whatsapp:', '')
 
         const twilioParams: any = {
-          to: isWhatsApp ? twilioTo : targetPhone,
+          to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,
           from: isWhatsApp ? `whatsapp:${cleanFrom}` : cleanFrom,
-        }
-
-        const runtimeUrl = process.env.V0_RUNTIME_URL || ''
-        if (runtimeUrl) {
-          twilioParams.statusCallback = `${runtimeUrl}/api/webhooks/twilio/status`
         }
 
         if (templateSid && /^HX[0-9a-f]{32}$/i.test(templateSid)) {

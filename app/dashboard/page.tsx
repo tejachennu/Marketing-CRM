@@ -8,7 +8,7 @@ import { canSeeAll } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, FileText, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket
+  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
@@ -167,21 +167,32 @@ function ConversationsPageContent() {
   const [showLiveChatTemplateModal, setShowLiveChatTemplateModal] = useState(false)
   const [liveChatTemplates, setLiveChatTemplates] = useState<any[]>([])
   const [loadingLiveChatTemplates, setLoadingLiveChatTemplates] = useState(false)
+  const [liveChatTemplateError, setLiveChatTemplateError] = useState<string | null>(null)
   const [selectedLiveChatTemplate, setSelectedLiveChatTemplate] = useState<any | null>(null)
   const [templateVarValues, setTemplateVarValues] = useState<Record<string, string>>({})
   const [sendingTemplate, setSendingTemplate] = useState(false)
 
+  // Rephrase with AI States
+  const [showRephraseDropdown, setShowRephraseDropdown] = useState(false)
+  const [rephrasing, setRephrasing] = useState(false)
+  const rephraseDropdownRef = useRef<HTMLDivElement>(null)
+
   const fetchLiveChatTemplates = async () => {
     if (!user?.organization_id) return
     setLoadingLiveChatTemplates(true)
+    setLiveChatTemplateError(null)
     try {
       const res = await fetch(`/api/templates?organizationId=${user.organization_id}`)
       const data = await res.json()
+      if (data.error) {
+        setLiveChatTemplateError(data.error)
+      }
       if (data.templates && Array.isArray(data.templates)) {
         setLiveChatTemplates(data.templates)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Dashboard] Error fetching live chat templates:', err)
+      setLiveChatTemplateError(err.message || 'Failed to fetch templates')
     } finally {
       setLoadingLiveChatTemplates(false)
     }
@@ -1174,6 +1185,43 @@ function ConversationsPageContent() {
     }
   }
 
+  // ─── Rephrase with AI ───
+
+  const handleRephrase = async (tone: string) => {
+    if (!messageText.trim() || rephrasing) return
+    setRephrasing(true)
+    setShowRephraseDropdown(false)
+    try {
+      const res = await fetch('/api/ai/rephrase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: messageText.trim(), tone })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to rephrase')
+      if (data.rephrased) {
+        setMessageText(data.rephrased)
+      }
+    } catch (err) {
+      console.error('[Rephrase] Error:', err)
+    } finally {
+      setRephrasing(false)
+    }
+  }
+
+  // Close rephrase dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (rephraseDropdownRef.current && !rephraseDropdownRef.current.contains(e.target as Node)) {
+        setShowRephraseDropdown(false)
+      }
+    }
+    if (showRephraseDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showRephraseDropdown])
+
   async function handleLogout() {
     setLogoutLoading(true)
     try {
@@ -2114,23 +2162,23 @@ function ConversationsPageContent() {
             
             return (
               <>
-                {isSmsDisabled && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-amber-50 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-900/40 flex items-center gap-2 select-none z-10">
-                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                 {isSmsDisabled && (
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-amber-50 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-900/40 flex items-start gap-2 select-none z-10">
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 break-words whitespace-normal leading-normal">
                       ⚠️ SMS Gateway is currently disabled. Please enable it in Settings to message this contact.
                     </span>
                   </div>
                 )}
                 
                 {chatSendError && (
-                  <div className="mx-4 mb-2 mt-1 px-3.5 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-3 select-none z-10 animate-in fade-in duration-200 shadow-xs">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-rose-800 dark:text-rose-300">
-                      <AlertCircle size={15} className="flex-shrink-0 text-rose-600 dark:text-rose-400" />
-                      <span>{chatSendError}</span>
+                  <div className="mx-4 mb-2 mt-1 px-3.5 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex items-start justify-between gap-3 select-none z-10 animate-in fade-in duration-200 shadow-xs">
+                    <div className="flex items-start gap-2 text-xs font-semibold text-rose-800 dark:text-rose-300 flex-1 min-w-0">
+                      <AlertCircle size={15} className="flex-shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                      <span className="break-words whitespace-normal leading-normal w-full">{chatSendError}</span>
                     </div>
                     <button
                       onClick={() => setChatSendError(null)}
-                      className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 text-xs font-bold px-1.5 py-0.5 rounded"
+                      className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 text-xs font-bold px-1.5 py-0.5 rounded shrink-0"
                     >
                       ✕
                     </button>
@@ -2138,8 +2186,8 @@ function ConversationsPageContent() {
                 )}
 
                 {isExpired && !isSmsDisabled && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex items-center justify-between gap-2 select-none z-10 animate-in fade-in duration-200">
-                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455">
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none z-10 animate-in fade-in duration-200">
+                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455 break-words whitespace-normal leading-normal flex-1">
                       ⚠️ The 24-hour WhatsApp support window has expired. Free-form text messages will be rejected by Meta until the customer replies.
                     </span>
                     <button
@@ -2147,7 +2195,7 @@ function ConversationsPageContent() {
                         fetchLiveChatTemplates()
                         setShowLiveChatTemplateModal(true)
                       }}
-                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 flex-shrink-0 shadow-xs"
+                      className="px-2.5 py-1.5 sm:py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 flex-shrink-0 shadow-xs w-full sm:w-auto cursor-pointer"
                     >
                       <FileText size={12} />
                       <span>Send Template</span>
@@ -2156,15 +2204,15 @@ function ConversationsPageContent() {
                 )}
 
                 {isChatbotActive && !isSmsDisabled && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-900/40 flex items-center gap-2 select-none z-10 animate-in fade-in duration-200">
-                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400">
+                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-900/40 flex items-start gap-2 select-none z-10 animate-in fade-in duration-200">
+                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 break-words whitespace-normal leading-normal">
                       🤖 Chatbot auto-reply is active. Disable "Auto-Reply Chatbot" in the header to chat manually.
                     </span>
                   </div>
                 )}
                 
-                <div className="py-2.5 px-4 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
-                  <div className="flex gap-2.5 items-center max-w-5xl mx-auto w-full">
+                <div className="py-2.5 px-3 sm:px-4 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
+                  <div className="flex gap-2 items-center max-w-5xl mx-auto w-full">
                     <input 
                       type="file" 
                       ref={fileInputRef} 
@@ -2212,12 +2260,92 @@ function ConversationsPageContent() {
                       placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "Support window expired (Use Template button to message)" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
                       disabled={isSmsDisabled || isExpired || isChatbotActive}
                       rows={1}
-                      className="flex-1 px-4 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
+                      className="flex-1 px-3 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
                     />
+                    
+                    {/* Rephrase with AI */}
+                    {messageText.trim() && !isSmsDisabled && !isExpired && !isChatbotActive && (
+                      <div className="relative flex-shrink-0" ref={rephraseDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setShowRephraseDropdown(!showRephraseDropdown)}
+                          disabled={rephrasing}
+                          className={`flex items-center justify-center transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ${
+                            showRephraseDropdown
+                              ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 rounded-lg p-1.5'
+                              : 'hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full border border-transparent'
+                          }`}
+                          title="Rephrase with AI"
+                        >
+                          {rephrasing ? (
+                            <Loader2 size={18} className="animate-spin text-[#667781]" />
+                          ) : (
+                            <Wand2 size={18} />
+                          )}
+                          <span className="hidden md:inline ml-1 text-[11px] font-bold">Rephrase</span>
+                        </button>
+
+                        {/* Rephrase Dropdown */}
+                        {showRephraseDropdown && (
+                          <div className="absolute bottom-full right-0 mb-2 w-56 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl shadow-2xl z-30 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+                            <div className="py-1">
+                              <button
+                                onClick={() => handleRephrase('professional')}
+                                className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] transition-colors text-left cursor-pointer"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0">
+                                  <Briefcase size={13} className="text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div>
+                                  <p className="text-[12px] font-bold text-[#111b21] dark:text-[#e9edef]">Professional</p>
+                                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0]">Make it professional and polite</p>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => handleRephrase('friendly')}
+                                className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] transition-colors text-left cursor-pointer"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center flex-shrink-0">
+                                  <Smile size={13} className="text-amber-600 dark:text-amber-400" />
+                                </div>
+                                <div>
+                                  <p className="text-[12px] font-bold text-[#111b21] dark:text-[#e9edef]">Friendly</p>
+                                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0]">Make it warm and friendly</p>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => handleRephrase('short')}
+                                className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] transition-colors text-left cursor-pointer"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center flex-shrink-0">
+                                  <AlignLeft size={13} className="text-emerald-600 dark:text-emerald-400" />
+                                </div>
+                                <div>
+                                  <p className="text-[12px] font-bold text-[#111b21] dark:text-[#e9edef]">Short & Clear</p>
+                                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0]">Make it short and easy to understand</p>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => handleRephrase('grammar')}
+                                className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] transition-colors text-left cursor-pointer"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-purple-50 dark:bg-purple-950/30 flex items-center justify-center flex-shrink-0">
+                                  <SpellCheck size={13} className="text-purple-600 dark:text-purple-400" />
+                                </div>
+                                <div>
+                                  <p className="text-[12px] font-bold text-[#111b21] dark:text-[#e9edef]">Fix Grammar</p>
+                                  <p className="text-[10px] text-[#667781] dark:text-[#8696a0]">Fix grammar and spelling</p>
+                                </div>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button
                       onClick={handleSendMessage}
                       disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled || isExpired || isChatbotActive}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white p-2.5 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 disabled:scale-100 disabled:shadow-none"
+                      className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white p-2.5 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 disabled:scale-100 disabled:shadow-none cursor-pointer"
                     >
                       <Send size={16} />
                     </button>
@@ -2514,6 +2642,24 @@ function ConversationsPageContent() {
                       </option>
                     ))}
                   </select>
+                )}
+
+                {liveChatTemplateError && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250/30 text-xs flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                      <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
+                      <span>WhatsApp API Credentials Issue</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium leading-normal">
+                      {liveChatTemplateError}
+                    </p>
+                    <a 
+                      href="/dashboard/settings" 
+                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-0.5"
+                    >
+                      Go to Settings → Credentials to update token & IDs
+                    </a>
+                  </div>
                 )}
               </div>
 

@@ -92,6 +92,7 @@ interface Contact {
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
+  const [templateFetchError, setTemplateFetchError] = useState<string | null>(null)
   const [contacts, setContacts] = useState<Contact[]>([])
   
   const [isLoading, setIsLoading] = useState(true)
@@ -339,14 +340,19 @@ export default function CampaignsPage() {
   const fetchTemplates = async (orgIdOverride?: string) => {
     const orgId = orgIdOverride || user?.organization_id
     if (!orgId) return
+    setTemplateFetchError(null)
     try {
       const res = await fetch(`/api/templates?organizationId=${orgId}`)
       const data = await res.json()
+      if (data.error) {
+        setTemplateFetchError(data.error)
+      }
       if (data.templates) {
         setTemplates(data.templates)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching templates:', err)
+      setTemplateFetchError(err.message || 'Failed to load templates')
     }
   }
 
@@ -1572,6 +1578,24 @@ export default function CampaignsPage() {
                         </option>
                       ))}
                     </select>
+
+                    {channel === 'whatsapp' && templateFetchError && (
+                      <div className="mt-1 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250/30 text-xs flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                          <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
+                          <span>WhatsApp API Credentials Issue</span>
+                        </div>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium leading-normal">
+                          {templateFetchError}
+                        </p>
+                        <a 
+                          href="/dashboard/settings" 
+                          className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline mt-0.5"
+                        >
+                          Go to Settings → Credentials to update token & IDs
+                        </a>
+                      </div>
+                    )}
 
                     {/* Add Template inline panel */}
                     {channel === 'whatsapp' && (

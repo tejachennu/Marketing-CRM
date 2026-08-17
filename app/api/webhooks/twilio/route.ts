@@ -184,6 +184,52 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Step 1b: Check organization's WhatsApp provider and load org-scoped Twilio credentials
+    // If the org uses Facebook for WhatsApp, ignore this Twilio webhook event
+    let orgTwilioAccountSid = process.env.TWILIO_ACCOUNT_SID || ''
+    let orgTwilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
+
+    if (orgId) {
+      try {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('whatsapp_provider, twilio_account_sid, twilio_auth_token')
+          .eq('id', orgId)
+          .single()
+
+        if (orgData) {
+          // If the org uses Facebook for WhatsApp, this Twilio webhook should not process the message
+          const provider = orgData.whatsapp_provider || 'twilio'
+          if (provider !== 'twilio') {
+            console.log(`[v0] Ignoring Twilio webhook for org ${orgId} because active WhatsApp provider is ${provider}`)
+            return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
+          }
+
+          // Use org-scoped Twilio credentials for media downloads
+          if (orgData.twilio_account_sid) orgTwilioAccountSid = orgData.twilio_account_sid
+          if (orgData.twilio_auth_token) orgTwilioAuthToken = orgData.twilio_auth_token
+        }
+      } catch (dbErr) {
+        console.error('[v0] Error checking org WhatsApp provider:', dbErr)
+        // Non-fatal, continue with defaults
+      }
+    }
+
+    // Download Twilio media using org-scoped credentials if available
+    if (mediaUrl && numMedia > 0) {
+      const rawMediaUrl = params.get('MediaUrl0') || null
+      if (rawMediaUrl && rawMediaUrl.startsWith('https://api.twilio.com')) {
+        try {
+          const downloadedPath = await downloadTwilioMedia(rawMediaUrl, orgTwilioAccountSid, orgTwilioAuthToken)
+          if (downloadedPath) {
+            mediaUrl = contentType ? `${downloadedPath}#media${contentType.includes('image/jpeg') ? '.jpg' : contentType.includes('image/png') ? '.png' : '.bin'}` : downloadedPath
+          }
+        } catch (dlErr) {
+          console.error('[v0] Error downloading Twilio media with org credentials:', dlErr)
+        }
+      }
+    }
+
     // Step 2: Find or create the contact
     let contact: any = null
 

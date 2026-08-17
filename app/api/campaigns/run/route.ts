@@ -14,11 +14,7 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-function getTwilioClient() {
-  const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || ''
-  const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || ''
-  return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-}
+
 const mediaCache: Record<string, string> = {}
 
 async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId: string): Promise<string | null> {
@@ -175,11 +171,16 @@ async function executeCampaign(campaignId: string) {
       }
     }
 
-    const getTwilioClient = () => {
-      if (!twilioAccountSid || !twilioAuthToken) {
-        throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings')
+    // Create Twilio client lazily — only when a Twilio-dependent channel needs it
+    let _twilioClient: ReturnType<typeof twilio> | null = null
+    function getTwilioClientForCampaign() {
+      if (!_twilioClient) {
+        if (!twilioAccountSid || !twilioAuthToken) {
+          throw new Error('Twilio credentials (Account SID & Auth Token) must be configured in settings to send SMS or WhatsApp messages via Twilio')
+        }
+        _twilioClient = twilio(twilioAccountSid, twilioAuthToken)
       }
-      return twilio(twilioAccountSid, twilioAuthToken)
+      return _twilioClient
     }
 
     let sentCount = 0
@@ -477,28 +478,18 @@ async function executeCampaign(campaignId: string) {
             twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
             sentCount++
           } else {
-            let cleanTo = (recipientPhone || '').replace('whatsapp:', '').trim()
-            if (!cleanTo.startsWith('+') && /^\d+$/.test(cleanTo)) {
-              cleanTo = `+${cleanTo}`
-            }
-
             const twilioParams: any = {
-              to: cleanTo.startsWith('whatsapp:') ? cleanTo : `whatsapp:${cleanTo}`
+              to: recipientPhone.startsWith('whatsapp:') ? recipientPhone : `whatsapp:${recipientPhone}`
             }
 
             if (campaignSender && campaignSender.startsWith('MG')) {
               twilioParams.messagingServiceSid = campaignSender
             } else {
-              let cleanFrom = (campaignSender || TWILIO_WHATSAPP_NUMBER || '').replace('whatsapp:', '').trim()
-              if (!cleanFrom.startsWith('+') && !cleanFrom.startsWith('MG') && /^\d+$/.test(cleanFrom)) {
-                cleanFrom = `+${cleanFrom}`
+              let fromNumber = campaignSender || `whatsapp:${TWILIO_WHATSAPP_NUMBER}`
+              if (!fromNumber.startsWith('whatsapp:')) {
+                fromNumber = `whatsapp:${fromNumber}`
               }
-              twilioParams.from = cleanFrom.startsWith('whatsapp:') ? cleanFrom : `whatsapp:${cleanFrom}`
-            }
-
-            const runtimeUrl = process.env.V0_RUNTIME_URL || ''
-            if (runtimeUrl) {
-              twilioParams.statusCallback = `${runtimeUrl}/api/webhooks/twilio/status`
+              twilioParams.from = fromNumber
             }
 
             const isRealTwilioSid = campaign.template_sid && /^HX[0-9a-f]{32}$/i.test(campaign.template_sid)
@@ -513,7 +504,8 @@ async function executeCampaign(campaignId: string) {
               twilioParams.body = body
             }
 
-            const messageResponse = await getTwilioClient().messages.create(twilioParams)
+            const twilioClient = getTwilioClientForCampaign()
+            const messageResponse = await twilioClient.messages.create(twilioParams)
             twilioMessageSid = messageResponse.sid
             sentCount++
           }
@@ -547,7 +539,8 @@ async function executeCampaign(campaignId: string) {
             twilioParams.from = campaignSender
           }
 
-          const messageResponse = await getTwilioClient().messages.create(twilioParams)
+          const twilioClient = getTwilioClientForCampaign()
+          const messageResponse = await twilioClient.messages.create(twilioParams)
           twilioMessageSid = messageResponse.sid
           sentCount++
         } else if (channel === 'email') {
