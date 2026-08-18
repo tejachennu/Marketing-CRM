@@ -175,19 +175,32 @@ async function fetchMetaTemplates(
         const bodyComp = components.find((c: any) => (c.type || '').toUpperCase() === 'BODY')
         if (bodyComp) {
           body = bodyComp.text || ''
-          const varMatches = body.match(/\{\{[^\}]+\}\}/g)
-          if (varMatches) {
-            const bodyExamples = bodyComp.example?.body_text?.[0] || []
-            varMatches.forEach((match: string, idx: number) => {
-              const variable = match.replace(/[\{\}]/g, '')
-              if (!variables.includes(variable)) {
+          const namedParams = bodyComp.example?.body_text_named_params
+          if (Array.isArray(namedParams) && namedParams.length > 0) {
+            namedParams.forEach((paramObj: any) => {
+              const variable = paramObj.param_name
+              if (variable && !variables.includes(variable)) {
                 variables.push(variable)
               }
-              const exampleVal = bodyExamples[idx] || ''
-              if (exampleVal) {
-                sampleValues[variable] = exampleVal
+              if (paramObj.example) {
+                sampleValues[variable] = paramObj.example
               }
             })
+          } else {
+            const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+            if (varMatches) {
+              const bodyExamples = bodyComp.example?.body_text?.[0] || []
+              varMatches.forEach((match: string, idx: number) => {
+                const variable = match.replace(/[\{\}]/g, '')
+                if (/^[a-zA-Z0-9_]+$/.test(variable) && !variables.includes(variable)) {
+                  variables.push(variable)
+                }
+                const exampleVal = bodyExamples[idx] || ''
+                if (exampleVal) {
+                  sampleValues[variable] = exampleVal
+                }
+              })
+            }
           }
         }
 

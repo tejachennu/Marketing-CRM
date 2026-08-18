@@ -367,17 +367,35 @@ async function executeCampaign(campaignId: string) {
                     }
                   } else if (comp.type === 'BODY') {
                     const bodyText = comp.text || '';
-                    const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || [];
-                    const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[];
-                    const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)));
-                    if (isNumeric) {
-                      uniqueKeys.sort((a, b) => Number(a) - Number(b));
+                    let uniqueKeys: string[] = [];
+
+                    // 1. If Meta explicitly defines named parameters in body_text_named_params, use that exact order
+                    const namedParams = comp.example?.body_text_named_params;
+                    if (Array.isArray(namedParams) && namedParams.length > 0) {
+                      uniqueKeys = namedParams.map((p: any) => p.param_name).filter(Boolean);
+                    } else {
+                      // 2. Otherwise parse bodyText for {{...}} placeholders
+                      const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || [];
+                      const rawKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[];
+                      
+                      // Filter out invalid Meta parameter names (e.g. containing spaces like {{event name}})
+                      uniqueKeys = rawKeys.filter(k => /^[a-zA-Z0-9_]+$/.test(k));
+                      
+                      const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)));
+                      if (isNumeric) {
+                        uniqueKeys.sort((a, b) => Number(a) - Number(b));
+                      }
                     }
 
-                    const parameters = uniqueKeys.map(key => ({
-                      type: 'text',
-                      text: String(mappedVars[key] !== undefined ? mappedVars[key] : '')
-                    }));
+                    const parameters = uniqueKeys.map(key => {
+                      const val = mappedVars[key] !== undefined 
+                        ? mappedVars[key] 
+                        : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : '');
+                      return {
+                        type: 'text',
+                        text: String(val)
+                      };
+                    });
 
                     if (parameters.length > 0) {
                       reqComponents.push({
@@ -428,7 +446,11 @@ async function executeCampaign(campaignId: string) {
                 }
               } else {
                 const placeholders = templateBody.match(/\{\{([^}]+)\}\}/g) || []
-                const uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
+                let uniqueKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
+                
+                // Filter out invalid Meta parameter names (e.g. containing spaces like {{event name}})
+                uniqueKeys = uniqueKeys.filter(k => /^[a-zA-Z0-9_]+$/.test(k))
+                
                 const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)))
                 if (isNumeric) {
                   uniqueKeys.sort((a, b) => Number(a) - Number(b))
@@ -436,7 +458,7 @@ async function executeCampaign(campaignId: string) {
 
                 const parameters = uniqueKeys.map(key => ({
                   type: 'text',
-                  text: String(mappedVars[key] || '')
+                  text: String(mappedVars[key] !== undefined ? mappedVars[key] : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : ''))
                 }))
 
                 if (parameters.length > 0) {
