@@ -36,7 +36,9 @@ import {
   Play,
   Send,
   TrendingUp,
-  Target
+  Target,
+  Square,
+  RotateCcw
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -334,6 +336,56 @@ export default function CampaignsPage() {
       console.error('Error fetching campaigns:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+
+  const handleStopCampaign = async (campaignId: string) => {
+    setActionLoadingId(campaignId)
+    try {
+      const res = await fetch('/api/campaigns/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        await fetchCampaigns(currentPage)
+        if (selectedCampaign?.id === campaignId) {
+          await fetchCampaignDetails(campaignId)
+        }
+      } else {
+        alert(data.error || 'Failed to stop campaign')
+      }
+    } catch (err) {
+      console.error('Error stopping campaign:', err)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleRerunCampaign = async (campaignId: string, rerunType: 'failed_only' | 'all' = 'failed_only') => {
+    setActionLoadingId(campaignId)
+    try {
+      const res = await fetch('/api/campaigns/rerun', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, rerunType })
+      })
+      const data = await res.json()
+      if (data.success) {
+        await fetchCampaigns(currentPage)
+        if (selectedCampaign?.id === campaignId) {
+          await fetchCampaignDetails(campaignId)
+        }
+      } else {
+        alert(data.error || 'Failed to rerun campaign')
+      }
+    } catch (err) {
+      console.error('Error rerunning campaign:', err)
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
@@ -998,11 +1050,51 @@ export default function CampaignsPage() {
                   <span className={`text-[9px] font-black px-2 py-0.5 md:py-1 rounded border ${
                     c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-100 dark:border-emerald-900/30' :
                     c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-100 dark:border-amber-900/30 animate-pulse' :
+                    c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 border-rose-100 dark:border-rose-900/30' :
                     c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-150 dark:border-red-900/30' :
                     'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-150'
                   }`}>
                     {c.status}
                   </span>
+
+                  {/* Stop / Rerun Actions */}
+                  {(c.status === 'PROCESSING' || c.status === 'PENDING') ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleStopCampaign(c.id)
+                      }}
+                      disabled={actionLoadingId === c.id}
+                      className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-[9px] md:text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
+                      title="Stop Campaign execution"
+                    >
+                      {actionLoadingId === c.id ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Square size={10} className="fill-current" />
+                      )}
+                      <span>Stop</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRerunCampaign(c.id, 'failed_only')
+                      }}
+                      disabled={actionLoadingId === c.id}
+                      className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 text-[9px] md:text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
+                      title="Rerun failed & pending recipients only"
+                    >
+                      {actionLoadingId === c.id ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <RotateCcw size={11} />
+                      )}
+                      <span>Rerun Failed & Pending</span>
+                    </button>
+                  )}
                   
                   <button
                     type="button"
@@ -1190,6 +1282,49 @@ export default function CampaignsPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
+              {(selectedCampaign.status === 'PROCESSING' || selectedCampaign.status === 'PENDING') ? (
+                <button
+                  type="button"
+                  onClick={() => handleStopCampaign(selectedCampaign.id)}
+                  disabled={actionLoadingId === selectedCampaign.id}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  title="Stop Campaign execution"
+                >
+                  {actionLoadingId === selectedCampaign.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Square size={10} className="fill-current" />
+                  )}
+                  <span>Stop Campaign</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleRerunCampaign(selectedCampaign.id, 'failed_only')}
+                    disabled={actionLoadingId === selectedCampaign.id}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Rerun failed and pending recipients only"
+                  >
+                    {actionLoadingId === selectedCampaign.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={12} />
+                    )}
+                    <span>Rerun Failed & Pending</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRerunCampaign(selectedCampaign.id, 'all')}
+                    disabled={actionLoadingId === selectedCampaign.id}
+                    className="px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Reset and rerun full campaign for all recipients"
+                  >
+                    <span>Rerun All</span>
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => fetchCampaignDetails(selectedCampaign.id)}
                 className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-[#8696a0] cursor-pointer transition-colors"
