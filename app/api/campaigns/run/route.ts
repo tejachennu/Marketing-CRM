@@ -396,6 +396,7 @@ async function executeCampaign(campaignId: string) {
                             })
                           }
                         }
+                        
                       } else if (comp.type === 'BODY') {
                         const bodyText = comp.text || '';
                         let uniqueKeys: string[] = [];
