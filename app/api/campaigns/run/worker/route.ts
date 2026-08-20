@@ -179,6 +179,9 @@ export async function POST(request: NextRequest) {
     }
 
     let metaTemplateComponents: any[] = []
+    let metaTemplateLanguageFromApi: string | null = null
+    let metaTemplateNameFromApi: string | null = null
+
     if (channel === 'whatsapp' && whatsappProvider === 'facebook' && campaign.template_sid && campaign.template_sid.startsWith('META_')) {
       const templateId = campaign.template_sid.replace('META_', '')
       try {
@@ -186,6 +189,9 @@ export async function POST(request: NextRequest) {
         if (tplRes.ok) {
           const tplData = await tplRes.json()
           metaTemplateComponents = tplData.components || []
+          if (tplData.language) metaTemplateLanguageFromApi = tplData.language
+          if (tplData.name) metaTemplateNameFromApi = tplData.name
+          console.log(`[Campaign Worker] Successfully fetched Meta template info: name=${tplData.name}, language=${tplData.language}`)
         }
       } catch (err) {
         console.error(`[Campaign Worker] Error fetching Meta template components:`, err)
@@ -273,9 +279,11 @@ export async function POST(request: NextRequest) {
                       templateBody = dbTpl.body
                     }
                   } else if (campaign.template_sid.startsWith('META_')) {
-                    const rawName = campaign.template_name || campaign.template_sid.replace('META_', '')
-                    templateName = rawName.replace(/\s*\(Meta Approved\)/i, '').trim()
-                    templateLanguage = campaign.template_language || 'en'
+                    const rawName = metaTemplateNameFromApi || campaign.template_name || campaign.template_sid.replace('META_', '')
+                    templateName = rawName.split('•')[0].replace(/\s*\(Meta Approved\)/i, '').trim()
+                    
+                    const tagMatch = (campaign.template_name || '').match(/\[([a-z]{2}(?:_[A-Z]{2})?)\]/i)
+                    templateLanguage = metaTemplateLanguageFromApi || campaign.template_language || tagMatch?.[1] || 'en'
                   } else if (campaign.template_sid.startsWith('HX_')) {
                     const matchedFallback = [
                       { sid: 'HX_welcome_campaign', name: 'welcome_campaign', body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.', language: 'en' },
@@ -398,10 +406,18 @@ export async function POST(request: NextRequest) {
                     const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)))
                     if (isNumeric) uniqueKeys.sort((a, b) => Number(a) - Number(b))
 
-                    const parameters = uniqueKeys.map(key => ({
-                      type: 'text',
-                      text: String(mappedVars[key] !== undefined ? mappedVars[key] : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : ''))
-                    }))
+                    const parameters = uniqueKeys.map((key, idx) => {
+                      const positionalKey = String(idx + 1);
+                      const val = mappedVars[key] !== undefined 
+                        ? mappedVars[key] 
+                        : (mappedVars[key.toLowerCase()] !== undefined 
+                            ? mappedVars[key.toLowerCase()] 
+                            : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
+                      return {
+                        type: 'text',
+                        text: String(val)
+                      };
+                    })
 
                     if (parameters.length > 0) payload.template.components = [{ type: 'body', parameters }]
                   }

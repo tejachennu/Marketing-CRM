@@ -154,6 +154,9 @@ async function executeCampaign(campaignId: string) {
     }
 
     let metaTemplateComponents: any[] = []
+    let metaTemplateLanguageFromApi: string | null = null
+    let metaTemplateNameFromApi: string | null = null
+
     if (channel === 'whatsapp' && whatsappProvider === 'facebook' && campaign.template_sid && campaign.template_sid.startsWith('META_')) {
       const templateId = campaign.template_sid.replace('META_', '')
       try {
@@ -161,7 +164,9 @@ async function executeCampaign(campaignId: string) {
         if (tplRes.ok) {
           const tplData = await tplRes.json()
           metaTemplateComponents = tplData.components || []
-          console.log(`[Campaign Worker] Successfully fetched template components:`, JSON.stringify(metaTemplateComponents))
+          if (tplData.language) metaTemplateLanguageFromApi = tplData.language
+          if (tplData.name) metaTemplateNameFromApi = tplData.name
+          console.log(`[Campaign Worker] Successfully fetched Meta template info: name=${tplData.name}, language=${tplData.language}`)
         } else {
           const errText = await tplRes.text()
           console.warn(`[Campaign Worker] Failed to fetch template components for ${templateId}: ${tplRes.status} ${errText}`)
@@ -258,10 +263,11 @@ async function executeCampaign(campaignId: string) {
                     }
                   } else if (campaign.template_sid.startsWith('META_')) {
                     // Meta template fetched from WhatsApp Business Cloud API
-                    // The campaign.template_name contains "name (Meta Approved)" format
-                    const rawName = campaign.template_name || campaign.template_sid.replace('META_', '')
-                    templateName = rawName.replace(/\s*\(Meta Approved\)/i, '').trim()
-                    templateLanguage = campaign.template_language || 'en'
+                    const rawName = metaTemplateNameFromApi || campaign.template_name || campaign.template_sid.replace('META_', '')
+                    templateName = rawName.split('•')[0].replace(/\s*\(Meta Approved\)/i, '').trim()
+                    
+                    const tagMatch = (campaign.template_name || '').match(/\[([a-z]{2}(?:_[A-Z]{2})?)\]/i)
+                    templateLanguage = metaTemplateLanguageFromApi || campaign.template_language || tagMatch?.[1] || 'en'
                   } else if (campaign.template_sid.startsWith('HX_')) {
                     const matchedFallback = [
                       {
@@ -420,10 +426,13 @@ async function executeCampaign(campaignId: string) {
                         }
 
                         const isNamed = Array.isArray(namedParams) && namedParams.length > 0;
-                        const parameters = uniqueKeys.map(key => {
+                        const parameters = uniqueKeys.map((key, idx) => {
+                          const positionalKey = String(idx + 1);
                           const val = mappedVars[key] !== undefined 
                             ? mappedVars[key] 
-                            : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : '');
+                            : (mappedVars[key.toLowerCase()] !== undefined 
+                                ? mappedVars[key.toLowerCase()] 
+                                : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
                           const paramObj: any = {
                             type: 'text',
                             text: String(val)

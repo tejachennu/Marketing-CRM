@@ -857,9 +857,10 @@ export default function CampaignsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newCampaignName,
-          templateName: selectedTemplate?.name || 'custom_message',
+          templateName: selectedTemplate?.whatsapp_template_name || selectedTemplate?.raw_name || selectedTemplate?.name?.split('•')[0]?.trim() || 'custom_message',
           templateBody: customMessageBody,
           templateSid: selectedTemplate?.sid || null,
+          templateLanguage: selectedTemplate?.language || 'en',
           audience: audienceList,
           channel,
           sender,

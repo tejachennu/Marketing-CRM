@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
       templateName,
       templateBody,
       templateSid,
+      templateLanguage,
       audience, // array of { phone: string, email?: string, variables: Record<string, string> }
       organizationId,
       createdBy,
@@ -146,29 +147,42 @@ export async function POST(request: NextRequest) {
     }
 
     const campaignChannel = channel || 'whatsapp'
+    const lang = templateLanguage || 'en'
 
-    // Insert Campaign
-    const { data: campaign, error: campaignError } = await supabase
+    // Insert Campaign (with graceful fallback if template_language column is not yet migrated)
+    const campaignInsertPayload: any = {
+      organization_id: resolvedOrgId || null,
+      name,
+      template_name: templateName,
+      template_body: templateBody,
+      template_sid: templateSid || null,
+      template_language: lang,
+      status: 'PENDING',
+      total_contacts: audience.length,
+      sent_count: 0,
+      failed_count: 0,
+      created_by: createdBy || null,
+      channel: campaignChannel,
+      sender: sender || null,
+      subject: subject || null
+    }
+
+    let { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
-      .insert([
-        {
-          organization_id: resolvedOrgId || null,
-          name,
-          template_name: templateName,
-          template_body: templateBody,
-          template_sid: templateSid || null,
-          status: 'PENDING',
-          total_contacts: audience.length,
-          sent_count: 0,
-          failed_count: 0,
-          created_by: createdBy || null,
-          channel: campaignChannel,
-          sender: sender || null,
-          subject: subject || null
-        }
-      ])
+      .insert([campaignInsertPayload])
       .select()
       .single()
+
+    if (campaignError && (campaignError.message?.includes('template_language') || campaignError.code === '42703')) {
+      delete campaignInsertPayload.template_language
+      const retry = await supabase
+        .from('campaigns')
+        .insert([campaignInsertPayload])
+        .select()
+        .single()
+      campaign = retry.data
+      campaignError = retry.error
+    }
 
     if (campaignError) throw campaignError
 
