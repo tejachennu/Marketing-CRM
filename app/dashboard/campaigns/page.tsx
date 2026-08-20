@@ -141,6 +141,10 @@ export default function CampaignsPage() {
   
   // Mapping state: maps template placeholders "1", "2" to column names / attributes
   const [phoneColumn, setPhoneColumn] = useState('')
+  const [contactNameColumn, setContactNameColumn] = useState('')
+  const [contactLastNameColumn, setContactLastNameColumn] = useState('')
+  const [contactTagColumn, setContactTagColumn] = useState('')
+  const [customCampaignTag, setCustomCampaignTag] = useState('')
   const [variableMappings, setVariableMappings] = useState<Record<string, string>>({})
   const [variableMappingTypes, setVariableMappingTypes] = useState<Record<string, 'dynamic' | 'static'>>({})
   const [staticVariableValues, setStaticVariableValues] = useState<Record<string, string>>({})
@@ -530,6 +534,24 @@ export default function CampaignsPage() {
     )
   }
 
+  const isNameHeader = (header: string) => {
+    const h = header.trim().toLowerCase()
+    return (
+      /^(contact\s*name|first\s*name|customer\s*name|patient\s*name|full\s*name|client\s*name|name)$/i.test(h) ||
+      /contact.*name|first.*name|customer.*name|patient.*name|full.*name|client.*name|^name$/i.test(h)
+    )
+  }
+
+  const isLastNameHeader = (header: string) => {
+    const h = header.trim().toLowerCase()
+    return /^(last\s*name|surname)$/i.test(h) || /last.*name|surname/i.test(h)
+  }
+
+  const isTagHeader = (header: string) => {
+    const h = header.trim().toLowerCase()
+    return /^(tag|tags|category|group|segment|label)$/i.test(h) || /tag|category|segment/i.test(h)
+  }
+
   // Helper to auto-map template placeholders to Excel columns or Contact attributes
   const autoDetectVariableMappings = (
     variables: string[],
@@ -629,6 +651,16 @@ export default function CampaignsPage() {
           setPhoneColumn(phoneKey)
         }
 
+        // Auto-detect Name, Last Name, and Tag columns
+        const nameKey = headers.find(isNameHeader) || ''
+        setContactNameColumn(nameKey)
+
+        const lastNameKey = headers.find(isLastNameHeader) || ''
+        setContactLastNameColumn(lastNameKey)
+
+        const tagKey = headers.find(isTagHeader) || ''
+        setContactTagColumn(tagKey)
+
         // Auto-detect variable mappings immediately for active template/variables
         const variablesToMap = channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables
         if (variablesToMap.length > 0) {
@@ -658,6 +690,10 @@ export default function CampaignsPage() {
     setExcelData([])
     setExcelHeaders([])
     setPhoneColumn('')
+    setContactNameColumn('')
+    setContactLastNameColumn('')
+    setContactTagColumn('')
+    setCustomCampaignTag('')
     setSelectedContactIds(contacts.map(c => c.id))
     setContactSearchTerm('')
     setVariableMappings({})
@@ -796,6 +832,23 @@ export default function CampaignsPage() {
             variables[tplVar] = String(row[colName] || '')
           }
         })
+        // Attach contact name, last name, and tags so CRM contacts save accurately
+        if (contactNameColumn && row[contactNameColumn]) {
+          variables['first_name'] = String(row[contactNameColumn] || '').trim()
+          variables['contact_name'] = String(row[contactNameColumn] || '').trim()
+          variables['name'] = String(row[contactNameColumn] || '').trim()
+        }
+        if (contactLastNameColumn && row[contactLastNameColumn]) {
+          variables['last_name'] = String(row[contactLastNameColumn] || '').trim()
+        }
+        if (contactTagColumn && row[contactTagColumn]) {
+          variables['tag'] = String(row[contactTagColumn] || '').trim()
+          variables['tags'] = String(row[contactTagColumn] || '').trim()
+        } else if (customCampaignTag) {
+          variables['tag'] = customCampaignTag.trim()
+          variables['tags'] = customCampaignTag.trim()
+        }
+
         if (channel === 'email') {
           return {
             email: String(row[phoneColumn] || '').trim(),
@@ -2232,22 +2285,87 @@ export default function CampaignsPage() {
                             </button>
                           </div>
 
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
-                              {channel === 'email' ? 'Map Email Address Column' : 'Map Phone Number Column'}
-                            </label>
-                            <select
-                              value={phoneColumn}
-                              onChange={(e) => setPhoneColumn(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
-                            >
-                              <option value="">
-                                {channel === 'email' ? '-- Choose recipient email header --' : '-- Choose recipient phone header --'}
-                              </option>
-                              {excelHeaders.map(h => (
-                                <option key={h} value={h}>{h}</option>
-                              ))}
-                            </select>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50 dark:bg-[#111b21] p-3.5 rounded-xl border border-slate-200 dark:border-[#2a3942]">
+                            {/* Phone / Email Column */}
+                            <div className="flex flex-col gap-1 sm:col-span-2">
+                              <label className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+                                <span>{channel === 'email' ? 'Map Email Address Column *' : 'Map Phone Number Column *'}</span>
+                                <span className="text-[10px] text-slate-400 font-normal">(Required)</span>
+                              </label>
+                              <select
+                                value={phoneColumn}
+                                onChange={(e) => setPhoneColumn(e.target.value)}
+                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-emerald-300 dark:border-emerald-700/60 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                              >
+                                <option value="">
+                                  {channel === 'email' ? '-- Choose recipient email header --' : '-- Choose recipient phone header --'}
+                                </option>
+                                {excelHeaders.map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Contact Name / First Name Column */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
+                                Contact / First Name Column
+                              </label>
+                              <select
+                                value={contactNameColumn}
+                                onChange={(e) => setContactNameColumn(e.target.value)}
+                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                              >
+                                <option value="">-- Do not map / Extract from variables --</option>
+                                {excelHeaders.map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Last Name Column */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
+                                Last Name Column (Optional)
+                              </label>
+                              <select
+                                value={contactLastNameColumn}
+                                onChange={(e) => setContactLastNameColumn(e.target.value)}
+                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                              >
+                                <option value="">-- None / Split from full name --</option>
+                                {excelHeaders.map(h => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Tag Column & Custom Tag */}
+                            <div className="flex flex-col gap-1 sm:col-span-2">
+                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0] flex items-center justify-between">
+                                <span>Save Contact Tags</span>
+                                <span className="text-[10px] text-slate-400 font-normal">Saves tag to CRM contacts</span>
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <select
+                                  value={contactTagColumn}
+                                  onChange={(e) => setContactTagColumn(e.target.value)}
+                                  className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                >
+                                  <option value="">-- From Excel Column (None) --</option>
+                                  {excelHeaders.map(h => (
+                                    <option key={h} value={h}>Excel: {h}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="text"
+                                  placeholder="Or enter custom tag (e.g. HPV Camp, Lot 1)"
+                                  value={customCampaignTag}
+                                  onChange={(e) => setCustomCampaignTag(e.target.value)}
+                                  className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}

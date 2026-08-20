@@ -596,21 +596,51 @@ export async function POST(request: NextRequest) {
 
               const contactCompany = mappedVars['company'] || mappedVars['organization'] || 'Campaign Contact'
 
+              // Extract contact tags
+              const rawTags = mappedVars['tag'] || mappedVars['tags'] || mappedVars['category'] || mappedVars['group'] || mappedVars['segment']
+              let contactTags: string[] = []
+              if (rawTags) {
+                if (Array.isArray(rawTags)) {
+                  contactTags = rawTags.map(t => String(t).trim()).filter(Boolean)
+                } else {
+                  contactTags = String(rawTags).split(/[,;]/).map(t => t.trim()).filter(Boolean)
+                }
+              }
+              if (campaign.name && !contactTags.includes(campaign.name)) {
+                contactTags.push(campaign.name)
+              }
+
               let contactId = null
               if (channel === 'email') {
                 const cleanEmail = recipientEmail ? recipientEmail.toLowerCase().trim() : ''
-                const { data: existingContact } = await supabase.from('contacts').select('id').eq('email', cleanEmail).maybeSingle()
-                if (existingContact) contactId = existingContact.id
-                else {
-                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, email: cleanEmail, company: contactCompany }]).select().maybeSingle()
+                const { data: existingContact } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('email', cleanEmail).maybeSingle()
+                if (existingContact) {
+                  contactId = existingContact.id
+                  const existingTags = Array.isArray(existingContact.tags) ? existingContact.tags : []
+                  const mergedTags = Array.from(new Set([...existingTags, ...contactTags]))
+                  const needsNameUpdate = (!existingContact.first_name || existingContact.first_name === 'Campaign') && firstName !== 'Campaign'
+
+                  if (needsNameUpdate || mergedTags.length > existingTags.length) {
+                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
+                  }
+                } else {
+                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, email: cleanEmail, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) contactId = newContact.id
                 }
               } else {
                 const cleanPhone = recipientPhone ? recipientPhone.replace('whatsapp:', '') : ''
-                const { data: existingContact } = await supabase.from('contacts').select('id').eq('phone_number', cleanPhone).maybeSingle()
-                if (existingContact) contactId = existingContact.id
-                else {
-                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, phone_number: cleanPhone, company: contactCompany }]).select().maybeSingle()
+                const { data: existingContact } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('phone_number', cleanPhone).maybeSingle()
+                if (existingContact) {
+                  contactId = existingContact.id
+                  const existingTags = Array.isArray(existingContact.tags) ? existingContact.tags : []
+                  const mergedTags = Array.from(new Set([...existingTags, ...contactTags]))
+                  const needsNameUpdate = (!existingContact.first_name || existingContact.first_name === 'Campaign') && firstName !== 'Campaign'
+
+                  if (needsNameUpdate || mergedTags.length > existingTags.length) {
+                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
+                  }
+                } else {
+                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, phone_number: cleanPhone, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) contactId = newContact.id
                 }
               }
