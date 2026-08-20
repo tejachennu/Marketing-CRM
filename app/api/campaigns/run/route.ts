@@ -529,8 +529,19 @@ async function executeCampaign(campaignId: string) {
                 })
 
                 if (!fbRes.ok) {
-                  const errText = await fbRes.text()
-                  throw new Error(`Facebook API error: ${fbRes.status} ${errText}`)
+                  const errData = await fbRes.json().catch(() => null)
+                  const metaErrCode = errData?.error?.code
+                  const metaErrMsg = errData?.error?.message || `HTTP ${fbRes.status}`
+                  const metaDetails = errData?.error?.error_data?.details || ''
+
+                  if (metaErrCode === 132001 || metaErrMsg.includes('132001') || metaErrMsg.includes('does not exist in the translation')) {
+                    throw new Error(
+                      `WhatsApp Meta Error #132001: Template '${templateName}' does not exist in translation '${templateLanguage}'. ` +
+                      `Ensure the template is approved in Meta WhatsApp Business Manager with language code '${templateLanguage}' (e.g. en_US vs en) or update the template language.`
+                    )
+                  }
+
+                  throw new Error(`Meta WhatsApp API error (${metaErrCode || fbRes.status}): ${metaErrMsg}${metaDetails ? ` - ${metaDetails}` : ''}`)
                 }
 
                 const fbData = await fbRes.json()
@@ -563,10 +574,29 @@ async function executeCampaign(campaignId: string) {
                   twilioParams.body = body
                 }
 
-                const twilioClient = getTwilioClientForCampaign()
-                const messageResponse = await twilioClient.messages.create(twilioParams)
-                twilioMessageSid = messageResponse.sid
-                sentCount++
+                try {
+                  const twilioClient = getTwilioClientForCampaign()
+                  const messageResponse = await twilioClient.messages.create(twilioParams)
+                  twilioMessageSid = messageResponse.sid
+                  sentCount++
+                } catch (twilioErr: any) {
+                  const code = twilioErr.code || twilioErr.status
+                  const msg = twilioErr.message || String(twilioErr)
+                  
+                  if (code === 63016 || msg.includes('63016') || msg.includes('132001') || msg.includes('translation') || msg.includes('Freeform message')) {
+                    throw new Error(
+                      `Twilio WhatsApp Error 63016 / Meta #132001: WhatsApp template could not be delivered. ` +
+                      `If using a template, verify that the template is approved in Meta WhatsApp Business Manager and its language locale (e.g., en_US vs en) matches the Twilio Content Template SID (${campaign.template_sid || 'N/A'}). ` +
+                      `Original error: ${msg}`
+                    )
+                  }
+                  if (code === 21620 || msg.includes('21620')) {
+                    throw new Error(
+                      `Twilio Error 21620: Invalid Content SID or Content Variables mismatch for template (${campaign.template_sid || 'N/A'}). Original error: ${msg}`
+                    )
+                  }
+                  throw new Error(`Twilio error (${code || 'Unknown'}): ${msg}`)
+                }
               }
             } else if (channel === 'sms') {
               // SMS Channel
@@ -722,7 +752,45 @@ async function executeCampaign(campaignId: string) {
           // If sent successfully, sync to CRM messages & conversations
           if (status === 'SENT') {
             try {
-              // 1. Get or create Contact
+              // 1. Extract contact names intelligently from mapped variables
+              const explicitFirst = mappedVars['first_name'] || mappedVars['firstName']
+              const explicitLast = mappedVars['last_name'] || mappedVars['lastName']
+              let firstName = 'Campaign'
+              let lastName = 'Contact'
+
+              if (explicitFirst) {
+                firstName = String(explicitFirst).trim()
+                lastName = explicitLast ? String(explicitLast).trim() : ''
+              } else {
+                const rawFullName = mappedVars['name'] || 
+                                    mappedVars['contact_name'] || 
+                                    mappedVars['customer_name'] || 
+                                    mappedVars['patient_name'] || 
+                                    mappedVars['client_name'] || 
+                                    mappedVars['full_name'] || 
+                                    mappedVars['1'] || ''
+                const cleanedName = String(rawFullName).trim()
+
+                if (cleanedName) {
+                  const explicitSecondVar = mappedVars['last_name'] || mappedVars['surname']
+                  if (explicitSecondVar) {
+                    firstName = cleanedName
+                    lastName = String(explicitSecondVar).trim()
+                  } else {
+                    const parts = cleanedName.split(/\s+/).filter(Boolean)
+                    if (parts.length === 1) {
+                      firstName = parts[0]
+                      lastName = ''
+                    } else if (parts.length > 1) {
+                      firstName = parts[0]
+                      lastName = parts.slice(1).join(' ')
+                    }
+                  }
+                }
+              }
+
+              const contactCompany = mappedVars['company'] || mappedVars['organization'] || 'Campaign Contact'
+
               let contactId = null
               
               if (channel === 'email') {
@@ -736,8 +804,6 @@ async function executeCampaign(campaignId: string) {
                 if (existingContact) {
                   contactId = existingContact.id
                 } else {
-                  const firstName = mappedVars['1'] || 'Campaign'
-                  const lastName = mappedVars['2'] || 'Contact'
                   const { data: newContact, error: createContactError } = await supabase
                     .from('contacts')
                     .insert([
@@ -746,7 +812,7 @@ async function executeCampaign(campaignId: string) {
                         first_name: firstName,
                         last_name: lastName,
                         email: cleanEmail,
-                        company: 'Campaign Contact'
+                        company: contactCompany
                       }
                     ])
                     .select()
@@ -767,8 +833,6 @@ async function executeCampaign(campaignId: string) {
                 if (existingContact) {
                   contactId = existingContact.id
                 } else {
-                  const firstName = mappedVars['1'] || 'Campaign'
-                  const lastName = mappedVars['2'] || 'Contact'
                   const { data: newContact, error: createContactError } = await supabase
                     .from('contacts')
                     .insert([
@@ -777,7 +841,7 @@ async function executeCampaign(campaignId: string) {
                         first_name: firstName,
                         last_name: lastName,
                         phone_number: cleanPhone,
-                        company: 'Campaign Contact'
+                        company: contactCompany
                       }
                     ])
                     .select()

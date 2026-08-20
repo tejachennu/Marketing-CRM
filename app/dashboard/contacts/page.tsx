@@ -1,10 +1,27 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { Contact, User } from '@/lib/types'
-import { Plus, Mail, Phone, Building2, Trash2, Edit2, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { 
+  Plus, 
+  Mail, 
+  Phone, 
+  Building2, 
+  Trash2, 
+  Edit2, 
+  Search, 
+  ChevronLeft, 
+  ChevronRight, 
+  Loader2, 
+  FileSpreadsheet, 
+  Upload, 
+  X, 
+  CheckCircle2, 
+  AlertCircle 
+} from 'lucide-react'
 import { useConfirm, useAlert } from '@/lib/dialog-context'
 
 export default function ContactsPage() {
@@ -32,6 +49,23 @@ export default function ContactsPage() {
   })
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Bulk Excel/CSV Import State
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importData, setImportData] = useState<any[]>([])
+  const [importHeaders, setImportHeaders] = useState<string[]>([])
+  const [importColumnMapping, setImportColumnMapping] = useState({
+    name: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    company: '',
+  })
+  const [isImporting, setIsImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importSuccess, setImportSuccess] = useState<string | null>(null)
+  const importFileInputRef = useRef<HTMLInputElement>(null)
 
   // ─── Fetch Contacts ───
 
@@ -210,6 +244,146 @@ export default function ContactsPage() {
     setShowAddModal(true)
   }
 
+  // ─── Bulk Excel / CSV Import Handlers ───
+
+  const handleImportFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFile(file)
+    setImportError(null)
+    setImportSuccess(null)
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet)
+
+        if (json.length === 0) {
+          setImportError('The uploaded file appears to be empty.')
+          return
+        }
+
+        setImportData(json)
+        const headers = Object.keys(json[0] || {})
+        setImportHeaders(headers)
+
+        // Strict phone column matcher (exclude 'name')
+        const phoneKey = headers.find(h => {
+          const clean = h.trim().toLowerCase()
+          if (/name/i.test(clean)) return false
+          return (
+            /phone|mobile|cell|tel|whatsapp/i.test(clean) ||
+            /contact.*(num|no|#)/i.test(clean) ||
+            /phone.*(num|no|#)/i.test(clean) ||
+            /mobile.*(num|no|#)/i.test(clean) ||
+            /^(phone|mobile|cell|tel|whatsapp|contact_no|phone_no|mobile_no)$/i.test(clean)
+          )
+        }) || ''
+
+        // Smart name matchers
+        const nameKey = headers.find(h => 
+          /^(contact\s*name|first\s*name|customer\s*name|patient\s*name|full\s*name|client\s*name|name)$/i.test(h.trim())
+        ) || headers.find(h => 
+          /contact.*name|first.*name|customer.*name|patient.*name|full.*name|client.*name|^name$/i.test(h.trim())
+        ) || ''
+
+        const lastNameKey = headers.find(h => 
+          /^(last\s*name|surname)$/i.test(h.trim())
+        ) || headers.find(h => /last.*name|surname/i.test(h.trim())) || ''
+
+        const emailKey = headers.find(h => /email|mail|e-mail/i.test(h.trim())) || ''
+        const companyKey = headers.find(h => /company|organization|org|business|hospital|clinic/i.test(h.trim())) || ''
+
+        setImportColumnMapping({
+          name: nameKey,
+          lastName: lastNameKey,
+          phone: phoneKey,
+          email: emailKey,
+          company: companyKey,
+        })
+      } catch (err: any) {
+        console.error('Error reading import file:', err)
+        setImportError('Failed to parse file. Please upload a valid .xlsx, .xls, or .csv file.')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleExecuteImport = async () => {
+    if (!user || !importColumnMapping.phone) {
+      setImportError('Please select which column contains the Phone Number.')
+      return
+    }
+
+    setIsImporting(true)
+    setImportError(null)
+    setImportSuccess(null)
+
+    try {
+      const contactsToImport = importData.map(row => {
+        let firstName = ''
+        let lastName = ''
+        if (importColumnMapping.name) {
+          const rawName = String(row[importColumnMapping.name] || '').trim()
+          if (importColumnMapping.lastName && row[importColumnMapping.lastName]) {
+            firstName = rawName
+            lastName = String(row[importColumnMapping.lastName] || '').trim()
+          } else {
+            const parts = rawName.split(/\s+/).filter(Boolean)
+            if (parts.length === 1) {
+              firstName = parts[0]
+              lastName = ''
+            } else if (parts.length > 1) {
+              firstName = parts[0]
+              lastName = parts.slice(1).join(' ')
+            }
+          }
+        }
+        return {
+          firstName,
+          lastName,
+          phoneNumber: importColumnMapping.phone ? String(row[importColumnMapping.phone] || '') : '',
+          email: importColumnMapping.email ? String(row[importColumnMapping.email] || '') : '',
+          company: importColumnMapping.company ? String(row[importColumnMapping.company] || '') : '',
+        }
+      })
+
+      const res = await fetch('/api/contacts/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: user.organization_id,
+          contacts: contactsToImport
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to import contacts')
+      }
+
+      setImportSuccess(data.message || `Import complete: ${data.imported} contacts imported (${data.skipped} skipped/duplicates).`)
+      await loadData(1, searchTerm)
+
+      setTimeout(() => {
+        setShowImportModal(false)
+        setImportFile(null)
+        setImportData([])
+        setImportHeaders([])
+        setImportSuccess(null)
+      }, 2000)
+    } catch (err: any) {
+      console.error('Import execution error:', err)
+      setImportError(err.message || 'Error occurred during import.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -232,24 +406,40 @@ export default function ContactsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Contacts</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold">Manage and organize your customer records</p>
         </div>
-        <button
-          onClick={() => {
-            setEditingId(null)
-            setError(null)
-            setNewContact({
-              first_name: '',
-              last_name: '',
-              phone_number: '',
-              email: '',
-              company: '',
-            })
-            setShowAddModal(true)
-          }}
-          className="bg-[#00a884] hover:bg-[#008069] text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm shadow-[#00a884]/10 transition-all self-start"
-        >
-          <Plus size={16} />
-          Add Contact
-        </button>
+        <div className="flex items-center gap-2 self-start">
+          <button
+            onClick={() => {
+              setImportFile(null)
+              setImportData([])
+              setImportHeaders([])
+              setImportError(null)
+              setImportSuccess(null)
+              setShowImportModal(true)
+            }}
+            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 px-3.5 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <FileSpreadsheet size={16} className="text-emerald-600 dark:text-emerald-400" />
+            Import Excel / CSV
+          </button>
+          <button
+            onClick={() => {
+              setEditingId(null)
+              setError(null)
+              setNewContact({
+                first_name: '',
+                last_name: '',
+                phone_number: '',
+                email: '',
+                company: '',
+              })
+              setShowAddModal(true)
+            }}
+            className="bg-[#00a884] hover:bg-[#008069] text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm shadow-[#00a884]/10 transition-all cursor-pointer"
+          >
+            <Plus size={16} />
+            Add Contact
+          </button>
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -555,6 +745,274 @@ export default function ContactsPage() {
                   {saving ? 'Saving...' : editingId ? 'Update' : 'Add Contact'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Excel / CSV Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-xl border border-slate-200 dark:border-[#2a3942] shadow-2xl max-w-2xl w-full p-6 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    Import Contacts from Excel / CSV
+                  </h2>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Upload an .xlsx, .xls, or .csv spreadsheet to bulk import contacts.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!isImporting) setShowImportModal(false)
+                }}
+                disabled={isImporting}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 py-4 overflow-y-auto pr-1 flex-1">
+              {/* File Dropzone */}
+              {!importData.length ? (
+                <div
+                  onClick={() => importFileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-200 dark:border-[#3b4a54] hover:border-[#00a884] dark:hover:border-[#00a884] rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer bg-slate-50/50 dark:bg-[#111b21]/50 hover:bg-emerald-50/20 transition-all group"
+                >
+                  <input
+                    ref={importFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportFileUpload}
+                    className="hidden"
+                  />
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-full shadow-sm text-slate-400 group-hover:text-[#00a884] transition-colors">
+                    <Upload size={24} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      Click to upload or drag & drop Excel / CSV file
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      Supports .xlsx, .xls, and .csv files with contact names and phone numbers
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* File Info Bar */}
+                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 p-3 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                      <FileSpreadsheet size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200 truncate max-w-xs">
+                          {importFile?.name}
+                        </p>
+                        <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                          {importData.length} records detected • {importHeaders.length} columns
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportFile(null)
+                        setImportData([])
+                        setImportHeaders([])
+                      }}
+                      className="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-rose-600 transition-colors px-2 py-1"
+                    >
+                      Change File
+                    </button>
+                  </div>
+
+                  {/* Column Mapping Selectors */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-2.5">
+                      Verify Column Mappings
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 dark:bg-[#111b21] p-3.5 rounded-xl border border-slate-200 dark:border-[#2a3942]">
+                      {/* Name Column */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Contact Name / Full Name / First Name
+                        </label>
+                        <select
+                          value={importColumnMapping.name}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, name: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        >
+                          <option value="">-- Do not map (Default to "Campaign Contact") --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Last Name Column */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Last Name (Optional if Full Name mapped)
+                        </label>
+                        <select
+                          value={importColumnMapping.lastName}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, lastName: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        >
+                          <option value="">-- None / Split from full name --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Phone Number Column */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1 flex items-center gap-1">
+                          <span>Phone Number *</span>
+                          <span className="text-[9px] font-normal text-slate-400">(Required)</span>
+                        </label>
+                        <select
+                          value={importColumnMapping.phone}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, phone: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-emerald-300 dark:border-emerald-700/60 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white"
+                          required
+                        >
+                          <option value="">-- Select Phone Number Column --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Email Column */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Email (Optional)
+                        </label>
+                        <select
+                          value={importColumnMapping.email}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, email: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        >
+                          <option value="">-- Do not map --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Company Column */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Company / Organization (Optional)
+                        </label>
+                        <select
+                          value={importColumnMapping.company}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, company: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        >
+                          <option value="">-- Do not map --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preview Table */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-2">
+                      Preview (First {Math.min(5, importData.length)} Contacts)
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-[#2a3942]">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-[#2a3942]">
+                          <tr>
+                            <th className="px-3 py-2">Name</th>
+                            <th className="px-3 py-2">Phone</th>
+                            <th className="px-3 py-2">Email</th>
+                            <th className="px-3 py-2">Company</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                          {importData.slice(0, 5).map((row, idx) => {
+                            const nameVal = importColumnMapping.name ? row[importColumnMapping.name] : ''
+                            const lastVal = importColumnMapping.lastName ? row[importColumnMapping.lastName] : ''
+                            const displayName = lastVal ? `${nameVal} ${lastVal}`.trim() : (nameVal || '—')
+                            const phoneVal = importColumnMapping.phone ? row[importColumnMapping.phone] : '—'
+                            const emailVal = importColumnMapping.email ? row[importColumnMapping.email] : '—'
+                            const compVal = importColumnMapping.company ? row[importColumnMapping.company] : '—'
+
+                            return (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                <td className="px-3 py-2 text-slate-900 dark:text-white font-bold">{displayName}</td>
+                                <td className="px-3 py-2 font-mono text-emerald-600 dark:text-emerald-400">{phoneVal || '—'}</td>
+                                <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{emailVal || '—'}</td>
+                                <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{compVal || '—'}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {importError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-lg flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{importError}</span>
+                </div>
+              )}
+
+              {importSuccess && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-lg flex items-center gap-2">
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>{importSuccess}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                disabled={isImporting}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              {importData.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExecuteImport}
+                  disabled={isImporting || !importColumnMapping.phone}
+                  className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Importing {importData.length} Contacts...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={14} />
+                      Import {importData.length} Contacts
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

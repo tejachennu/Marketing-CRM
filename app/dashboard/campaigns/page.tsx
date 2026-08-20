@@ -73,12 +73,17 @@ interface CampaignLog {
 interface Template {
   sid: string
   name: string
+  raw_name?: string
+  whatsapp_template_name?: string
   body: string
   variables: string[]
   sampleValues?: Record<string, string>
   category: string
   language?: string
+  approval_status?: string
+  rejection_reason?: string | null
   isDbTemplate?: boolean
+  source?: string
   components?: any[]
 }
 
@@ -512,6 +517,84 @@ export default function CampaignsPage() {
     XLSX.writeFile(workbook, fileName)
   }
 
+  // Helper to strictly identify phone number column (excluding any column with 'name')
+  const isPhoneHeader = (header: string) => {
+    const h = header.trim().toLowerCase()
+    if (/name/i.test(h)) return false // Exclude Contact Name, Customer Name, Full Name, etc.
+    return (
+      /phone|mobile|cell|tel|whatsapp/i.test(h) ||
+      /contact.*(num|no|#)/i.test(h) ||
+      /phone.*(num|no|#)/i.test(h) ||
+      /mobile.*(num|no|#)/i.test(h) ||
+      /^(phone|mobile|cell|tel|whatsapp|contact_no|phone_no|mobile_no)$/i.test(h)
+    )
+  }
+
+  // Helper to auto-map template placeholders to Excel columns or Contact attributes
+  const autoDetectVariableMappings = (
+    variables: string[],
+    headers: string[],
+    sampleVals?: Record<string, string>
+  ) => {
+    const mappings: Record<string, string> = {}
+    const types: Record<string, 'dynamic' | 'static'> = {}
+    const statics: Record<string, string> = {}
+
+    variables.forEach((v) => {
+      const isMedia = v.includes('image_url') || v.includes('video_url') || v.includes('document_url') || v.includes('filename')
+      types[v] = isMedia ? 'static' : 'dynamic'
+      statics[v] = sampleVals?.[v] || ''
+      mappings[v] = ''
+
+      if (!isMedia && headers.length > 0) {
+        const vClean = v.toLowerCase().trim()
+
+        // 1. Placeholder 1 or First Name / Contact Name / Name
+        if (vClean === '1' || /^(first_name|name|contact_name|customer_name|patient_name|full_name)$/i.test(vClean)) {
+          const matchedNameHeader = 
+            headers.find(h => /^(contact\s*name|first\s*name|customer\s*name|patient\s*name|full\s*name|client\s*name|name)$/i.test(h.trim())) ||
+            headers.find(h => /contact.*name|first.*name|customer.*name|patient.*name|full.*name|client.*name|^name$/i.test(h.trim())) ||
+            (headers.includes('first_name') ? 'first_name' : '')
+          
+          if (matchedNameHeader) {
+            mappings[v] = matchedNameHeader
+            types[v] = 'dynamic'
+          }
+        }
+        // 2. Placeholder 2 or Last Name / Company / Date
+        else if (vClean === '2' || /^(last_name|surname|company|date|location)$/i.test(vClean)) {
+          const matchedSecondHeader = 
+            headers.find(h => /^(last\s*name|surname)$/i.test(h.trim())) ||
+            headers.find(h => /last.*name|surname/i.test(h.trim())) ||
+            headers.find(h => /^(company|organization|org)$/i.test(h.trim())) ||
+            headers.find(h => /company|organization|date|appointment|city|location/i.test(h.trim())) ||
+            (headers.includes('last_name') ? 'last_name' : '')
+
+          if (matchedSecondHeader) {
+            mappings[v] = matchedSecondHeader
+            types[v] = 'dynamic'
+          }
+        }
+        // 3. Placeholder 3+ or other named variables
+        else {
+          const exactMatch = headers.find(h => h.trim().toLowerCase() === vClean)
+          if (exactMatch) {
+            mappings[v] = exactMatch
+            types[v] = 'dynamic'
+          } else {
+            const partialMatch = headers.find(h => h.trim().toLowerCase().includes(vClean) || vClean.includes(h.trim().toLowerCase()))
+            if (partialMatch) {
+              mappings[v] = partialMatch
+              types[v] = 'dynamic'
+            }
+          }
+        }
+      }
+    })
+
+    return { mappings, types, statics }
+  }
+
   // Handle Excel File Drop/Upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -537,17 +620,26 @@ export default function CampaignsPage() {
         const headers = Object.keys(json[0] || {})
         setExcelHeaders(headers)
         
-        // Auto-select phone or email column if matching keywords found
+        // Auto-select phone or email column with strict keyword matching
         if (channel === 'email') {
-          const emailKey = headers.find(h => 
-            /email|mail|addr/i.test(h)
-          ) || ''
+          const emailKey = headers.find(h => /email|mail|e-mail/i.test(h.trim())) || ''
           setPhoneColumn(emailKey)
         } else {
-          const phoneKey = headers.find(h => 
-            /phone|mobile|tel|contact|number|num/i.test(h)
-          ) || ''
+          const phoneKey = headers.find(isPhoneHeader) || ''
           setPhoneColumn(phoneKey)
+        }
+
+        // Auto-detect variable mappings immediately for active template/variables
+        const variablesToMap = channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables
+        if (variablesToMap.length > 0) {
+          const { mappings, types, statics } = autoDetectVariableMappings(
+            variablesToMap,
+            headers,
+            selectedTemplate?.sampleValues
+          )
+          setVariableMappings(mappings)
+          setVariableMappingTypes(types)
+          setStaticVariableValues(statics)
         }
       } catch (err) {
         console.error(err)
@@ -628,24 +720,44 @@ export default function CampaignsPage() {
         }
       }
       setErrorMsg('')
-      // Set default mappings based on either Meta templates or custom variables
+      
+      // Auto-detect mappings when proceeding to Step 3
       const variablesToMap = channel === 'whatsapp'
         ? (selectedTemplate?.variables || [])
         : customVariables;
       
-      const initialMappings: Record<string, string> = {}
-      const initialTypes: Record<string, 'dynamic' | 'static'> = {}
-      const initialStatics: Record<string, string> = {}
-      variablesToMap.forEach(v => {
-        initialMappings[v] = ''
-        // Default media headers to static mapping, body variables to dynamic mapping
-        const isMediaHeader = v.includes('image_url') || v.includes('video_url') || v.includes('document_url') || v.includes('filename')
-        initialTypes[v] = isMediaHeader ? 'static' : 'dynamic'
-        initialStatics[v] = selectedTemplate?.sampleValues?.[v] || ''
+      const headersToUse = audienceSource === 'excel' 
+        ? excelHeaders 
+        : ['first_name', 'last_name', 'company', 'email', 'phone_number']
+
+      const { mappings, types, statics } = autoDetectVariableMappings(
+        variablesToMap,
+        headersToUse,
+        selectedTemplate?.sampleValues
+      )
+
+      // Merge with any existing user selections
+      setVariableMappings(prev => {
+        const merged = { ...mappings }
+        Object.keys(prev).forEach(k => {
+          if (prev[k]) merged[k] = prev[k]
+        })
+        return merged
       })
-      setVariableMappings(initialMappings)
-      setVariableMappingTypes(initialTypes)
-      setStaticVariableValues(initialStatics)
+      setVariableMappingTypes(prev => {
+        const merged = { ...types }
+        Object.keys(prev).forEach(k => {
+          if (prev[k]) merged[k] = prev[k]
+        })
+        return merged
+      })
+      setStaticVariableValues(prev => {
+        const merged = { ...statics }
+        Object.keys(prev).forEach(k => {
+          if (prev[k]) merged[k] = prev[k]
+        })
+        return merged
+      })
       setWizardStep(3)
     } else if (wizardStep === 3) {
       // Validate mapping completed
@@ -1707,12 +1819,66 @@ export default function CampaignsPage() {
                       <option value="">
                         {channel === 'whatsapp' ? '-- Choose approved template --' : '-- Write custom message or choose template --'}
                       </option>
-                      {templates.map(t => (
-                        <option key={t.sid} value={t.sid}>
-                          {t.name} ({t.language || 'en'}) {t.isDbTemplate ? '✓' : ''}
-                        </option>
-                      ))}
+                      {templates.map(t => {
+                        const statusTag = t.approval_status === 'APPROVED' ? '✓ Approved' : t.approval_status === 'REJECTED' ? '✕ Rejected' : t.approval_status === 'PENDING' ? '⏳ Pending' : '✓'
+                        const langTag = t.language ? `[${t.language}]` : '[en]'
+                        const catTag = t.category ? `[${t.category}]` : ''
+                        return (
+                          <option key={t.sid} value={t.sid}>
+                            {t.whatsapp_template_name || t.raw_name || t.name} • {statusTag} {langTag} {catTag}
+                          </option>
+                        )
+                      })}
                     </select>
+
+                    {/* Selected Template Details Card */}
+                    {selectedTemplate && channel === 'whatsapp' && (
+                      <div className="mt-2 p-3.5 bg-slate-50 dark:bg-[#1f2c34] rounded-xl border border-slate-200 dark:border-[#2a3942] space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-slate-800 dark:text-white">
+                              {selectedTemplate.whatsapp_template_name || selectedTemplate.raw_name || selectedTemplate.name}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              selectedTemplate.approval_status === 'APPROVED' || !selectedTemplate.approval_status
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                : selectedTemplate.approval_status === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                            }`}>
+                              {selectedTemplate.approval_status === 'APPROVED' || !selectedTemplate.approval_status ? '✓ WhatsApp Approved' : selectedTemplate.approval_status}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                            <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-semibold border border-slate-300 dark:border-slate-700">
+                              Language: {selectedTemplate.language || 'en'}
+                            </span>
+                            <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-semibold border border-blue-200 dark:border-blue-800">
+                              {selectedTemplate.category || 'UTILITY'}
+                            </span>
+                            <span className="bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-semibold border border-purple-200 dark:border-purple-800">
+                              {selectedTemplate.source === 'meta' ? 'Meta Cloud' : selectedTemplate.source === 'twilio' ? 'Twilio Content' : 'Custom'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-white dark:bg-[#111b21] rounded-lg border border-slate-200 dark:border-[#3b4a54] text-xs font-mono text-slate-800 dark:text-slate-200 leading-relaxed">
+                          {selectedTemplate.body}
+                        </div>
+
+                        {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Placeholders:</span>
+                            {selectedTemplate.variables.map(v => (
+                              <span key={v} className="bg-[#00a884]/10 text-[#00a884] dark:bg-[#00a884]/20 border border-[#00a884]/30 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold">
+                                {"{{"}{v}{"}}"}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {channel === 'whatsapp' && templateFetchError && (
                       <div className="mt-1 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250/30 text-xs flex flex-col gap-1">

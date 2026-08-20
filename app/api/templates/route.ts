@@ -228,12 +228,14 @@ async function fetchMetaTemplates(
         allTemplates.push({
           sid: `META_${tpl.id}`,
           name: `${tpl.name} (Meta Approved)`,
+          whatsapp_template_name: tpl.name,
           body: body,
           variables: variables,
           sampleValues: sampleValues,
           components: components,
           category: tpl.category || 'UTILITY',
           language: tpl.language || 'en',
+          approval_status: 'APPROVED',
           isDbTemplate: false,
           source: 'meta',
           meta_template_name: tpl.name,
@@ -255,24 +257,35 @@ const fallbackTemplates = [
   {
     sid: 'HX_welcome_campaign',
     name: 'welcome_campaign (Meta Approved)',
+    whatsapp_template_name: 'welcome_campaign',
     body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.',
     variables: ['1', '2'],
-    category: 'UTILITY'
+    category: 'UTILITY',
+    language: 'en',
+    approval_status: 'APPROVED',
+    source: 'fallback'
   },
   {
     sid: 'HX_promotion_discount',
     name: 'promotion_discount (Meta Approved)',
+    whatsapp_template_name: 'promotion_discount',
     body: 'Hey {{1}}! Get {{2}}% off on all our services this weekend. Use code {{3}} at checkout.',
     variables: ['1', '2', '3'],
-    category: 'MARKETING'
+    category: 'MARKETING',
+    language: 'en',
+    approval_status: 'APPROVED',
+    source: 'fallback'
   },
   {
     sid: 'HX_follow_up_lead',
     name: 'follow_up_lead (Meta Approved)',
+    whatsapp_template_name: 'follow_up_lead',
     body: 'Hi {{1}}, this is {{2}} from {{3}}. Just following up on our previous conversation regarding your inquiry. Let us know if you have any questions!',
     variables: ['1', '2', '3'],
     category: 'UTILITY',
-    language: 'en'
+    language: 'en',
+    approval_status: 'APPROVED',
+    source: 'fallback'
   }
 ]
 
@@ -337,44 +350,82 @@ export async function GET(request: NextRequest) {
         const twilioTemplates = await client.content.v1.contents.list({ limit: 50 })
         
         if (twilioTemplates) {
-          twilioList = twilioTemplates.map((item: any) => {
-            const types = item.types || {}
-            let body = ''
-            
-            if (types['twilio/text']) {
-              body = types['twilio/text'].body
-            } else if (types['twilio/media']) {
-              body = types['twilio/media'].body || ''
-            } else if (types['twilio/card']) {
-              body = types['twilio/card'].body || ''
-            } else {
-              const firstType = Object.keys(types)[0]
-              if (firstType && types[firstType]) {
-                body = types[firstType].body || types[firstType].text || ''
+          const parsedTwilioTemplates = await Promise.all(
+            twilioTemplates.map(async (item: any) => {
+              let approvalInfo: any = null
+              try {
+                approvalInfo = await client.content.v1.contents(item.sid).approvalFetch().fetch()
+              } catch (apprErr) {
+                // approvalFetch may not exist or fail if template was not submitted
               }
-            }
 
-            const variables: string[] = []
-            const varMatches = body.match(/\{\{[^\}]+\}\}/g)
-            if (varMatches) {
-              varMatches.forEach((match: string) => {
-                const variable = match.replace(/[\{\}]/g, '')
-                if (!variables.includes(variable)) {
-                  variables.push(variable)
+              const whatsappApproval = approvalInfo?.whatsapp || {}
+              const rawStatus = (whatsappApproval.status || 'UNSUBMITTED').toUpperCase()
+              const approvalStatus = rawStatus === 'APPROVED' ? 'APPROVED' : rawStatus === 'REJECTED' ? 'REJECTED' : rawStatus === 'PENDING' ? 'PENDING' : 'UNSUBMITTED'
+              const whatsappTemplateName = whatsappApproval.name || item.friendlyName || item.sid
+              const whatsappLanguage = whatsappApproval.language || item.language || 'en'
+              const whatsappCategory = (whatsappApproval.category || 'UTILITY').toUpperCase()
+              const rejectionReason = whatsappApproval.rejectionReason || null
+
+              const types = item.types || {}
+              let body = ''
+              
+              if (types['twilio/text']?.body) {
+                body = types['twilio/text'].body
+              } else if (types['twilio/media']?.body) {
+                body = types['twilio/media'].body
+              } else if (types['twilio/card']) {
+                body = [types['twilio/card'].title, types['twilio/card'].subtitle, types['twilio/card'].body].filter(Boolean).join('\n')
+              } else if (types['whatsapp/card']) {
+                body = [types['whatsapp/card'].title, types['whatsapp/card'].subtitle, types['whatsapp/card'].body].filter(Boolean).join('\n')
+              } else if (types['twilio/quick-reply']?.body) {
+                body = types['twilio/quick-reply'].body
+              } else if (types['twilio/call-to-action']?.body) {
+                body = types['twilio/call-to-action'].body
+              } else if (types['twilio/list-picker']?.body) {
+                body = types['twilio/list-picker'].body
+              } else {
+                const firstType = Object.keys(types)[0]
+                if (firstType && types[firstType]) {
+                  body = types[firstType].body || types[firstType].text || types[firstType].subtitle || ''
                 }
-              })
-            }
+              }
 
-            return {
-              sid: item.sid,
-              name: item.friendlyName || item.sid,
-              body: body,
-              variables: variables,
-              category: 'UTILITY',
-              language: 'en',
-              isDbTemplate: false
-            }
-          })
+              const variables: string[] = []
+              const varMatches = body.match(/\{\{[^\}]+\}\}/g)
+              if (varMatches) {
+                varMatches.forEach((match: string) => {
+                  const variable = match.replace(/[\{\}]/g, '')
+                  if (!variables.includes(variable)) {
+                    variables.push(variable)
+                  }
+                })
+              }
+
+              const displayName = `${item.friendlyName || item.sid}${
+                approvalStatus === 'APPROVED' ? ' (Twilio WhatsApp Approved)' :
+                approvalStatus === 'REJECTED' ? ' (Twilio WhatsApp Rejected)' :
+                approvalStatus === 'PENDING' ? ' (Twilio WhatsApp Pending)' : ''
+              }`
+
+              return {
+                sid: item.sid,
+                name: displayName,
+                raw_name: item.friendlyName || item.sid,
+                whatsapp_template_name: whatsappTemplateName,
+                body: body,
+                variables: variables,
+                category: whatsappCategory,
+                language: whatsappLanguage,
+                approval_status: approvalStatus,
+                rejection_reason: rejectionReason,
+                isDbTemplate: false,
+                source: 'twilio',
+                types: Object.keys(types)
+              }
+            })
+          )
+          twilioList = parsedTwilioTemplates
         }
       } catch (apiError) {
         console.warn('Failed to fetch from Twilio Content API, loading DB templates next:', apiError)
@@ -406,11 +457,14 @@ export async function GET(request: NextRequest) {
             return {
               sid: t.id,
               name: t.name,
+              whatsapp_template_name: t.name,
               body: t.body,
               variables: variables,
               category: t.category || 'UTILITY',
               language: t.language || 'en',
-              isDbTemplate: true
+              approval_status: 'APPROVED',
+              isDbTemplate: true,
+              source: 'db'
             }
           })
         }
