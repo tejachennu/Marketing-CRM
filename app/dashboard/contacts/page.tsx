@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -436,6 +438,7 @@ export default function ContactsPage() {
                 phone_number: '',
                 email: '',
                 company: '',
+                tags: '',
               })
               setShowAddModal(true)
             }}
