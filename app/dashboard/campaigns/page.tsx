@@ -66,6 +66,10 @@ interface Template {
   body: string
   variables: string[]
   category: string
+  language?: string
+  approvalStatus?: string
+  whatsappName?: string
+  rejectionReason?: string | null
 }
 
 interface Contact {
@@ -75,6 +79,94 @@ interface Contact {
   phone_number: string
   company: string | null
   email: string | null
+}
+
+// ─── Smart Excel Column Matching Helpers ───
+
+function findPhoneHeader(headers: string[]): string {
+  if (!headers || headers.length === 0) return ''
+
+  // Priority 1: Exact matches for common phone column names (strictly avoiding 'name')
+  const priority1 = headers.find(h => 
+    !/name/i.test(h) && /^(?:phone|phone[\s_-]?number|mobile|mobile[\s_-]?number|contact[\s_-]?(?:number|no|num)|cell|cell[\s_-]?phone|whatsapp|whatsapp[\s_-]?number|tel|telephone)$/i.test(h.trim())
+  )
+  if (priority1) return priority1
+
+  // Priority 2: Contains phone/mobile/cell/whatsapp/tel/number and does NOT contain 'name'
+  const priority2 = headers.find(h => 
+    !/name/i.test(h) && /(?:phone|mobile|cell|whatsapp|tel).*(?:num|no|tel)|(?:^|\b)(?:phone|mobile|cell|tel|telephone)(?:\b|$)/i.test(h)
+  )
+  if (priority2) return priority2
+
+  // Priority 3: Contains phone/mobile/number but strictly no 'name'
+  const priority3 = headers.find(h => !/name/i.test(h) && /phone|mobile|number|num/i.test(h))
+  if (priority3) return priority3
+
+  return headers[0] || ''
+}
+
+function findEmailHeader(headers: string[]): string {
+  if (!headers || headers.length === 0) return ''
+  const match = headers.find(h => /email|e-mail|mail/i.test(h))
+  return match || headers[0] || ''
+}
+
+function findContactNameHeader(headers: string[]): string {
+  if (!headers || headers.length === 0) return ''
+
+  // Priority 1: Exact matches for contact name / first name / name
+  const priority1 = headers.find(h => 
+    /^(?:contact[\s_-]?name|first[\s_-]?name|firstname|customer[\s_-]?name|client[\s_-]?name|patient[\s_-]?name|lead[\s_-]?name|user[\s_-]?name|full[\s_-]?name|name)$/i.test(h.trim())
+  )
+  if (priority1) return priority1
+
+  // Priority 2: Contains 'contact' and 'name', or 'first' and 'name'
+  const priority2 = headers.find(h => 
+    /(?:contact|first|customer|client|patient|lead|user|full).*name/i.test(h) && !/number|phone|mobile|email|id/i.test(h)
+  )
+  if (priority2) return priority2
+
+  // Priority 3: Contains 'name' but not number/phone/email
+  const priority3 = headers.find(h => 
+    /name/i.test(h) && !/number|num|phone|mobile|email|mail|file|org|company|template/i.test(h)
+  )
+  if (priority3) return priority3
+
+  return ''
+}
+
+function findHeaderForVariable(v: string, headers: string[], templateBody: string = ''): string {
+  if (!headers || headers.length === 0) return ''
+  const vStr = String(v).trim().toLowerCase()
+
+  // If variable is '1' or represents first name / contact name
+  if (vStr === '1' || vStr === 'name' || vStr === 'firstname' || vStr === 'first_name' || vStr === 'contact_name' || vStr === 'contactname') {
+    return findContactNameHeader(headers)
+  }
+
+  // If variable is '2' or represents last name
+  if (vStr === '2' || vStr === 'lastname' || vStr === 'last_name') {
+    const lastNameMatch = headers.find(h => /last[\s_-]?name|surname/i.test(h))
+    if (lastNameMatch) return lastNameMatch
+  }
+
+  // Check company / organization
+  if (vStr.includes('company') || vStr.includes('org') || vStr.includes('clinic') || vStr.includes('hospital')) {
+    const compMatch = headers.find(h => /company|organization|clinic|hospital|business/i.test(h))
+    if (compMatch) return compMatch
+  }
+
+  // Check date / time / appointment
+  if (vStr.includes('date') || vStr.includes('time') || vStr.includes('appointment')) {
+    const dateMatch = headers.find(h => /date|time|appointment|schedule/i.test(h))
+    if (dateMatch) return dateMatch
+  }
+
+  // Direct header name match
+  const directMatch = headers.find(h => h.trim().toLowerCase() === vStr)
+  if (directMatch) return directMatch
+
+  return ''
 }
 
 export default function CampaignsPage() {
@@ -345,7 +437,7 @@ export default function CampaignsPage() {
         const workbook = XLSX.read(data, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
-        const json = XLSX.utils.sheet_to_json(worksheet)
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet)
         
         if (json.length === 0) {
           setErrorMsg('The Excel sheet appears to be empty.')
@@ -356,18 +448,25 @@ export default function CampaignsPage() {
         const headers = Object.keys(json[0] || {})
         setExcelHeaders(headers)
         
-        // Auto-select phone or email column if matching keywords found
+        // Auto-select phone or email column using smart detection (never falsely matches 'Contact Name' as phone)
         if (channel === 'email') {
-          const emailKey = headers.find(h => 
-            /email|mail|addr/i.test(h)
-          ) || ''
+          const emailKey = findEmailHeader(headers)
           setPhoneColumn(emailKey)
         } else {
-          const phoneKey = headers.find(h => 
-            /phone|mobile|tel|contact|number|num/i.test(h)
-          ) || ''
+          const phoneKey = findPhoneHeader(headers)
           setPhoneColumn(phoneKey)
         }
+
+        // Auto-map template placeholders: map {{1}} to Contact Name / First Name
+        const variablesToMap = channel === 'whatsapp'
+          ? (selectedTemplate?.variables || [])
+          : customVariables;
+        
+        const autoMappings: Record<string, string> = {}
+        variablesToMap.forEach(v => {
+          autoMappings[v] = findHeaderForVariable(v, headers, selectedTemplate?.body || customMessageBody)
+        })
+        setVariableMappings(autoMappings)
       } catch (err) {
         console.error(err)
         setErrorMsg('Failed to parse Excel file. Ensure it is a valid .xlsx or .xls sheet.')
@@ -447,14 +546,31 @@ export default function CampaignsPage() {
         }
       }
       setErrorMsg('')
-      // Set default mappings based on either Meta templates or custom variables
+
+      // Set smart default mappings based on either Meta templates or custom variables
       const variablesToMap = channel === 'whatsapp'
         ? (selectedTemplate?.variables || [])
         : customVariables;
       
-      const initialMappings: Record<string, string> = {}
+      const initialMappings: Record<string, string> = { ...variableMappings }
       variablesToMap.forEach(v => {
-        initialMappings[v] = ''
+        if (!initialMappings[v]) {
+          if (audienceSource === 'excel' && excelHeaders.length > 0) {
+            initialMappings[v] = findHeaderForVariable(v, excelHeaders, selectedTemplate?.body || customMessageBody)
+          } else if (audienceSource === 'db') {
+            if (v === '1' || v === 'name' || v === 'first_name') {
+              initialMappings[v] = 'first_name'
+            } else if (v === '2' || v === 'last_name') {
+              initialMappings[v] = 'last_name'
+            } else if (v.toLowerCase().includes('company')) {
+              initialMappings[v] = 'company'
+            } else if (v.toLowerCase().includes('email')) {
+              initialMappings[v] = 'email'
+            } else if (v.toLowerCase().includes('phone')) {
+              initialMappings[v] = 'phone_number'
+            }
+          }
+        }
       })
       setVariableMappings(initialMappings)
       setWizardStep(3)
@@ -1132,9 +1248,27 @@ export default function CampaignsPage() {
                   )}
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-[#54656f]">
-                      {channel === 'whatsapp' ? 'Twilio / Meta Approved Template' : 'Choose Base Template (Optional)'}
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-[#54656f]">
+                        {channel === 'whatsapp' ? 'Twilio / Meta Approved Template' : 'Choose Base Template (Optional)'}
+                      </label>
+                      {selectedTemplate?.language && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold bg-[#e7f7f4] text-[#008069] px-2 py-0.5 rounded border border-[#00a884]/20">
+                            Locale: {selectedTemplate.language}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            selectedTemplate.approvalStatus === 'approved'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : selectedTemplate.approvalStatus === 'rejected'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {selectedTemplate.approvalStatus?.toUpperCase() || 'APPROVED'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <select
                       value={selectedTemplate?.sid || ''}
                       onChange={(e) => {
@@ -1148,10 +1282,15 @@ export default function CampaignsPage() {
                       </option>
                       {templates.map(t => (
                         <option key={t.sid} value={t.sid}>
-                          {t.name} ({t.category})
+                          {t.name} [{t.language || 'en'}] - {t.approvalStatus?.toUpperCase() || 'APPROVED'} ({t.category})
                         </option>
                       ))}
                     </select>
+                    {selectedTemplate?.rejectionReason && (
+                      <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 p-2 rounded-lg border border-rose-200 mt-1">
+                        ⚠️ Meta Rejection: {selectedTemplate.rejectionReason}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-1.5">
@@ -1529,10 +1668,17 @@ export default function CampaignsPage() {
                 <div className="space-y-4">
                   <div className="p-3 bg-[#f0f2f5] border border-[#e9edef] rounded-xl">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#667781]">Template text structure</span>
-                    <p className="text-xs font-medium text-[#111b21] mt-1 font-mono">{selectedTemplate?.body}</p>
+                    <p className="text-xs font-medium text-[#111b21] mt-1 font-mono">{selectedTemplate?.body || customMessageBody}</p>
                   </div>
 
-                  <h4 className="text-xs font-bold text-[#111b21]">Map Excel Columns / Contact Attributes to Placeholders</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-[#111b21]">Map Excel Columns / Contact Attributes to Placeholders</h4>
+                    {audienceSource === 'excel' && (
+                      <span className="text-[10px] text-[#008069] font-bold bg-[#e7f7f4] px-2 py-0.5 rounded border border-[#00a884]/20 flex items-center gap-1">
+                        <CheckCircle size={11} /> Auto-mapped from sheet
+                      </span>
+                    )}
+                  </div>
                   
                   <div className="space-y-3">
                     {(channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables).map(v => (
@@ -1541,7 +1687,9 @@ export default function CampaignsPage() {
                           <span className="bg-[#00a884] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded">
                             {"{{"}{v}{"}}"}
                           </span>
-                          <span className="text-xs font-bold text-[#54656f]">Placeholder {v}</span>
+                          <span className="text-xs font-bold text-[#54656f]">
+                            {v === '1' ? 'Placeholder 1 (First/Contact Name)' : v === '2' ? 'Placeholder 2 (Last Name/Custom)' : `Placeholder ${v}`}
+                          </span>
                         </div>
                         <span className="text-[10px] text-center text-[#8696a0] hidden md:block">maps to</span>
                         <select
@@ -1549,12 +1697,14 @@ export default function CampaignsPage() {
                           onChange={(e) => {
                             setVariableMappings(prev => ({ ...prev, [v]: e.target.value }))
                           }}
-                          className="w-full px-3 py-2 bg-white border border-[#e9edef] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                          className="w-full px-3 py-2 bg-white border border-[#e9edef] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] font-semibold text-[#111b21]"
                         >
                           <option value="">-- Map to field --</option>
                           {audienceSource === 'excel' ? (
                             excelHeaders.map(h => (
-                              <option key={h} value={h}>{h}</option>
+                              <option key={h} value={h}>
+                                {h} {h === variableMappings[v] ? '✓' : ''}
+                              </option>
                             ))
                           ) : (
                             <>

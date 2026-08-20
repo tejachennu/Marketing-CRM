@@ -220,7 +220,26 @@ async function executeCampaign(campaignId: string) {
         }
       } catch (err: any) {
         console.warn(`[Campaign Worker] Dispatch failed for recipient:`, err)
-        errorMessage = err.message || String(err)
+        let detailedError = err.message || String(err)
+        
+        // Parse Meta WhatsApp Error 132001 or Twilio Error 63016
+        if (detailedError.includes('132001') || detailedError.includes('Template name does not exist in the translation')) {
+          const matchDetails = detailedError.match(/template name \(([^)]+)\) does not exist in ([a-zA-Z_-]+)/i)
+          if (matchDetails) {
+            const [, tName, tLang] = matchDetails
+            detailedError = `Meta WhatsApp Error (132001): Template '${tName}' is not approved for language '${tLang}' in WhatsApp Business Manager. Please verify the template translation in Meta WhatsApp or update the Twilio Content template language.`
+          } else {
+            detailedError = `Meta WhatsApp Error (132001): Template name does not exist in the requested language translation. Please verify that the template is approved in WhatsApp Business Manager for this language.`
+          }
+        } else if (err.code === 63016 || detailedError.includes('63016')) {
+          detailedError = `Twilio Error 63016: Cannot send freeform message outside the 24-hour window. A pre-approved WhatsApp template with matching translation is required.`
+        } else if (err.code === 21620 || detailedError.includes('21620')) {
+          detailedError = `Twilio Error 21620: Invalid Content SID or Content Variables format.`
+        } else if (err.code === 21211 || detailedError.includes('21211')) {
+          detailedError = `Twilio Error 21211: Invalid phone number format.`
+        }
+
+        errorMessage = detailedError
         status = 'FAILED'
         failedCount++
       }
@@ -238,22 +257,52 @@ async function executeCampaign(campaignId: string) {
       // If sent successfully, sync to CRM messages & conversations
       if (status === 'SENT') {
         try {
+          // Resolve contact name from mapped variables
+          const rawName = mappedVars['1'] || 
+                          mappedVars['name'] || 
+                          mappedVars['first_name'] || 
+                          mappedVars['contact_name'] || 
+                          mappedVars['Contact Name'] || 
+                          mappedVars['First Name'] || 
+                          mappedVars['Name'] || 
+                          ''
+
+          let firstName = 'Campaign'
+          let lastName = 'Contact'
+
+          if (rawName && rawName.trim()) {
+            const parts = rawName.trim().split(/\s+/)
+            firstName = parts[0]
+            if (parts.length > 1) {
+              lastName = parts.slice(1).join(' ')
+            } else {
+              const rawLastName = mappedVars['2'] || mappedVars['last_name'] || mappedVars['Last Name'] || ''
+              lastName = rawLastName.trim() || ''
+            }
+          } else if (mappedVars['2']) {
+            firstName = 'Campaign'
+            lastName = String(mappedVars['2']).trim()
+          }
+
           // 1. Get or create Contact
           let contactId = null
+          const rawTags = mappedVars['tags'] || mappedVars['tag'] || mappedVars['Tags'] || mappedVars['Tag'] || ''
+          const campaignTags = rawTags ? String(rawTags).split(/[,;|]/).map(t => t.trim()).filter(Boolean) : []
+          if (campaign.name && !campaignTags.includes(campaign.name)) {
+            campaignTags.push(campaign.name)
+          }
           
           if (channel === 'email') {
             const cleanEmail = recipientEmail ? recipientEmail.toLowerCase().trim() : ''
             const { data: existingContact } = await supabase
               .from('contacts')
-              .select('id')
+              .select('id, tags')
               .eq('email', cleanEmail)
               .single()
 
             if (existingContact) {
               contactId = existingContact.id
             } else {
-              const firstName = mappedVars['1'] || 'Campaign'
-              const lastName = mappedVars['2'] || 'Contact'
               const { data: newContact, error: createContactError } = await supabase
                 .from('contacts')
                 .insert([
@@ -262,7 +311,8 @@ async function executeCampaign(campaignId: string) {
                     first_name: firstName,
                     last_name: lastName,
                     email: cleanEmail,
-                    company: 'Campaign Contact'
+                    company: 'Campaign Contact',
+                    tags: campaignTags,
                   }
                 ])
                 .select()
@@ -276,15 +326,13 @@ async function executeCampaign(campaignId: string) {
             const cleanPhone = recipientPhone ? recipientPhone.replace('whatsapp:', '') : ''
             const { data: existingContact } = await supabase
               .from('contacts')
-              .select('id')
+              .select('id, tags')
               .eq('phone_number', cleanPhone)
               .single()
 
             if (existingContact) {
               contactId = existingContact.id
             } else {
-              const firstName = mappedVars['1'] || 'Campaign'
-              const lastName = mappedVars['2'] || 'Contact'
               const { data: newContact, error: createContactError } = await supabase
                 .from('contacts')
                 .insert([
@@ -293,7 +341,8 @@ async function executeCampaign(campaignId: string) {
                     first_name: firstName,
                     last_name: lastName,
                     phone_number: cleanPhone,
-                    company: 'Campaign Contact'
+                    company: 'Campaign Contact',
+                    tags: campaignTags,
                   }
                 ])
                 .select()

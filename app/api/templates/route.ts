@@ -16,21 +16,27 @@ const fallbackTemplates = [
     name: 'welcome_campaign (Meta Approved)',
     body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.',
     variables: ['1', '2'],
-    category: 'UTILITY'
+    category: 'UTILITY',
+    language: 'en',
+    approvalStatus: 'approved'
   },
   {
     sid: 'HX_promotion_discount',
     name: 'promotion_discount (Meta Approved)',
     body: 'Hey {{1}}! Get {{2}}% off on all our services this weekend. Use code {{3}} at checkout.',
     variables: ['1', '2', '3'],
-    category: 'MARKETING'
+    category: 'MARKETING',
+    language: 'en',
+    approvalStatus: 'approved'
   },
   {
     sid: 'HX_follow_up_lead',
     name: 'follow_up_lead (Meta Approved)',
     body: 'Hi {{1}}, this is {{2}} from {{3}}. Just following up on our previous conversation regarding your inquiry. Let us know if you have any questions!',
     variables: ['1', '2', '3'],
-    category: 'UTILITY'
+    category: 'UTILITY',
+    language: 'en',
+    approvalStatus: 'approved'
   }
 ]
 
@@ -53,46 +59,99 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ templates: fallbackTemplates })
       }
 
+      // Fetch approval statuses in parallel
+      const approvalPromises = twilioTemplates.map(async (item: any) => {
+        try {
+          const approval = await client.content.v1.contents(item.sid).approvalFetch().fetch()
+          return { sid: item.sid, approval }
+        } catch {
+          return { sid: item.sid, approval: null }
+        }
+      })
+
+      const approvalsList = await Promise.allSettled(approvalPromises)
+      const approvalMap = new Map<string, any>()
+      approvalsList.forEach(res => {
+        if (res.status === 'fulfilled' && res.value?.approval) {
+          approvalMap.set(res.value.sid, res.value.approval)
+        }
+      })
+
       // Parse Twilio Content API formats
       const templates = twilioTemplates.map((item: any) => {
-        // Twilio templates have their bodies nested under types (e.g. twilio/text or twilio/card etc)
         const types = item.types || {}
         let body = ''
         
-        // Find body text in template types
-        if (types['twilio/text']) {
+        // Find body text across supported Content types
+        if (types['whatsapp/card'] && types['whatsapp/card'].body) {
+          body = types['whatsapp/card'].body
+        } else if (types['twilio/text'] && types['twilio/text'].body) {
           body = types['twilio/text'].body
-        } else if (types['twilio/media']) {
-          body = types['twilio/media'].body || ''
-        } else if (types['twilio/card']) {
-          body = types['twilio/card'].body || ''
+        } else if (types['twilio/card'] && types['twilio/card'].body) {
+          body = types['twilio/card'].body
+        } else if (types['twilio/quick-reply'] && types['twilio/quick-reply'].body) {
+          body = types['twilio/quick-reply'].body
+        } else if (types['twilio/call-to-action'] && types['twilio/call-to-action'].body) {
+          body = types['twilio/call-to-action'].body
+        } else if (types['whatsapp/media'] && types['whatsapp/media'].body) {
+          body = types['whatsapp/media'].body
+        } else if (types['twilio/media'] && types['twilio/media'].body) {
+          body = types['twilio/media'].body
         } else {
           // Fallback - stringify values or grab what we can
-          const firstType = Object.keys(types)[0]
-          if (firstType && types[firstType]) {
-            body = types[firstType].body || types[firstType].text || ''
+          for (const key of Object.keys(types)) {
+            if (types[key]?.body) {
+              body = types[key].body
+              break
+            } else if (types[key]?.text) {
+              body = types[key].text
+              break
+            }
           }
         }
 
-        // Detect variables {{1}}, {{2}} etc.
+        // Detect variables {{1}}, {{2}} or {{name}} etc.
         const variables: string[] = []
-        const varMatches = body.match(/\{\{\d+\}\}/g)
+        const varMatches = body.match(/\{\{([^}]+)\}\}/g)
         if (varMatches) {
           varMatches.forEach((match: string) => {
-            const num = match.replace(/[\{\}]/g, '')
-            if (!variables.includes(num)) {
-              variables.push(num)
+            const rawVar = match.replace(/[\{\}]/g, '').trim()
+            if (rawVar && !variables.includes(rawVar)) {
+              variables.push(rawVar)
             }
           })
-          variables.sort((a, b) => parseInt(a) - parseInt(b))
+          variables.sort((a, b) => {
+            const numA = parseInt(a)
+            const numB = parseInt(b)
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB
+            return a.localeCompare(b)
+          })
         }
+
+        // Check if item has registered variables in Twilio
+        if (variables.length === 0 && item.variables && typeof item.variables === 'object') {
+          Object.keys(item.variables).forEach(k => {
+            if (!variables.includes(k)) variables.push(k)
+          })
+        }
+
+        const approvalData = approvalMap.get(item.sid)
+        const whatsappApproval = approvalData?.whatsapp || {}
+        const approvalStatus = whatsappApproval.status || 'approved'
+        const category = whatsappApproval.category || 'UTILITY'
+        const rejectionReason = whatsappApproval.rejectionReason || null
+        const language = item.language || 'en'
 
         return {
           sid: item.sid,
           name: item.friendlyName || item.sid,
+          whatsappName: whatsappApproval.name || item.friendlyName || item.sid,
           body: body,
           variables: variables,
-          category: item.language || 'en'
+          category: category,
+          language: language,
+          approvalStatus: approvalStatus,
+          rejectionReason: rejectionReason
         }
       })
 

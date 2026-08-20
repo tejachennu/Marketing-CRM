@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       phoneNumber,
       email,
       company,
+      tags
     } = body
 
     if (!organizationId) {
@@ -97,9 +98,29 @@ export async function POST(request: NextRequest) {
       throw existingError
     }
 
+    // Format tags properly
+    let parsedTags: string[] = []
+    if (Array.isArray(tags)) {
+      parsedTags = tags.map(t => String(t).trim()).filter(Boolean)
+    } else if (typeof tags === 'string' && tags.trim()) {
+      parsedTags = tags.split(/[,;|]/).map(t => t.trim()).filter(Boolean)
+    }
+
     if (existing) {
+      // If contact already exists and new tags are provided, optionally merge tags
+      if (parsedTags.length > 0) {
+        const currentTags = Array.isArray(existing.tags) ? existing.tags : []
+        const mergedTags = Array.from(new Set([...currentTags, ...parsedTags]))
+        await supabase
+          .from('contacts')
+          .update({
+            tags: mergedTags,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id)
+      }
       return NextResponse.json(
-        { error: 'Contact with this phone number already exists' },
+        { error: 'Contact with this phone number already exists', existingContact: existing },
         { status: 409 }
       )
     }
@@ -115,7 +136,7 @@ export async function POST(request: NextRequest) {
           phone_number: normalizedPhone,
           email: email || null,
           company: company || null,
-          tags: [],
+          tags: parsedTags,
         },
       ])
       .select()
@@ -174,6 +195,7 @@ export async function PUT(request: NextRequest) {
       phone_number,
       email,
       company,
+      tags
     } = body
 
     if (!id) {
@@ -211,16 +233,26 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    const updatePayload: any = {
+      first_name: first_name || null,
+      last_name: last_name || null,
+      phone_number: normalizedPhone,
+      email: email || null,
+      company: company || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (tags !== undefined) {
+      if (Array.isArray(tags)) {
+        updatePayload.tags = tags.map(t => String(t).trim()).filter(Boolean)
+      } else if (typeof tags === 'string') {
+        updatePayload.tags = tags.split(/[,;|]/).map(t => t.trim()).filter(Boolean)
+      }
+    }
+
     const { data: contact, error: updateError } = await supabase
       .from('contacts')
-      .update({
-        first_name: first_name || null,
-        last_name: last_name || null,
-        phone_number: normalizedPhone,
-        email: email || null,
-        company: company || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single()
