@@ -245,10 +245,11 @@ function ConversationsPageContent() {
           conversationId: selectedConversation,
           phoneNumber: selectedConv.contact.phone_number,
           templateSid: selectedLiveChatTemplate.sid,
-          templateName: selectedLiveChatTemplate.name,
+          templateName: selectedLiveChatTemplate.whatsapp_template_name || selectedLiveChatTemplate.raw_name || selectedLiveChatTemplate.name,
           templateLanguage: selectedLiveChatTemplate.language || 'en',
           templateVariables: templateVarValues,
           message: finalBody,
+          channel: 'whatsapp',
         }),
       })
 
@@ -1143,6 +1144,7 @@ function ConversationsPageContent() {
           message: text,
           phoneNumber: selectedConv.contact.phone_number,
           mediaUrl: media ? media.url : null,
+          channel: 'whatsapp',
         }),
       })
 

@@ -19,9 +19,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
     const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = parseInt(searchParams.get('limit') || '20', 10)
+    const limitParam = searchParams.get('limit')
+    const isAll = searchParams.get('all') === 'true' || limitParam === 'all' || limitParam === '0'
+    const limit = isAll ? 50000 : parseInt(limitParam || '20', 10)
     const search = searchParams.get('search') || ''
-    const offset = (page - 1) * limit
+    const offset = isAll ? 0 : (page - 1) * limit
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
@@ -43,9 +45,12 @@ export async function GET(request: NextRequest) {
       query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
     }
 
+    if (!isAll) {
+      query = query.range(offset, offset + limit - 1)
+    }
+
     const { data: contacts, count, error } = await query
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
 
     if (error) throw error
 

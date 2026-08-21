@@ -94,6 +94,7 @@ interface Contact {
   phone_number: string
   company: string | null
   email: string | null
+  tags?: string[]
 }
 
 export default function CampaignsPage() {
@@ -457,11 +458,12 @@ export default function CampaignsPage() {
     const orgId = orgIdOverride || user?.organization_id
     if (!orgId) return
     try {
-      const res = await fetch(`/api/contacts?limit=100&organizationId=${orgId}`)
+      const res = await fetch(`/api/contacts?all=true&organizationId=${orgId}`)
       const data = await res.json()
       if (data.success) {
-        setContacts(data.contacts || [])
-        setSelectedContactIds((data.contacts || []).map((c: any) => c.id))
+        const loadedContacts = data.contacts || []
+        setContacts(loadedContacts)
+        setSelectedContactIds(loadedContacts.map((c: any) => c.id))
       }
     } catch (err) {
       console.error('Error fetching contacts:', err)
@@ -876,6 +878,18 @@ export default function CampaignsPage() {
             variables[tplVar] = String(c[key] || '')
           }
         })
+
+        // Ensure default variables are always populated from contact fields if not explicitly mapped
+        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.first_name || 'Valued Customer'
+        if (!variables['1']) variables['1'] = c.first_name || fullName
+        if (!variables['name']) variables['name'] = c.first_name || fullName
+        if (!variables['first_name']) variables['first_name'] = c.first_name || fullName
+        if (!variables['contact_name']) variables['contact_name'] = fullName
+        if (!variables['2'] && c.last_name) variables['2'] = c.last_name
+        if (!variables['last_name'] && c.last_name) variables['last_name'] = c.last_name
+        if (c.company && !variables['company']) variables['company'] = c.company
+        if (Array.isArray(c.tags) && c.tags.length > 0 && !variables['tag']) variables['tag'] = c.tags.join(', ')
+
         if (channel === 'email') {
           return {
             email: c.email || '',
@@ -887,7 +901,7 @@ export default function CampaignsPage() {
             variables
           }
         }
-      }).filter(item => channel === 'email' ? (item.email && item.email.includes('@')) : true)
+      }).filter(item => channel === 'email' ? (item.email && item.email.includes('@')) : (item.phone && item.phone.length > 5))
     }
   }
 
@@ -982,7 +996,8 @@ export default function CampaignsPage() {
           val = staticVariableValues[tplVar] || ''
         } else {
           const attr = variableMappings[tplVar]
-          val = selectedContacts[0][attr as keyof Contact] || `[${attr}]`
+          const rawVal = selectedContacts[0][attr as keyof Contact]
+          val = Array.isArray(rawVal) ? rawVal.join(', ') : (String(rawVal || '') || `[${attr}]`)
         }
         preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(val))
       })
@@ -2371,60 +2386,90 @@ export default function CampaignsPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Users size={16} className="text-[#00a884]" />
-                          <span className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
-                            Broadcast to <span className="text-[#008069]">{selectedContactIds.length}</span> of {contacts.length} contacts
-                          </span>
+                    <div className="space-y-3.5">
+                      {/* Tenant Contacts Summary & Action Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 p-3 rounded-xl">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-[#00a884] rounded-lg shrink-0">
+                            <Users size={18} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <span>Broadcast to</span>
+                              <span className="bg-[#00a884] text-white px-2 py-0.5 rounded-full text-[11px] font-extrabold font-mono">
+                                {selectedContactIds.length} / {contacts.length}
+                              </span>
+                              <span>tenant contacts</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                              {selectedContactIds.length === contacts.length
+                                ? '✓ All contacts across the entire tenant are selected'
+                                : `${contacts.length - selectedContactIds.length} contacts currently excluded`}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex gap-1.5">
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                           <button
                             type="button"
                             onClick={() => setSelectedContactIds(contacts.map(c => c.id))}
-                            className="text-[10px] font-extrabold text-[#008069] bg-[#e7f7f4] hover:bg-[#e7f7f4]/80 px-2 py-0.5 rounded transition-all cursor-pointer"
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                              selectedContactIds.length === contacts.length
+                                ? 'bg-[#00a884] text-white shadow-sm'
+                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-emerald-50'
+                            }`}
                           >
-                            All
+                            Select All ({contacts.length})
                           </button>
                           <button
                             type="button"
                             onClick={() => setSelectedContactIds([])}
-                            className="text-[10px] font-extrabold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded transition-all cursor-pointer"
+                            className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
                           >
-                            None
+                            Deselect All
                           </button>
                         </div>
                       </div>
 
-                      <input
-                        type="text"
-                        placeholder={channel === 'email' ? "Search contacts by name or email..." : "Search contacts by name or phone..."}
-                        value={contactSearchTerm}
-                        onChange={(e) => setContactSearchTerm(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#f0f2f5] border border-[#e9edef] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] font-semibold text-[#111b21] dark:text-white"
-                      />
+                      {/* Search Bar */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder={channel === 'email' ? "Search tenant contacts by name, email, company..." : "Search tenant contacts by name, phone, company, tag..."}
+                          value={contactSearchTerm}
+                          onChange={(e) => setContactSearchTerm(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] font-semibold text-[#111b21] dark:text-white"
+                        />
+                      </div>
 
-                      <div className="max-h-48 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-2 bg-white dark:bg-[#111b21] space-y-1 scrollbar-thin">
+                      {/* Contacts Scroll List */}
+                      <div className="max-h-60 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-2 bg-white dark:bg-[#111b21] space-y-1 scrollbar-thin">
                         {contacts.filter(c => {
                           const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
                           const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
+                          const company = (c.company || '').toLowerCase()
+                          const tags = Array.isArray(c.tags) ? c.tags.join(' ').toLowerCase() : ''
                           const search = contactSearchTerm.toLowerCase()
-                          return name.includes(search) || targetField.includes(search)
+                          return name.includes(search) || targetField.includes(search) || company.includes(search) || tags.includes(search)
                         }).length === 0 ? (
-                          <div className="text-center py-4 text-[#8696a0] text-xs">No contacts match search</div>
+                          <div className="text-center py-6 text-[#8696a0] text-xs font-medium">No contacts match search</div>
                         ) : (
                           contacts.filter(c => {
                             const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
                             const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
+                            const company = (c.company || '').toLowerCase()
+                            const tags = Array.isArray(c.tags) ? c.tags.join(' ').toLowerCase() : ''
                             const search = contactSearchTerm.toLowerCase()
-                            return name.includes(search) || targetField.includes(search)
+                            return name.includes(search) || targetField.includes(search) || company.includes(search) || tags.includes(search)
                           }).map(c => {
                             const isChecked = selectedContactIds.includes(c.id)
                             return (
                               <label
                                 key={c.id}
-                                className="flex items-center gap-3 p-2 hover:bg-[#f5f6f6] rounded-lg transition-all cursor-pointer select-none text-xs border border-transparent"
+                                className={`flex items-center gap-3 p-2.5 rounded-lg transition-all cursor-pointer select-none text-xs border ${
+                                  isChecked
+                                    ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40'
+                                    : 'hover:bg-[#f5f6f6] dark:hover:bg-[#1f2c34] border-transparent'
+                                }`}
                               >
                                 <input
                                   type="checkbox"
@@ -2438,17 +2483,33 @@ export default function CampaignsPage() {
                                   }}
                                   className="rounded border-[#e9edef] text-[#00a884] focus:ring-[#00a884] cursor-pointer"
                                 />
-                                <div className="h-7 w-7 rounded-full bg-[#dfe5e7] border border-[#e9edef] flex items-center justify-center font-bold text-[#54656f] dark:text-[#8696a0] text-[10px]">
+                                <div className="h-7 w-7 rounded-full bg-[#dfe5e7] dark:bg-slate-700 border border-[#e9edef] dark:border-slate-600 flex items-center justify-center font-bold text-[#54656f] dark:text-white text-[10px]">
                                   {`${c.first_name || 'C'}`.substring(0, 1).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-[#111b21] dark:text-white truncate">
-                                    {c.first_name} {c.last_name || ''}
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-[#111b21] dark:text-white truncate">
+                                      {c.first_name} {c.last_name || ''}
+                                    </span>
+                                    {c.company && (
+                                      <span className="text-[10px] text-slate-400 font-normal truncate">
+                                        • {c.company}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] truncate">
+                                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] truncate font-mono">
                                     {channel === 'email' ? (c.email || 'No email registered') : c.phone_number}
                                   </div>
                                 </div>
+                                {Array.isArray(c.tags) && c.tags.length > 0 && (
+                                  <div className="flex items-center gap-1 flex-wrap shrink-0">
+                                    {c.tags.slice(0, 2).map((t: string) => (
+                                      <span key={t} className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[9px] px-1.5 py-0.5 rounded font-semibold border border-slate-200 dark:border-slate-700">
+                                        {t}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </label>
                             )
                           })

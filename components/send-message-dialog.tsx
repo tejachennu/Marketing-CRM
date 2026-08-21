@@ -15,6 +15,8 @@ interface SendMessageDialogProps {
 interface TemplateOption {
   sid: string
   name: string
+  raw_name?: string
+  whatsapp_template_name?: string
   body: string
   language?: string
 }
@@ -83,11 +85,12 @@ export function SendMessageDialog({
         contactId: selectedContactId,
         organizationId,
         phoneNumber: selectedContact?.phone_number,
+        channel: 'whatsapp',
       }
 
       if (sendMode === 'template' && selectedTemplate) {
         payload.templateSid = selectedTemplate.sid
-        payload.templateName = selectedTemplate.name
+        payload.templateName = selectedTemplate.whatsapp_template_name || selectedTemplate.raw_name || selectedTemplate.name
         payload.templateLanguage = selectedTemplate.language || 'en'
         payload.message = selectedTemplate.body
       } else {

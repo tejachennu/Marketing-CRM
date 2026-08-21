@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
     const convId = conversationId
     let orgId = organizationId
     const msgMediaUrl = mediaUrl || media_url || null
+    const requestChannel = body.channel
 
     // Determine organization context
     if (!orgId && convId) {
@@ -163,13 +164,13 @@ export async function POST(request: NextRequest) {
     let whatsappGraphApiVersion = isMasterOrg ? (process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0') : 'v25.0'
     let whatsappPhoneNumberId = isMasterOrg ? (process.env.WHATSAPP_PHONE_NUMBER_ID || '') : ''
     let enableSms = true
-
+    let enableMessages = true
 
     if (orgId) {
       try {
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, whatsapp_provider, whatsapp_api_token, whatsapp_default_phone, whatsapp_graph_api_version, whatsapp_phone_number_id, enable_sms')
+          .select('twilio_account_sid, twilio_auth_token, twilio_whatsapp_number, whatsapp_provider, whatsapp_api_token, whatsapp_default_phone, whatsapp_graph_api_version, whatsapp_phone_number_id, enable_sms, enable_messages')
           .eq('id', orgId)
           .single()
 
@@ -185,12 +186,14 @@ export async function POST(request: NextRequest) {
           if (orgData.enable_sms !== null && orgData.enable_sms !== undefined) {
             enableSms = orgData.enable_sms
           }
+          if (orgData.enable_messages !== null && orgData.enable_messages !== undefined) {
+            enableMessages = orgData.enable_messages
+          }
         }
       } catch (dbErr) {
         console.error('[Messages Send] Error loading database credentials:', dbErr)
       }
     }
-
 
     if (!msgBody && !msgMediaUrl && !templateName && !templateSid) {
       return NextResponse.json(
@@ -259,25 +262,22 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
-    }    // Determine channel (WhatsApp vs SMS) dynamically
-    let isWhatsApp = false
-    if (contactPhone && contactPhone.startsWith('whatsapp:')) {
+    }
+
+    // Determine channel (WhatsApp vs SMS) dynamically
+    // In this CRM, WhatsApp is the primary messaging channel for chats & templates.
+    let isWhatsApp = true
+    if (requestChannel === 'sms') {
+      isWhatsApp = false
+    } else if (requestChannel === 'whatsapp' || templateName || templateSid) {
       isWhatsApp = true
-    } else {
-      try {
-        if (conversation?.contact_id) {
-          const { data: contact } = await supabase
-            .from('contacts')
-            .select('whatsapp_number')
-            .eq('id', conversation.contact_id)
-            .maybeSingle()
-          if (contact?.whatsapp_number && contact.whatsapp_number.startsWith('whatsapp:')) {
-            isWhatsApp = true
-          }
-        }
-      } catch (err) {
-        console.warn('[v0] Failed to fetch contact to resolve channel:', err)
-      }
+    } else if (contactPhone && contactPhone.startsWith('whatsapp:')) {
+      isWhatsApp = true
+    } else if (whatsappProvider === 'facebook' || whatsappProvider === 'twilio') {
+      // Default to WhatsApp when WhatsApp provider is enabled
+      isWhatsApp = true
+    } else if (!enableMessages && enableSms) {
+      isWhatsApp = false
     }
 
     if (!isWhatsApp && !enableSms) {
@@ -288,12 +288,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Send message via the appropriate provider
-    // Key isolation rule: SMS always goes through Twilio; WhatsApp checks whatsappProvider
+    // Strict isolation rule: 
+    // - If whatsappProvider === 'facebook' AND isWhatsApp -> strictly Facebook WhatsApp Cloud API (never touch or require Twilio)
+    // - If whatsappProvider === 'twilio' AND isWhatsApp -> Twilio WhatsApp API
+    // - If channel === 'sms' -> Twilio SMS
     let twilioMessageSid = null
     let sendStatus = 'sent'
     let sendError: string | null = null
     try {
-      // Determine whether to use Facebook or Twilio for this specific message
       const useFacebookForThisMessage = isWhatsApp && whatsappProvider === 'facebook'
 
       if (useFacebookForThisMessage) {
@@ -302,13 +304,16 @@ export async function POST(request: NextRequest) {
           throw new Error('Facebook WhatsApp API credentials (API Token & Phone ID) must be configured in settings')
         }
 
-        const cleanToFb = contactPhone.replace('whatsapp:', '').replace('+', '').trim()
+        const cleanToFb = contactPhone.replace(/^whatsapp:/i, '').replace(/^\+/, '').trim()
 
         const publicMediaUrl = msgMediaUrl
           ? (msgMediaUrl.startsWith('http')
               ? msgMediaUrl
               : `${process.env.V0_RUNTIME_URL || ''}${msgMediaUrl}`)
           : null
+
+        let tName = ''
+        let tLang = 'en'
 
         let payload: any = {
           messaging_product: 'whatsapp',
@@ -317,12 +322,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (templateName || templateSid) {
-          let tName = templateName || ''
-          let tLang = templateLanguage || 'en'
-          if (templateSid && templateSid.startsWith('META_')) {
-            if (!tName) tName = templateSid.replace('META_', '')
+          tName = templateName || templateSid || ''
+          tLang = templateLanguage || 'en'
+          if (tName.startsWith('META_')) {
+            tName = tName.replace(/^META_/, '')
           }
-          tName = tName.replace(/\s*\(Meta Approved\)/i, '').trim()
+          tName = tName.replace(/\s*\(Meta Approved\)/gi, '').replace(/\s*\(Twilio WhatsApp Approved\)/gi, '').replace(/\s*\[.*?\]/g, '').trim()
 
           payload.type = 'template'
           payload.template = {
@@ -335,11 +340,16 @@ export async function POST(request: NextRequest) {
           if (templateComponents && Array.isArray(templateComponents) && templateComponents.length > 0) {
             payload.template.components = templateComponents
           } else if (templateVariables && typeof templateVariables === 'object') {
-            const parameters = Object.keys(templateVariables)
-              .sort((a, b) => Number(a) - Number(b))
-              .map(k => ({
+            const parameters = Object.entries(templateVariables)
+              .sort(([a], [b]) => {
+                const numA = Number(a)
+                const numB = Number(b)
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB
+                return a.localeCompare(b)
+              })
+              .map(([_, val]) => ({
                 type: 'text',
-                text: String(templateVariables[k] || '')
+                text: String(val || '')
               }))
             if (parameters.length > 0) {
               payload.template.components = [{ type: 'body', parameters }]
@@ -360,13 +370,9 @@ export async function POST(request: NextRequest) {
           if (isImage) {
             payload.type = 'image'
             if (mediaId) {
-              payload.image = {
-                id: mediaId
-              }
+              payload.image = { id: mediaId }
             } else {
-              payload.image = {
-                link: publicMediaUrl
-              }
+              payload.image = { link: publicMediaUrl }
             }
             if (msgBody) {
               payload.image.caption = msgBody
@@ -374,15 +380,9 @@ export async function POST(request: NextRequest) {
           } else {
             payload.type = 'document'
             if (mediaId) {
-              payload.document = {
-                id: mediaId,
-                filename: 'Attachment'
-              }
+              payload.document = { id: mediaId, filename: 'Attachment' }
             } else {
-              payload.document = {
-                link: publicMediaUrl,
-                filename: 'Attachment'
-              }
+              payload.document = { link: publicMediaUrl, filename: 'Attachment' }
             }
             if (msgBody) {
               payload.document.caption = msgBody
@@ -395,6 +395,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        console.log(`[Messages Send] Sending message via Meta Cloud API (${whatsappPhoneNumberId}):`, JSON.stringify(payload))
+
         const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
           method: 'POST',
           headers: {
@@ -405,13 +407,21 @@ export async function POST(request: NextRequest) {
         })
 
         if (!fbRes.ok) {
-          const errText = await fbRes.text()
-          throw new Error(`Facebook API error (${fbRes.status}): ${errText}`)
+          const errData = await fbRes.json().catch(() => null)
+          const metaErrMsg = errData?.error?.message || errData?.error?.error_user_msg || `Meta API HTTP ${fbRes.status}`
+          const metaCode = errData?.error?.code
+          console.error(`[Messages Send] Facebook API error (${fbRes.status}, code ${metaCode}):`, errData)
+          if (metaCode === 131047) {
+            throw new Error(`Meta 24-hour service window has expired for this contact. You must send an approved WhatsApp Template message to re-initiate the conversation.`)
+          } else if (metaCode === 132001) {
+            throw new Error(`Template '${tName}' does not exist in translation '${tLang}'. Ensure the template language code matches Meta WhatsApp Manager.`)
+          }
+          throw new Error(`Meta WhatsApp Cloud API error: ${metaErrMsg}`)
         }
 
         const fbData = await fbRes.json()
         twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
-        console.log('[v0] Message sent via Facebook:', twilioMessageSid)
+        console.log('[Messages Send] Message sent successfully via Facebook Meta API:', twilioMessageSid)
       } else {
         // ── Twilio path (WhatsApp via Twilio OR SMS) ──────────────
         if (!twilioAccountSid || !twilioAuthToken) {
