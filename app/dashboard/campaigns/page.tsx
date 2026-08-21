@@ -102,6 +102,7 @@ export default function CampaignsPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateFetchError, setTemplateFetchError] = useState<string | null>(null)
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false)
   
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -457,6 +458,7 @@ export default function CampaignsPage() {
   const fetchContacts = async (orgIdOverride?: string) => {
     const orgId = orgIdOverride || user?.organization_id
     if (!orgId) return
+    setIsLoadingContacts(true)
     try {
       const res = await fetch(`/api/contacts?all=true&organizationId=${orgId}`)
       const data = await res.json()
@@ -467,6 +469,8 @@ export default function CampaignsPage() {
       }
     } catch (err) {
       console.error('Error fetching contacts:', err)
+    } finally {
+      setIsLoadingContacts(false)
     }
   }
 
@@ -2443,7 +2447,12 @@ export default function CampaignsPage() {
 
                       {/* Contacts Scroll List */}
                       <div className="max-h-60 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-2 bg-white dark:bg-[#111b21] space-y-1 scrollbar-thin">
-                        {contacts.filter(c => {
+                        {isLoadingContacts ? (
+                          <div className="flex flex-col items-center justify-center py-8 gap-2 text-xs text-[#008069] font-bold">
+                            <Loader2 className="animate-spin" size={18} />
+                            <span>Loading all tenant contacts...</span>
+                          </div>
+                        ) : contacts.filter(c => {
                           const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
                           const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
                           const company = (c.company || '').toLowerCase()

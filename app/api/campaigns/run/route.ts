@@ -91,15 +91,38 @@ async function executeCampaign(campaignId: string) {
     const campaignSender = campaign.sender
     const campaignSubject = campaign.subject
 
-    // 3. Fetch pending delivery logs
-    const { data: logs, error: logsError } = await supabase
-      .from('campaign_logs')
-      .select('*')
-      .eq('campaign_id', campaignId)
-      .eq('status', 'PENDING')
+    // 3. Fetch ALL pending delivery logs (with chunked pagination to handle 5k+ logs)
+    let logs: any[] = []
+    let fetchOffset = 0
+    const logBatchSize = 1000
+    let hasMoreLogs = true
 
-    if (logsError || !logs) {
-      console.error(`[Campaign Worker] Failed to fetch pending logs for campaign ${campaignId}:`, logsError)
+    while (hasMoreLogs) {
+      const { data: logChunk, error: logsError } = await supabase
+        .from('campaign_logs')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'PENDING')
+        .range(fetchOffset, fetchOffset + logBatchSize - 1)
+
+      if (logsError) {
+        console.error(`[Campaign Worker] Error fetching logs chunk for ${campaignId}:`, logsError)
+        break
+      }
+
+      if (logChunk && logChunk.length > 0) {
+        logs = logs.concat(logChunk)
+        fetchOffset += logChunk.length
+        if (logChunk.length < logBatchSize) {
+          hasMoreLogs = false
+        }
+      } else {
+        hasMoreLogs = false
+      }
+    }
+
+    if (logs.length === 0) {
+      console.log(`[Campaign Worker] No pending logs to dispatch for campaign ${campaignId}`)
       return
     }
 

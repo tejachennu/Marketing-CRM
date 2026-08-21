@@ -210,11 +210,16 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const { error: logsError } = await supabase
-      .from('campaign_logs')
-      .insert(pendingLogs)
+    // Insert Pending Logs in batches of 500 to handle 5k+ audiences safely
+    const chunkSize = 500
+    for (let i = 0; i < pendingLogs.length; i += chunkSize) {
+      const chunk = pendingLogs.slice(i, i + chunkSize)
+      const { error: logsError } = await supabase
+        .from('campaign_logs')
+        .insert(chunk)
 
-    if (logsError) throw logsError
+      if (logsError) throw logsError
+    }
 
     return NextResponse.json({
       success: true,

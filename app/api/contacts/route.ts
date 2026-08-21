@@ -36,6 +36,64 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
+    if (isAll) {
+      // Fetch all contacts across batches of 1,000 to bypass PostgREST 1000 row cap
+      let initialQuery = supabase
+        .from('contacts')
+        .select('*', { count: 'exact' })
+        .eq('organization_id', orgId)
+
+      if (search) {
+        initialQuery = initialQuery.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
+      }
+
+      const { data: firstBatch, count: totalCount, error: firstError } = await initialQuery
+        .order('created_at', { ascending: false })
+        .range(0, 999)
+
+      if (firstError) throw firstError
+
+      let allContacts = firstBatch || []
+      const total = totalCount || allContacts.length
+
+      if (total > 1000) {
+        const batchSize = 1000
+        const promises = []
+        for (let batchOffset = 1000; batchOffset < total; batchOffset += batchSize) {
+          let batchQuery = supabase
+            .from('contacts')
+            .select('*')
+            .eq('organization_id', orgId)
+
+          if (search) {
+            batchQuery = batchQuery.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
+          }
+
+          promises.push(
+            batchQuery
+              .order('created_at', { ascending: false })
+              .range(batchOffset, Math.min(batchOffset + batchSize - 1, total - 1))
+          )
+        }
+
+        const results = await Promise.all(promises)
+        for (const res of results) {
+          if (res.data) {
+            allContacts = allContacts.concat(res.data)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        contacts: allContacts,
+        count: total,
+        page: 1,
+        limit: total,
+        hasMore: false,
+      })
+    }
+
     let query = supabase
       .from('contacts')
       .select('*', { count: 'exact' })
@@ -45,12 +103,9 @@ export async function GET(request: NextRequest) {
       query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
     }
 
-    if (!isAll) {
-      query = query.range(offset, offset + limit - 1)
-    }
-
     const { data: contacts, count, error } = await query
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (error) throw error
 
