@@ -448,7 +448,6 @@ async function executeCampaign(campaignId: string) {
                           }
                         }
 
-                        const isNamed = Array.isArray(namedParams) && namedParams.length > 0;
                         const parameters = uniqueKeys.map((key, idx) => {
                           const positionalKey = String(idx + 1);
                           const val = mappedVars[key] !== undefined 
@@ -460,7 +459,7 @@ async function executeCampaign(campaignId: string) {
                             type: 'text',
                             text: String(val)
                           };
-                          if (isNamed && isNaN(Number(key))) {
+                          if (isNaN(Number(key))) {
                             paramObj.parameter_name = key;
                           }
                           return paramObj;
@@ -570,6 +569,11 @@ async function executeCampaign(campaignId: string) {
                     throw new Error(
                       `WhatsApp Meta Error #132001: Template '${templateName}' does not exist in translation '${templateLanguage}'. ` +
                       `Ensure the template is approved in Meta WhatsApp Business Manager with language code '${templateLanguage}' (e.g. en_US vs en) or update the template language.`
+                    )
+                  } else if (metaErrCode === 132012 || metaErrMsg.includes('132012') || metaErrMsg.includes('Parameter format does not match')) {
+                    throw new Error(
+                      `WhatsApp Meta Error #132012: Parameter format mismatch for template '${templateName}'. ` +
+                      `Ensure that all required variables (header media, body parameters, or button URLs) match the format and count registered in Meta WhatsApp Business Manager.`
                     )
                   }
 

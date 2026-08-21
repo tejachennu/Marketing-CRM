@@ -394,11 +394,10 @@ export async function POST(request: NextRequest) {
                           if (isNumeric) uniqueKeys.sort((a, b) => Number(a) - Number(b));
                         }
 
-                        const isNamed = Array.isArray(namedParams) && namedParams.length > 0;
                         const parameters = uniqueKeys.map(key => {
                           const val = mappedVars[key] !== undefined ? mappedVars[key] : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : '');
                           const paramObj: any = { type: 'text', text: String(val) };
-                          if (isNamed && isNaN(Number(key))) paramObj.parameter_name = key;
+                          if (isNaN(Number(key))) paramObj.parameter_name = key;
                           return paramObj;
                         });
 
@@ -436,10 +435,9 @@ export async function POST(request: NextRequest) {
                         : (mappedVars[key.toLowerCase()] !== undefined 
                             ? mappedVars[key.toLowerCase()] 
                             : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
-                      return {
-                        type: 'text',
-                        text: String(val)
-                      };
+                      const paramObj: any = { type: 'text', text: String(val) };
+                      if (isNaN(Number(key))) paramObj.parameter_name = key;
+                      return paramObj;
                     })
 
                     if (parameters.length > 0) payload.template.components = [{ type: 'body', parameters }]
@@ -469,6 +467,11 @@ export async function POST(request: NextRequest) {
                     throw new Error(
                       `WhatsApp Meta Error #132001: Template '${templateName}' does not exist in translation '${templateLanguage}'. ` +
                       `Ensure the template is approved in Meta WhatsApp Business Manager with language code '${templateLanguage}' (e.g. en_US vs en) or update the template language.`
+                    )
+                  } else if (metaErrCode === 132012 || metaErrMsg.includes('132012') || metaErrMsg.includes('Parameter format does not match')) {
+                    throw new Error(
+                      `WhatsApp Meta Error #132012: Parameter format mismatch for template '${templateName}'. ` +
+                      `Ensure that all required variables (header media, body parameters, or button URLs) match the format and count registered in Meta WhatsApp Business Manager.`
                     )
                   }
 

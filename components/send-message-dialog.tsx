@@ -19,6 +19,7 @@ interface TemplateOption {
   whatsapp_template_name?: string
   body: string
   language?: string
+  components?: any[]
 }
 
 export function SendMessageDialog({
@@ -92,6 +93,7 @@ export function SendMessageDialog({
         payload.templateSid = selectedTemplate.sid
         payload.templateName = selectedTemplate.whatsapp_template_name || selectedTemplate.raw_name || selectedTemplate.name
         payload.templateLanguage = selectedTemplate.language || 'en'
+        payload.templateMetaComponents = selectedTemplate.components || null
         payload.message = selectedTemplate.body
       } else {
         payload.message = message.trim()

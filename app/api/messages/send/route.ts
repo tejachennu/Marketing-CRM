@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient()
     const body = await request.json()
-    const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url, templateSid, templateName, templateLanguage, templateComponents, templateVariables } = body
+    const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url, templateSid, templateName, templateLanguage, templateComponents, templateVariables, templateMetaComponents } = body
 
     // Support both old and new parameter formats
     const msgBody = messageBody || message || ''
@@ -329,6 +329,24 @@ export async function POST(request: NextRequest) {
           }
           tName = tName.replace(/\s*\(Meta Approved\)/gi, '').replace(/\s*\(Twilio WhatsApp Approved\)/gi, '').replace(/\s*\[.*?\]/g, '').trim()
 
+          // Auto-fetch components from Meta if templateSid is META_... and templateMetaComponents is missing
+          let metaComponents = templateMetaComponents || []
+          if ((!metaComponents || metaComponents.length === 0) && templateSid && templateSid.startsWith('META_') && whatsappApiToken) {
+            const templateId = templateSid.replace('META_', '')
+            try {
+              const tplRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${templateId}?access_token=${whatsappApiToken}`)
+              if (tplRes.ok) {
+                const tplData = await tplRes.json()
+                if (tplData.components) metaComponents = tplData.components
+                if (tplData.name) tName = tplData.name
+                if (tplData.language) tLang = tplData.language
+                console.log(`[Messages Send] Auto-fetched Meta template structure for '${tName}' (${tLang})`)
+              }
+            } catch (err) {
+              console.warn('[Messages Send] Could not auto-fetch Meta template info:', err)
+            }
+          }
+
           payload.type = 'template'
           payload.template = {
             name: tName,
@@ -338,19 +356,138 @@ export async function POST(request: NextRequest) {
           }
 
           if (templateComponents && Array.isArray(templateComponents) && templateComponents.length > 0) {
+            // Pre-built components were passed directly (already in Meta API format)
             payload.template.components = templateComponents
+          } else if (metaComponents && Array.isArray(metaComponents) && metaComponents.length > 0) {
+            // We have the template's Meta component definitions (HEADER, BODY, BUTTONS etc.)
+            // Build proper Meta API components from templateVariables using the structure
+            const reqComponents: any[] = []
+            const mappedVars = (templateVariables || {}) as Record<string, string>
+
+            for (const comp of metaComponents) {
+              if (comp.type === 'HEADER') {
+                if (comp.format === 'IMAGE') {
+                  const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
+                  if (imgVal) {
+                    const mediaParam: any = imgVal.startsWith('http') ? { link: imgVal } : { id: imgVal }
+                    reqComponents.push({
+                      type: 'header',
+                      parameters: [{ type: 'image', image: mediaParam }]
+                    })
+                  }
+                } else if (comp.format === 'VIDEO') {
+                  const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
+                  if (videoVal) {
+                    const mediaParam: any = videoVal.startsWith('http') ? { link: videoVal } : { id: videoVal }
+                    reqComponents.push({
+                      type: 'header',
+                      parameters: [{ type: 'video', video: mediaParam }]
+                    })
+                  }
+                } else if (comp.format === 'DOCUMENT') {
+                  const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
+                  if (docVal) {
+                    const filename = mappedVars['header_document_filename'] || 'document.pdf'
+                    const mediaParam: any = docVal.startsWith('http') ? { link: docVal, filename } : { id: docVal, filename }
+                    reqComponents.push({
+                      type: 'header',
+                      parameters: [{ type: 'document', document: mediaParam }]
+                    })
+                  }
+                } else if (comp.format === 'TEXT') {
+                  const headerVal = mappedVars['header_text_1'] || mappedVars['header_1'] || comp.example?.header_text?.[0] || ''
+                  if (headerVal) {
+                    reqComponents.push({
+                      type: 'header',
+                      parameters: [{ type: 'text', text: headerVal }]
+                    })
+                  }
+                }
+              } else if (comp.type === 'BODY') {
+                const bodyText = comp.text || ''
+                let uniqueKeys: string[] = []
+
+                const namedParams = comp.example?.body_text_named_params
+                if (Array.isArray(namedParams) && namedParams.length > 0) {
+                  uniqueKeys = namedParams.map((p: any) => p.param_name).filter(Boolean)
+                } else {
+                  const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || []
+                  const rawKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
+                  uniqueKeys = rawKeys.filter((k: string) => /^[a-zA-Z0-9_]+$/.test(k))
+                  const isNumeric = uniqueKeys.every((k: string) => !isNaN(Number(k)))
+                  if (isNumeric) {
+                    uniqueKeys.sort((a, b) => Number(a) - Number(b))
+                  }
+                }
+
+                const parameters = uniqueKeys.map((key, idx) => {
+                  const positionalKey = String(idx + 1)
+                  const val = mappedVars[key] !== undefined
+                    ? mappedVars[key]
+                    : (mappedVars[key.toLowerCase()] !== undefined
+                        ? mappedVars[key.toLowerCase()]
+                        : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''))
+                  const paramObj: any = { type: 'text', text: String(val) }
+                  if (isNaN(Number(key))) {
+                    paramObj.parameter_name = key
+                  }
+                  return paramObj
+                })
+
+                if (parameters.length > 0) {
+                  reqComponents.push({ type: 'body', parameters })
+                }
+              } else if (comp.type === 'BUTTONS' && Array.isArray(comp.buttons)) {
+                comp.buttons.forEach((btn: any, idx: number) => {
+                  if (btn.type === 'URL' && btn.url?.includes('{{1}}')) {
+                    const val = mappedVars[`button_url_${idx + 1}`] || mappedVars['button_url_1'] || ''
+                    reqComponents.push({
+                      type: 'button',
+                      sub_type: 'url',
+                      index: String(idx),
+                      parameters: [{ type: 'text', text: val }]
+                    })
+                  } else if (btn.type === 'COPY_CODE') {
+                    const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars['button_copy_code'] || ''
+                    if (val) {
+                      reqComponents.push({
+                        type: 'button',
+                        sub_type: 'copy_code',
+                        index: String(idx),
+                        parameters: [{ type: 'text', text: val }]
+                      })
+                    }
+                  }
+                })
+              }
+            }
+
+            if (reqComponents.length > 0) {
+              payload.template.components = reqComponents
+            }
           } else if (templateVariables && typeof templateVariables === 'object') {
-            const parameters = Object.entries(templateVariables)
+            // Fallback: no component metadata — filter out header/button keys, send only body text params
+            const headerButtonKeys = new Set([
+              'header_image_url', 'header_video_url', 'header_document_url',
+              'header_link', 'header_media_url', 'header_document_filename',
+              'header_text_1', 'header_1',
+              'button_url_1', 'button_url_2', 'button_copy_code', 'button_copy_code_1', 'button_copy_code_2'
+            ])
+            const bodyEntries = Object.entries(templateVariables)
+              .filter(([key]) => !headerButtonKeys.has(key))
               .sort(([a], [b]) => {
                 const numA = Number(a)
                 const numB = Number(b)
                 if (!isNaN(numA) && !isNaN(numB)) return numA - numB
                 return a.localeCompare(b)
               })
-              .map(([_, val]) => ({
-                type: 'text',
-                text: String(val || '')
-              }))
+            const parameters = bodyEntries.map(([key, val]) => {
+              const paramObj: any = { type: 'text', text: String(val || '') }
+              if (isNaN(Number(key))) {
+                paramObj.parameter_name = key
+              }
+              return paramObj
+            })
             if (parameters.length > 0) {
               payload.template.components = [{ type: 'body', parameters }]
             }
@@ -410,13 +547,16 @@ export async function POST(request: NextRequest) {
           const errData = await fbRes.json().catch(() => null)
           const metaErrMsg = errData?.error?.message || errData?.error?.error_user_msg || `Meta API HTTP ${fbRes.status}`
           const metaCode = errData?.error?.code
+          const metaDetails = errData?.error?.error_data?.details || ''
           console.error(`[Messages Send] Facebook API error (${fbRes.status}, code ${metaCode}):`, errData)
           if (metaCode === 131047) {
             throw new Error(`Meta 24-hour service window has expired for this contact. You must send an approved WhatsApp Template message to re-initiate the conversation.`)
           } else if (metaCode === 132001) {
             throw new Error(`Template '${tName}' does not exist in translation '${tLang}'. Ensure the template language code matches Meta WhatsApp Manager.`)
+          } else if (metaCode === 132012) {
+            throw new Error(`Template '${tName}' parameter format mismatch (#132012). Ensure variable values (header media/text parameters) match the template in Meta WhatsApp Manager.`)
           }
-          throw new Error(`Meta WhatsApp Cloud API error: ${metaErrMsg}`)
+          throw new Error(`Meta WhatsApp Cloud API error: ${metaErrMsg}${metaDetails ? ` - ${metaDetails}` : ''}`)
         }
 
         const fbData = await fbRes.json()

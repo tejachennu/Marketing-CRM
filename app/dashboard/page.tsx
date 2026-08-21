@@ -248,6 +248,7 @@ function ConversationsPageContent() {
           templateName: selectedLiveChatTemplate.whatsapp_template_name || selectedLiveChatTemplate.raw_name || selectedLiveChatTemplate.name,
           templateLanguage: selectedLiveChatTemplate.language || 'en',
           templateVariables: templateVarValues,
+          templateMetaComponents: selectedLiveChatTemplate.components || null,
           message: finalBody,
           channel: 'whatsapp',
         }),
