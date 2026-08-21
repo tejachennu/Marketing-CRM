@@ -778,32 +778,29 @@ export default function CampaignsPage() {
         selectedTemplate?.sampleValues
       )
 
-      // Merge with any existing user selections
-      setVariableMappings(prev => {
-        const merged = { ...mappings }
-        Object.keys(prev).forEach(k => {
-          if (prev[k]) merged[k] = prev[k]
-        })
-        return merged
+      // Cleanly isolate mappings ONLY for variables in the active template
+      const currentMappings: Record<string, string> = {}
+      const currentTypes: Record<string, 'dynamic' | 'static'> = {}
+      const currentStatics: Record<string, string> = {}
+
+      variablesToMap.forEach(v => {
+        currentMappings[v] = variableMappings[v] || mappings[v] || ''
+        currentTypes[v] = variableMappingTypes[v] || types[v] || 'dynamic'
+        currentStatics[v] = staticVariableValues[v] || statics[v] || ''
       })
-      setVariableMappingTypes(prev => {
-        const merged = { ...types }
-        Object.keys(prev).forEach(k => {
-          if (prev[k]) merged[k] = prev[k]
-        })
-        return merged
-      })
-      setStaticVariableValues(prev => {
-        const merged = { ...statics }
-        Object.keys(prev).forEach(k => {
-          if (prev[k]) merged[k] = prev[k]
-        })
-        return merged
-      })
+
+      setVariableMappings(currentMappings)
+      setVariableMappingTypes(currentTypes)
+      setStaticVariableValues(currentStatics)
       setWizardStep(3)
     } else if (wizardStep === 3) {
-      // Validate mapping completed
-      const unmapped = Object.entries(variableMappingTypes).filter(([tplVar, type]) => {
+      const variablesToMap = channel === 'whatsapp'
+        ? (selectedTemplate?.variables || [])
+        : customVariables;
+
+      // Validate mapping completed ONLY for variables in the active template!
+      const unmapped = variablesToMap.filter(tplVar => {
+        const type = variableMappingTypes[tplVar] || 'dynamic'
         if (type === 'static') {
           return !staticVariableValues[tplVar]?.trim()
         } else {
@@ -826,11 +823,15 @@ export default function CampaignsPage() {
 
   // Prepares audience array using mapping choices
   const compileAudience = () => {
+    const variablesToMap = channel === 'whatsapp'
+      ? (selectedTemplate?.variables || [])
+      : customVariables;
+
     if (audienceSource === 'excel') {
       return excelData.map(row => {
         const variables: Record<string, string> = {}
-        Object.keys(variableMappingTypes).forEach(tplVar => {
-          const type = variableMappingTypes[tplVar]
+        variablesToMap.forEach(tplVar => {
+          const type = variableMappingTypes[tplVar] || 'dynamic'
           if (type === 'static') {
             variables[tplVar] = staticVariableValues[tplVar] || ''
           } else {
@@ -872,8 +873,8 @@ export default function CampaignsPage() {
       const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id))
       return selectedContacts.map(c => {
         const variables: Record<string, string> = {}
-        Object.keys(variableMappingTypes).forEach(tplVar => {
-          const type = variableMappingTypes[tplVar]
+        variablesToMap.forEach(tplVar => {
+          const type = variableMappingTypes[tplVar] || 'dynamic'
           if (type === 'static') {
             variables[tplVar] = staticVariableValues[tplVar] || ''
           } else {
@@ -885,7 +886,7 @@ export default function CampaignsPage() {
 
         // Ensure default variables are always populated from contact fields if not explicitly mapped
         const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.first_name || 'Valued Customer'
-        if (!variables['1']) variables['1'] = c.first_name || fullName
+        if (variablesToMap.includes('1') && !variables['1']) variables['1'] = c.first_name || fullName
         if (!variables['name']) variables['name'] = c.first_name || fullName
         if (!variables['first_name']) variables['first_name'] = c.first_name || fullName
         if (!variables['contact_name']) variables['contact_name'] = fullName
@@ -1886,6 +1887,9 @@ export default function CampaignsPage() {
                       onChange={(e) => {
                         const tpl = templates.find(t => t.sid === e.target.value) || null
                         setSelectedTemplate(tpl)
+                        setVariableMappings({})
+                        setVariableMappingTypes({})
+                        setStaticVariableValues({})
                       }}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#111b21] dark:text-white border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
                     >
@@ -2532,101 +2536,102 @@ export default function CampaignsPage() {
               {/* STEP 3: Variable Mapping */}
               {wizardStep === 3 && (
                 <div className="space-y-4">
-                  <div className="p-3 bg-[#f0f2f5] border border-[#e9edef] rounded-xl">
+                  <div className="p-3 bg-[#f0f2f5] dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">Template text structure</span>
-                    <p className="text-xs font-medium text-[#111b21] dark:text-white mt-1 font-mono">{selectedTemplate?.body}</p>
+                    <p className="text-xs font-medium text-[#111b21] dark:text-white mt-1 font-mono leading-relaxed whitespace-pre-wrap">{selectedTemplate?.body}</p>
                   </div>
 
                   <h4 className="text-xs font-bold text-[#111b21] dark:text-white">Map Excel Columns / Contact Attributes to Placeholders</h4>
                   
-                  <div className="space-y-3">
-                    {(channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables).map(v => (
-                      <div key={v} className="space-y-3 bg-[#f8f9fa] dark:bg-[#111b21] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#202d36] transition-all hover:shadow-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="bg-[#00a884] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow-sm">
-                              {"{{"}{v}{"}}"}
-                            </span>
-                            <span className="text-xs font-bold text-[#111b21] dark:text-white">
-                              {v.startsWith('header_image') ? 'Header Image' : v.startsWith('header_video') ? 'Header Video' : v.startsWith('header_document_filename') ? 'Document Name' : v.startsWith('header_document') ? 'Header Document' : v.startsWith('header_text') ? 'Header Text' : v.startsWith('button_url') ? 'Dynamic Button URL' : v.startsWith('button_copy_code') ? 'Button Coupon/OTP Code' : `Variable ${v}`}
-                            </span>
-                          </div>
-
-                          {/* Toggle mapping type */}
-                          <div className="flex items-center self-end sm:self-auto bg-[#eae6df]/50 dark:bg-[#202d36] p-0.5 rounded-lg border border-[#e9edef] dark:border-[#303d46]">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVariableMappingTypes(prev => ({ ...prev, [v]: 'dynamic' }))
-                              }}
-                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
-                                variableMappingTypes[v] !== 'static'
-                                  ? 'bg-[#00a884] text-white shadow-sm'
-                                  : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
-                              }`}
-                            >
-                              Map Column
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVariableMappingTypes(prev => ({ ...prev, [v]: 'static' }))
-                              }}
-                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
-                                variableMappingTypes[v] === 'static'
-                                  ? 'bg-[#00a884] text-white shadow-sm'
-                                  : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
-                              }`}
-                            >
-                              Static Value
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Input or Dropdown selector */}
-                        {variableMappingTypes[v] === 'static' ? (
-                          <input
-                            type="text"
-                            placeholder={
-                              v.includes('image_url') || v.includes('video_url') || v.includes('document_url')
-                                ? "Enter media public URL or Facebook Media ID (e.g. 1084170318116787)"
-                                : v.includes('filename')
-                                ? "Enter dynamic filename (e.g. report.pdf)"
-                                : `Enter constant value for {{${v}}}`
-                            }
-                            value={staticVariableValues[v] || ''}
-                            onChange={(e) => {
-                              setStaticVariableValues(prev => ({ ...prev, [v]: e.target.value }))
-                            }}
-                            className="w-full px-3 py-2 bg-white dark:bg-[#222e35] border border-[#e9edef] dark:border-[#303d46] text-[#111b21] dark:text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] shadow-inner"
-                          />
-                        ) : (
-                          <select
-                            value={variableMappings[v] || ''}
-                            onChange={(e) => {
-                              setVariableMappings(prev => ({ ...prev, [v]: e.target.value }))
-                            }}
-                            className="w-full px-3 py-2 bg-white dark:bg-[#222e35] border border-[#e9edef] dark:border-[#303d46] text-[#111b21] dark:text-white rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884]"
-                          >
-                            <option value="">-- Select Excel column / contact field --</option>
-                            {audienceSource === 'excel' ? (
-                              excelHeaders.map(h => (
-                                <option key={h} value={h}>{h}</option>
-                              ))
-                            ) : (
-                              <>
-                                <option value="first_name">Contact First Name</option>
-                                <option value="last_name">Contact Last Name</option>
-                                <option value="company">Contact Company</option>
-                                <option value="email">Contact Email</option>
-                                <option value="phone_number">Contact Phone</option>
-                              </>
-                            )}
-                          </select>
-                        )}
+                  {(channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables).length === 0 ? (
+                    <div className="p-4 text-center bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl space-y-1">
+                      <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        ✓ No Variable Mapping Required
                       </div>
-                    ))}
-                  </div>
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        This template has no dynamic placeholders. All recipients will receive the exact message shown above. Click &quot;Continue&quot; to proceed to review and launch.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(channel === 'whatsapp' ? (selectedTemplate?.variables || []) : customVariables).map(v => (
+                        <div key={v} className="space-y-3 bg-[#f8f9fa] dark:bg-[#111b21] p-3.5 rounded-xl border border-[#e9edef] dark:border-[#202d36] transition-all hover:shadow-sm">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-[#00a884] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow-sm">
+                                {"{{"}{v}{"}}"}
+                              </span>
+                              <span className="text-xs font-bold text-[#111b21] dark:text-white">
+                                {v.startsWith('header_image') ? 'Header Image' : v.startsWith('header_video') ? 'Header Video' : v.startsWith('header_document_filename') ? 'Document Name' : v.startsWith('header_document') ? 'Header Document' : v.startsWith('header_text') ? 'Header Text' : v.startsWith('button_url') ? 'Dynamic Button URL' : v.startsWith('button_copy_code') ? 'Button Coupon/OTP Code' : `Variable ${v}`}
+                              </span>
+                            </div>
+
+                            {/* Toggle mapping type */}
+                            <div className="flex items-center self-end sm:self-auto bg-[#eae6df]/50 dark:bg-[#202d36] p-0.5 rounded-lg border border-[#e9edef] dark:border-[#303d46]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVariableMappingTypes(prev => ({ ...prev, [v]: 'dynamic' }))
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                  variableMappingTypes[v] !== 'static'
+                                    ? 'bg-[#00a884] text-white shadow-sm'
+                                    : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
+                                }`}
+                              >
+                                Map Column
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVariableMappingTypes(prev => ({ ...prev, [v]: 'static' }))
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                  variableMappingTypes[v] === 'static'
+                                    ? 'bg-[#00a884] text-white shadow-sm'
+                                    : 'text-[#667781] hover:text-[#111b21] dark:text-[#8696a0]'
+                                }`}
+                              >
+                                Static Value
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Input or Dropdown selector */}
+                          {variableMappingTypes[v] === 'static' ? (
+                            <input
+                              type="text"
+                              placeholder={
+                                v.includes('image_url') || v.includes('video_url') || v.includes('document_url')
+                                  ? "Enter media public URL or Facebook Media ID (e.g. 1084170318116787)"
+                                  : v.includes('filename')
+                                  ? "Enter dynamic filename (e.g. report.pdf)"
+                                  : `Enter constant value for {{${v}}}`
+                              }
+                              value={staticVariableValues[v] || ''}
+                              onChange={(e) => {
+                                setStaticVariableValues(prev => ({ ...prev, [v]: e.target.value }))
+                              }}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                            />
+                          ) : (
+                            <select
+                              value={variableMappings[v] || ''}
+                              onChange={(e) => {
+                                setVariableMappings(prev => ({ ...prev, [v]: e.target.value }))
+                              }}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                            >
+                              <option value="">-- Choose column for {"{{"}{v}{"}}"} --</option>
+                              {(audienceSource === 'excel' ? excelHeaders : ['first_name', 'last_name', 'company', 'email', 'phone_number']).map(h => (
+                                <option key={h} value={h}>{h}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
