@@ -10,8 +10,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'WhatsApp CRM',
-  description: 'Manage your customer relationships and WhatsApp conversations in one place',
+  title: 'Omnichannel AI CRM | #1 WhatsApp AI Chatbot & Bulk Marketing Platform',
+  description: 'Scale your revenue with Omnichannel AI CRM. Deploy 24/7 autonomous WhatsApp AI sales chatbots and launch high-converting bulk broadcasts from spreadsheets with 98% open rates at wholesale pricing.',
   generator: 'v0.app',
   icons: {
     icon: [

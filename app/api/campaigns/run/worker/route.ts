@@ -54,15 +54,8 @@ async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function runCampaignWorker(campaignId: string): Promise<{ success: boolean; message: string; error?: string }> {
   try {
-    const body = await request.json()
-    const { campaignId } = body
-
-    if (!campaignId) {
-      return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
-    }
-
     const supabase = getSupabaseClient()
 
     // 1. Update status to PROCESSING
@@ -80,76 +73,44 @@ export async function POST(request: NextRequest) {
 
     if (campaignError || !campaign) {
       console.error(`[Campaign Worker] Failed to fetch campaign ${campaignId}:`, campaignError)
-      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+      return { success: false, error: 'Campaign not found', message: 'Campaign not found' }
     }
 
     const channel = campaign.channel || 'whatsapp'
     const campaignSender = campaign.sender
     const campaignSubject = campaign.subject
 
-    // 3. Fetch ALL pending delivery logs (with chunked pagination to handle 5k+ logs)
-    let logs: any[] = []
-    let fetchOffset = 0
-    const logBatchSize = 1000
-    let hasMoreLogs = true
+    // 3. Check if there are any pending delivery logs before starting
+    const { count: initialPendingCount } = await supabase
+      .from('campaign_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'PENDING')
 
-    while (hasMoreLogs) {
-      const { data: logChunk, error: logsError } = await supabase
-        .from('campaign_logs')
-        .select('*')
-        .eq('campaign_id', campaignId)
-        .eq('status', 'PENDING')
-        .range(fetchOffset, fetchOffset + logBatchSize - 1)
-
-      if (logsError) {
-        console.error(`[Campaign Worker] Error fetching logs chunk for ${campaignId}:`, logsError)
-        break
-      }
-
-      if (logChunk && logChunk.length > 0) {
-        logs = logs.concat(logChunk)
-        fetchOffset += logChunk.length
-        if (logChunk.length < logBatchSize) {
-          hasMoreLogs = false
-        }
-      } else {
-        hasMoreLogs = false
-      }
-    }
-
-    if (logs.length === 0) {
-      // Check if all logs are already completed
-      const { count: pendingCount } = await supabase
+    if (!initialPendingCount || initialPendingCount === 0) {
+      const { count: finalSent } = await supabase
         .from('campaign_logs')
         .select('id', { count: 'exact', head: true })
         .eq('campaign_id', campaignId)
-        .eq('status', 'PENDING')
+        .eq('status', 'SENT')
 
-      if (!pendingCount || pendingCount === 0) {
-        const { count: finalSent } = await supabase
-          .from('campaign_logs')
-          .select('id', { count: 'exact', head: true })
-          .eq('campaign_id', campaignId)
-          .eq('status', 'SENT')
+      const { count: finalFailed } = await supabase
+        .from('campaign_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'FAILED')
 
-        const { count: finalFailed } = await supabase
-          .from('campaign_logs')
-          .select('id', { count: 'exact', head: true })
-          .eq('campaign_id', campaignId)
-          .eq('status', 'FAILED')
+      await supabase
+        .from('campaigns')
+        .update({
+          status: 'COMPLETED',
+          sent_count: finalSent || 0,
+          failed_count: finalFailed || 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', campaignId)
 
-        await supabase
-          .from('campaigns')
-          .update({
-            status: 'COMPLETED',
-            sent_count: finalSent || 0,
-            failed_count: finalFailed || 0,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', campaignId)
-      }
-
-      return NextResponse.json({ success: true, message: 'No pending logs remaining' })
+      return { success: true, message: 'No pending logs remaining. Campaign marked as COMPLETED.' }
     }
 
     const isMasterOrg = !campaign.organization_id || campaign.organization_id === '303b7a2d-281c-403c-b794-54d1e195ca69'
@@ -247,11 +208,11 @@ export async function POST(request: NextRequest) {
     let sentCount = initialSent || 0
     let failedCount = initialFailed || 0
 
-    const MAX_RUN_LOGS = 40
-    const logsToProcess = logs.slice(0, MAX_RUN_LOGS)
-    const BATCH_SIZE = 10
+    const BATCH_SIZE = 15
 
-    for (let i = 0; i < logsToProcess.length; i += BATCH_SIZE) {
+    // Continuous processing loop: runs until all PENDING logs are sent or campaign is STOPPED
+    while (true) {
+      // 1. Check if campaign was STOPPED or CANCELLED by user
       const { data: latestCamp } = await supabase
         .from('campaigns')
         .select('status')
@@ -259,11 +220,30 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (latestCamp && (latestCamp.status === 'STOPPED' || latestCamp.status === 'CANCELLED')) {
-        console.log(`[Campaign Worker] Campaign ${campaignId} was STOPPED. Exiting chunk.`)
-        return NextResponse.json({ success: true, message: 'Campaign execution stopped by user.' })
+        console.log(`[Campaign Worker] Campaign ${campaignId} was ${latestCamp.status}. Ceasing worker execution cleanly.`)
+        break
       }
 
-      const batchChunk = logsToProcess.slice(i, i + BATCH_SIZE)
+      // 2. Fetch the next micro-batch of PENDING logs directly from DB
+      const { data: batchChunk, error: batchErr } = await supabase
+        .from('campaign_logs')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: true })
+        .limit(BATCH_SIZE)
+
+      if (batchErr) {
+        console.error(`[Campaign Worker] Error fetching batch for campaign ${campaignId}:`, batchErr)
+        break
+      }
+
+      if (!batchChunk || batchChunk.length === 0) {
+        console.log(`[Campaign Worker] All pending logs processed for campaign ${campaignId}. Finishing.`)
+        break
+      }
+
+      let rateLimitEncountered = false
 
       await Promise.allSettled(
         batchChunk.map(async (log) => {
@@ -309,14 +289,29 @@ export async function POST(request: NextRequest) {
                     templateLanguage = metaTemplateLanguageFromApi || campaign.template_language || tagMatch?.[1] || 'en'
                   } else if (campaign.template_sid.startsWith('HX_')) {
                     const matchedFallback = [
-                      { sid: 'HX_welcome_campaign', name: 'welcome_campaign', body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.', language: 'en' },
-                      { sid: 'HX_promotion_discount', name: 'promotion_discount', body: 'Hey {{1}}! Get {{2}}% off on all our services this weekend. Use code {{3}} at checkout.', language: 'en' },
-                      { sid: 'HX_follow_up_lead', name: 'follow_up_lead', body: 'Hi {{1}}, this is {{2}} from {{3}}. Just following up on our previous conversation regarding your inquiry. Let us know if you have any questions!', language: 'en' }
+                      {
+                        sid: 'HX_welcome_campaign',
+                        name: 'welcome_campaign',
+                        body: 'Hello {{1}}, welcome to {{2}}! We are thrilled to have you onboard.',
+                        language: 'en'
+                      },
+                      {
+                        sid: 'HX_promo_discount',
+                        name: 'promo_discount',
+                        body: 'Special offer! Get {{1}} off on your next purchase using code {{2}}.',
+                        language: 'en'
+                      },
+                      {
+                        sid: 'HX_order_update',
+                        name: 'order_update',
+                        body: 'Your order #{{1}} has been updated. Status: {{2}}.',
+                        language: 'en'
+                      }
                     ].find(t => t.sid === campaign.template_sid)
 
                     if (matchedFallback) {
                       templateName = matchedFallback.name
-                      templateLanguage = matchedFallback.language || 'en'
+                      templateLanguage = matchedFallback.language
                       templateBody = matchedFallback.body
                     }
                   } else {
@@ -328,7 +323,7 @@ export async function POST(request: NextRequest) {
                   templateName = templateName.replace(/\s*\(Meta Approved\)/i, '').trim()
                 }
 
-                let payload: any = {
+                const payload: any = {
                   messaging_product: 'whatsapp',
                   recipient_type: 'individual',
                   to: cleanToFb,
@@ -356,19 +351,19 @@ export async function POST(request: NextRequest) {
                     for (const comp of metaTemplateComponents) {
                       if (comp.type === 'HEADER') {
                         if (comp.format === 'IMAGE') {
-                          const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                          const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
                           if (imgVal) {
                             const mediaParam = await parseMediaParam(imgVal);
                             reqComponents.push({ type: 'header', parameters: [{ type: 'image', image: mediaParam }] })
                           }
                         } else if (comp.format === 'VIDEO') {
-                          const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                          const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
                           if (videoVal) {
                             const mediaParam = await parseMediaParam(videoVal);
                             reqComponents.push({ type: 'header', parameters: [{ type: 'video', video: mediaParam }] })
                           }
                         } else if (comp.format === 'DOCUMENT') {
-                          const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || '';
+                          const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
                           if (docVal) {
                             const filename = mappedVars['header_document_filename'] || docVal.split('/').pop()?.split('?')[0] || comp.example?.header_handle?.[0]?.split('/').pop()?.split('?')[0] || 'document.pdf';
                             const mediaParam = await parseMediaParam(docVal);
@@ -394,8 +389,13 @@ export async function POST(request: NextRequest) {
                           if (isNumeric) uniqueKeys.sort((a, b) => Number(a) - Number(b));
                         }
 
-                        const parameters = uniqueKeys.map(key => {
-                          const val = mappedVars[key] !== undefined ? mappedVars[key] : (mappedVars[key.toLowerCase()] !== undefined ? mappedVars[key.toLowerCase()] : '');
+                        const parameters = uniqueKeys.map((key, idx) => {
+                          const positionalKey = String(idx + 1);
+                          const val = mappedVars[key] !== undefined 
+                            ? mappedVars[key] 
+                            : (mappedVars[key.toLowerCase()] !== undefined 
+                                ? mappedVars[key.toLowerCase()] 
+                                : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
                           const paramObj: any = { type: 'text', text: String(val) };
                           if (isNaN(Number(key))) paramObj.parameter_name = key;
                           return paramObj;
@@ -411,9 +411,9 @@ export async function POST(request: NextRequest) {
                               reqComponents.push({ type: 'button', sub_type: 'url', index: String(idx), parameters: [{ type: 'text', text: val }] });
                             }
                           } else if (btn.type === 'COPY_CODE') {
-                            const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars['button_copy_code'] || '';
+                            const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars[`coupon_code_${idx + 1}`] || mappedVars['button_copy_code'] || mappedVars['coupon_code'] || '';
                             if (val) {
-                              reqComponents.push({ type: 'button', sub_type: 'copy_code', index: String(idx), parameters: [{ type: 'text', text: val }] });
+                              reqComponents.push({ type: 'button', sub_type: 'copy_code', index: String(idx), parameters: [{ type: 'coupon_code', coupon_code: val }] });
                             }
                           }
                         });
@@ -463,6 +463,12 @@ export async function POST(request: NextRequest) {
                   const metaErrMsg = errData?.error?.message || `HTTP ${fbRes.status}`
                   const metaDetails = errData?.error?.error_data?.details || ''
 
+                  // Rate-limit detection
+                  if (metaErrCode === 130429 || metaErrCode === 131056 || fbRes.status === 429) {
+                    rateLimitEncountered = true
+                    console.warn(`[Campaign Worker] Meta API rate limit hit (#${metaErrCode || fbRes.status}) for campaign ${campaignId}`)
+                  }
+
                   if (metaErrCode === 132001 || metaErrMsg.includes('132001') || metaErrMsg.includes('does not exist in the translation')) {
                     throw new Error(
                       `WhatsApp Meta Error #132001: Template '${templateName}' does not exist in translation '${templateLanguage}'. ` +
@@ -482,6 +488,7 @@ export async function POST(request: NextRequest) {
                 twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
                 sentCount++
               } else {
+                // Twilio WhatsApp
                 const twilioParams: any = { to: recipientPhone.startsWith('whatsapp:') ? recipientPhone : `whatsapp:${recipientPhone}` }
                 if (campaignSender && campaignSender.startsWith('MG')) {
                   twilioParams.messagingServiceSid = campaignSender
@@ -511,6 +518,10 @@ export async function POST(request: NextRequest) {
                   const code = twilioErr.code || twilioErr.status
                   const msg = twilioErr.message || String(twilioErr)
                   
+                  if (code === 20429 || twilioErr.status === 429) {
+                    rateLimitEncountered = true
+                  }
+
                   if (code === 63016 || msg.includes('63016') || msg.includes('132001') || msg.includes('translation') || msg.includes('Freeform message')) {
                     throw new Error(
                       `Twilio WhatsApp Error 63016 / Meta #132001: WhatsApp template could not be delivered. ` +
@@ -652,10 +663,31 @@ export async function POST(request: NextRequest) {
                 } else {
                   const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, email: cleanEmail, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) contactId = newContact.id
+                  else {
+                    const { data: fallbackContact } = await supabase.from('contacts').select('id').eq('email', cleanEmail).maybeSingle()
+                    if (fallbackContact) contactId = fallbackContact.id
+                  }
                 }
               } else {
-                const cleanPhone = recipientPhone ? recipientPhone.replace('whatsapp:', '') : ''
-                const { data: existingContact } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('phone_number', cleanPhone).maybeSingle()
+                // Multi-variant phone number resolution to ensure CRM chat thread matching
+                const cleanPhone = recipientPhone ? recipientPhone.replace(/^whatsapp:/i, '').trim() : ''
+                const phoneVariants = Array.from(new Set([
+                  cleanPhone,
+                  cleanPhone.startsWith('+') ? cleanPhone.slice(1) : `+${cleanPhone}`,
+                  `whatsapp:${cleanPhone}`,
+                  cleanPhone.replace(/[\s\-\(\)]/g, ''),
+                  cleanPhone.startsWith('+') ? cleanPhone.slice(1).replace(/[\s\-\(\)]/g, '') : `+${cleanPhone.replace(/[\s\-\(\)]/g, '')}`
+                ])).filter(Boolean)
+
+                const { data: matchedContacts } = await supabase
+                  .from('contacts')
+                  .select('id, first_name, last_name, tags')
+                  .eq('organization_id', campaign.organization_id)
+                  .in('phone_number', phoneVariants)
+                  .limit(1)
+
+                const existingContact = matchedContacts?.[0] || null
+
                 if (existingContact) {
                   contactId = existingContact.id
                   const existingTags = Array.isArray(existingContact.tags) ? existingContact.tags : []
@@ -666,8 +698,19 @@ export async function POST(request: NextRequest) {
                     await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
                   }
                 } else {
-                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, phone_number: cleanPhone, company: contactCompany, tags: contactTags }]).select().maybeSingle()
-                  if (newContact) contactId = newContact.id
+                  const stdPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`
+                  const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, phone_number: stdPhone, company: contactCompany, tags: contactTags }]).select().maybeSingle()
+                  if (newContact) {
+                    contactId = newContact.id
+                  } else {
+                    const { data: retryContact } = await supabase
+                      .from('contacts')
+                      .select('id')
+                      .eq('organization_id', campaign.organization_id)
+                      .in('phone_number', phoneVariants)
+                      .maybeSingle()
+                    if (retryContact) contactId = retryContact.id
+                  }
                 }
               }
 
@@ -678,14 +721,39 @@ export async function POST(request: NextRequest) {
                 else {
                   const { data: newConv } = await supabase.from('conversations').insert([{ organization_id: campaign.organization_id, contact_id: contactId, is_active: true, last_message_at: new Date().toISOString() }]).select().maybeSingle()
                   if (newConv) conversationId = newConv.id
+                  else {
+                    const { data: retryConv } = await supabase.from('conversations').select('id').eq('contact_id', contactId).eq('organization_id', campaign.organization_id).maybeSingle()
+                    if (retryConv) conversationId = retryConv.id
+                  }
                 }
 
                 if (conversationId) {
                   let finalBody = campaign.template_body || ''
                   Object.entries(mappedVars).forEach(([k, v]) => { finalBody = finalBody.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v)) })
+
+                  // Reconstruct body text if empty so message in chat is never blank
+                  if (!finalBody || finalBody.trim() === '') {
+                    if (metaTemplateComponents && Array.isArray(metaTemplateComponents) && metaTemplateComponents.length > 0) {
+                      const bodyComp = metaTemplateComponents.find((c: any) => c.type === 'BODY')
+                      if (bodyComp && bodyComp.text) {
+                        let tText = bodyComp.text
+                        Object.entries(mappedVars).forEach(([k, v]) => {
+                          tText = tText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v))
+                        })
+                        finalBody = tText
+                      }
+                    }
+                  }
+
+                  if (!finalBody || finalBody.trim() === '') {
+                    const tName = metaTemplateNameFromApi || campaign.template_name || campaign.name || 'Campaign WhatsApp Template'
+                    const varSummary = Object.entries(mappedVars).filter(([_, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ')
+                    finalBody = `[Template: ${tName}]${varSummary ? ` (${varSummary})` : ''}`
+                  }
+
                   const recordBody = channel === 'email' ? `[Email Subject: ${campaignSubject || `Campaign: ${campaign.name}`}]\n\n${finalBody}` : finalBody
 
-                  await supabase.from('messages').insert([{ organization_id: campaign.organization_id, conversation_id: conversationId, sender_type: 'user', body: recordBody, twilio_message_sid: twilioMessageSid }])
+                  await supabase.from('messages').insert([{ organization_id: campaign.organization_id, conversation_id: conversationId, sender_type: 'user', body: recordBody, twilio_message_sid: twilioMessageSid, status: 'sent' }])
                   await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId)
                 }
               }
@@ -696,54 +764,90 @@ export async function POST(request: NextRequest) {
         })
       )
 
+      // Update campaign counts after each micro-batch
       await supabase
         .from('campaigns')
         .update({ sent_count: sentCount, failed_count: failedCount, updated_at: new Date().toISOString() })
         .eq('id', campaignId)
+
+      // Anti-spam safe pacing delay with jitter
+      if (rateLimitEncountered) {
+        console.warn(`[Campaign Worker] Rate limit encountered. Anti-spam backoff pause for 3.5s...`)
+        await new Promise((resolve) => setTimeout(resolve, 3500))
+      } else {
+        const jitterDelay = 70 + Math.floor(Math.random() * 50)
+        await new Promise((resolve) => setTimeout(resolve, jitterDelay))
+      }
     }
 
-    // Check remaining pending logs
-    const { count: remainingPending } = await supabase
+    // Final status verification and completion
+    const { data: finalCamp } = await supabase
+      .from('campaigns')
+      .select('status')
+      .eq('id', campaignId)
+      .maybeSingle()
+
+    const { count: finalPending } = await supabase
       .from('campaign_logs')
       .select('id', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
       .eq('status', 'PENDING')
 
-    if (remainingPending && remainingPending > 0) {
-      console.log(`[Campaign Worker] ${remainingPending} pending logs remaining for campaign ${campaignId}. Auto-triggering next chunk...`)
-      const origin = request.nextUrl.origin
-      fetch(`${origin}/api/campaigns/run/worker`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId })
-      }).catch(err => console.error('[Campaign Worker] Error triggering next chunk:', err))
-    } else {
-      const { count: finalSent } = await supabase
-        .from('campaign_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'SENT')
+    const { count: finalSent } = await supabase
+      .from('campaign_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'SENT')
 
-      const { count: finalFailed } = await supabase
-        .from('campaign_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', campaignId)
-        .eq('status', 'FAILED')
+    const { count: finalFailed } = await supabase
+      .from('campaign_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'FAILED')
 
-      await supabase
-        .from('campaigns')
-        .update({
-          status: 'COMPLETED',
-          sent_count: finalSent || 0,
-          failed_count: finalFailed || 0,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', campaignId)
+    let terminalStatus = 'COMPLETED'
+    if (finalCamp && (finalCamp.status === 'STOPPED' || finalCamp.status === 'CANCELLED')) {
+      terminalStatus = finalCamp.status
+    } else if (finalPending && finalPending > 0) {
+      terminalStatus = 'PROCESSING'
     }
 
-    return NextResponse.json({ success: true, message: 'Chunk processed successfully.' })
+    await supabase
+      .from('campaigns')
+      .update({
+        status: terminalStatus,
+        sent_count: finalSent || 0,
+        failed_count: finalFailed || 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', campaignId)
+
+    return {
+      success: true,
+      message: `Campaign execution finished with status: ${terminalStatus}. Sent: ${finalSent || 0}, Failed: ${finalFailed || 0}`
+    }
   } catch (error: any) {
     console.error(`[Campaign Worker] General execution failure:`, error)
+    return { success: false, error: error.message || 'Worker failure', message: 'Worker failure' }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { campaignId } = body
+
+    if (!campaignId) {
+      return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
+    }
+
+    const result = await runCampaignWorker(campaignId)
+    if (result.error && !result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 })
+    }
+    return NextResponse.json(result)
+  } catch (error: any) {
+    console.error('[Campaign Worker POST] Handler error:', error)
     return NextResponse.json({ error: error.message || 'Worker failure' }, { status: 500 })
   }
 }

@@ -155,7 +155,7 @@ export async function POST(
       .from('organizations')
       .select('*')
       .eq('id', orgId)
-      .single()
+      .maybeSingle()
 
     if (!orgData) {
       console.error('[Facebook Webhook POST] Organization not found:', orgId)
@@ -183,21 +183,48 @@ export async function POST(
         const statusObj = value.statuses[0]
         if (statusObj) {
           const messageSid = statusObj.id
-          const status = statusObj.status
+          const status = statusObj.status // 'sent' | 'delivered' | 'read' | 'failed'
           const errorDetail = statusObj.errors?.[0]?.error_data?.details || statusObj.errors?.[0]?.message || null
+          const timestamp = statusObj.timestamp 
+            ? new Date(Number(statusObj.timestamp) * 1000).toISOString() 
+            : new Date().toISOString()
           
-          console.log('[Facebook Webhook POST] Updating message status:', { messageSid, status, errorDetail })
+          console.log('[Facebook Webhook POST] Updating message status:', { messageSid, status, timestamp, errorDetail })
           
-          // Remember we prefixed it with FB_ in the database
-          const dbSid = `FB_${messageSid}`
+          // Match either FB_ prefixed SID or raw SID
+          const sidsToMatch = [`FB_${messageSid}`, messageSid]
           
-          await supabase
+          // 1. Update messages table
+          const updateMsgData: any = {
+            status: status,
+            error_message: errorDetail,
+          }
+          if (status === 'read') {
+            updateMsgData.read_at = timestamp
+          }
+
+          const { error: msgErr } = await supabase
             .from('messages')
+            .update(updateMsgData)
+            .in('twilio_message_sid', sidsToMatch)
+
+          if (msgErr) {
+            console.warn('[Facebook Webhook POST] Error updating messages:', msgErr)
+          }
+
+          // 2. Update campaign_logs table
+          const campaignLogStatus = 
+            status === 'read' ? 'READ' :
+            status === 'delivered' ? 'DELIVERED' :
+            status === 'failed' ? 'FAILED' : 'SENT'
+
+          await supabase
+            .from('campaign_logs')
             .update({
-              status: status,
-              error_message: errorDetail
+              status: campaignLogStatus,
+              error_message: errorDetail,
             })
-            .eq('twilio_message_sid', dbSid)
+            .in('message_sid', sidsToMatch)
         }
       } catch (err) {
         console.error('[Facebook Webhook POST] Error processing status callback:', err)
@@ -736,9 +763,9 @@ You MUST respond in JSON format. The JSON object must contain two keys:
     }
 
     return NextResponse.json({ success: true, messageId: savedMessage.id })
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Facebook Webhook] POST Webhook error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 })
   }
 }
 

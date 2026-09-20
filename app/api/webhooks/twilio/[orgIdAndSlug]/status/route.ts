@@ -44,6 +44,7 @@ export async function POST(
     if (messageSid && messageStatus) {
       try {
         const supabase = getSupabaseClient()
+        const errorDetail = errorMessage || (errorCode ? `Twilio Error ${errorCode}` : null)
 
         // Track failed message statuses
         if (messageStatus === 'failed' || messageStatus === 'undelivered') {
@@ -53,8 +54,41 @@ export async function POST(
             errorMessage,
           })
         }
+
+        // 1. Update messages table for CRM Chat
+        const updateMsgData: any = {
+          status: messageStatus,
+          error_message: errorDetail,
+        }
+        if (messageStatus === 'read') {
+          updateMsgData.read_at = new Date().toISOString()
+        }
+
+        const { error: msgUpdateErr } = await supabase
+          .from('messages')
+          .update(updateMsgData)
+          .eq('twilio_message_sid', messageSid)
+
+        if (msgUpdateErr) {
+          console.warn('[Status Webhook] Error updating messages table:', msgUpdateErr)
+        }
+
+        // 2. Update campaign_logs if this message belonged to a campaign
+        const campaignLogStatus = 
+          messageStatus === 'read' ? 'READ' :
+          messageStatus === 'delivered' ? 'DELIVERED' :
+          (messageStatus === 'failed' || messageStatus === 'undelivered') ? 'FAILED' : 'SENT'
+
+        await supabase
+          .from('campaign_logs')
+          .update({
+            status: campaignLogStatus,
+            error_message: errorDetail,
+          })
+          .eq('message_sid', messageSid)
+
       } catch (dbError) {
-        console.error('[Status Webhook] Error updating status:', dbError)
+        console.error('[Status Webhook] Error updating status in database:', dbError)
       }
     }
 

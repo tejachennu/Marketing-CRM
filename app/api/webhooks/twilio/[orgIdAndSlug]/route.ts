@@ -131,18 +131,6 @@ export async function POST(
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
-    // Verify if Twilio is the active provider
-    const provider = orgData.whatsapp_provider || 'twilio'
-    if (provider !== 'twilio') {
-      console.log(`[Twilio Webhook] Ignoring webhook event for Org ${orgId} because active provider is ${provider}`)
-      return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
-    }
-
-    // 3. Fallback check for credentials
-    const twilioAccountSid = orgData.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID || ''
-    const twilioAuthToken = orgData.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''
-    const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
-
     // Parse the incoming Twilio webhook body
     const body = await request.text()
     const paramsMap = new URLSearchParams(body)
@@ -150,6 +138,20 @@ export async function POST(
     const to = paramsMap.get('To') || ''
     const messageBody = paramsMap.get('Body') || ''
     const messageSid = paramsMap.get('MessageSid') || ''
+
+    const isWhatsApp = from.startsWith('whatsapp:')
+    const provider = orgData.whatsapp_provider || 'twilio'
+
+    // Clean isolation: If it's a WhatsApp message but WhatsApp provider is Meta (facebook), ignore
+    if (isWhatsApp && provider !== 'twilio') {
+      console.log(`[Twilio Webhook] Ignoring Twilio WhatsApp event for Org ${orgId} because active whatsapp_provider is ${provider}`)
+      return NextResponse.json({ success: true, ignored: true, reason: `Active whatsapp_provider is ${provider}` })
+    }
+
+    // 3. Fallback check for credentials
+    const twilioAccountSid = orgData.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID || ''
+    const twilioAuthToken = orgData.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''
+    const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
     
     // Parse media attachments
     const numMedia = parseInt(paramsMap.get('NumMedia') || '0', 10)
@@ -323,7 +325,6 @@ export async function POST(
     }
 
     // Step 7: Auto-Reply Chatbot Trigger
-    const isWhatsApp = from.startsWith('whatsapp:')
     const twilioWhatsappNumber = orgData.twilio_whatsapp_number || process.env.TWILIO_WHATSAPP_NUMBER || ''
 
     if (

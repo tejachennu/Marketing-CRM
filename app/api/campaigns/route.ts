@@ -120,7 +120,8 @@ export async function POST(request: NextRequest) {
       createdBy,
       channel, // 'whatsapp', 'sms', 'email'
       sender, // sender phone number, service SID, or email
-      subject // email subject line
+      subject, // email subject line
+      scheduledAt // ISO timestamp for schedule-based marketing (in IST/UTC)
     } = body
 
     if (!name || !templateName || !templateBody || !audience || !Array.isArray(audience) || audience.length === 0) {
@@ -148,8 +149,10 @@ export async function POST(request: NextRequest) {
 
     const campaignChannel = channel || 'whatsapp'
     const lang = templateLanguage || 'en'
+    const isScheduled = !!scheduledAt && new Date(scheduledAt).getTime() > Date.now()
+    const initialStatus = isScheduled ? 'SCHEDULED' : 'PENDING'
 
-    // Insert Campaign (with graceful fallback if template_language column is not yet migrated)
+    // Insert Campaign (with graceful fallback if template_language or scheduled_at columns are not yet migrated)
     const campaignInsertPayload: any = {
       organization_id: resolvedOrgId || null,
       name,
@@ -157,14 +160,15 @@ export async function POST(request: NextRequest) {
       template_body: templateBody,
       template_sid: templateSid || null,
       template_language: lang,
-      status: 'PENDING',
+      status: initialStatus,
       total_contacts: audience.length,
       sent_count: 0,
       failed_count: 0,
       created_by: createdBy || null,
       channel: campaignChannel,
       sender: sender || null,
-      subject: subject || null
+      subject: subject || null,
+      scheduled_at: isScheduled ? scheduledAt : null
     }
 
     let { data: campaign, error: campaignError } = await supabase
@@ -173,11 +177,17 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (campaignError && (campaignError.message?.includes('template_language') || campaignError.code === '42703')) {
-      delete campaignInsertPayload.template_language
+    if (campaignError) {
+      const retryPayload = { ...campaignInsertPayload }
+      if (campaignError.message?.includes('template_language') || campaignError.code === '42703') {
+        delete retryPayload.template_language
+      }
+      if (campaignError.message?.includes('scheduled_at') || campaignError.code === '42703') {
+        delete retryPayload.scheduled_at
+      }
       const retry = await supabase
         .from('campaigns')
-        .insert([campaignInsertPayload])
+        .insert([retryPayload])
         .select()
         .single()
       campaign = retry.data

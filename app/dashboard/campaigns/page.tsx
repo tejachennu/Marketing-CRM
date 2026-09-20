@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { 
   Megaphone, 
@@ -38,7 +38,10 @@ import {
   TrendingUp,
   Target,
   Square,
-  RotateCcw
+  RotateCcw,
+  Calendar,
+  Clock,
+  Tag
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -54,6 +57,7 @@ interface Campaign {
   sent_count: number
   failed_count: number
   created_at: string
+  scheduled_at?: string | null
   channel?: string
   sender?: string
   subject?: string
@@ -152,6 +156,14 @@ export default function CampaignsPage() {
   const [staticVariableValues, setStaticVariableValues] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+
+  // Schedule-based marketing state in Indian Standard Time (IST - UTC+05:30)
+  const [dispatchTiming, setDispatchTiming] = useState<'immediate' | 'scheduled'>('immediate')
+  const [scheduledDateIST, setScheduledDateIST] = useState<string>('')
+  const [scheduledTimeIST, setScheduledTimeIST] = useState<string>('')
+
+  // Tag filter & selection in Step 2
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null)
 
   // New multi-channel states
   const [features, setFeatures] = useState({
@@ -351,6 +363,159 @@ export default function CampaignsPage() {
   }
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+
+  // Format any ISO date/time into Indian Standard Time (IST - UTC+05:30)
+  const formatISTDateTime = (dateInput?: string | Date | null) => {
+    if (!dateInput) return ''
+    try {
+      const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
+      if (isNaN(d.getTime())) return String(dateInput)
+      return new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      }).format(d) + ' IST'
+    } catch {
+      return String(dateInput)
+    }
+  }
+
+  // Get default scheduled date and time in IST (default: +30 minutes)
+  const getISTDefaults = () => {
+    const now = new Date()
+    const future = new Date(now.getTime() + 30 * 60 * 1000)
+    
+    const formatterDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+    const dateStr = formatterDate.format(future) // YYYY-MM-DD
+    
+    const formatterTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    const timeStr = formatterTime.format(future) // HH:mm
+
+    return { dateStr, timeStr }
+  }
+
+  // Extract unique tags and their frequencies from CRM contacts
+  const uniqueContactTags = useMemo(() => {
+    const tagCountMap: Record<string, number> = {}
+    contacts.forEach(c => {
+      if (Array.isArray(c.tags)) {
+        c.tags.forEach(t => {
+          if (t && typeof t === 'string' && t.trim()) {
+            const tag = t.trim()
+            tagCountMap[tag] = (tagCountMap[tag] || 0) + 1
+          }
+        })
+      }
+    })
+    return Object.entries(tagCountMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag, count]) => ({ tag, count }))
+  }, [contacts])
+
+  // Tag selection helpers
+  const handleSelectByTag = (tag: string) => {
+    const matchingContactIds = contacts
+      .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
+      .map(c => c.id)
+    setSelectedContactIds(prev => Array.from(new Set([...prev, ...matchingContactIds])))
+  }
+
+  const handleDeselectByTag = (tag: string) => {
+    const matchingSet = new Set(
+      contacts
+        .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
+        .map(c => c.id)
+    )
+    setSelectedContactIds(prev => prev.filter(id => !matchingSet.has(id)))
+  }
+
+  const handleSelectOnlyTag = (tag: string) => {
+    const matchingContactIds = contacts
+      .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
+      .map(c => c.id)
+    setSelectedContactIds(matchingContactIds)
+  }
+
+  // Scheduled Campaign Actions
+  const handleSendNowScheduled = async (campaignId: string) => {
+    setActionLoadingId(campaignId)
+    try {
+      const res = await fetch('/api/campaigns/scheduled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action: 'send_now' })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to trigger campaign.')
+      }
+      await fetchCampaigns(currentPage, false)
+      if (selectedCampaign?.id === campaignId) {
+        await fetchCampaignDetails(campaignId, false)
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error triggering scheduled campaign')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleCancelScheduled = async (campaignId: string) => {
+    if (!confirm('Are you sure you want to cancel this scheduled campaign?')) return
+    setActionLoadingId(campaignId)
+    try {
+      const res = await fetch('/api/campaigns/scheduled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action: 'cancel_schedule' })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to cancel schedule.')
+      }
+      await fetchCampaigns(currentPage, false)
+      if (selectedCampaign?.id === campaignId) {
+        await fetchCampaignDetails(campaignId, false)
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error cancelling schedule')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  // Background auto-trigger for scheduled campaigns due in IST
+  useEffect(() => {
+    const checkScheduledCampaigns = async () => {
+      try {
+        const res = await fetch('/api/campaigns/scheduled')
+        const data = await res.json()
+        if (data && data.triggeredCount > 0) {
+          fetchCampaigns(currentPage, false)
+        }
+      } catch (err) {
+        // silent background check
+      }
+    }
+
+    checkScheduledCampaigns()
+    const interval = setInterval(checkScheduledCampaigns, 25000)
+    return () => clearInterval(interval)
+  }, [currentPage])
 
   const handleStopCampaign = async (campaignId: string) => {
     setActionLoadingId(campaignId)
@@ -710,6 +875,10 @@ export default function CampaignsPage() {
     setCustomMessageBody('')
     setCustomVariables([])
     setEditorMode('visual')
+    setDispatchTiming('immediate')
+    setScheduledDateIST('')
+    setScheduledTimeIST('')
+    setSelectedTagFilter(null)
   }
 
   const startNewCampaign = () => {
@@ -923,6 +1092,32 @@ export default function CampaignsPage() {
         return
       }
 
+      let scheduledIso: string | null = null
+      if (dispatchTiming === 'scheduled') {
+        if (!scheduledDateIST || !scheduledTimeIST) {
+          setErrorMsg('Please specify both dispatch date and time in Indian Standard Time (IST).')
+          setIsSubmitting(false)
+          return
+        }
+
+        // IST is strictly UTC+05:30
+        const parsedScheduledIST = new Date(`${scheduledDateIST}T${scheduledTimeIST}:00+05:30`)
+        if (isNaN(parsedScheduledIST.getTime())) {
+          setErrorMsg('Invalid scheduled date or time selected.')
+          setIsSubmitting(false)
+          return
+        }
+
+        const now = Date.now()
+        if (parsedScheduledIST.getTime() <= now + 60 * 1000) {
+          setErrorMsg('Scheduled time in IST must be in the future (at least 2 minutes from now).')
+          setIsSubmitting(false)
+          return
+        }
+
+        scheduledIso = parsedScheduledIST.toISOString()
+      }
+
       // 1. Create campaign in DB
       const createRes = await fetch('/api/campaigns', {
         method: 'POST',
@@ -938,7 +1133,8 @@ export default function CampaignsPage() {
           sender,
           subject: channel === 'email' ? subject : undefined,
           organizationId: user?.organization_id || undefined,
-          createdBy: user?.id || undefined
+          createdBy: user?.id || undefined,
+          scheduledAt: scheduledIso
         })
       })
 
@@ -949,16 +1145,18 @@ export default function CampaignsPage() {
 
       const campaignId = createData.campaign.id
 
-      // 2. Trigger asynchronous background run API
-      const runRes = await fetch('/api/campaigns/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId })
-      })
+      // 2. Trigger asynchronous background run API ONLY if immediate dispatch
+      if (dispatchTiming === 'immediate') {
+        const runRes = await fetch('/api/campaigns/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaignId })
+        })
 
-      const runData = await runRes.json()
-      if (!runRes.ok || !runData.success) {
-        console.error('Trigger running error, but campaign record was created:', runData)
+        const runData = await runRes.json()
+        if (!runRes.ok || !runData.success) {
+          console.error('Trigger running error, but campaign record was created:', runData)
+        }
       }
 
       setIsCreateOpen(false)
@@ -1032,6 +1230,7 @@ export default function CampaignsPage() {
     const channelMatch = filterChannel === 'all' || chan === filterChannel
     const statusMatch = filterStatus === 'all' || 
                         (filterStatus === 'sending' && (c.status === 'PROCESSING' || c.status === 'PENDING')) ||
+                        (filterStatus === 'scheduled' && c.status === 'SCHEDULED') ||
                         (filterStatus === 'completed' && c.status === 'COMPLETED') ||
                         (filterStatus === 'failed' && c.status === 'FAILED')
     return nameMatch && channelMatch && statusMatch
@@ -1049,7 +1248,7 @@ export default function CampaignsPage() {
             </h1>
           </div>
           <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-            {totalCampaigns} total campaigns · {campaigns.filter(c => c.status === 'COMPLETED').length} completed · {campaigns.filter(c => c.status === 'PROCESSING' || c.status === 'PENDING').length} active
+            {totalCampaigns} total campaigns · {campaigns.filter(c => c.status === 'SCHEDULED').length} scheduled · {campaigns.filter(c => c.status === 'COMPLETED').length} completed · {campaigns.filter(c => c.status === 'PROCESSING' || c.status === 'PENDING').length} active
           </p>
         </div>
         
@@ -1154,6 +1353,7 @@ export default function CampaignsPage() {
           className="px-2 py-1.5 bg-slate-50 dark:bg-[#202d36] border border-[#e9edef] dark:border-slate-700 rounded-lg text-xs text-[#111b21] dark:text-white font-semibold cursor-pointer"
         >
           <option value="all">All Statuses</option>
+          <option value="scheduled">Scheduled (IST)</option>
           <option value="completed">Completed</option>
           <option value="sending">Sending</option>
           <option value="failed">Failed</option>
@@ -1211,6 +1411,15 @@ export default function CampaignsPage() {
                       <span>Template: <strong className="text-[#54656f] dark:text-[#8696a0]">{c.template_name}</strong></span>
                       <span>•</span>
                       <span>{new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      {c.status === 'SCHEDULED' && c.scheduled_at && (
+                        <>
+                          <span>•</span>
+                          <span className="text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                            <Clock size={10} />
+                            <span>Scheduled: {formatISTDateTime(c.scheduled_at)}</span>
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1224,6 +1433,7 @@ export default function CampaignsPage() {
                     <div 
                       className={`h-full rounded-full transition-all duration-500 ${
                         c.status === 'FAILED' ? 'bg-red-500' :
+                        c.status === 'SCHEDULED' ? 'bg-indigo-500' :
                         isProcessing ? 'bg-amber-400' :
                         'bg-[#008069]'
                       }`}
@@ -1233,18 +1443,47 @@ export default function CampaignsPage() {
                 </div>
 
                 <div className="flex items-center justify-between md:justify-end gap-3 shrink-0">
-                  <span className={`text-[9px] font-black px-2 py-0.5 md:py-1 rounded border ${
+                  <span className={`text-[9px] font-black px-2 py-0.5 md:py-1 rounded border flex items-center gap-1 ${
                     c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-100 dark:border-emerald-900/30' :
                     c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-100 dark:border-amber-900/30 animate-pulse' :
+                    c.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50' :
                     c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 border-rose-100 dark:border-rose-900/30' :
                     c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-150 dark:border-red-900/30' :
                     'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-150'
                   }`}>
-                    {c.status}
+                    {c.status === 'SCHEDULED' && <Calendar size={10} />}
+                    <span>{c.status}</span>
                   </span>
 
-                  {/* Stop / Rerun Actions */}
-                  {(c.status === 'PROCESSING' || c.status === 'PENDING') ? (
+                  {/* Scheduled Actions: Send Now / Cancel Schedule */}
+                  {c.status === 'SCHEDULED' ? (
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleSendNowScheduled(c.id)}
+                        disabled={actionLoadingId === c.id}
+                        className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 text-[9px] md:text-[10px] font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
+                        title="Override schedule and send now immediately"
+                      >
+                        {actionLoadingId === c.id ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Play size={10} className="fill-current" />
+                        )}
+                        <span>Send Now</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelScheduled(c.id)}
+                        disabled={actionLoadingId === c.id}
+                        className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-[9px] md:text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
+                        title="Cancel this scheduled campaign"
+                      >
+                        <X size={10} />
+                        <span>Cancel</span>
+                      </button>
+                    </div>
+                  ) : (c.status === 'PROCESSING' || c.status === 'PENDING') ? (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1468,7 +1707,40 @@ export default function CampaignsPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              {(selectedCampaign.status === 'PROCESSING' || selectedCampaign.status === 'PENDING') ? (
+              {selectedCampaign.status === 'SCHEDULED' ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSendNowScheduled(selectedCampaign.id)
+                      setSelectedCampaign(prev => prev ? { ...prev, status: 'PROCESSING' } : null)
+                    }}
+                    disabled={actionLoadingId === selectedCampaign.id}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                    title="Override schedule and send now immediately"
+                  >
+                    {actionLoadingId === selectedCampaign.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Play size={10} className="fill-current" />
+                    )}
+                    <span>Send Now</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCancelScheduled(selectedCampaign.id)
+                      setSelectedCampaign(prev => prev ? { ...prev, status: 'STOPPED' } : null)
+                    }}
+                    disabled={actionLoadingId === selectedCampaign.id}
+                    className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                    title="Cancel scheduled campaign"
+                  >
+                    <X size={12} />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              ) : (selectedCampaign.status === 'PROCESSING' || selectedCampaign.status === 'PENDING') ? (
                 <button
                   type="button"
                   onClick={() => handleStopCampaign(selectedCampaign.id)}
@@ -1529,7 +1801,39 @@ export default function CampaignsPage() {
 
           {/* Scrollable contents */}
           <div className="flex-1 overflow-y-auto space-y-4 p-5 pb-8 scrollbar-thin bg-slate-50/35 dark:bg-[#121b22]/20">
-            
+            {/* Scheduled Campaign Alert Banner */}
+            {selectedCampaign.status === 'SCHEDULED' && (
+              <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 p-3.5 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-indigo-600 text-white shrink-0">
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                      Scheduled Delivery in Indian Standard Time (IST)
+                    </div>
+                    <div className="text-[11px] text-indigo-700 dark:text-indigo-400 font-mono font-bold mt-0.5">
+                      {formatISTDateTime(selectedCampaign.scheduled_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSendNowScheduled(selectedCampaign.id)
+                      setSelectedCampaign(prev => prev ? { ...prev, status: 'PROCESSING' } : null)
+                    }}
+                    disabled={actionLoadingId === selectedCampaign.id}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                  >
+                    <Play size={11} className="fill-current" />
+                    <span>Send Now</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Modal Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
@@ -2438,11 +2742,98 @@ export default function CampaignsPage() {
                         </div>
                       </div>
 
+                      {/* Tag-Based Selection & Filtering Bar */}
+                      {uniqueContactTags.length > 0 && (
+                        <div className="p-3 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-xl space-y-2">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                              <Tag size={13} className="text-[#008069]" />
+                              <span>Filter & Select by Tag</span>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                ({uniqueContactTags.length} tags)
+                              </span>
+                            </div>
+                            {selectedTagFilter && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTagFilter(null)}
+                                className="text-[10px] text-[#008069] hover:underline font-bold cursor-pointer"
+                              >
+                                Clear Tag Filter
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Tag chips with counts and quick selection buttons */}
+                          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                            {uniqueContactTags.map(({ tag, count }) => {
+                              const isTagFiltered = selectedTagFilter === tag
+                              const tagContacts = contacts.filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
+                              const allTagSelected = tagContacts.length > 0 && tagContacts.every(c => selectedContactIds.includes(c.id))
+                              const someTagSelected = tagContacts.some(c => selectedContactIds.includes(c.id))
+
+                              return (
+                                <div
+                                  key={tag}
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition-all ${
+                                    isTagFiltered
+                                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-[#008069] font-bold shadow-xs'
+                                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                                  }`}
+                                >
+                                  {/* Filter view by tag */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedTagFilter(isTagFiltered ? null : tag)}
+                                    className="flex items-center gap-1.5 cursor-pointer text-left"
+                                    title={`Click to filter list by tag: ${tag}`}
+                                  >
+                                    <span>{tag}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                                      isTagFiltered ? 'bg-[#00a884] text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                    }`}>
+                                      {count}
+                                    </span>
+                                  </button>
+
+                                  {/* Quick Select/Deselect all contacts with this tag */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (allTagSelected) {
+                                        handleDeselectByTag(tag)
+                                      } else {
+                                        handleSelectByTag(tag)
+                                      }
+                                    }}
+                                    className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                                      allTagSelected
+                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                        : someTagSelected
+                                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:text-emerald-200'
+                                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                                    }`}
+                                    title={allTagSelected ? `Deselect all ${count} contacts with tag "${tag}"` : `Select all ${count} contacts with tag "${tag}"`}
+                                  >
+                                    {allTagSelected ? '✓ Tag Added' : '+ Add Tag'}
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Search Bar */}
                       <div className="relative">
                         <input
                           type="text"
-                          placeholder={channel === 'email' ? "Search tenant contacts by name, email, company..." : "Search tenant contacts by name, phone, company, tag..."}
+                          placeholder={
+                            selectedTagFilter 
+                              ? `Filtering within tag "${selectedTagFilter}"... (name, phone, company)` 
+                              : (channel === 'email' ? "Search tenant contacts by name, email, company, tag..." : "Search tenant contacts by name, phone, company, tag...")
+                          }
                           value={contactSearchTerm}
                           onChange={(e) => setContactSearchTerm(e.target.value)}
                           className="w-full px-3.5 py-2 bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] font-semibold text-[#111b21] dark:text-white"
@@ -2457,6 +2848,8 @@ export default function CampaignsPage() {
                             <span>Loading all tenant contacts...</span>
                           </div>
                         ) : contacts.filter(c => {
+                          const tagMatches = !selectedTagFilter || (Array.isArray(c.tags) && c.tags.includes(selectedTagFilter))
+                          if (!tagMatches) return false
                           const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
                           const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
                           const company = (c.company || '').toLowerCase()
@@ -2464,9 +2857,11 @@ export default function CampaignsPage() {
                           const search = contactSearchTerm.toLowerCase()
                           return name.includes(search) || targetField.includes(search) || company.includes(search) || tags.includes(search)
                         }).length === 0 ? (
-                          <div className="text-center py-6 text-[#8696a0] text-xs font-medium">No contacts match search</div>
+                          <div className="text-center py-6 text-[#8696a0] text-xs font-medium">No contacts match search or tag filter</div>
                         ) : (
                           contacts.filter(c => {
+                            const tagMatches = !selectedTagFilter || (Array.isArray(c.tags) && c.tags.includes(selectedTagFilter))
+                            if (!tagMatches) return false
                             const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
                             const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
                             const company = (c.company || '').toLowerCase()
@@ -2811,6 +3206,171 @@ export default function CampaignsPage() {
                     )}
                   </div>
 
+                  {/* Dispatch Timing & Scheduling in Indian Standard Time (IST) */}
+                  <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-3.5 shadow-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Clock size={16} className="text-[#008069]" />
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                          Dispatch Timing & Schedule (IST)
+                        </h4>
+                      </div>
+                      <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                        🇮🇳 Indian Standard Time (UTC+05:30)
+                      </span>
+                    </div>
+
+                    {/* Timing Selector Buttons */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setDispatchTiming('immediate')}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                          dispatchTiming === 'immediate'
+                            ? 'border-[#00a884] bg-[#e7f7f4]/40 text-[#008069]'
+                            : 'border-[#e9edef] dark:border-[#2a3942] bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-lg shrink-0 ${dispatchTiming === 'immediate' ? 'bg-[#00a884] text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                          <Send size={14} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs">Send Immediately</div>
+                          <div className="text-[10px] opacity-80 mt-0.5">Start sending messages as soon as campaign is created</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDispatchTiming('scheduled')
+                          if (!scheduledDateIST || !scheduledTimeIST) {
+                            const defaults = getISTDefaults()
+                            setScheduledDateIST(defaults.dateStr)
+                            setScheduledTimeIST(defaults.timeStr)
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                          dispatchTiming === 'scheduled'
+                            ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300'
+                            : 'border-[#e9edef] dark:border-[#2a3942] bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-lg shrink-0 ${dispatchTiming === 'scheduled' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                          <Calendar size={14} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs">Schedule for Later (IST)</div>
+                          <div className="text-[10px] opacity-80 mt-0.5">Automate delivery at an exact Indian Standard Time</div>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Scheduled Inputs & Presets (Visible when Scheduled is active) */}
+                    {dispatchTiming === 'scheduled' && (
+                      <div className="p-3.5 bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                              Dispatch Date (IST) *
+                            </label>
+                            <input
+                              type="date"
+                              min={getISTDefaults().dateStr}
+                              value={scheduledDateIST}
+                              onChange={(e) => setScheduledDateIST(e.target.value)}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                              Dispatch Time (IST - 24hr / AM-PM) *
+                            </label>
+                            <input
+                              type="time"
+                              value={scheduledTimeIST}
+                              onChange={(e) => setScheduledTimeIST(e.target.value)}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] font-bold text-slate-500">Quick Presets (IST):</span>
+                          {[
+                            { label: '+30 Mins', offsetMins: 30 },
+                            { label: '+1 Hour', offsetMins: 60 },
+                            { label: '+3 Hours', offsetMins: 180 },
+                            { label: 'Tomorrow 10:00 AM IST', customTomorrowHour: 10 },
+                            { label: 'Tomorrow 04:00 PM IST', customTomorrowHour: 16 }
+                          ].map((preset, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                const now = new Date()
+                                let targetDate: Date
+                                if (preset.offsetMins) {
+                                  targetDate = new Date(now.getTime() + preset.offsetMins * 60 * 1000)
+                                } else if (preset.customTomorrowHour !== undefined) {
+                                  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+                                  const yyyyMmDd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(tomorrow)
+                                  const hourStr = String(preset.customTomorrowHour).padStart(2, '0')
+                                  targetDate = new Date(`${yyyyMmDd}T${hourStr}:00:00+05:30`)
+                                } else {
+                                  targetDate = now
+                                }
+
+                                const dStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(targetDate)
+                                const tStr = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(targetDate)
+                                setScheduledDateIST(dStr)
+                                setScheduledTimeIST(tStr)
+                              }}
+                              className="text-[10px] font-bold px-2 py-1 rounded bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Live IST Scheduled Preview Badge */}
+                        {scheduledDateIST && scheduledTimeIST && (() => {
+                          const istDate = new Date(`${scheduledDateIST}T${scheduledTimeIST}:00+05:30`)
+                          const isPast = isNaN(istDate.getTime()) || istDate.getTime() <= Date.now()
+                          return (
+                            <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                              isPast 
+                                ? 'bg-amber-50 border-amber-200 text-amber-800' 
+                                : 'bg-indigo-100/60 dark:bg-indigo-900/40 border-indigo-200 dark:border-indigo-700 text-indigo-900 dark:text-indigo-100'
+                            }`}>
+                              <div className="flex items-center gap-2">
+                                <Calendar size={14} className={isPast ? 'text-amber-600' : 'text-indigo-600 dark:text-indigo-400'} />
+                                <div>
+                                  <span className="font-bold">Execution Time: </span>
+                                  <span className="font-mono font-bold">{formatISTDateTime(istDate)}</span>
+                                </div>
+                              </div>
+                              {isPast ? (
+                                <span className="text-[10px] font-bold text-amber-700">⚠️ Selected time is in the past!</span>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                  {(() => {
+                                    const diffMinutes = Math.round((istDate.getTime() - Date.now()) / (60 * 1000))
+                                    if (diffMinutes < 60) return `starts in ~${diffMinutes}m`
+                                    const hours = Math.floor(diffMinutes / 60)
+                                    const mins = diffMinutes % 60
+                                    return `starts in ~${hours}h ${mins}m`
+                                  })()}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="border border-[#e9edef] rounded-xl p-3.5 space-y-2.5 text-xs bg-[#f8f9fa]">
                     <div className="flex justify-between">
                       <span className="text-[#667781] dark:text-[#8696a0]">Campaign Name:</span>
@@ -2827,6 +3387,16 @@ export default function CampaignsPage() {
                       <span className="font-bold text-[#008069]">{
                         audienceSource === 'excel' ? excelData.length : selectedContactIds.length
                       } contacts</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#667781] dark:text-[#8696a0]">Dispatch Schedule:</span>
+                      <span className={`font-bold ${dispatchTiming === 'scheduled' ? 'text-indigo-600 dark:text-indigo-400' : 'text-[#111b21] dark:text-white'}`}>
+                        {dispatchTiming === 'immediate'
+                          ? 'Send Immediately'
+                          : scheduledDateIST && scheduledTimeIST
+                          ? `${formatISTDateTime(new Date(`${scheduledDateIST}T${scheduledTimeIST}:00+05:30`))} (Scheduled)`
+                          : 'Schedule Pending'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2862,12 +3432,21 @@ export default function CampaignsPage() {
                   type="button"
                   onClick={handleLaunchCampaign}
                   disabled={isSubmitting}
-                  className="h-9 px-5 rounded-xl bg-[#00a884] hover:bg-[#008f72] text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                  className={`h-9 px-5 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50 ${
+                    dispatchTiming === 'scheduled'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                      : 'bg-[#00a884] hover:bg-[#008f72]'
+                  }`}
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      <span>Launching...</span>
+                      <span>{dispatchTiming === 'scheduled' ? 'Scheduling...' : 'Launching...'}</span>
+                    </>
+                  ) : dispatchTiming === 'scheduled' ? (
+                    <>
+                      <Calendar size={14} />
+                      <span>Schedule Campaign (IST)</span>
                     </>
                   ) : (
                     <>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { runCampaignWorker } from '../run/worker/route'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -86,13 +87,10 @@ export async function POST(request: NextRequest) {
         .eq('id', campaignId)
     }
 
-    // Trigger asynchronous campaign execution
-    const origin = request.nextUrl.origin
-    fetch(`${origin}/api/campaigns/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaignId })
-    }).catch(err => console.error('[Campaign Rerun API] Error triggering campaign run:', err))
+    // Trigger asynchronous campaign execution directly in background
+    runCampaignWorker(campaignId).catch(err => {
+      console.error('[Campaign Rerun API] Error running worker:', err)
+    })
 
     return NextResponse.json({
       success: true,

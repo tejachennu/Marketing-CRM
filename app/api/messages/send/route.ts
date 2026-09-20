@@ -295,6 +295,9 @@ export async function POST(request: NextRequest) {
     let twilioMessageSid = null
     let sendStatus = 'sent'
     let sendError: string | null = null
+    let effectiveTemplateName = templateName || templateSid || ''
+    let effectiveMetaComponents: any[] = templateMetaComponents || []
+
     try {
       const useFacebookForThisMessage = isWhatsApp && whatsappProvider === 'facebook'
 
@@ -346,6 +349,9 @@ export async function POST(request: NextRequest) {
               console.warn('[Messages Send] Could not auto-fetch Meta template info:', err)
             }
           }
+
+          effectiveTemplateName = tName || effectiveTemplateName
+          effectiveMetaComponents = metaComponents
 
           payload.type = 'template'
           payload.template = {
@@ -647,6 +653,34 @@ export async function POST(request: NextRequest) {
       sendStatus = 'failed'
       sendError = twilioError instanceof Error ? twilioError.message : String(twilioError)
     }
+
+    // Reconstruct body text if empty (e.g. for WhatsApp templates or media messages)
+    let effectiveMsgBody = msgBody
+    if (!effectiveMsgBody || effectiveMsgBody.trim() === '') {
+      if (effectiveMetaComponents && effectiveMetaComponents.length > 0) {
+        const bodyComp = effectiveMetaComponents.find((c: any) => c.type === 'BODY')
+        if (bodyComp && bodyComp.text) {
+          let tText = bodyComp.text
+          const vars = (templateVariables || {}) as Record<string, string>
+          Object.entries(vars).forEach(([k, v]) => {
+            tText = tText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v))
+          })
+          effectiveMsgBody = tText
+        }
+      }
+      if (!effectiveMsgBody && (effectiveTemplateName || templateName || templateSid)) {
+        const tplDisplayName = effectiveTemplateName || templateName || templateSid
+        const vars = (templateVariables || {}) as Record<string, string>
+        const varSummary = Object.entries(vars)
+          .filter(([_, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ')
+        effectiveMsgBody = `[Template: ${tplDisplayName}]${varSummary ? ` (${varSummary})` : ''}`
+      } else if (!effectiveMsgBody && msgMediaUrl) {
+        effectiveMsgBody = '[Media Attachment]'
+      }
+    }
+
     // Store message in database
     const { data: savedMessage, error: messageError } = await supabase
       .from('messages')
@@ -655,7 +689,7 @@ export async function POST(request: NextRequest) {
           organization_id: conversation.organization_id,
           conversation_id: conversation.id,
           sender_type: 'user',
-          body: msgBody,
+          body: effectiveMsgBody || '[Message]',
           media_url: msgMediaUrl,
           twilio_message_sid: twilioMessageSid,
           status: sendStatus,

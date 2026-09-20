@@ -33,6 +33,7 @@ interface PlaygroundResult {
   systemPrompt: string
   gptReply: string
   isRiseTicket: boolean
+  
   callError: string | null
 }
 

@@ -834,6 +834,28 @@ function ConversationsPageContent() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => {
+          const updatedMsg = payload.new as Message
+          console.log('[WS] Message updated status:', updatedMsg.id, updatedMsg.status, 'read_at:', updatedMsg.read_at)
+
+          // 1. Live update active conversation message status (blue ticks)
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
+          )
+
+          // 2. Live update conversation preview in sidebar
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.last_message?.id === updatedMsg.id
+                ? { ...c, last_message: { ...c.last_message, ...updatedMsg } }
+                : c
+            )
+          )
+        }
+      )
       .subscribe((status) => {
         console.log('[WS] Messages channel:', status)
       })
