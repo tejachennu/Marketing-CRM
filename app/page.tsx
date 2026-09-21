@@ -24,10 +24,10 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Interactive WhatsApp Chatbot Simulator State
-  const [simulatorStep, setSimulatorStep] = useState<'intro' | 'pricing' | 'bulk' | 'demo'>('intro')
+  const [simulatorStep, setSimulatorStep] = useState<'intro' | 'meta' | 'bulk' | 'demo'>('intro')
   const [isTyping, setIsTyping] = useState(false)
 
-  const handleSelectPrompt = (step: 'pricing' | 'bulk' | 'demo') => {
+  const handleSelectPrompt = (step: 'meta' | 'bulk' | 'demo') => {
     if (isTyping) return
     setIsTyping(true)
     setSimulatorStep(step)
@@ -35,17 +35,6 @@ export default function LandingPage() {
       setIsTyping(false)
     }, 550)
   }
-
-  // Interactive Wholesale Savings Calculator State
-  const [contactsCount, setContactsCount] = useState(35000)
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual')
-  
-  // Traditional marked-up CRMs charge ~$0.025/msg + $150 seat fees vs Omnichannel flat $65/mo ($79 monthly) + ~$0.005/msg wholesale
-  const legacyMonthly = 150 + (contactsCount * 0.025)
-  const omnichannelMonthly = (billingPeriod === 'annual' ? 65 : 79) + (contactsCount * 0.005)
-  const monthlySavings = Math.max(0, Math.round(legacyMonthly - omnichannelMonthly))
-  const yearlySavings = monthlySavings * 12
-  const savingsPercent = Math.round((monthlySavings / legacyMonthly) * 100)
 
   // FAQ Accordion State
   const [openFaq, setOpenFaq] = useState<number | null>(0)
@@ -60,8 +49,8 @@ export default function LandingPage() {
       a: "Email open rates have collapsed to 18%, with most lost in spam. WhatsApp delivers a massive 98.4% open rate, with 80% read within 5 minutes. You upload your Excel customer list, personalize names and offers, and send interactive messages with 1-tap action buttons."
     },
     {
-      q: "Why is WAMA up to 75% cheaper than competitors?",
-      a: "Traditional tools (like Wati or Intercom) mark up WhatsApp message costs by 300% to 500% and charge per agent. WAMA connects directly to your official Meta Cloud API: you pay raw wholesale Meta rates (~$0.005/msg) with zero markup, saving thousands of dollars monthly."
+      q: "How does the direct Meta WhatsApp Cloud API benefit my business?",
+      a: "Traditional tools mark up message costs and charge per agent. WAMA connects directly to your official Meta Cloud API with zero markup, direct deliverability, pre-approved templates, and full enterprise security."
     },
     {
       q: "Will my WhatsApp number get banned during bulk broadcasts?",
@@ -105,8 +94,8 @@ export default function LandingPage() {
           <span className="text-white/90">
             First 1,000 monthly WhatsApp conversations 100% free with 0% token markup.
           </span>
-          <a href="#pricing" className="text-[#27d34b] font-bold hover:underline inline-flex items-center gap-1 ml-1">
-            See Wholesale Pricing <ArrowRight size={12} />
+          <a href="#demo" className="text-[#27d34b] font-bold hover:underline inline-flex items-center gap-1 ml-1">
+            Request Demo Access <ArrowRight size={12} />
           </a>
         </div>
       </div>
@@ -144,9 +133,6 @@ export default function LandingPage() {
             </a>
             <a href="#why-whatsapp" className="hover:text-[#008069] transition">
               Why WhatsApp?
-            </a>
-            <a href="#pricing" className="hover:text-[#008069] transition">
-              Wholesale Pricing
             </a>
             <a href="#faq" className="hover:text-[#008069] transition">
               FAQ
@@ -208,13 +194,6 @@ export default function LandingPage() {
               className="block text-sm font-semibold text-slate-800"
             >
               📊 Why WhatsApp vs Email
-            </a>
-            <a 
-              href="#pricing" 
-              onClick={() => setMobileMenuOpen(false)}
-              className="block text-sm font-semibold text-slate-800"
-            >
-              💰 Wholesale Pricing
             </a>
             <a 
               href="#faq" 
@@ -341,7 +320,7 @@ export default function LandingPage() {
                     <div className="bg-[#d9fdd3] text-[#111b21] p-3 rounded-2xl rounded-tr-none max-w-[85%] shadow-xs">
                       <p className="font-medium">
                         {simulatorStep === 'intro' && "Hi! Do you have the Black Edition Headphones in stock?"}
-                        {simulatorStep === 'pricing' && "Why is your pricing cheaper than other WhatsApp CRMs?"}
+                        {simulatorStep === 'meta' && "Can I connect my official Meta WhatsApp Business API?"}
                         {simulatorStep === 'bulk' && "Can I send 20,000 promo WhatsApps from an Excel list?"}
                         {simulatorStep === 'demo' && "Can the AI qualify buyers and book a calendar call?"}
                       </p>
@@ -374,13 +353,13 @@ export default function LandingPage() {
                           </>
                         )}
 
-                        {simulatorStep === 'pricing' && (
+                        {simulatorStep === 'meta' && (
                           <>
                             <p className="font-medium leading-relaxed">
-                              💰 Unlike CRMs charging $150/agent + 300% token markup, we connect directly to your <strong>Meta Cloud API</strong>. You pay raw wholesale rates (~$0.005/msg) and save up to 75%!
+                              ⚡ Yes! We connect directly to your official <strong>Meta Cloud API</strong> via Embedded Signup. Zero middleman fees, verified deliverability, and 98% open rates!
                             </p>
                             <div className="bg-[#e7f6ea] text-[#107038] p-2 rounded-xl text-[11px] font-bold text-center border border-[#bfe3c8]">
-                              👉 [ 📊 Calculate Your Wholesale Savings ]
+                              👉 [ ⚡ Direct Meta Cloud API Setup ]
                             </div>
                           </>
                         )}
@@ -423,14 +402,14 @@ export default function LandingPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <button
-                      onClick={() => handleSelectPrompt('pricing')}
+                      onClick={() => handleSelectPrompt('meta')}
                       className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition ${
-                        simulatorStep === 'pricing' 
+                        simulatorStep === 'meta' 
                           ? 'bg-[#008069] text-white border-[#008069]' 
                           : 'bg-white text-slate-700 hover:bg-emerald-50 border-slate-200'
                       }`}
                     >
-                      💰 Wholesale Pricing?
+                      ⚡ Meta Cloud API?
                     </button>
                     <button
                       onClick={() => handleSelectPrompt('bulk')}
@@ -771,10 +750,10 @@ export default function LandingPage() {
                   </p>
 
                   <a 
-                    href="#pricing" 
+                    href="#demo" 
                     className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_10px_25px_-8px_rgba(39,211,75,0.6)] hover:shadow-[0_14px_28px_-6px_rgba(39,211,75,0.7)]"
                   >
-                    <span>Calculate Your Savings</span>
+                    <span>Request Free Demo Access</span>
                     <ArrowRight size={15} />
                   </a>
                 </div>
@@ -954,111 +933,6 @@ export default function LandingPage() {
               </div>
             </div>
 
-          </div>
-
-        </div>
-      </section>
-
-      {/* ━━━ SECTION: INTERACTIVE WHOLESALE SAVINGS CALCULATOR ━━━ */}
-      <section id="pricing" className="py-20 md:py-28 bg-[#fafbfa] border-b border-[#e9eeeb]">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f6ea] px-3.5 py-1 text-xs font-semibold text-[#107038] border border-[#bfe3c8] mb-4">
-              <Coins size={13} />
-              <span>Wholesale Pricing Autonomy</span>
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-[46px] font-extrabold text-[#0c2014] tracking-[-0.02em] mb-4">
-              Transparent wholesale pricing calculator.
-            </h2>
-            <p className="text-base text-[#52635b] font-medium leading-relaxed">
-              Drag your message volume to see how much you save by bypassing middleman markups.
-            </p>
-
-            {/* Billing Cycle Toggle */}
-            <div className="mt-6 inline-flex items-center bg-white p-1 rounded-full border border-slate-200">
-              <button
-                onClick={() => setBillingPeriod('monthly')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${
-                  billingPeriod === 'monthly' ? 'bg-[#008069] text-white' : 'text-slate-600'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setBillingPeriod('annual')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 ${
-                  billingPeriod === 'annual' ? 'bg-[#008069] text-white' : 'text-slate-600'
-                }`}
-              >
-                <span>Annual</span>
-                <span className="bg-[#27d34b] text-[#0c2014] text-[9px] px-1.5 py-0.2 rounded-full font-extrabold">Save 20%</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Calculator Card */}
-          <div className="max-w-3xl mx-auto bg-white p-6 sm:p-10 rounded-[28px] border border-slate-200/90 shadow-[0_12px_40px_-20px_rgba(0,0,0,0.06)]">
-            <div className="space-y-6">
-              
-              <div>
-                <div className="flex justify-between items-center text-xs sm:text-sm font-bold mb-2">
-                  <span className="text-slate-600">Monthly Message Volume:</span>
-                  <span className="text-[#008069] font-mono text-base font-extrabold bg-[#fafbfa] px-3 py-1 rounded-lg border border-slate-200">
-                    {contactsCount.toLocaleString()} messages / month
-                  </span>
-                </div>
-
-                <input 
-                  type="range"
-                  min="5000"
-                  max="150000"
-                  step="5000"
-                  value={contactsCount}
-                  onChange={(e) => setContactsCount(Number(e.target.value))}
-                  className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#008069]"
-                />
-
-                <div className="flex justify-between text-[11px] text-slate-400 font-semibold mt-1">
-                  <span>5,000 /mo</span>
-                  <span>75,000 /mo</span>
-                  <span>150,000+ /mo</span>
-                </div>
-              </div>
-
-              {/* Side-by-Side Cost Comparison */}
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                <div className="bg-rose-50/70 border border-rose-200/80 p-5 rounded-2xl text-left">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Other WhatsApp CRMs</span>
-                  <div className="text-2xl sm:text-3xl font-black text-rose-600 mt-1">
-                    ${Math.round(legacyMonthly)}<span className="text-xs font-normal text-slate-500">/mo</span>
-                  </div>
-                  <p className="text-[10px] text-slate-600 mt-1 font-medium">Per-agent fees + 300% markup on Meta messages.</p>
-                </div>
-
-                <div className="bg-[#e7f6ea] border border-[#bfe3c8] p-5 rounded-2xl text-left">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#107038]">WAMA CRM</span>
-                  <div className="text-2xl sm:text-3xl font-black text-[#008069] mt-1">
-                    ${Math.round(omnichannelMonthly)}<span className="text-xs font-normal text-slate-500">/mo</span>
-                  </div>
-                  <p className="text-[10px] text-slate-600 mt-1 font-medium">Flat software fee + raw wholesale Meta rates.</p>
-                </div>
-              </div>
-
-              {/* Direct Savings Callout */}
-              <div className="bg-gradient-to-r from-[#008069] to-[#27d34b] text-[#0c2014] p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-950">Your Direct Wholesale Savings</div>
-                  <div className="text-xl sm:text-2xl font-black text-white mt-0.5">
-                    Save ${monthlySavings.toLocaleString()} / month (${yearlySavings.toLocaleString()} / year)
-                  </div>
-                </div>
-                <div className="bg-white text-[#008069] text-xs font-extrabold px-4 py-2 rounded-full uppercase shadow-xs">
-                  {savingsPercent}% Lower Cost
-                </div>
-              </div>
-
-            </div>
           </div>
 
         </div>
@@ -1328,7 +1202,6 @@ export default function LandingPage() {
               <a href="#showcase" className="hover:text-white transition">Bulk Broadcasts</a>
               <a href="#showcase" className="hover:text-white transition">WhatsApp AI Bot</a>
               <a href="#why-whatsapp" className="hover:text-white transition">Why WhatsApp?</a>
-              <a href="#pricing" className="hover:text-white transition">Wholesale Pricing</a>
               <a href="#faq" className="hover:text-white transition">FAQ</a>
               <Link href="/privacy" className="hover:text-[#27d34b] transition">Privacy Policy</Link>
               <Link href="/terms" className="hover:text-[#27d34b] transition">Terms of Service</Link>
