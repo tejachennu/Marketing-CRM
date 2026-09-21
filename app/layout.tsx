@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'WAMA | WhatsApp Marketing Agent CRM by Magnetora AI',
+  title: 'WAMACRM | WhatsApp Marketing Agent CRM by Magnetora AI',
   description: 'Scale your revenue with WAMA (WhatsApp Marketing Agent CRM) by Magnetora AI. Deploy 24/7 autonomous WhatsApp AI sales chatbots and launch high-converting bulk broadcasts from spreadsheets with 98% open rates at wholesale pricing.',
   generator: 'v0.app',
   icons: {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
         type: 'image/svg+xml',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/wamacrm-logo.png',
   },
 }
 

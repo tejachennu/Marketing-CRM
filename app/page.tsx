@@ -118,16 +118,16 @@ export default function LandingPage() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
             <img 
-              src="/logo.png" 
-              alt="WAMA Logo" 
+              src="/wamacrm-logo.png" 
+              alt="WAMACRM Logo" 
               className="h-10 w-10 rounded-xl object-contain shadow-sm border border-slate-100 bg-white" 
             />
             <div className="flex flex-col">
               <span className="font-extrabold text-base tracking-tight text-[#0c2014] leading-tight flex items-center gap-1.5">
-                WAMA <span className="text-[#008069] text-xs font-bold px-1.5 py-0.5 bg-[#e8f5e9] rounded-md">CRM</span>
+                WAMACRM <span className="text-[#008069] text-xs font-bold px-1.5 py-0.5 bg-[#e8f5e9] rounded-md">AI</span>
               </span>
               <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                WhatsApp Marketing Agent
+                WhatsApp Marketing Agent CRM
               </span>
             </div>
           </Link>
@@ -1310,13 +1310,13 @@ export default function LandingPage() {
             
             <div className="flex items-center gap-3">
               <img 
-                src="/logo.png" 
-                alt="WAMA Logo" 
+                src="/wamacrm-logo.png" 
+                alt="WAMACRM Logo" 
                 className="h-10 w-10 rounded-xl object-contain shadow-sm border border-white/10 bg-white" 
               />
               <div className="flex flex-col text-left">
                 <span className="font-bold text-sm text-white tracking-tight leading-none flex items-center gap-1.5">
-                  WAMA <span className="text-[#27d34b] text-xs font-semibold px-1.5 py-0.5 bg-white/10 rounded">CRM</span>
+                  WAMACRM <span className="text-[#27d34b] text-xs font-semibold px-1.5 py-0.5 bg-white/10 rounded">AI</span>
                 </span>
                 <span className="text-[10px] text-slate-400 mt-1 font-medium">
                   WhatsApp Marketing Agent CRM by Magnetora AI
