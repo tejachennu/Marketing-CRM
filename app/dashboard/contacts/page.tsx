@@ -20,7 +20,9 @@ import {
   Upload, 
   X, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Tag,
+  Check
 } from 'lucide-react'
 import { useConfirm, useAlert } from '@/lib/dialog-context'
 
@@ -36,17 +38,33 @@ export default function ContactsPage() {
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [allKnownTags, setAllKnownTags] = useState<string[]>([])
   const [loadingContacts, setLoadingContacts] = useState(false)
   
+  // Inline tag editing states
+  const [inlineTagContactId, setInlineTagContactId] = useState<string | null>(null)
+  const [inlineTagValue, setInlineTagValue] = useState('')
+  const [busyTagContactId, setBusyTagContactId] = useState<string | null>(null)
+
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [newContact, setNewContact] = useState({
+  const [newContact, setNewContact] = useState<{
+    first_name: string
+    last_name: string
+    phone_number: string
+    email: string
+    company: string
+    tags: string[]
+  }>({
     first_name: '',
     last_name: '',
     phone_number: '',
     email: '',
     company: '',
+    tags: [],
   })
+  const [modalTagInput, setModalTagInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -61,7 +79,9 @@ export default function ContactsPage() {
     phone: '',
     email: '',
     company: '',
+    tag: '',
   })
+  const [importCustomTag, setImportCustomTag] = useState('')
   const [isImporting, setIsImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importSuccess, setImportSuccess] = useState<string | null>(null)
@@ -69,7 +89,7 @@ export default function ContactsPage() {
 
   // ─── Fetch Contacts ───
 
-  const loadData = useCallback(async (pageNum = 1, searchVal = '') => {
+  const loadData = useCallback(async (pageNum = 1, searchVal = '', tagVal = '') => {
     try {
       setLoadingContacts(true)
       await restoreSupabaseSession()
@@ -99,17 +119,27 @@ export default function ContactsPage() {
       setUser(userData)
 
       const limit = 10
-      const res = await fetch(`/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}&organizationId=${userData.organization_id}&_t=${Date.now()}`, {
-        cache: 'no-store'
-      })
+      let url = `/api/contacts?page=${pageNum}&limit=${limit}&search=${encodeURIComponent(searchVal)}&organizationId=${userData.organization_id}&_t=${Date.now()}`
+      if (tagVal) {
+        url += `&tag=${encodeURIComponent(tagVal)}`
+      }
+
+      const res = await fetch(url, { cache: 'no-store' })
       const resData = await res.json()
       if (!res.ok) {
         throw new Error(resData.error || 'Failed to fetch contacts')
       }
 
-      setContacts(resData.contacts || [])
+      const fetchedContacts: Contact[] = resData.contacts || []
+      setContacts(fetchedContacts)
       setTotalCount(resData.count || 0)
       setHasMore(resData.hasMore || false)
+
+      // Collect any tags discovered in the batch
+      const tagsInBatch = fetchedContacts.flatMap(c => Array.isArray(c.tags) ? c.tags : []).filter(Boolean)
+      if (tagsInBatch.length > 0) {
+        setAllKnownTags(prev => Array.from(new Set([...prev, ...tagsInBatch])).sort())
+      }
     } catch (error) {
       console.error('[v0] Error in loadData (contacts):', error)
     } finally {
@@ -120,24 +150,116 @@ export default function ContactsPage() {
 
   // Initial load
   useEffect(() => {
-    loadData(1, '')
+    loadData(1, '', '')
   }, [loadData])
 
   // Debounce search input
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       setCurrentPage(1)
-      loadData(1, searchTerm)
+      loadData(1, searchTerm, activeTagFilter || '')
     }, 300)
 
     return () => clearTimeout(delayDebounceFn)
-  }, [searchTerm, loadData])
+  }, [searchTerm, activeTagFilter, loadData])
 
   // ─── Actions ───
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage)
-    loadData(newPage, searchTerm)
+    loadData(newPage, searchTerm, activeTagFilter || '')
+  }
+
+  const handleTagFilterChange = (tag: string | null) => {
+    setActiveTagFilter(tag)
+    setCurrentPage(1)
+    loadData(1, searchTerm, tag || '')
+  }
+
+  async function handleRemoveTagInline(contactId: string, tagToRemove: string) {
+    setBusyTagContactId(contactId)
+    // Optimistically update UI
+    setContacts(prev => prev.map(c => {
+      if (c.id === contactId) {
+        const remaining = (c.tags || []).filter(t => t !== tagToRemove)
+        return { ...c, tags: remaining }
+      }
+      return c
+    }))
+
+    try {
+      const response = await fetch('/api/contacts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: contactId,
+          action: 'remove_tag',
+          tag: tagToRemove,
+        }),
+      })
+      if (!response.ok) {
+        const resData = await response.json()
+        throw new Error(resData.error || 'Failed to remove tag')
+      }
+    } catch (err: any) {
+      console.error('Error removing tag:', err)
+      await alert({
+        title: 'Tag Removal Failed',
+        message: err.message || 'Could not remove tag from contact'
+      })
+      loadData(currentPage, searchTerm, activeTagFilter || '')
+    } finally {
+      setBusyTagContactId(null)
+    }
+  }
+
+  async function handleAddTagInline(contactId: string, tagToAdd: string) {
+    const cleanTag = tagToAdd.trim().replace(/^,+|,+$/g, '')
+    if (!cleanTag) {
+      setInlineTagContactId(null)
+      setInlineTagValue('')
+      return
+    }
+
+    setBusyTagContactId(contactId)
+    // Optimistically update UI
+    setContacts(prev => prev.map(c => {
+      if (c.id === contactId) {
+        const current = c.tags || []
+        if (!current.includes(cleanTag)) {
+          return { ...c, tags: [...current, cleanTag] }
+        }
+      }
+      return c
+    }))
+    setAllKnownTags(prev => Array.from(new Set([...prev, cleanTag])).sort())
+    setInlineTagContactId(null)
+    setInlineTagValue('')
+
+    try {
+      const response = await fetch('/api/contacts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: contactId,
+          action: 'add_tag',
+          tag: cleanTag,
+        }),
+      })
+      if (!response.ok) {
+        const resData = await response.json()
+        throw new Error(resData.error || 'Failed to add tag')
+      }
+    } catch (err: any) {
+      console.error('Error adding tag:', err)
+      await alert({
+        title: 'Add Tag Failed',
+        message: err.message || 'Could not add tag to contact'
+      })
+      loadData(currentPage, searchTerm, activeTagFilter || '')
+    } finally {
+      setBusyTagContactId(null)
+    }
   }
 
   async function handleAddContact() {
@@ -160,6 +282,7 @@ export default function ContactsPage() {
             phone_number: newContact.phone_number.trim(),
             email: newContact.email.trim() || null,
             company: newContact.company.trim() || null,
+            tags: newContact.tags,
           }),
         })
       } else {
@@ -173,6 +296,7 @@ export default function ContactsPage() {
             phoneNumber: newContact.phone_number.trim(),
             email: newContact.email.trim() || null,
             company: newContact.company.trim() || null,
+            tags: newContact.tags,
           }),
         })
       }
@@ -183,6 +307,10 @@ export default function ContactsPage() {
         throw new Error(resData.error || 'Failed to save contact')
       }
 
+      if (newContact.tags.length > 0) {
+        setAllKnownTags(prev => Array.from(new Set([...prev, ...newContact.tags])).sort())
+      }
+
       setShowAddModal(false)
       setEditingId(null)
       setNewContact({
@@ -191,10 +319,12 @@ export default function ContactsPage() {
         phone_number: '',
         email: '',
         company: '',
+        tags: [],
       })
+      setModalTagInput('')
 
       setCurrentPage(1)
-      loadData(1, searchTerm)
+      loadData(1, searchTerm, activeTagFilter || '')
     } catch (err) {
       console.error('Error saving contact:', err)
       setError(err instanceof Error ? err.message : 'Failed to save contact')
@@ -221,7 +351,7 @@ export default function ContactsPage() {
       if (!response.ok) {
         throw new Error(resData.error || 'Failed to delete contact')
       }
-      loadData(currentPage, searchTerm)
+      loadData(currentPage, searchTerm, activeTagFilter || '')
     } catch (err) {
       console.error('Error deleting contact:', err)
       await alert({
@@ -238,7 +368,9 @@ export default function ContactsPage() {
       phone_number: contact.phone_number,
       email: contact.email || '',
       company: contact.company || '',
+      tags: Array.isArray(contact.tags) ? contact.tags : [],
     })
+    setModalTagInput('')
     setEditingId(contact.id)
     setError(null)
     setShowAddModal(true)
@@ -297,6 +429,9 @@ export default function ContactsPage() {
 
         const emailKey = headers.find(h => /email|mail|e-mail/i.test(h.trim())) || ''
         const companyKey = headers.find(h => /company|organization|org|business|hospital|clinic/i.test(h.trim())) || ''
+        const tagKey = headers.find(h => 
+          /^(tags?|labels?|category|categories|group|groups|segment|segments)$/i.test(h.trim())
+        ) || headers.find(h => /tags?|labels?|category|segment/i.test(h.trim())) || ''
 
         setImportColumnMapping({
           name: nameKey,
@@ -304,6 +439,7 @@ export default function ContactsPage() {
           phone: phoneKey,
           email: emailKey,
           company: companyKey,
+          tag: tagKey,
         })
       } catch (err: any) {
         console.error('Error reading import file:', err)
@@ -343,12 +479,25 @@ export default function ContactsPage() {
             }
           }
         }
+
+        const rowTags: string[] = []
+        if (importColumnMapping.tag && row[importColumnMapping.tag]) {
+          const rawTag = String(row[importColumnMapping.tag] || '').trim()
+          if (rawTag) {
+            rowTags.push(...rawTag.split(/[,;]/).map(t => t.trim()).filter(Boolean))
+          }
+        }
+        if (importCustomTag.trim()) {
+          rowTags.push(importCustomTag.trim())
+        }
+
         return {
           firstName,
           lastName,
           phoneNumber: importColumnMapping.phone ? String(row[importColumnMapping.phone] || '') : '',
           email: importColumnMapping.email ? String(row[importColumnMapping.email] || '') : '',
           company: importColumnMapping.company ? String(row[importColumnMapping.company] || '') : '',
+          tags: Array.from(new Set(rowTags)),
         }
       })
 
@@ -367,13 +516,14 @@ export default function ContactsPage() {
       }
 
       setImportSuccess(data.message || `Import complete: ${data.imported} contacts imported (${data.skipped} skipped/duplicates).`)
-      await loadData(1, searchTerm)
+      await loadData(1, searchTerm, activeTagFilter || '')
 
       setTimeout(() => {
         setShowImportModal(false)
         setImportFile(null)
         setImportData([])
         setImportHeaders([])
+        setImportCustomTag('')
         setImportSuccess(null)
       }, 2000)
     } catch (err: any) {
@@ -431,7 +581,9 @@ export default function ContactsPage() {
                 phone_number: '',
                 email: '',
                 company: '',
+                tags: [],
               })
+              setModalTagInput('')
               setShowAddModal(true)
             }}
             className="bg-[#00a884] hover:bg-[#008069] text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm shadow-[#00a884]/10 transition-all cursor-pointer"
@@ -443,17 +595,57 @@ export default function ContactsPage() {
       </div>
 
       {/* Filters Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col gap-3">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, phone, email, or company..."
+            placeholder="Search by name, phone, email, company, or tag..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-[#00a884] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white transition-all"
           />
         </div>
+
+        {/* Tag Filter Chips */}
+        {allKnownTags.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none scrollbar-thin">
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1 shrink-0 mr-1">
+              <Tag size={12} />
+              Filter Tag:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleTagFilterChange(null)}
+              className={`px-2.5 py-1 rounded-lg font-semibold text-xs transition-all shrink-0 cursor-pointer ${
+                !activeTagFilter
+                  ? 'bg-[#00a884] text-white shadow-sm'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+              }`}
+            >
+              All Contacts ({totalCount})
+            </button>
+            {allKnownTags.map(tag => {
+              const isSelected = activeTagFilter === tag
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleTagFilterChange(isSelected ? null : tag)}
+                  className={`px-2.5 py-1 rounded-lg font-semibold text-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#00a884] text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+                  }`}
+                >
+                  <Tag size={11} className={isSelected ? 'text-white' : 'text-emerald-500'} />
+                  <span>{tag}</span>
+                  {isSelected && <X size={12} className="hover:opacity-80 ml-0.5" />}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Contacts Table Wrapper */}
@@ -473,19 +665,21 @@ export default function ContactsPage() {
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Phone</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Email</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Company</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tags</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-450 dark:text-slate-500 text-xs font-medium">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-450 dark:text-slate-500 text-xs font-medium">
                     No contacts found. Click "Add Contact" to create one.
                   </td>
                 </tr>
               ) : (
                 contacts.map((contact) => {
                   const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
+                  const contactTags = Array.isArray(contact.tags) ? contact.tags : []
                   return (
                     <tr key={contact.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-6 py-4">
@@ -522,6 +716,85 @@ export default function ContactsPage() {
                           <span className="text-slate-300 dark:text-slate-600 text-[10px] font-bold">—</span>
                         )}
                       </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap items-center gap-1.5 max-w-[280px]">
+                          {contactTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60 shadow-xs"
+                            >
+                              <Tag size={10} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              <span className="truncate max-w-[110px]">{tag}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRemoveTagInline(contact.id, tag)
+                                }}
+                                disabled={busyTagContactId === contact.id}
+                                className="text-emerald-600/70 hover:text-rose-600 dark:text-emerald-400/70 dark:hover:text-rose-400 transition-colors cursor-pointer rounded p-0.5 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/60"
+                                title={`Delete tag "${tag}"`}
+                              >
+                                <X size={10} />
+                              </button>
+                            </span>
+                          ))}
+
+                          {inlineTagContactId === contact.id ? (
+                            <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-emerald-500 shadow-sm">
+                              <input
+                                type="text"
+                                value={inlineTagValue}
+                                onChange={(e) => setInlineTagValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    handleAddTagInline(contact.id, inlineTagValue)
+                                  } else if (e.key === 'Escape') {
+                                    setInlineTagContactId(null)
+                                    setInlineTagValue('')
+                                  }
+                                }}
+                                placeholder="New tag..."
+                                autoFocus
+                                className="w-20 px-1.5 py-0.5 text-[11px] font-medium bg-transparent text-slate-900 dark:text-white focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleAddTagInline(contact.id, inlineTagValue)}
+                                className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 cursor-pointer"
+                                title="Save tag"
+                              >
+                                <Check size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInlineTagContactId(null)
+                                  setInlineTagValue('')
+                                }}
+                                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInlineTagContactId(contact.id)
+                                setInlineTagValue('')
+                              }}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
+                              title="Add tag to contact"
+                            >
+                              <Plus size={10} />
+                              <span>Tag</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -557,6 +830,7 @@ export default function ContactsPage() {
           ) : (
             contacts.map((contact) => {
               const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
+              const contactTags = Array.isArray(contact.tags) ? contact.tags : []
               return (
                 <div key={contact.id} className="p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
@@ -598,6 +872,79 @@ export default function ContactsPage() {
                         <Mail size={12} className="text-slate-400 shrink-0" />
                         <span className="truncate">{contact.email}</span>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Mobile Tags Row */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {contactTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60"
+                      >
+                        <Tag size={10} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTagInline(contact.id, tag)}
+                          disabled={busyTagContactId === contact.id}
+                          className="text-emerald-600/70 hover:text-rose-600 dark:text-emerald-400/70 dark:hover:text-rose-400 cursor-pointer p-0.5 ml-0.5"
+                          title={`Delete tag "${tag}"`}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+
+                    {inlineTagContactId === contact.id ? (
+                      <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-emerald-500">
+                        <input
+                          type="text"
+                          value={inlineTagValue}
+                          onChange={(e) => setInlineTagValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleAddTagInline(contact.id, inlineTagValue)
+                            } else if (e.key === 'Escape') {
+                              setInlineTagContactId(null)
+                              setInlineTagValue('')
+                            }
+                          }}
+                          placeholder="New tag..."
+                          autoFocus
+                          className="w-20 px-1.5 py-0.5 text-[11px] bg-transparent text-slate-900 dark:text-white focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddTagInline(contact.id, inlineTagValue)}
+                          className="p-1 text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInlineTagContactId(null)
+                            setInlineTagValue('')
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInlineTagContactId(contact.id)
+                          setInlineTagValue('')
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
+                      >
+                        <Plus size={10} />
+                        <span>Add Tag</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -721,6 +1068,88 @@ export default function ContactsPage() {
                   className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="Acme Inc"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
+                  <span>Tags & Segments</span>
+                  <span className="text-[9px] font-normal lowercase text-slate-400">press enter or comma to add</span>
+                </label>
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] rounded-lg min-h-[42px] focus-within:border-[#00a884] transition-all">
+                  {newContact.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-xs"
+                    >
+                      <Tag size={11} className="text-emerald-600 dark:text-emerald-400" />
+                      <span>{t}</span>
+                      <button
+                        type="button"
+                        onClick={() => setNewContact({
+                          ...newContact,
+                          tags: newContact.tags.filter(tag => tag !== t)
+                        })}
+                        className="text-emerald-600/70 hover:text-rose-600 dark:text-emerald-400/70 dark:hover:text-rose-400 transition-colors cursor-pointer ml-0.5"
+                        title={`Remove tag "${t}"`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                  <div className="flex items-center gap-1 flex-1 min-w-[130px]">
+                    <input
+                      type="text"
+                      value={modalTagInput}
+                      onChange={(e) => setModalTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault()
+                          const val = modalTagInput.trim().replace(/^,+|,+$/g, '')
+                          if (val && !newContact.tags.includes(val)) {
+                            setNewContact({ ...newContact, tags: [...newContact.tags, val] })
+                            setModalTagInput('')
+                          }
+                        }
+                      }}
+                      placeholder={newContact.tags.length === 0 ? "Type tag and press Enter..." : "Add tag..."}
+                      className="w-full bg-transparent border-none text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none px-1 py-0.5"
+                    />
+                    {modalTagInput.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = modalTagInput.trim().replace(/^,+|,+$/g, '')
+                          if (val && !newContact.tags.includes(val)) {
+                            setNewContact({ ...newContact, tags: [...newContact.tags, val] })
+                            setModalTagInput('')
+                          }
+                        }}
+                        className="px-2 py-1 bg-[#00a884] hover:bg-[#008069] text-white rounded text-[10px] font-bold shrink-0 cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {/* Quick suggestions */}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px] text-slate-400">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Quick:</span>
+                  {['VIP', 'Lead', 'Customer', 'Prospect', 'Follow-up'].map((sug) => {
+                    if (newContact.tags.includes(sug)) return null
+                    return (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => {
+                          setNewContact({ ...newContact, tags: [...newContact.tags, sug] })
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-600 dark:hover:text-emerald-400 text-slate-600 dark:text-slate-300 font-medium transition-colors text-[10px] border border-slate-200/60 dark:border-slate-750 cursor-pointer"
+                      >
+                        + {sug}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
               {error && (
@@ -910,7 +1339,7 @@ export default function ContactsPage() {
                       </div>
 
                       {/* Company Column */}
-                      <div className="sm:col-span-2">
+                      <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                           Company / Organization (Optional)
                         </label>
@@ -924,6 +1353,38 @@ export default function ContactsPage() {
                             <option key={h} value={h}>{h}</option>
                           ))}
                         </select>
+                      </div>
+
+                      {/* Tag Column */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Tags / Labels Column (Optional)
+                        </label>
+                        <select
+                          value={importColumnMapping.tag}
+                          onChange={(e) => setImportColumnMapping(prev => ({ ...prev, tag: e.target.value }))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        >
+                          <option value="">-- Do not map --</option>
+                          {importHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Custom Tag for All Contacts */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
+                          <span>Apply Tag to All Imported Contacts (Optional)</span>
+                          <span className="text-[9px] font-normal text-slate-400">e.g. "Campaign-Sept" or "Exhibition"</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={importCustomTag}
+                          onChange={(e) => setImportCustomTag(e.target.value)}
+                          placeholder="e.g. Website-Lead, Event-2026"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#00a884] dark:text-white"
+                        />
                       </div>
                     </div>
                   </div>
@@ -941,6 +1402,7 @@ export default function ContactsPage() {
                             <th className="px-3 py-2">Phone</th>
                             <th className="px-3 py-2">Email</th>
                             <th className="px-3 py-2">Company</th>
+                            <th className="px-3 py-2">Tags</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
@@ -951,6 +1413,11 @@ export default function ContactsPage() {
                             const phoneVal = importColumnMapping.phone ? row[importColumnMapping.phone] : '—'
                             const emailVal = importColumnMapping.email ? row[importColumnMapping.email] : '—'
                             const compVal = importColumnMapping.company ? row[importColumnMapping.company] : '—'
+                            const colTagVal = importColumnMapping.tag ? String(row[importColumnMapping.tag] || '').trim() : ''
+                            const tagsList = [
+                              ...(colTagVal ? colTagVal.split(/[,;]/).map(t => t.trim()).filter(Boolean) : []),
+                              ...(importCustomTag.trim() ? [importCustomTag.trim()] : [])
+                            ]
 
                             return (
                               <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -958,6 +1425,19 @@ export default function ContactsPage() {
                                 <td className="px-3 py-2 font-mono text-emerald-600 dark:text-emerald-400">{phoneVal || '—'}</td>
                                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{emailVal || '—'}</td>
                                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{compVal || '—'}</td>
+                                <td className="px-3 py-2">
+                                  {tagsList.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {tagsList.map((t, ti) => (
+                                        <span key={ti} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                                          {t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px]">—</span>
+                                  )}
+                                </td>
                               </tr>
                             )
                           })}

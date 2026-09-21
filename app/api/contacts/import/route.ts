@@ -81,7 +81,13 @@ export async function POST(request: NextRequest) {
         phone_number: normalizedPhone.startsWith('+') ? normalizedPhone : `+${normalizedPhone}`,
         email: c.email ? String(c.email).trim().toLowerCase() : null,
         company: c.company ? String(c.company).trim() : null,
-        tags: Array.isArray(c.tags) ? c.tags : []
+        tags: Array.isArray(c.tags)
+          ? Array.from(new Set(c.tags.map((t: any) => String(t).trim()).filter(Boolean)))
+          : (typeof c.tags === 'string' && c.tags.trim()
+            ? Array.from(new Set(c.tags.split(',').map((t: string) => t.trim()).filter(Boolean)))
+            : (typeof c.tag === 'string' && c.tag.trim()
+              ? Array.from(new Set(c.tag.split(',').map((t: string) => t.trim()).filter(Boolean)))
+              : []))
       })
     }
 

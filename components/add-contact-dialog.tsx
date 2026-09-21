@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { UserPlus } from 'lucide-react'
+import { UserPlus, Tag, X } from 'lucide-react'
 
 interface AddContactDialogProps {
   organizationId: string
@@ -19,13 +19,22 @@ export function AddContactDialog({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    firstName: string
+    lastName: string
+    phoneNumber: string
+    email: string
+    company: string
+    tags: string[]
+  }>({
     firstName: '',
     lastName: '',
     phoneNumber: '',
     email: '',
     company: '',
+    tags: [],
   })
+  const [tagInput, setTagInput] = useState('')
 
   async function handleAddContact() {
     // Validate required fields
@@ -49,6 +58,7 @@ export function AddContactDialog({
           phoneNumber: formData.phoneNumber.trim(),
           email: formData.email.trim() || null,
           company: formData.company.trim() || null,
+          tags: formData.tags,
         }),
       })
 
@@ -65,7 +75,9 @@ export function AddContactDialog({
         phoneNumber: '',
         email: '',
         company: '',
+        tags: [],
       })
+      setTagInput('')
 
       setTimeout(() => {
         setOpen(false)
@@ -158,6 +170,52 @@ export function AddContactDialog({
               placeholder="Tech Corp"
               className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200 flex items-center justify-between">
+              <span>Tags</span>
+              <span className="text-xs font-normal text-slate-400">press enter or comma to add</span>
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5 p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg min-h-[42px] focus-within:ring-2 focus-within:ring-emerald-500">
+              {formData.tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                >
+                  <Tag size={11} className="text-emerald-600 dark:text-emerald-400" />
+                  <span>{t}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      tags: formData.tags.filter(tag => tag !== t)
+                    })}
+                    className="hover:text-rose-600 transition-colors ml-0.5"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault()
+                    const val = tagInput.trim().replace(/^,+|,+$/g, '')
+                    if (val && !formData.tags.includes(val)) {
+                      setFormData({ ...formData, tags: [...formData.tags, val] })
+                      setTagInput('')
+                    }
+                  }
+                }}
+                placeholder={formData.tags.length === 0 ? "e.g. VIP, Lead, Customer..." : "Add more..."}
+                className="flex-1 bg-transparent border-none text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none min-w-[120px] px-1"
+              />
+            </div>
           </div>
 
           {/* Error Message */}

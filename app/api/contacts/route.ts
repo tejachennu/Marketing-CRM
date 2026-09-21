@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const isAll = searchParams.get('all') === 'true' || limitParam === 'all' || limitParam === '0'
     const limit = isAll ? 50000 : parseInt(limitParam || '20', 10)
     const search = searchParams.get('search') || ''
+    const tagFilter = searchParams.get('tag') || ''
     const offset = isAll ? 0 : (page - 1) * limit
 
     if (!orgId) {
@@ -42,6 +43,10 @@ export async function GET(request: NextRequest) {
         .from('contacts')
         .select('*', { count: 'exact' })
         .eq('organization_id', orgId)
+
+      if (tagFilter) {
+        initialQuery = initialQuery.contains('tags', [tagFilter])
+      }
 
       if (search) {
         initialQuery = initialQuery.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
@@ -64,6 +69,10 @@ export async function GET(request: NextRequest) {
             .from('contacts')
             .select('*')
             .eq('organization_id', orgId)
+
+          if (tagFilter) {
+            batchQuery = batchQuery.contains('tags', [tagFilter])
+          }
 
           if (search) {
             batchQuery = batchQuery.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
@@ -98,6 +107,10 @@ export async function GET(request: NextRequest) {
       .from('contacts')
       .select('*', { count: 'exact' })
       .eq('organization_id', orgId)
+
+    if (tagFilter) {
+      query = query.contains('tags', [tagFilter])
+    }
 
     if (search) {
       query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
@@ -139,6 +152,7 @@ export async function POST(request: NextRequest) {
       phoneNumber,
       email,
       company,
+      tags,
     } = body
 
     if (!organizationId) {
@@ -183,6 +197,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    let formattedTags: string[] = []
+    if (Array.isArray(tags)) {
+      formattedTags = tags.map((t: any) => String(t).trim()).filter(Boolean)
+    } else if (typeof tags === 'string' && tags.trim()) {
+      formattedTags = tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+    }
+    formattedTags = Array.from(new Set(formattedTags))
+
     // Insert contact
     const { data: contact, error: createError } = await supabase
       .from('contacts')
@@ -194,7 +216,7 @@ export async function POST(request: NextRequest) {
           phone_number: normalizedPhone,
           email: email || null,
           company: company || null,
-          tags: [],
+          tags: formattedTags,
         },
       ])
       .select()
@@ -252,6 +274,7 @@ export async function PUT(request: NextRequest) {
       phone_number,
       email,
       company,
+      tags,
     } = body
 
     if (!id) {
@@ -302,16 +325,34 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    let formattedTags: string[] | undefined = undefined
+    if (tags !== undefined) {
+      if (Array.isArray(tags)) {
+        formattedTags = tags.map((t: any) => String(t).trim()).filter(Boolean)
+      } else if (typeof tags === 'string') {
+        formattedTags = tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+      } else {
+        formattedTags = []
+      }
+      formattedTags = Array.from(new Set(formattedTags))
+    }
+
+    const updatePayload: any = {
+      first_name: first_name || null,
+      last_name: last_name || null,
+      phone_number: normalizedPhone,
+      email: email || null,
+      company: company || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (formattedTags !== undefined) {
+      updatePayload.tags = formattedTags
+    }
+
     const { data: contact, error: updateError } = await supabase
       .from('contacts')
-      .update({
-        first_name: first_name || null,
-        last_name: last_name || null,
-        phone_number: normalizedPhone,
-        email: email || null,
-        company: company || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single()
@@ -331,6 +372,77 @@ export async function PUT(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// PATCH: Add, remove, or set tags for a contact
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { id, action, tag, tags } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'Contact ID is required' }, { status: 400 })
+    }
+
+    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    if (!recordResult.authorized) {
+      return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
+    }
+
+    const supabase = getSupabaseClient()
+
+    // Fetch current contact tags
+    const { data: currentContact, error: fetchErr } = await supabase
+      .from('contacts')
+      .select('id, tags')
+      .eq('id', id)
+      .single()
+
+    if (fetchErr) throw fetchErr
+
+    const currentTags: string[] = Array.isArray(currentContact.tags) ? currentContact.tags : []
+    let updatedTags: string[] = [...currentTags]
+
+    if (action === 'add_tag') {
+      const cleanTag = String(tag || '').trim()
+      if (cleanTag && !updatedTags.includes(cleanTag)) {
+        updatedTags.push(cleanTag)
+      }
+    } else if (action === 'remove_tag') {
+      const cleanTag = String(tag || '').trim()
+      updatedTags = updatedTags.filter(t => t !== cleanTag)
+    } else if (action === 'set_tags' || tags !== undefined) {
+      if (Array.isArray(tags)) {
+        updatedTags = tags.map((t: any) => String(t).trim()).filter(Boolean)
+      } else if (typeof tags === 'string') {
+        updatedTags = tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+      }
+    }
+
+    updatedTags = Array.from(new Set(updatedTags))
+
+    const { data: contact, error: updateError } = await supabase
+      .from('contacts')
+      .update({
+        tags: updatedTags,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+
+    return NextResponse.json({
+      success: true,
+      contact,
+      tags: updatedTags,
+      message: 'Contact tags updated successfully'
+    })
+  } catch (error: any) {
+    console.error('[API] Patch contact error:', error)
+    return NextResponse.json({ error: error.message || 'Failed to update tags' }, { status: 500 })
   }
 }
 

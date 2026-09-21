@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager } from '@/lib/auth-context'
 import { User, Organization } from '@/lib/types'
 import { getRoleDisplay, ASSIGNABLE_ROLES, canManageTeam, isManager } from '@/lib/rbac'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X, Download, Mail, Check, Copy, Server } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
@@ -124,6 +124,88 @@ export default function SettingsPage() {
       setNotification(null)
       notificationTimeoutRef.current = null
     }, 5000)
+  }
+
+  // Export Environment Variables (.env) State
+  const [exportEnvEmail, setExportEnvEmail] = useState('tejachennu17@gmail.com')
+  const [isExportingEnv, setIsExportingEnv] = useState(false)
+  const [exportEnvResult, setExportEnvResult] = useState<{
+    success: boolean
+    emailed: boolean
+    recipient?: string
+    varCount?: number
+    envText?: string
+    message?: string
+  } | null>(null)
+  const [copiedEnv, setCopiedEnv] = useState(false)
+  const [showEnvPreview, setShowEnvPreview] = useState(false)
+
+  async function handleExportEnvEmail() {
+    if (!exportEnvEmail.trim()) {
+      showNotification('error', 'Please enter a valid destination email address.', 'Export Error')
+      return
+    }
+    setIsExportingEnv(true)
+    try {
+      const res = await fetch('/api/settings/export-env', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: exportEnvEmail.trim() }),
+      })
+      const data = await res.json()
+      setExportEnvResult(data)
+      if (data.success) {
+        if (data.emailed) {
+          showNotification('success', `Environment variables (.env) sent to ${data.recipient}! (${data.varCount} variables found)`, 'Export Sent')
+        } else {
+          showNotification('info', `Variables extracted (${data.varCount} keys), but email could not be sent: ${data.message || 'SMTP not configured'}. You can download or copy them below!`, 'Variables Ready')
+        }
+      } else {
+        showNotification('error', data.error || 'Failed to export environment variables', 'Export Failed')
+      }
+    } catch (err: any) {
+      console.error('Export ENV error:', err)
+      showNotification('error', err.message || 'Failed to export environment variables', 'Export Error')
+    } finally {
+      setIsExportingEnv(false)
+    }
+  }
+
+  function handleDownloadEnv() {
+    window.open('/api/settings/export-env?download=true', '_blank')
+  }
+
+  async function handleCopyEnv() {
+    if (exportEnvResult?.envText) {
+      await navigator.clipboard.writeText(exportEnvResult.envText)
+      setCopiedEnv(true)
+      showNotification('success', 'Environment variables copied to clipboard!', 'Copied')
+      setTimeout(() => setCopiedEnv(false), 3000)
+      return
+    }
+
+    setIsExportingEnv(true)
+    try {
+      const res = await fetch('/api/settings/export-env', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: exportEnvEmail.trim() }),
+      })
+      const data = await res.json()
+      setExportEnvResult(data)
+      if (data.envText) {
+        await navigator.clipboard.writeText(data.envText)
+        setCopiedEnv(true)
+        showNotification('success', `Copied ${data.varCount} environment variables to clipboard!`, 'Copied')
+        setTimeout(() => setCopiedEnv(false), 3000)
+      } else {
+        showNotification('error', 'No environment variables found', 'Copy Failed')
+      }
+    } catch (err: any) {
+      showNotification('error', 'Failed to fetch environment variables', 'Error')
+    } finally {
+      setIsExportingEnv(false)
+    }
   }
 
   useEffect(() => {
@@ -1765,6 +1847,131 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Environment Variables Export & Backup */}
+          <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#00a884]/10 dark:bg-[#00a884]/20 flex items-center justify-center text-[#00a884]">
+                  <Server size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                    Export Environment Variables (.env)
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00a884]">
+                      Cloud Backup
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#667781] dark:text-[#8696a0] font-medium">
+                    Export and backup all server configuration keys directly to your email address or local developer machine.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadEnv}
+                  className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  title="Download .env.local file directly"
+                >
+                  <Download size={14} />
+                  Download .env
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyEnv}
+                  disabled={isExportingEnv}
+                  className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  title="Copy .env content to clipboard"
+                >
+                  {copiedEnv ? <Check size={14} className="text-[#00a884]" /> : <Copy size={14} />}
+                  {copiedEnv ? 'Copied!' : 'Copy to Clipboard'}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[#f0f2f5]/60 dark:bg-[#1f2c34]/50 border border-[#e9edef] dark:border-[#2a3942] space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 items-end">
+                <div className="flex-1 w-full">
+                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                    Destination Email Address
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={exportEnvEmail}
+                      onChange={(e) => setExportEnvEmail(e.target.value)}
+                      placeholder="tejachennu17@gmail.com"
+                      className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                    />
+                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8696a0]" />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportEnvEmail}
+                  disabled={isExportingEnv}
+                  className="w-full sm:w-auto px-5 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
+                >
+                  {isExportingEnv ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      Sending .env...
+                    </>
+                  ) : (
+                    <>
+                      <Mail size={15} />
+                      Send .env to Email
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {exportEnvResult && (
+                <div className="mt-3 p-3 rounded-lg bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[#111b21] dark:text-white flex items-center gap-1.5">
+                      {exportEnvResult.emailed ? (
+                        <span className="text-[#00a884]">● Email Delivered</span>
+                      ) : (
+                        <span className="text-amber-500">● Variables Retrieved</span>
+                      )}
+                      <span className="text-[#667781] dark:text-[#8696a0] font-normal">
+                        ({exportEnvResult.varCount || 0} variables detected)
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowEnvPreview(!showEnvPreview)}
+                      className="text-[#00a884] hover:underline font-semibold text-[11px]"
+                    >
+                      {showEnvPreview ? 'Hide Preview' : 'Show Masked Preview'}
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">
+                    {exportEnvResult.message || (exportEnvResult.emailed ? `Sent successfully to ${exportEnvResult.recipient}` : 'Ready for download or copy.')}
+                  </p>
+
+                  {showEnvPreview && exportEnvResult.envText && (
+                    <div className="relative mt-2">
+                      <pre className="p-3 bg-[#f0f2f5] dark:bg-[#0c1317] rounded-lg text-[11px] font-mono text-[#111b21] dark:text-[#00e676] overflow-x-auto max-h-56 border border-[#e9edef] dark:border-[#202d36]">
+                        {exportEnvResult.envText}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium flex items-center gap-1.5">
+                <span className="text-amber-500">💡</span>
+                <span>
+                  <strong>Workflow Tip:</strong> After pushing your code to the live deployment (e.g. Vercel / Railway / Cloud Host), click <strong>Send .env to Email</strong> or <strong>Download .env</strong> to instantly retrieve your production configuration for local development.
+                </span>
+              </p>
             </div>
           </div>
 
