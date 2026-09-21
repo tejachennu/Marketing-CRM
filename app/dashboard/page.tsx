@@ -1,5 +1,7 @@
 'use client'
 
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+
 import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -1675,12 +1677,17 @@ function ConversationsPageContent() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
-                  {!(selectedContact.first_name && (selectedContact.first_name.startsWith('+') || selectedContact.first_name.match(/^\d+$/))) && (
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none truncate max-w-[120px] sm:max-w-none">
-                      <Phone size={9} className="shrink-0" />
-                      <span className="truncate">{selectedContact.phone_number}</span>
-                    </p>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {!(selectedContact.first_name && (selectedContact.first_name.startsWith('+') || selectedContact.first_name.match(/^\d+$/))) && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none truncate max-w-[120px] sm:max-w-none">
+                        <Phone size={9} className="shrink-0" />
+                        <span className="truncate">{selectedContact.phone_number}</span>
+                      </p>
+                    )}
+                    {selectedContact.phone_number && (
+                      <CopyPhoneButton phoneNumber={selectedContact.phone_number} iconSize={10} className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700/60" />
+                    )}
+                  </div>
                   
                   {/* Status Indicator inside header */}
                   {(() => {

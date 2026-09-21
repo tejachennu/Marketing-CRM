@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Privacy Policy | Magnetora AI",
+  title: "Privacy Policy | WAMA by Magnetora AI",
   description: "Comprehensive Privacy Policy and WhatsApp Data Protection Guidelines for Magnetora AI.",
 };
 

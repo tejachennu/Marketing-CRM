@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Data Deletion Instructions | Magnetora AI",
+  title: "Data Deletion Instructions | WAMA by Magnetora AI",
   description: "Official instructions for deleting user and business data from Magnetora AI pursuant to Meta Platform policies.",
 };
 
@@ -27,7 +27,7 @@ export default function DataDeletionPage() {
         {/* Overview */}
         <section className="space-y-4 text-slate-700 leading-relaxed">
           <p>
-            In accordance with <strong>Meta Platform Policy (Section 4.b)</strong>, the <strong>General Data Protection Regulation (GDPR)</strong>, and applicable international privacy frameworks, users of <strong>Magnetora AI</strong> have the right to request the permanent deletion of their account data, authentication tokens, contact lists, and message history.
+            In accordance with <strong>Meta Platform Policy (Section 4.b)</strong>, the <strong>General Data Protection Regulation (GDPR)</strong>, and applicable international privacy frameworks, users of <strong>WAMA (WhatsApp Marketing Agent CRM)</strong> by Magnetora AI have the right to request the permanent deletion of their account data, authentication tokens, contact lists, and message history.
           </p>
         </section>
 

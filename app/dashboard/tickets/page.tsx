@@ -1,5 +1,7 @@
 'use client'
 
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -648,8 +650,11 @@ export default function TicketsPage() {
                       {/* Contact */}
                       <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-350">
                         <div>{name}</div>
-                        <div className="text-[10px] text-slate-455 dark:text-slate-500 font-medium">
-                          {ticket.contacts?.phone_number || ''}
+                        <div className="text-[10px] text-slate-455 dark:text-slate-500 font-medium flex items-center gap-1">
+                          <span>{ticket.contacts?.phone_number || ''}</span>
+                          {ticket.contacts?.phone_number && (
+                            <CopyPhoneButton phoneNumber={ticket.contacts.phone_number} iconSize={10} className="p-0.5" />
+                          )}
                         </div>
                       </td>
 
@@ -775,6 +780,9 @@ export default function TicketsPage() {
                         <span className="text-slate-300 dark:text-slate-700">·</span>
                       )}
                       <span className="font-mono text-[10px] text-slate-500">{ticket.contacts?.phone_number || ''}</span>
+                      {ticket.contacts?.phone_number && (
+                        <CopyPhoneButton phoneNumber={ticket.contacts.phone_number} iconSize={10} className="p-0.5" />
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-slate-400 dark:text-slate-500 font-bold">Assignee:</span>

@@ -60,8 +60,8 @@ export default function LandingPage() {
       a: "Email open rates have collapsed to 18%, with most lost in spam. WhatsApp delivers a massive 98.4% open rate, with 80% read within 5 minutes. You upload your Excel customer list, personalize names and offers, and send interactive messages with 1-tap action buttons."
     },
     {
-      q: "Why is Omnichannel AI CRM up to 75% cheaper than competitors?",
-      a: "Traditional tools (like Wati or Intercom) mark up WhatsApp message costs by 300% to 500% and charge per agent. Omnichannel AI CRM connects directly to your official Meta Cloud API: you pay raw wholesale Meta rates (~$0.005/msg) with zero markup, saving thousands of dollars monthly."
+      q: "Why is WAMA up to 75% cheaper than competitors?",
+      a: "Traditional tools (like Wati or Intercom) mark up WhatsApp message costs by 300% to 500% and charge per agent. WAMA connects directly to your official Meta Cloud API: you pay raw wholesale Meta rates (~$0.005/msg) with zero markup, saving thousands of dollars monthly."
     },
     {
       q: "Will my WhatsApp number get banned during bulk broadcasts?",
@@ -116,16 +116,18 @@ export default function LandingPage() {
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#008069] to-[#27d34b] flex items-center justify-center text-white shadow-sm">
-              <Sparkles size={18} />
-            </div>
+          <Link href="/" className="flex items-center gap-3">
+            <img 
+              src="/logo.png" 
+              alt="WAMA Logo" 
+              className="h-10 w-10 rounded-xl object-contain shadow-sm border border-slate-100 bg-white" 
+            />
             <div className="flex flex-col">
-              <span className="font-extrabold text-base tracking-tight text-[#0c2014] leading-tight">
-                Omnichannel <span className="text-[#008069]">AI CRM</span>
+              <span className="font-extrabold text-base tracking-tight text-[#0c2014] leading-tight flex items-center gap-1.5">
+                WAMA <span className="text-[#008069] text-xs font-bold px-1.5 py-0.5 bg-[#e8f5e9] rounded-md">CRM</span>
               </span>
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                WhatsApp AI &amp; Bulk Marketing
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                WhatsApp Marketing Agent
               </span>
             </div>
           </Link>
@@ -804,7 +806,7 @@ export default function LandingPage() {
                         </div>
 
                         <div className="bg-[#e7f6ea] border border-[#bfe3c8] p-4 rounded-xl text-left">
-                          <span className="text-[10px] font-bold uppercase text-[#107038]">Omnichannel AI CRM</span>
+                          <span className="text-[10px] font-bold uppercase text-[#107038]">WAMA CRM</span>
                           <div className="text-2xl font-black text-[#008069] mt-1">
                             $240<span className="text-xs font-normal text-slate-500">/mo</span>
                           </div>
@@ -1035,7 +1037,7 @@ export default function LandingPage() {
                 </div>
 
                 <div className="bg-[#e7f6ea] border border-[#bfe3c8] p-5 rounded-2xl text-left">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#107038]">Omnichannel AI CRM</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#107038]">WAMA CRM</span>
                   <div className="text-2xl sm:text-3xl font-black text-[#008069] mt-1">
                     ${Math.round(omnichannelMonthly)}<span className="text-xs font-normal text-slate-500">/mo</span>
                   </div>
@@ -1306,16 +1308,18 @@ export default function LandingPage() {
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-white/10">
             
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-[#00a884] to-[#27d34b] text-white flex items-center justify-center font-bold">
-                <Sparkles size={16} />
-              </div>
+            <div className="flex items-center gap-3">
+              <img 
+                src="/logo.png" 
+                alt="WAMA Logo" 
+                className="h-10 w-10 rounded-xl object-contain shadow-sm border border-white/10 bg-white" 
+              />
               <div className="flex flex-col text-left">
-                <span className="font-bold text-sm text-white tracking-tight leading-none">
-                  Omnichannel <span className="text-[#27d34b]">AI CRM</span>
+                <span className="font-bold text-sm text-white tracking-tight leading-none flex items-center gap-1.5">
+                  WAMA <span className="text-[#27d34b] text-xs font-semibold px-1.5 py-0.5 bg-white/10 rounded">CRM</span>
                 </span>
                 <span className="text-[10px] text-slate-400 mt-1 font-medium">
-                  The #1 WhatsApp AI Chatbot &amp; Bulk Marketing Platform
+                  WhatsApp Marketing Agent CRM by Magnetora AI
                 </span>
               </div>
             </div>
@@ -1326,16 +1330,25 @@ export default function LandingPage() {
               <a href="#why-whatsapp" className="hover:text-white transition">Why WhatsApp?</a>
               <a href="#pricing" className="hover:text-white transition">Wholesale Pricing</a>
               <a href="#faq" className="hover:text-white transition">FAQ</a>
+              <Link href="/privacy" className="hover:text-[#27d34b] transition">Privacy Policy</Link>
+              <Link href="/terms" className="hover:text-[#27d34b] transition">Terms of Service</Link>
+              <Link href="/data-deletion" className="hover:text-[#27d34b] transition">Data Deletion</Link>
             </div>
 
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-between pt-6 text-[11px] text-slate-500 gap-4">
-            <div>
-              &copy; {new Date().getFullYear()} Omnichannel AI CRM. Built for high-growth commerce brands.
+            <div className="flex flex-wrap items-center gap-3">
+              <span>&copy; {new Date().getFullYear()} WAMA - WhatsApp Marketing Agent CRM by Magnetora AI. Built for high-growth commerce brands.</span>
+              <span className="hidden sm:inline">•</span>
+              <Link href="/privacy" className="hover:text-slate-300 underline underline-offset-2 transition">Privacy Policy</Link>
+              <span>•</span>
+              <Link href="/terms" className="hover:text-slate-300 underline underline-offset-2 transition">Terms &amp; Conditions</Link>
+              <span>•</span>
+              <Link href="/data-deletion" className="hover:text-slate-300 underline underline-offset-2 transition">User Data Deletion</Link>
             </div>
             <div className="flex items-center gap-4">
-              <span>Zero Token Markup</span>
+              <span className="text-[#27d34b] font-medium">Official WhatsApp Tech Provider</span>
               <span>•</span>
               <span>Official Meta Cloud API</span>
             </div>

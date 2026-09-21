@@ -1,5 +1,7 @@
 'use client'
 
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+
 import { useEffect, useState, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -692,8 +694,9 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                          <Phone size={13} className="text-slate-450 dark:text-slate-500" />
-                          {contact.phone_number}
+                          <Phone size={13} className="text-slate-450 dark:text-slate-500 shrink-0" />
+                          <span>{contact.phone_number}</span>
+                          <CopyPhoneButton phoneNumber={contact.phone_number} iconSize={11} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800" />
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -866,6 +869,7 @@ export default function ContactsPage() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <Phone size={12} className="text-slate-400 shrink-0" />
                       <span className="truncate">{contact.phone_number}</span>
+                      <CopyPhoneButton phoneNumber={contact.phone_number} iconSize={11} className="p-0.5" />
                     </div>
                     {contact.email && (
                       <div className="flex items-center gap-1.5 min-w-0">

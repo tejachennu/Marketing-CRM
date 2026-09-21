@@ -1,5 +1,7 @@
 'use client'
 
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+
 import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -1418,9 +1420,14 @@ export default function SettingsPage() {
 
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2">
-                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                            Default Sender Phone Number
-                          </label>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                              Default Sender Phone Number
+                            </label>
+                            {whatsappDefaultPhone.trim() && (
+                              <CopyPhoneButton phoneNumber={whatsappDefaultPhone} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                            )}
+                          </div>
                           <input
                             type="text"
                             value={whatsappDefaultPhone}
@@ -1550,9 +1557,14 @@ export default function SettingsPage() {
                   {/* SMS sender phone number input */}
                   {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' && (
                     <div>
-                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                        SMS Sender Phone Number
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                          SMS Sender Phone Number
+                        </label>
+                        {twilioWhatsappNumber.trim() && (
+                          <CopyPhoneButton phoneNumber={twilioWhatsappNumber} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                        )}
+                      </div>
                       <input
                         type="text"
                         value={twilioWhatsappNumber}

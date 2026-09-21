@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Terms and Conditions | Magnetora AI",
+  title: "Terms and Conditions | WAMA by Magnetora AI",
   description: "Terms of Service and WhatsApp Business Solution Provider Agreement for Magnetora AI.",
 };
 

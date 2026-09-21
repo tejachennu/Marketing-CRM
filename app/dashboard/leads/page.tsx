@@ -1,5 +1,7 @@
 'use client'
 
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -2816,8 +2818,9 @@ export default function LeadsPage() {
                   </div>
                   <div className="space-y-1.5 text-[10px] border-t border-[#e9edef] pt-2">
                     <div className="flex items-center gap-2 text-[#54656f] font-medium">
-                      <Phone size={10} className="text-[#8696a0]" />
-                      {selectedLeadData.contact.phone_number}
+                      <Phone size={10} className="text-[#8696a0] shrink-0" />
+                      <span>{selectedLeadData.contact.phone_number}</span>
+                      <CopyPhoneButton phoneNumber={selectedLeadData.contact.phone_number} iconSize={10} className="p-0.5" />
                     </div>
                     {selectedLeadData.contact.email && (
                       <div className="flex items-center gap-2 text-[#54656f] font-medium">
