@@ -92,7 +92,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
         .from('campaign_logs')
         .select('id', { count: 'exact', head: true })
         .eq('campaign_id', campaignId)
-        .eq('status', 'SENT')
+        .in('status', ['SENT', 'DELIVERED', 'READ'])
 
       const { count: finalFailed } = await supabase
         .from('campaign_logs')
@@ -162,6 +162,31 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       }
     }
 
+    // Graceful environment fallbacks if organization has missing or malformed credentials
+    if ((!twilioAccountSid || !twilioAccountSid.startsWith('AC')) && process.env.TWILIO_ACCOUNT_SID) {
+      twilioAccountSid = process.env.TWILIO_ACCOUNT_SID
+      if (process.env.TWILIO_AUTH_TOKEN) twilioAuthToken = process.env.TWILIO_AUTH_TOKEN
+    }
+    if (!TWILIO_WHATSAPP_NUMBER && process.env.TWILIO_WHATSAPP_NUMBER) {
+      TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER
+    }
+    if (!sendgridKey && process.env.SENDGRID_API_KEY) {
+      sendgridKey = process.env.SENDGRID_API_KEY
+    }
+    if (!sendgridFromEmail || sendgridFromEmail === 'no-reply@example.com') {
+      sendgridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'support@consularhelpdesk.com'
+    }
+    if (!smtpHost && process.env.HOSTINGER_SMTP_HOST) {
+      smtpHost = process.env.HOSTINGER_SMTP_HOST
+      smtpPort = Number(process.env.HOSTINGER_SMTP_PORT || 587)
+      smtpEmail = process.env.HOSTINGER_SMTP_USER || ''
+      smtpPassword = process.env.HOSTINGER_SMTP_PASS || ''
+      if (!sendgridKey) emailProvider = 'smtp'
+    }
+    if (!whatsappApiToken && process.env.META_SYSTEM_USER_TOKEN) {
+      whatsappApiToken = process.env.META_SYSTEM_USER_TOKEN
+    }
+
     let metaTemplateComponents: any[] = []
     let metaTemplateLanguageFromApi: string | null = null
     let metaTemplateNameFromApi: string | null = null
@@ -197,7 +222,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       .from('campaign_logs')
       .select('id', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
-      .eq('status', 'SENT')
+      .in('status', ['SENT', 'DELIVERED', 'READ'])
 
     const { count: initialFailed } = await supabase
       .from('campaign_logs')
@@ -264,7 +289,10 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                   throw new Error('Facebook WhatsApp API credentials must be configured in settings')
                 }
 
-                const cleanToFb = recipientPhone.replace('whatsapp:', '').replace('+', '').trim()
+                let cleanToFb = recipientPhone.replace(/^whatsapp:/i, '').replace(/^\+/, '').trim()
+                if (cleanToFb.length === 10 && /^[6-9]/.test(cleanToFb)) {
+                  cleanToFb = `91${cleanToFb}`
+                }
                 let templateName = ''
                 let templateLanguage = 'en'
                 let templateBody = campaign.template_body || ''
@@ -391,12 +419,14 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
 
                         const parameters = uniqueKeys.map((key, idx) => {
                           const positionalKey = String(idx + 1);
-                          const val = mappedVars[key] !== undefined 
+                          let val = mappedVars[key] !== undefined 
                             ? mappedVars[key] 
                             : (mappedVars[key.toLowerCase()] !== undefined 
                                 ? mappedVars[key.toLowerCase()] 
                                 : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
-                          const paramObj: any = { type: 'text', text: String(val) };
+                          let textVal = String(val ?? '').trim();
+                          if (!textVal) textVal = '-';
+                          const paramObj: any = { type: 'text', text: textVal };
                           if (isNaN(Number(key))) paramObj.parameter_name = key;
                           return paramObj;
                         });
@@ -430,12 +460,14 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
 
                     const parameters = uniqueKeys.map((key, idx) => {
                       const positionalKey = String(idx + 1);
-                      const val = mappedVars[key] !== undefined 
+                      let val = mappedVars[key] !== undefined 
                         ? mappedVars[key] 
                         : (mappedVars[key.toLowerCase()] !== undefined 
                             ? mappedVars[key.toLowerCase()] 
                             : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
-                      const paramObj: any = { type: 'text', text: String(val) };
+                      let textVal = String(val ?? '').trim();
+                      if (!textVal) textVal = '-';
+                      const paramObj: any = { type: 'text', text: textVal };
                       if (isNaN(Number(key))) paramObj.parameter_name = key;
                       return paramObj;
                     })
@@ -797,7 +829,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       .from('campaign_logs')
       .select('id', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
-      .eq('status', 'SENT')
+      .in('status', ['SENT', 'DELIVERED', 'READ'])
 
     const { count: finalFailed } = await supabase
       .from('campaign_logs')

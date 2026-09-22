@@ -203,6 +203,13 @@ async function run() {
   console.log(`  Found ${orgs.length} organization(s)`)
 
   for (const org of orgs) {
+    // Only seed Consularhelpdesk organization with consular-specific synonyms
+    const isConsular = org.name.toLowerCase().includes('consular') || org.slug.toLowerCase().includes('consular')
+    if (!isConsular) {
+      console.log(`\nSkipping "${org.name}" (${org.id}) - isolated from Consularhelpdesk synonyms`)
+      continue
+    }
+
     console.log(`\nStep 4: Seeding synonyms for "${org.name}" (${org.id})...`)
     
     const { error: updateError } = await supabase

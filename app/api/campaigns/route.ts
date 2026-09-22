@@ -45,9 +45,20 @@ export async function GET(request: NextRequest) {
 
       if (logsError) throw logsError
 
+      let computedSent = campaign.sent_count || 0
+      let computedFailed = campaign.failed_count || 0
+      if (logs && logs.length > 0) {
+        computedSent = logs.filter(l => ['SENT', 'DELIVERED', 'READ'].includes(l.status)).length
+        computedFailed = logs.filter(l => l.status === 'FAILED').length
+      }
+
       return NextResponse.json({
         success: true,
-        campaign,
+        campaign: {
+          ...campaign,
+          sent_count: computedSent,
+          failed_count: computedFailed
+        },
         logs: logs || []
       })
     }
@@ -85,6 +96,32 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     if (listError) throw listError
+
+    if (campaigns && campaigns.length > 0) {
+      const campIds = campaigns.map(c => c.id)
+      const { data: logStats } = await supabase
+        .from('campaign_logs')
+        .select('campaign_id, status')
+        .in('campaign_id', campIds)
+
+      if (logStats && logStats.length > 0) {
+        const statsMap: Record<string, { sent: number; failed: number }> = {}
+        for (const l of logStats) {
+          if (!statsMap[l.campaign_id]) statsMap[l.campaign_id] = { sent: 0, failed: 0 }
+          if (['SENT', 'DELIVERED', 'READ'].includes(l.status)) {
+            statsMap[l.campaign_id].sent++
+          } else if (l.status === 'FAILED') {
+            statsMap[l.campaign_id].failed++
+          }
+        }
+        campaigns.forEach(c => {
+          if (statsMap[c.id]) {
+            c.sent_count = statsMap[c.id].sent
+            c.failed_count = statsMap[c.id].failed
+          }
+        })
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -124,9 +161,10 @@ export async function POST(request: NextRequest) {
       scheduledAt // ISO timestamp for schedule-based marketing (in IST/UTC)
     } = body
 
-    if (!name || !templateName || !templateBody || !audience || !Array.isArray(audience) || audience.length === 0) {
+    const effectiveTemplateBody = templateBody || templateName || 'custom_message'
+    if (!name || !templateName || (!templateBody && !templateSid) || !audience || !Array.isArray(audience) || audience.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required campaign parameters: name, templateName, templateBody, and audience' },
+        { error: 'Missing required campaign parameters: name, templateName, and audience' },
         { status: 400 }
       )
     }
@@ -157,7 +195,7 @@ export async function POST(request: NextRequest) {
       organization_id: resolvedOrgId || null,
       name,
       template_name: templateName,
-      template_body: templateBody,
+      template_body: effectiveTemplateBody,
       template_sid: templateSid || null,
       template_language: lang,
       status: initialStatus,
@@ -208,11 +246,14 @@ export async function POST(request: NextRequest) {
           variables_mapped: recipient.variables || {}
         }
       } else {
-        const phone = recipient.phone || ''
-        const cleanPhone = phone.replace(/[\s-()]/g, '')
+        let cleanPhone = (recipient.phone || '').replace(/[^\d+]/g, '')
+        if (cleanPhone.startsWith('+')) cleanPhone = cleanPhone.slice(1)
+        if (cleanPhone.length === 10 && /^[6-9]/.test(cleanPhone)) {
+          cleanPhone = `91${cleanPhone}`
+        }
         return {
           campaign_id: campaign.id,
-          phone_number: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`,
+          phone_number: `+${cleanPhone}`,
           email_address: null,
           status: 'PENDING',
           variables_mapped: recipient.variables || {}

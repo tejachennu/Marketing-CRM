@@ -1031,8 +1031,13 @@ export default function CampaignsPage() {
             variables
           }
         } else {
+          let rawPhone = String(row[phoneColumn] || '').replace(/[^\d+]/g, '')
+          if (rawPhone.startsWith('+')) rawPhone = rawPhone.slice(1)
+          if (rawPhone.length === 10 && /^[6-9]/.test(rawPhone)) {
+            rawPhone = `91${rawPhone}`
+          }
           return {
-            phone: String(row[phoneColumn] || '').replace(/[^\d+]/g, ''),
+            phone: `+${rawPhone}`,
             variables
           }
         }
@@ -1070,8 +1075,13 @@ export default function CampaignsPage() {
             variables
           }
         } else {
+          let rawPhone = String(c.phone_number || '').replace(/[^\d+]/g, '')
+          if (rawPhone.startsWith('+')) rawPhone = rawPhone.slice(1)
+          if (rawPhone.length === 10 && /^[6-9]/.test(rawPhone)) {
+            rawPhone = `91${rawPhone}`
+          }
           return {
-            phone: c.phone_number,
+            phone: `+${rawPhone}`,
             variables
           }
         }
@@ -1119,13 +1129,14 @@ export default function CampaignsPage() {
       }
 
       // 1. Create campaign in DB
+      const effectiveTemplateBody = customMessageBody || selectedTemplate?.body || (channel === 'whatsapp' ? (selectedTemplate?.whatsapp_template_name || selectedTemplate?.name || 'custom_message') : 'Campaign Message')
       const createRes = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newCampaignName,
           templateName: selectedTemplate?.whatsapp_template_name || selectedTemplate?.raw_name || selectedTemplate?.name?.split('•')[0]?.trim() || 'custom_message',
-          templateBody: customMessageBody,
+          templateBody: effectiveTemplateBody,
           templateSid: selectedTemplate?.sid || null,
           templateLanguage: selectedTemplate?.language || 'en',
           audience: audienceList,
@@ -1156,6 +1167,7 @@ export default function CampaignsPage() {
         const runData = await runRes.json()
         if (!runRes.ok || !runData.success) {
           console.error('Trigger running error, but campaign record was created:', runData)
+          throw new Error(runData.error || 'Campaign was created, but failed to start worker. Retry from the campaigns table.')
         }
       }
 
@@ -1974,8 +1986,12 @@ export default function CampaignsPage() {
                                 : (log.phone_number || log.email_address || '-')}
                             </td>
                             <td className="p-2.5">
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[9px] ${
-                                log.status === 'SENT' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-[#008069]' : 'bg-red-50 dark:bg-red-950/20 text-red-650'
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[9px] border ${
+                                log.status === 'READ' ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-200/50' :
+                                log.status === 'DELIVERED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-200/50' :
+                                log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-emerald-950/20 text-[#008069] border-[#00a884]/20' :
+                                log.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-200/50' :
+                                'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-200/50'
                               }`}>
                                 {log.status}
                               </span>
@@ -2191,6 +2207,7 @@ export default function CampaignsPage() {
                       onChange={(e) => {
                         const tpl = templates.find(t => t.sid === e.target.value) || null
                         setSelectedTemplate(tpl)
+                        setCustomMessageBody(tpl ? tpl.body : '')
                         setVariableMappings({})
                         setVariableMappingTypes({})
                         setStaticVariableValues({})

@@ -2227,7 +2227,7 @@ export default function SettingsPage() {
                 </div>
                 <h3 className="text-xs font-bold text-[#111b21] dark:text-white mb-1">No service synonym groups yet</h3>
                 <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold max-w-sm">
-                  Create groups like "PCC" to map alternative keywords such as "Police Clearance Letter" or "Criminal Record Certificate" automatically.
+                  Create synonym groups to map alternative customer search terms and phrases to your canonical services.
                 </p>
                 <button
                   onClick={openAddSynonymModal}
@@ -2699,7 +2699,7 @@ export default function SettingsPage() {
                   type="text"
                   value={synonymFormCanonical}
                   onChange={(e) => setSynonymFormCanonical(e.target.value)}
-                  placeholder='e.g. "PCC" or "Visa Extension"'
+                  placeholder='e.g. "Technical Support" or "Billing"'
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                 />
                 <p className="text-[10px] text-[#8696a0] mt-1 font-semibold">The standard term used in your knowledge base</p>

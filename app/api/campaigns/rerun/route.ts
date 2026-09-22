@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', campaignId)
     } else {
-      // Rerun failed or un-sent logs: reset logs where status != SENT
+      // Rerun failed or un-sent logs: reset logs where status is not SENT, DELIVERED, or READ
       await supabase
         .from('campaign_logs')
         .update({
@@ -66,14 +66,14 @@ export async function POST(request: NextRequest) {
           message_sid: null
         })
         .eq('campaign_id', campaignId)
-        .neq('status', 'SENT')
+        .not('status', 'in', '("SENT","DELIVERED","READ")')
 
       // Recalculate current sent count
       const { count: actualSentCount } = await supabase
         .from('campaign_logs')
         .select('id', { count: 'exact', head: true })
         .eq('campaign_id', campaignId)
-        .eq('status', 'SENT')
+        .in('status', ['SENT', 'DELIVERED', 'READ'])
 
       // Reset campaign status to PENDING
       await supabase

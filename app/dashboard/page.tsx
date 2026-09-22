@@ -2174,8 +2174,6 @@ function ConversationsPageContent() {
 
           {/* Chat Input controls */}
           {(() => {
-            const isWhatsApp = selectedContact?.phone_number?.startsWith('whatsapp:') || selectedContact?.whatsapp_number?.startsWith('whatsapp:')
-            const isSmsDisabled = !isWhatsApp && !features.enable_sms
             const isChatbotActive = selectedConvData?.auto_reply_enabled !== false && features.enable_ai
             
             const lastInbound = [...messages]
@@ -2194,14 +2192,6 @@ function ConversationsPageContent() {
             
             return (
               <>
-                 {isSmsDisabled && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-amber-50 dark:bg-amber-950/20 border-amber-200/50 dark:border-amber-900/40 flex items-start gap-2 select-none z-10">
-                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 break-words whitespace-normal leading-normal">
-                      ⚠️ SMS Gateway is currently disabled. Please enable it in Settings to message this contact.
-                    </span>
-                  </div>
-                )}
-                
                 {chatSendError && (
                   <div className="mx-4 mb-2 mt-1 px-3.5 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex items-start justify-between gap-3 select-none z-10 animate-in fade-in duration-200 shadow-xs">
                     <div className="flex items-start gap-2 text-xs font-semibold text-rose-800 dark:text-rose-300 flex-1 min-w-0">
@@ -2217,7 +2207,7 @@ function ConversationsPageContent() {
                   </div>
                 )}
 
-                {isExpired && !isSmsDisabled && (
+                {isExpired && (
                   <div className="mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none z-10 animate-in fade-in duration-200">
                     <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455 break-words whitespace-normal leading-normal flex-1">
                       ⚠️ The 24-hour WhatsApp support window has expired. Free-form text messages will be rejected by Meta until the customer replies.
@@ -2235,7 +2225,7 @@ function ConversationsPageContent() {
                   </div>
                 )}
 
-                {isChatbotActive && !isSmsDisabled && (
+                {isChatbotActive && (
                   <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-900/40 flex items-start gap-2 select-none z-10 animate-in fade-in duration-200">
                     <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 break-words whitespace-normal leading-normal">
                       🤖 Chatbot auto-reply is active. Disable "Auto-Reply Chatbot" in the header to chat manually.
@@ -2250,11 +2240,11 @@ function ConversationsPageContent() {
                       ref={fileInputRef} 
                       onChange={handleFileChange} 
                       className="hidden" 
-                      disabled={isSmsDisabled || isExpired || isChatbotActive}
+                      disabled={isExpired || isChatbotActive}
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading || isSmsDisabled || isExpired || isChatbotActive}
+                      disabled={uploading || isExpired || isChatbotActive}
                       className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
                       title={isExpired ? "Support window expired" : isChatbotActive ? "Disable Auto-Reply to send media" : "Attach Media"}
                     >
@@ -2289,14 +2279,14 @@ function ConversationsPageContent() {
                           handleSendMessage()
                         }
                       }}
-                      placeholder={isSmsDisabled ? "SMS sending is disabled" : isExpired ? "Support window expired (Use Template button to message)" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a message... (Shift+Enter to send)"}
-                      disabled={isSmsDisabled || isExpired || isChatbotActive}
+                      placeholder={isExpired ? "Support window expired (Use Template button to message)" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a WhatsApp message... (Shift+Enter to send)"}
+                      disabled={isExpired || isChatbotActive}
                       rows={1}
                       className="flex-1 px-3 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
                     />
                     
                     {/* Rephrase with AI */}
-                    {messageText.trim() && !isSmsDisabled && !isExpired && !isChatbotActive && (
+                    {messageText.trim() && !isExpired && !isChatbotActive && (
                       <div className="relative flex-shrink-0" ref={rephraseDropdownRef}>
                         <button
                           type="button"
@@ -2376,7 +2366,7 @@ function ConversationsPageContent() {
                     )}
                     <button
                       onClick={handleSendMessage}
-                      disabled={(!messageText.trim() && !attachedFile) || isSmsDisabled || isExpired || isChatbotActive}
+                      disabled={(!messageText.trim() && !attachedFile) || isExpired || isChatbotActive}
                       className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white p-2.5 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 disabled:scale-100 disabled:shadow-none cursor-pointer"
                     >
                       <Send size={16} />

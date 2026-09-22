@@ -65,6 +65,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 2b. Auto-recovery watchdog: Resume campaigns stuck in PENDING or PROCESSING with remaining pending logs
+    try {
+      const twoMinutesAgoIso = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+      const { data: stuckCampaigns } = await supabase
+        .from('campaigns')
+        .select('id, name, status, updated_at')
+        .in('status', ['PENDING', 'PROCESSING'])
+        .lte('updated_at', twoMinutesAgoIso)
+        .limit(3)
+
+      if (stuckCampaigns && stuckCampaigns.length > 0) {
+        for (const stuck of stuckCampaigns) {
+          const { count: pendingCount } = await supabase
+            .from('campaign_logs')
+            .select('id', { count: 'exact', head: true })
+            .eq('campaign_id', stuck.id)
+            .eq('status', 'PENDING')
+
+          if (pendingCount && pendingCount > 0) {
+            console.log(`[Scheduled Campaigns API] Watchdog resuming stuck campaign ${stuck.name} (${stuck.id}) with ${pendingCount} pending logs.`)
+            await supabase
+              .from('campaigns')
+              .update({ status: 'PROCESSING', updated_at: new Date().toISOString() })
+              .eq('id', stuck.id)
+
+            runCampaignWorker(stuck.id).catch(err => {
+              console.error(`[Scheduled Campaigns API] Failed to resume stuck campaign ${stuck.id}:`, err)
+            })
+          }
+        }
+      }
+    } catch (watchdogErr) {
+      console.warn('[Scheduled Campaigns API] Watchdog check encountered non-fatal error:', watchdogErr)
+    }
+
     // 3. Fetch upcoming scheduled campaigns for status display
     const { data: upcomingCampaigns } = await supabase
       .from('campaigns')
