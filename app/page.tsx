@@ -235,7 +235,7 @@ export default function LandingPage() {
               {/* Eyebrow Pill */}
               <div className="inline-flex items-center gap-2 rounded-full bg-[#e7f6ea] px-4 py-1.5 text-xs font-bold text-[#107038] mb-6 border border-[#bfe3c8]">
                 <span className="h-2 w-2 rounded-full bg-[#27d34b] animate-pulse" />
-                <span>Official Meta Partner • Zero Token Markup</span>
+                <span>WhatsApp Cloud API Integration • Zero Token Markup</span>
               </div>
 
               {/* Main Headline */}
@@ -308,7 +308,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <span className="text-[10px] bg-white/20 font-semibold px-2 py-0.5 rounded-full">
-                    Meta Verified
+                    Official Cloud API
                   </span>
                 </div>
 
@@ -1221,9 +1221,9 @@ export default function LandingPage() {
               <Link href="/data-deletion" className="hover:text-slate-300 underline underline-offset-2 transition">User Data Deletion</Link>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-[#27d34b] font-medium">Official WhatsApp Tech Provider</span>
+              <span className="text-[#27d34b] font-medium">WhatsApp Cloud API Integration</span>
               <span>•</span>
-              <span>Official Meta Cloud API</span>
+              <span>Enterprise Grade Security</span>
             </div>
           </div>
         </div>
