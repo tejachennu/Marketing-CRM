@@ -5,11 +5,12 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
+import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
 
 export default function DashboardLayout({
   children,
@@ -606,6 +607,7 @@ export default function DashboardLayout({
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
+    { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
@@ -636,6 +638,10 @@ export default function DashboardLayout({
     if (item.href === '/dashboard/tickets') {
       return features.enable_messages
     }
+    if (item.href === '/dashboard/flows') {
+      const isAllowed = isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin'
+      return features.enable_messages && isAllowed
+    }
     if (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts') {
       return features.enable_messages || features.enable_email
     }
@@ -647,6 +653,12 @@ export default function DashboardLayout({
       return pathname.startsWith('/dashboard/superadmin')
     }
     if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
+
+    // Restrict WhatsApp Flows to Magnetora testing organization only
+    if (pathname.startsWith('/dashboard/flows')) {
+      const isAllowed = isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin'
+      if (!isAllowed) return false
+    }
 
     // Role-based page access protection
     if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings'))) {
@@ -1107,6 +1119,7 @@ export default function DashboardLayout({
               {/* Navigation Items */}
               <nav className="flex-1 overflow-y-auto py-2">
                 {[
+                  ...((seeAll && features.enable_messages && (isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin')) ? [{ href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow }] : []),
                   ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone }] : []),
                   ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/contacts', label: 'Contacts', icon: Users }] : []),
                   ...(seeAll ? [{ href: '/dashboard/settings', label: 'Settings', icon: Settings }] : []),

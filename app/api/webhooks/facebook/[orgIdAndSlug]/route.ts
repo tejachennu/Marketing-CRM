@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
+import { executeFlowRuntime } from '@/lib/flows/flow-executor'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -259,6 +260,9 @@ export async function POST(
     let mediaCaption = ''
     let contentType = null
 
+    let interactiveButtonId: string | undefined
+    let flowSubmissionData: Record<string, any> | undefined
+
     const type = message.type
     if (type === 'text') {
       messageBody = message.text?.body || ''
@@ -266,11 +270,24 @@ export async function POST(
       const interactive = message.interactive
       if (interactive?.type === 'button_reply') {
         messageBody = interactive.button_reply?.title || ''
+        interactiveButtonId = interactive.button_reply?.id
       } else if (interactive?.type === 'list_reply') {
         messageBody = interactive.list_reply?.title || ''
+        interactiveButtonId = interactive.list_reply?.id
+      } else if (interactive?.type === 'nfm_reply') {
+        try {
+          const respStr = interactive.nfm_reply?.response_json
+          if (respStr) {
+            flowSubmissionData = JSON.parse(respStr)
+            messageBody = `[Completed Native Form]: ${JSON.stringify(flowSubmissionData)}`
+          }
+        } catch (jsonErr) {
+          console.warn('[Facebook Webhook] Error parsing nfm_reply response_json:', jsonErr)
+        }
       }
     } else if (type === 'button') {
       messageBody = message.button?.text || ''
+      interactiveButtonId = message.button?.payload
     } else if (['image', 'document', 'audio', 'video', 'sticker', 'voice'].includes(type)) {
       const mediaObj = message[type]
       if (mediaObj) {
@@ -433,6 +450,96 @@ export async function POST(
 
     if (updateError) {
       console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+    }
+
+    // Step 4.5: WhatsApp Interactive Flow Engine
+    let flowHandled = false
+    try {
+      const flowExec = await executeFlowRuntime({
+        organizationId: orgId,
+        contactPhone: phoneNumber,
+        conversationId: conversation.id,
+        userInput: messageBody,
+        buttonId: interactiveButtonId,
+        flowSubmissionData,
+      })
+
+      if (flowExec.handled && flowExec.replyMessage) {
+        flowHandled = true
+        const { replyMessage } = flowExec
+        console.log(`[Facebook Webhook Flow] Handled by workflow: ${flowExec.workflowName || flowExec.executedWorkflowId} (${flowExec.actionTaken})`)
+
+        let postBody: any = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phoneNumber.replace('+', '').trim(),
+        }
+
+        if (replyMessage.type === 'interactive_buttons' && replyMessage.buttons && replyMessage.buttons.length > 0) {
+          postBody.type = 'interactive'
+          postBody.interactive = {
+            type: 'button',
+            body: { text: replyMessage.body },
+            action: {
+              buttons: replyMessage.buttons.slice(0, 3).map((b) => ({
+                type: 'reply',
+                reply: { id: b.id, title: b.title.slice(0, 20) },
+              })),
+            },
+          }
+        } else if (replyMessage.type === 'native_flow' && replyMessage.flowPayload) {
+          postBody.type = 'interactive'
+          postBody.interactive = replyMessage.flowPayload
+        } else {
+          postBody.type = 'text'
+          postBody.text = { body: replyMessage.body }
+        }
+
+        let fbMessageSid = null
+        if (whatsappPhoneNumberId && whatsappApiToken) {
+          try {
+            const fbRes = await fetch(
+              `https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${whatsappApiToken}`,
+                },
+                body: JSON.stringify(postBody),
+              }
+            )
+            if (fbRes.ok) {
+              const fbData = await fbRes.json()
+              fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+            } else {
+              const errText = await fbRes.text()
+              console.error('[Facebook Webhook Flow] Failed to dispatch WhatsApp message:', fbRes.status, errText)
+            }
+          } catch (sendErr: any) {
+            console.error('[Facebook Webhook Flow] Error sending WhatsApp message:', sendErr.message)
+          }
+        }
+
+        await supabase.from('messages').insert([
+          {
+            organization_id: orgId,
+            conversation_id: conversation.id,
+            sender_type: 'user',
+            body: replyMessage.body,
+            twilio_message_sid: fbMessageSid,
+          },
+        ])
+
+        await supabase
+          .from('conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversation.id)
+
+        return NextResponse.json({ success: true, handled_by: 'whatsapp_flow_engine' })
+      }
+    } catch (flowErr: any) {
+      console.error('[Facebook Webhook Flow] Error executing flow runtime:', flowErr)
     }
 
     // Step 5: Chatbot Auto-Reply Trigger
