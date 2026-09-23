@@ -13,7 +13,9 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-// GET: List all campaigns or get details of a single campaign (including logs)
+import { getCampaignsReplyStats, getCampaignDetailedRecipients } from '@/lib/campaign-stats'
+
+// GET: List all campaigns or get details of a single campaign (including logs and interactive recipient chats)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -36,14 +38,18 @@ export async function GET(request: NextRequest) {
 
       if (campaignError) throw campaignError
 
-      // Fetch delivery logs for this campaign
-      const { data: logs, error: logsError } = await supabase
-        .from('campaign_logs')
-        .select('*')
-        .eq('campaign_id', id)
-        .order('created_at', { ascending: true })
+      // Fetch delivery logs and detailed recipient conversations in parallel
+      const [logsRes, conversations] = await Promise.all([
+        supabase
+          .from('campaign_logs')
+          .select('*')
+          .eq('campaign_id', id)
+          .order('created_at', { ascending: true }),
+        getCampaignDetailedRecipients(id)
+      ])
 
-      if (logsError) throw logsError
+      const logs = logsRes.data || []
+      if (logsRes.error) throw logsRes.error
 
       let computedSent = campaign.sent_count || 0
       let computedFailed = campaign.failed_count || 0
@@ -52,14 +58,31 @@ export async function GET(request: NextRequest) {
         computedFailed = logs.filter(l => l.status === 'FAILED').length
       }
 
+      const activeChatsCount = conversations.filter(c => c.has_replied).length
+      const unreadChatsCount = conversations.filter(c => c.needs_reply).length
+      const totalRecipients = campaign.total_contacts || logs.length || 0
+      const replyRate = totalRecipients > 0 ? Math.round((activeChatsCount / totalRecipients) * 100) : 0
+
       return NextResponse.json({
         success: true,
         campaign: {
           ...campaign,
           sent_count: computedSent,
-          failed_count: computedFailed
+          failed_count: computedFailed,
+          active_chats_count: activeChatsCount,
+          unread_chats_count: unreadChatsCount,
+          reply_rate: replyRate
         },
-        logs: logs || []
+        stats: {
+          total_contacts: totalRecipients,
+          sent_count: computedSent,
+          failed_count: computedFailed,
+          active_chats_count: activeChatsCount,
+          unread_chats_count: unreadChatsCount,
+          reply_rate: replyRate
+        },
+        logs: logs || [],
+        conversations: conversations || []
       })
     }
 
@@ -99,28 +122,34 @@ export async function GET(request: NextRequest) {
 
     if (campaigns && campaigns.length > 0) {
       const campIds = campaigns.map(c => c.id)
-      const { data: logStats } = await supabase
-        .from('campaign_logs')
-        .select('campaign_id, status')
-        .in('campaign_id', campIds)
+      const [logStatsRes, replyStatsRes] = await Promise.all([
+        supabase
+          .from('campaign_logs')
+          .select('campaign_id, status')
+          .in('campaign_id', campIds),
+        getCampaignsReplyStats(campIds)
+      ])
 
-      if (logStats && logStats.length > 0) {
-        const statsMap: Record<string, { sent: number; failed: number }> = {}
-        for (const l of logStats) {
-          if (!statsMap[l.campaign_id]) statsMap[l.campaign_id] = { sent: 0, failed: 0 }
-          if (['SENT', 'DELIVERED', 'READ'].includes(l.status)) {
-            statsMap[l.campaign_id].sent++
-          } else if (l.status === 'FAILED') {
-            statsMap[l.campaign_id].failed++
-          }
+      const logStats = logStatsRes.data || []
+      const statsMap: Record<string, { sent: number; failed: number }> = {}
+      for (const l of logStats) {
+        if (!statsMap[l.campaign_id]) statsMap[l.campaign_id] = { sent: 0, failed: 0 }
+        if (['SENT', 'DELIVERED', 'READ'].includes(l.status)) {
+          statsMap[l.campaign_id].sent++
+        } else if (l.status === 'FAILED') {
+          statsMap[l.campaign_id].failed++
         }
-        campaigns.forEach(c => {
-          if (statsMap[c.id]) {
-            c.sent_count = statsMap[c.id].sent
-            c.failed_count = statsMap[c.id].failed
-          }
-        })
       }
+
+      campaigns.forEach(c => {
+        if (statsMap[c.id]) {
+          c.sent_count = statsMap[c.id].sent
+          c.failed_count = statsMap[c.id].failed
+        }
+        const replyStat = replyStatsRes[c.id]
+        c.active_chats_count = replyStat?.active_chats_count || 0
+        c.unread_chats_count = replyStat?.unread_chats_count || 0
+      })
     }
 
     return NextResponse.json({

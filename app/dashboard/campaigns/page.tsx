@@ -44,6 +44,7 @@ import {
   Tag
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 
@@ -56,6 +57,9 @@ interface Campaign {
   total_contacts: number
   sent_count: number
   failed_count: number
+  active_chats_count?: number
+  unread_chats_count?: number
+  reply_rate?: number
   created_at: string
   scheduled_at?: string | null
   channel?: string
@@ -102,6 +106,7 @@ interface Contact {
 }
 
 export default function CampaignsPage() {
+  const router = useRouter()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateFetchError, setTemplateFetchError] = useState<string | null>(null)
@@ -1410,7 +1415,13 @@ export default function CampaignsPage() {
             return (
               <div 
                 key={c.id}
-                onClick={() => fetchCampaignDetails(c.id)}
+                onClick={() => {
+                  if (c.status === 'COMPLETED') {
+                    router.push(`/dashboard/campaigns/${c.id}`)
+                  } else {
+                    fetchCampaignDetails(c.id)
+                  }
+                }}
                 className="bg-white dark:bg-[#1f2c34] p-3 md:p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 group"
               >
                 <div className="flex-1 min-w-0 flex items-start gap-2.5">
@@ -1431,6 +1442,27 @@ export default function CampaignsPage() {
                             <span>Scheduled: {formatISTDateTime(c.scheduled_at)}</span>
                           </span>
                         </>
+                      )}
+                    </div>
+
+                    {/* Active chats indication badge */}
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      {(c.active_chats_count ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] md:text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <MessageSquare size={10} className="fill-emerald-500/20" />
+                          <span>{c.active_chats_count} Active {c.active_chats_count === 1 ? 'Chat' : 'Chats'}</span>
+                          {(c.unread_chats_count ?? 0) > 0 && (
+                            <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full ml-0.5 animate-bounce">
+                              {c.unread_chats_count} new
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[9px] text-[#8696a0] dark:text-[#8696a0]/70 font-medium">
+                          <MessageSquare size={10} />
+                          <span>0 active replies</span>
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1570,6 +1602,26 @@ export default function CampaignsPage() {
                   >
                     <FileSpreadsheet size={12} className="text-[#008069] dark:text-emerald-400" />
                   </button>
+
+                  {c.status === 'COMPLETED' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/dashboard/campaigns/${c.id}`)
+                      }}
+                      className="h-7 md:h-8 px-2.5 rounded border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-[9px] md:text-[10px] font-extrabold text-[#008069] dark:text-emerald-300 flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
+                      title="Open Full Tab Workspace with Interactive Live Chat"
+                    >
+                      <MessageSquare size={11} className="fill-current text-[#008069] dark:text-emerald-400" />
+                      <span>Chat</span>
+                      {(c.active_chats_count ?? 0) > 0 && (
+                        <span className="bg-[#008069] text-white text-[8px] font-black px-1.5 py-0.2 rounded-full">
+                          {c.active_chats_count}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1794,6 +1846,21 @@ export default function CampaignsPage() {
                   </button>
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={() => router.push(`/dashboard/campaigns/${selectedCampaign.id}`)}
+                className="h-7 px-2.5 bg-gradient-to-r from-[#008069] to-[#00a884] hover:from-[#00705b] hover:to-[#009475] text-white rounded-lg text-[10px] md:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Open Campaign in Full Tab with Interactive Chat"
+              >
+                <ExternalLink size={12} />
+                <span>Full Tab</span>
+                {(selectedCampaign.active_chats_count ?? 0) > 0 && (
+                  <span className="bg-white/20 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                    {selectedCampaign.active_chats_count}
+                  </span>
+                )}
+              </button>
 
               <button
                 onClick={() => fetchCampaignDetails(selectedCampaign.id)}
