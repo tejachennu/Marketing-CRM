@@ -9,7 +9,9 @@ import {
   ChevronDown, Globe, ShieldCheck, ShoppingBag, Target,
   Database, Lock, Menu, X, Smartphone, ArrowUpRight,
   Shield, MessageCircle, BarChart3, HelpCircle, Mail,
-  Layers, Sliders, ExternalLink, RefreshCw
+  Layers, Sliders, ExternalLink, RefreshCw, Ticket, 
+  UserCheck, Tag, Upload, Download, Kanban, Phone,
+  Headphones, Settings, Key, Palette, BookOpen, Workflow
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -122,14 +124,26 @@ export default function LandingPage() {
           </Link>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-8 text-[14px] font-semibold text-[#4a5852]">
+          <nav className="hidden lg:flex items-center gap-6 text-[13.5px] font-semibold text-[#4a5852]">
             <a href="#showcase" className="hover:text-[#008069] transition flex items-center gap-1.5">
-              <Zap size={15} className="text-[#008069]" />
-              <span>Bulk Broadcasts</span>
+              <Zap size={14} className="text-[#008069]" />
+              <span>Broadcasts</span>
             </a>
-            <a href="#showcase" className="hover:text-[#008069] transition flex items-center gap-1.5">
-              <Bot size={15} className="text-[#008069]" />
-              <span>WhatsApp AI Bot</span>
+            <a href="#features-pipeline" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <Kanban size={14} className="text-[#008069]" />
+              <span>Sales Pipeline</span>
+            </a>
+            <a href="#features-ai" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <Bot size={14} className="text-[#008069]" />
+              <span>AI Chatbot</span>
+            </a>
+            <a href="#features-ticketing" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <Ticket size={14} className="text-[#008069]" />
+              <span>Ticketing</span>
+            </a>
+            <a href="#features-team" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <Users size={14} className="text-[#008069]" />
+              <span>Team Inbox</span>
             </a>
             <a href="#why-whatsapp" className="hover:text-[#008069] transition">
               Why WhatsApp?
@@ -173,27 +187,48 @@ export default function LandingPage() {
 
         {/* Mobile Dropdown */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-white border-b border-slate-200 px-6 py-5 space-y-4 shadow-xl">
+          <div className="lg:hidden bg-white border-b border-slate-200 px-6 py-5 space-y-3.5 shadow-xl">
             <a 
               href="#showcase" 
               onClick={() => setMobileMenuOpen(false)}
               className="block text-sm font-semibold text-slate-800"
             >
-              ⚡ Bulk Broadcasts
+              ⚡ Bulk WhatsApp Broadcasts
             </a>
             <a 
-              href="#showcase" 
+              href="#features-pipeline" 
               onClick={() => setMobileMenuOpen(false)}
               className="block text-sm font-semibold text-slate-800"
             >
-              🤖 WhatsApp AI Bot
+              📊 Sales Pipeline &amp; Deals
+            </a>
+            <a 
+              href="#features-ai" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              🤖 24/7 AI Chatbot &amp; Agent
+            </a>
+            <a 
+              href="#features-ticketing" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              🎫 Customer Support Ticketing &amp; SLAs
+            </a>
+            <a 
+              href="#features-team" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              👥 Team Management &amp; Shared Inbox
             </a>
             <a 
               href="#why-whatsapp" 
               onClick={() => setMobileMenuOpen(false)}
               className="block text-sm font-semibold text-slate-800"
             >
-              📊 Why WhatsApp vs Email
+              📈 Why WhatsApp vs Email
             </a>
             <a 
               href="#faq" 
@@ -474,7 +509,7 @@ export default function LandingPage() {
           {/* STACKED CARDS CONTAINER */}
           <div className="space-y-8 max-w-6xl mx-auto">
             
-            {/* ━━━ CARD 1: BROADCASTS (EXACT SCREENSHOT 1 LOOK) ━━━ */}
+            {/* ━━━ CARD 1: BULK WHATSAPP CAMPAIGNS (WITH TRACKING & REPLY) ━━━ */}
             <article className="rounded-[32px] bg-[#F8EAC6] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-amber-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
@@ -484,16 +519,39 @@ export default function LandingPage() {
                     <span className="h-7 w-7 rounded-lg bg-[#E9A50E] flex items-center justify-center text-white shadow-xs">
                       <Mail size={15} />
                     </span>
-                    <span>Broadcasts</span>
+                    <span>Bulk WhatsApp Campaigns</span>
                   </div>
 
                   <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
-                    Send broadcasts that actually convert.
+                    Send, track & reply — all by campaign.
                   </h3>
 
-                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-8">
-                    Launch WhatsApp broadcasts to thousands of contacts at once from Excel or CSV, personalized down to the individual with 98% open rates.
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    Launch bulk WhatsApp campaigns from Excel or CSV. Track every message by campaign — delivery, read receipts, and replies — and respond to customers directly from the campaign view.
                   </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#E9A50E] mt-0.5 flex-shrink-0" />
+                      <span>Upload <code className="bg-amber-50 px-1 rounded text-[12px]">.xlsx</code> or <code className="bg-amber-50 px-1 rounded text-[12px]">.csv</code> with personalized <code className="bg-amber-50 px-1 rounded text-[12px]">{`{{variables}}`}</code></span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#E9A50E] mt-0.5 flex-shrink-0" />
+                      <span>Per-campaign message tracking — Sent, Delivered, Read, Failed</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#E9A50E] mt-0.5 flex-shrink-0" />
+                      <span>View & reply to campaign responses in real-time chat view</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#E9A50E] mt-0.5 flex-shrink-0" />
+                      <span>Recipient audit log with delivery status per contact</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#E9A50E] mt-0.5 flex-shrink-0" />
+                      <span>Anti-ban safe pacing via official Meta Cloud API</span>
+                    </li>
+                  </ul>
 
                   <Link 
                     href="/signup" 
@@ -504,83 +562,108 @@ export default function LandingPage() {
                   </Link>
                 </div>
 
-                {/* Right Visual Column (Darker Butter Background with Floating White Card Mockup) */}
+                {/* Right Visual Column */}
                 <div className="lg:col-span-7">
                   <div className="rounded-[24px] bg-[#F2DBA3]/80 p-6 sm:p-8 flex items-center justify-center">
                     
-                    {/* White Floating Canvas Mockup */}
                     <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
                       
-                      {/* Top Audience Pill */}
+                      {/* Campaign Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                        <div className="inline-flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full text-xs font-bold text-slate-700">
-                          <Users size={14} className="text-[#008069]" />
-                          <span>Audience: <strong>12,845 Contacts Selected</strong></span>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                          <span className="ml-2 font-bold text-xs text-slate-800">Campaign: Diwali Sale 2026</span>
                         </div>
-                        <span className="text-[11px] font-bold text-[#107038] bg-[#e7f6ea] px-2.5 py-0.5 rounded-full border border-[#bfe3c8]">
-                          Ready to Send
+                        <span className="text-[11px] font-bold text-[#107038] bg-[#e7f6ea] px-2.5 py-1 rounded-md border border-[#bfe3c8]">
+                          ✓ Completed
                         </span>
                       </div>
 
-                      {/* Central Dispatch Hub Visual */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        
-                        {/* WhatsApp Message Preview Node */}
-                        <div className="bg-[#efeae2] p-3 rounded-xl border border-slate-200/70 text-xs wa-chat-wallpaper">
-                          <div className="text-[10px] font-bold text-[#008069] flex items-center justify-between mb-1">
-                            <span>WhatsApp Broadcast</span>
-                            <span className="text-slate-400 font-normal">10:30 AM</span>
-                          </div>
-                          <div className="bg-white p-2.5 rounded-xl rounded-tl-none text-slate-800 text-[11px] leading-snug font-medium shadow-2xs">
-                            Hi <strong>{`{{name}}`}</strong>! 👋 Exclusive offer just for you: Get <strong>20% OFF</strong> your next order.
-                            <div className="mt-2 bg-[#e7f6ea] text-[#008069] font-bold text-[10px] p-1.5 rounded text-center">
-                              [ 🛍️ Shop with 20% Off ]
-                            </div>
-                          </div>
+                      {/* Campaign Stats Row */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                          <div className="text-[10px] text-slate-500 font-medium">Sent</div>
+                          <div className="text-sm font-black text-slate-900 mt-0.5">12,845</div>
                         </div>
-
-                        {/* Excel List Mapper Node */}
-                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs flex flex-col justify-between">
-                          <div>
-                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                              <FileSpreadsheet size={12} className="text-[#008069]" />
-                              <span>customers_q3.xlsx</span>
-                            </div>
-                            <div className="space-y-1 font-mono text-[10px] text-slate-600">
-                              <div className="flex justify-between bg-white px-2 py-1 rounded border border-slate-200/60">
-                                <span>{`{{name}}`}</span>
-                                <span className="text-[#008069]">Alex Morgan</span>
-                              </div>
-                              <div className="flex justify-between bg-white px-2 py-1 rounded border border-slate-200/60">
-                                <span>{`{{discount}}`}</span>
-                                <span className="text-[#008069]">20% OFF</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[10px] font-bold text-[#107038] flex items-center gap-1">
-                            <ShieldCheck size={13} /> Tier-1 Meta Safe Pacing
-                          </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                          <div className="text-[10px] text-slate-500 font-medium">Delivered</div>
+                          <div className="text-sm font-black text-[#008069] mt-0.5">12,641</div>
+                          <div className="text-[9px] font-bold text-emerald-600">98.4%</div>
                         </div>
-
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                          <div className="text-[10px] text-slate-500 font-medium">Read</div>
+                          <div className="text-sm font-black text-[#008069] mt-0.5">11,890</div>
+                          <div className="text-[9px] font-bold text-emerald-600">94.1%</div>
+                        </div>
+                        <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                          <div className="text-[10px] text-amber-700 font-medium">Replied</div>
+                          <div className="text-sm font-black text-amber-700 mt-0.5">1,248</div>
+                          <div className="text-[9px] font-bold text-amber-600">9.7%</div>
+                        </div>
                       </div>
 
-                      {/* Bottom Real-Time Metric Pills Bar */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-center">
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-500 font-medium">Messages Sent</div>
-                          <div className="text-xs sm:text-sm font-black text-slate-900 mt-0.5">12,845</div>
+                      {/* Campaign Reply Chat Preview */}
+                      <div className="bg-[#efeae2] p-3 rounded-xl border border-slate-200/70 text-xs wa-chat-wallpaper">
+                        <div className="text-[10px] font-bold text-[#008069] flex items-center justify-between mb-2">
+                          <span className="flex items-center gap-1.5">
+                            <MessageCircle size={11} />
+                            Campaign Replies (1,248)
+                          </span>
+                          <span className="text-slate-400 font-normal">Live</span>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-500 font-medium">Delivered</div>
-                          <div className="text-xs sm:text-sm font-black text-[#008069] mt-0.5">12,317 (98%)</div>
+
+                        {/* Reply Thread */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-start gap-2">
+                            <div className="h-6 w-6 rounded-full bg-[#008069] text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">PS</div>
+                            <div className="bg-white p-2 rounded-xl rounded-tl-none text-[11px] text-slate-800 shadow-2xs flex-1">
+                              <div className="font-bold text-[10px] text-[#008069] mb-0.5">Priya Sharma</div>
+                              Yes! I want to order. What sizes are available? 🛒
+                              <div className="text-[9px] text-slate-400 text-right mt-0.5">2:31 PM</div>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <div className="h-6 w-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">RK</div>
+                            <div className="bg-white p-2 rounded-xl rounded-tl-none text-[11px] text-slate-800 shadow-2xs flex-1">
+                              <div className="font-bold text-[10px] text-amber-600 mb-0.5">Ravi Kumar</div>
+                              Can I get this with COD? 📦
+                              <div className="text-[9px] text-slate-400 text-right mt-0.5">2:33 PM</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-500 font-medium">Replies</div>
-                          <div className="text-xs sm:text-sm font-black text-slate-900 mt-0.5">1,248 (10%)</div>
+                      </div>
+
+                      {/* Recipient Audit Row */}
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recipient Dispatch Audit</div>
+                        <div className="flex items-center justify-between bg-slate-50/70 p-2 rounded-lg border border-slate-100 text-[10px]">
+                          <div className="flex items-center gap-2">
+                            <span>🇮🇳</span>
+                            <span className="font-bold text-slate-800">Priya Sharma</span>
+                            <span className="text-slate-400">+91 98765 43210</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="bg-emerald-50 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded">Read ✓✓</span>
+                            <span className="bg-amber-50 text-amber-700 text-[9px] font-bold px-1.5 py-0.5 rounded">Replied</span>
+                          </div>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl">
-                          <div className="text-[10px] text-slate-500 font-medium">Conversions</div>
-                          <div className="text-xs sm:text-sm font-black text-[#008069] mt-0.5">320 (2.5%)</div>
+                        <div className="flex items-center justify-between bg-slate-50/70 p-2 rounded-lg border border-slate-100 text-[10px]">
+                          <div className="flex items-center gap-2">
+                            <span>🇺🇸</span>
+                            <span className="font-bold text-slate-800">Alex Morgan</span>
+                            <span className="text-slate-400">+1 (555) 019-2834</span>
+                          </div>
+                          <span className="bg-emerald-50 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded">Delivered ✓</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-50/70 p-2 rounded-lg border border-slate-100 text-[10px]">
+                          <div className="flex items-center gap-2">
+                            <span>🇬🇧</span>
+                            <span className="font-bold text-slate-800">James Wilson</span>
+                            <span className="text-slate-400">+44 7911 123456</span>
+                          </div>
+                          <span className="bg-rose-50 text-rose-600 text-[9px] font-bold px-1.5 py-0.5 rounded">Failed ✗</span>
                         </div>
                       </div>
 
@@ -592,7 +675,443 @@ export default function LandingPage() {
               </div>
             </article>
 
-            {/* ━━━ CARD 2: REPORTS & AI ANALYTICS (EXACT SCREENSHOT 2 LOOK) ━━━ */}
+            {/* ━━━ CARD 2: 24/7 AUTONOMOUS AI CHATBOT ━━━ */}
+            <article id="features-ai" className="rounded-[32px] bg-[#DBF2E1] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#2FA85A] flex items-center justify-center text-white shadow-xs">
+                      <Bot size={15} />
+                    </span>
+                    <span>24/7 Autonomous AI Chatbot</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    Instant AI qualification &amp; sales at 2 AM.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    Train your AI agent on your product catalog, website URLs, and PDFs. It resolves 80% of customer questions in 2 seconds, recommends items, qualifies buyers, and schedules meetings without human delays.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#2FA85A] mt-0.5 flex-shrink-0" />
+                      <span>Knowledge Base RAG: Trains on company PDFs, pricing &amp; FAQs</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#2FA85A] mt-0.5 flex-shrink-0" />
+                      <span>Smart lead scoring &amp; automated calendar demo scheduling</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#2FA85A] mt-0.5 flex-shrink-0" />
+                      <span>Multi-language understanding across 50+ regional languages</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#2FA85A] mt-0.5 flex-shrink-0" />
+                      <span>Smooth instant handoff to sales reps for high-value deals</span>
+                    </li>
+                  </ul>
+
+                  <Link 
+                    href="/signup" 
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_10px_25px_-8px_rgba(39,211,75,0.6)] hover:shadow-[0_14px_28px_-6px_rgba(39,211,75,0.7)]"
+                  >
+                    <span>Test AI Chatbot Free</span>
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right Visual Column */}
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] bg-[#C4EACF]/80 p-6 sm:p-8 flex items-center justify-center">
+                    
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                      
+                      {/* Chat Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-full bg-[#008069] text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                            <Bot size={16} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              WAMACRM AI Sales Agent
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            </div>
+                            <div className="text-[10px] text-slate-400">Autonomous Assistant • Online 24/7</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                          ⚡ 1.6s Reply Speed
+                        </span>
+                      </div>
+
+                      {/* WhatsApp Simulation Bubbles */}
+                      <div className="space-y-3 py-1">
+                        <div className="flex justify-end">
+                          <div className="bg-[#d9fdd3] text-slate-800 text-xs p-3 rounded-2xl rounded-tr-xs max-w-[85%] shadow-2xs leading-relaxed">
+                            Do you offer wholesale bulk discounts for orders over 500 units?
+                            <div className="text-[9px] text-slate-400 text-right mt-1 font-medium">10:14 PM ✓✓</div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-start">
+                          <div className="bg-slate-50 text-slate-800 text-xs p-3 rounded-2xl rounded-tl-xs max-w-[90%] shadow-2xs space-y-2 leading-relaxed border border-slate-100">
+                            <p>
+                              Yes! For 500+ units we provide Tier-1 Wholesale pricing (<strong>25% off</strong> at $18/unit). Official GST invoice &amp; express priority logistics included.
+                            </p>
+                            <div className="bg-[#e7f6ea] text-[#107038] p-2 rounded-xl text-xs font-bold text-center border border-[#bfe3c8]">
+                              👉 [ 📅 Book Priority Wholesale Call ]
+                            </div>
+                            <div className="text-[9px] text-slate-400 text-right">10:14 PM</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Resolution Metric Footer */}
+                      <div className="bg-gradient-to-r from-[#008069] to-[#27d34b] p-3 rounded-xl text-white flex items-center justify-between text-xs">
+                        <span className="font-bold">84% Queries Resolved Autonomously</span>
+                        <span className="bg-white/20 text-white font-black text-[10px] px-2 py-0.5 rounded-full">
+                          Zero Delays
+                        </span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD 3: VISUAL SALES PIPELINE ━━━ */}
+            <article id="features-pipeline" className="rounded-[32px] bg-[#EFE8FD] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-purple-200/50 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#7C3AED] flex items-center justify-center text-white shadow-xs">
+                      <Kanban size={15} />
+                    </span>
+                    <span>Visual Sales Pipeline</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    Turn WhatsApp replies into closed deals.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    Never lose track of high-intent buyers. Drag &amp; drop deals through customizable pipeline stages, track deal sizes in real-time, and attribute closed revenue directly to your WhatsApp campaigns.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#7C3AED] mt-0.5 flex-shrink-0" />
+                      <span>Visual Kanban board with drag-and-drop deal stages</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#7C3AED] mt-0.5 flex-shrink-0" />
+                      <span>1-Click deal creation directly from any WhatsApp thread</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#7C3AED] mt-0.5 flex-shrink-0" />
+                      <span>Direct deal values, currency support (₹ / $) &amp; stage probabilities</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#7C3AED] mt-0.5 flex-shrink-0" />
+                      <span>Campaign ROI attribution: see revenue generated per broadcast</span>
+                    </li>
+                  </ul>
+
+                  <Link 
+                    href="/signup" 
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_10px_25px_-8px_rgba(39,211,75,0.6)] hover:shadow-[0_14px_28px_-6px_rgba(39,211,75,0.7)]"
+                  >
+                    <span>Open Sales Pipeline</span>
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right Visual Column */}
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] bg-[#DBCBF9]/80 p-6 sm:p-8 flex items-center justify-center">
+                    
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                      
+                      {/* Pipeline Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full bg-purple-500 animate-pulse" />
+                          <span className="text-xs font-bold text-slate-800">Q3 Active Sales Pipeline</span>
+                        </div>
+                        <span className="text-[11px] font-black text-purple-700 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">
+                          ₹18,40,000 Pipeline Value
+                        </span>
+                      </div>
+
+                      {/* 3 Mini Stages */}
+                      <div className="grid grid-cols-3 gap-2 text-left">
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-2">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Qualified (3)</div>
+                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
+                            <div className="text-xs font-bold text-slate-900 truncate">Acme Retails</div>
+                            <div className="text-xs font-black text-purple-700">₹1,20,000</div>
+                            <div className="text-[9px] text-slate-400">Broadcast Lead</div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-2">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase">Proposal (2)</div>
+                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
+                            <div className="text-xs font-bold text-slate-900 truncate">Apex Global</div>
+                            <div className="text-xs font-black text-purple-700">₹3,50,000</div>
+                            <div className="text-[9px] text-emerald-600 font-bold">Hot Deal 🔥</div>
+                          </div>
+                        </div>
+
+                        <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/70 space-y-2">
+                          <div className="text-[10px] font-bold text-emerald-700 uppercase">Won (14)</div>
+                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-emerald-100 space-y-1">
+                            <div className="text-xs font-bold text-slate-900 truncate">TrendKart D2C</div>
+                            <div className="text-xs font-black text-emerald-600">₹4,80,000</div>
+                            <div className="text-[9px] text-emerald-600 font-bold">✓ Closed in Chat</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Summary Banner */}
+                      <div className="bg-[#0c2014] text-white p-3.5 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <div className="text-[10px] text-[#27d34b] font-bold uppercase">Direct Campaign Attribution</div>
+                          <div className="font-extrabold text-white text-sm">34.2% Win Rate from WhatsApp Campaigns</div>
+                        </div>
+                        <span className="bg-[#27d34b] text-[#0c2014] font-black text-xs px-2.5 py-1 rounded-full">
+                          +42% Growth
+                        </span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD 4: SMART TICKETING SYSTEM & SLAS ━━━ */}
+            <article id="features-ticketing" className="rounded-[32px] bg-[#FFE8DE] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-rose-200/50 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#EA580C] flex items-center justify-center text-white shadow-xs">
+                      <Ticket size={15} />
+                    </span>
+                    <span>Ticketing System &amp; SLAs</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    Track, escalate &amp; resolve support without chaos.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    Convert complex customer support inquiries into tracked tickets straight from WhatsApp. Enforce response SLA timers, route to departments, and automatically send status updates to customers on WhatsApp.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#EA580C] mt-0.5 flex-shrink-0" />
+                      <span>1-Click ticket creation directly from WhatsApp conversation view</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#EA580C] mt-0.5 flex-shrink-0" />
+                      <span>SLA countdown timers with automated escalation alerts</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#EA580C] mt-0.5 flex-shrink-0" />
+                      <span>Department queues: Billing, Logistics, Technical Support &amp; Sales</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#EA580C] mt-0.5 flex-shrink-0" />
+                      <span>Automated WhatsApp notifications to customer on ticket updates</span>
+                    </li>
+                  </ul>
+
+                  <Link 
+                    href="/signup" 
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_10px_25px_-8px_rgba(39,211,75,0.6)] hover:shadow-[0_14px_28px_-6px_rgba(39,211,75,0.7)]"
+                  >
+                    <span>Explore Ticketing</span>
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right Visual Column */}
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] bg-[#FDD0C0]/80 p-6 sm:p-8 flex items-center justify-center">
+                    
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                      
+                      {/* Ticket Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-slate-900">#TK-1082</span>
+                          <span className="bg-rose-100 text-rose-700 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-rose-200">
+                            Urgent Priority
+                          </span>
+                        </div>
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                          <Clock size={12} /> 14m SLA remaining
+                        </span>
+                      </div>
+
+                      {/* Ticket Details */}
+                      <div className="space-y-1.5">
+                        <div className="text-xs font-bold text-slate-800">Shipment delayed &amp; tracking link requested</div>
+                        <div className="text-[11px] text-slate-500">Customer: Vikram Malhotra (+91 9845... ) • Order #8491</div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
+                        <div>
+                          <span className="text-slate-400">Assigned: </span>
+                          <span className="font-bold text-slate-800">Logistics Desk • Sneha Patel</span>
+                        </div>
+                        <span className="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded text-[11px]">In Progress</span>
+                      </div>
+
+                      {/* WhatsApp Auto notification */}
+                      <div className="bg-[#e7f6ea] text-[#107038] p-3 rounded-xl text-xs font-semibold border border-[#bfe3c8] flex items-center justify-between">
+                        <span>✓ WhatsApp Notification: &quot;Tracking link dispatched to buyer&quot;</span>
+                        <span className="font-bold bg-[#107038] text-white px-2 py-0.5 rounded text-[10px]">Delivered</span>
+                      </div>
+
+                      {/* Footer Stats */}
+                      <div className="flex items-center justify-between text-xs text-slate-500 font-bold pt-1">
+                        <span>Avg Resolution: 18 mins</span>
+                        <span className="text-[#008069] font-black">99.2% SLA Compliance</span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD 5: TEAM MANAGEMENT & SHARED INBOX ━━━ */}
+            <article id="features-team" className="rounded-[32px] bg-[#E0F2FE] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-sky-200/50 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#0284C7] flex items-center justify-center text-white shadow-xs">
+                      <Users size={15} />
+                    </span>
+                    <span>Team Management &amp; Shared Inbox</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    One WhatsApp number for your entire company.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    No more passing around a single office phone. Give your entire sales and support team simultaneous access to your official WhatsApp number with smart auto-routing, private internal notes, and supervisor real-time monitoring.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0284C7] mt-0.5 flex-shrink-0" />
+                      <span>Multi-agent concurrent access to official WhatsApp Cloud API</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0284C7] mt-0.5 flex-shrink-0" />
+                      <span>Private internal team notes (invisible to customers)</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0284C7] mt-0.5 flex-shrink-0" />
+                      <span>Smart round-robin or workload-based conversation distribution</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0284C7] mt-0.5 flex-shrink-0" />
+                      <span>Supervisor dashboard: Agent response time, chats handled &amp; CSAT</span>
+                    </li>
+                  </ul>
+
+                  <Link 
+                    href="/signup" 
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_10px_25px_-8px_rgba(39,211,75,0.6)] hover:shadow-[0_14px_28px_-6px_rgba(39,211,75,0.7)]"
+                  >
+                    <span>Add Your Team Free</span>
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right Visual Column */}
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] bg-[#C5E4FD]/80 p-6 sm:p-8 flex items-center justify-center">
+                    
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                      
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <span className="text-xs font-bold text-slate-800">Team Presence &amp; Active Chats</span>
+                        <span className="text-[10px] font-bold text-sky-800 bg-sky-50 px-2.5 py-1 rounded-md border border-sky-200">
+                          3 Agents Online • Zero Collisions
+                        </span>
+                      </div>
+
+                      {/* Agent Chips */}
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Rahul V.
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">4 active chats</div>
+                        </div>
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Priya S.
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">2 active chats</div>
+                        </div>
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800">
+                            <span className="h-2 w-2 rounded-full bg-amber-500" /> Vikram M.
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">In Call</div>
+                        </div>
+                      </div>
+
+                      {/* Private Internal Note */}
+                      <div className="bg-amber-50/90 border border-amber-200/80 p-3 rounded-xl text-xs text-amber-950 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                          <Lock size={12} /> Private Internal Team Note (Hidden from Customer)
+                        </div>
+                        <p className="italic text-[11px] leading-relaxed">
+                          &quot;Customer approved 10% annual billing discount. Contract sent to Alex for signature.&quot;
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-500 font-bold pt-1">
+                        <span>Assigned: Priya S. (Sales)</span>
+                        <span className="text-sky-600 font-black">&lt; 2 min reply SLA</span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD 6: REPORTS & AI ANALYTICS (EXACT SCREENSHOT 2 LOOK) ━━━ */}
             <article className="rounded-[32px] bg-[#DBF2E1] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
@@ -814,19 +1333,199 @@ export default function LandingPage() {
               </div>
             </article>
 
+            {/* ━━━ CARD 4: HOW IT ALL WORKS — COMPLETE MARKETING WORKFLOW ━━━ */}
+            <article className="rounded-[32px] bg-gradient-to-br from-[#0c2014] to-[#1a4a2e] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.2)] border border-emerald-900/30 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-white/90">
+                    <span className="h-7 w-7 rounded-lg bg-[#27d34b] flex items-center justify-center text-[#0c2014] shadow-xs">
+                      <Zap size={15} />
+                    </span>
+                    <span>The Complete Marketing Engine</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-white leading-[1.14] tracking-tight mb-4">
+                    How every feature drives your sales.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-emerald-100/80 leading-relaxed mb-8">
+                    WAMACRM is not just a messaging tool — it&apos;s a full WhatsApp marketing engine. Every feature is designed to work together so you go from importing your first contact to closing deals on autopilot.
+                  </p>
+
+                  <div className="space-y-4 mb-8">
+                    <div className="flex items-start gap-3">
+                      <span className="h-7 w-7 rounded-full bg-[#27d34b]/20 border border-[#27d34b]/40 text-[#27d34b] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">1</span>
+                      <div>
+                        <div className="text-sm font-bold text-white">Import & Organize Your Audience</div>
+                        <p className="text-[13px] text-emerald-200/70 mt-0.5">Upload your customer list from Excel/CSV. Tag contacts by segment — VIP, New Lead, Wholesale — for targeted campaigns.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="h-7 w-7 rounded-full bg-[#27d34b]/20 border border-[#27d34b]/40 text-[#27d34b] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">2</span>
+                      <div>
+                        <div className="text-sm font-bold text-white">Launch Personalized Bulk Campaigns</div>
+                        <p className="text-[13px] text-emerald-200/70 mt-0.5">Create WhatsApp broadcasts with {`{{name}}`}, {`{{offer}}`} variables. Send to thousands with anti-ban safe pacing via Meta Cloud API.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="h-7 w-7 rounded-full bg-[#27d34b]/20 border border-[#27d34b]/40 text-[#27d34b] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">3</span>
+                      <div>
+                        <div className="text-sm font-bold text-white">Track Everything by Campaign</div>
+                        <p className="text-[13px] text-emerald-200/70 mt-0.5">Monitor Sent → Delivered → Read → Replied per campaign. See recipient-level audit logs. Know exactly which messages converted.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="h-7 w-7 rounded-full bg-[#27d34b]/20 border border-[#27d34b]/40 text-[#27d34b] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">4</span>
+                      <div>
+                        <div className="text-sm font-bold text-white">Reply & Close — AI + Human Team</div>
+                        <p className="text-[13px] text-emerald-200/70 mt-0.5">When customers reply to your campaign, your AI chatbot handles routine queries 24/7. High-value leads get routed to your sales team&apos;s shared inbox instantly.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="h-7 w-7 rounded-full bg-[#27d34b]/20 border border-[#27d34b]/40 text-[#27d34b] flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">5</span>
+                      <div>
+                        <div className="text-sm font-bold text-white">Convert Replies into Pipeline Deals</div>
+                        <p className="text-[13px] text-emerald-200/70 mt-0.5">Interested buyers become leads in your Sales Pipeline. Track deal values, move through stages, and measure revenue from every campaign.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Link 
+                    href="/signup" 
+                    className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-[14px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_12px_30px_-8px_rgba(39,211,75,0.5)] hover:shadow-[0_16px_32px_-6px_rgba(39,211,75,0.65)]"
+                  >
+                    <span>Start Free 14-Day Trial</span>
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right Visual Column — Marketing Flow Diagram */}
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] bg-white/5 backdrop-blur-sm border border-white/10 p-6 sm:p-8">
+                    <div className="w-full space-y-3">
+
+                      {/* Flow Step 1 */}
+                      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="h-8 w-8 rounded-lg bg-[#27d34b]/20 flex items-center justify-center">
+                            <FileSpreadsheet size={16} className="text-[#27d34b]" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white">Upload Contacts</div>
+                            <div className="text-[10px] text-emerald-300/60">customers_diwali.xlsx • 12,845 contacts</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 ml-11">
+                          <span className="text-[9px] font-bold bg-[#27d34b]/20 text-[#27d34b] px-2 py-0.5 rounded-full border border-[#27d34b]/30">VIP: 2,400</span>
+                          <span className="text-[9px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/30">Leads: 5,200</span>
+                          <span className="text-[9px] font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">Wholesale: 3,100</span>
+                        </div>
+                      </div>
+
+                      {/* Arrow */}
+                      <div className="flex justify-center">
+                        <ChevronDown size={18} className="text-[#27d34b]/50" />
+                      </div>
+
+                      {/* Flow Step 2 */}
+                      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="h-8 w-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                            <Send size={16} className="text-amber-400" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white">Bulk Campaign Dispatched</div>
+                            <div className="text-[10px] text-emerald-300/60">&quot;Diwali Sale 2026&quot; • Personalized with {`{{name}}`}</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5 ml-11">
+                          <div className="bg-white/5 rounded-lg p-1.5 text-center border border-white/10">
+                            <div className="text-[9px] text-emerald-300/50">Sent</div>
+                            <div className="text-xs font-black text-white">12,845</div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-1.5 text-center border border-white/10">
+                            <div className="text-[9px] text-emerald-300/50">Delivered</div>
+                            <div className="text-xs font-black text-[#27d34b]">98.4%</div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-1.5 text-center border border-white/10">
+                            <div className="text-[9px] text-emerald-300/50">Read</div>
+                            <div className="text-xs font-black text-[#27d34b]">94.1%</div>
+                          </div>
+                          <div className="bg-white/5 rounded-lg p-1.5 text-center border border-white/10">
+                            <div className="text-[9px] text-amber-300/70">Replied</div>
+                            <div className="text-xs font-black text-amber-400">1,248</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Arrow */}
+                      <div className="flex justify-center">
+                        <ChevronDown size={18} className="text-[#27d34b]/50" />
+                      </div>
+
+                      {/* Flow Step 3 */}
+                      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="h-8 w-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                            <Bot size={16} className="text-purple-400" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white">AI + Team Handle Replies</div>
+                            <div className="text-[10px] text-emerald-300/60">AI handles FAQs • High-value leads → Team inbox</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-11">
+                          <span className="text-[9px] font-bold bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">🤖 AI: 890 auto-replied</span>
+                          <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">👤 Team: 358 handoffs</span>
+                        </div>
+                      </div>
+
+                      {/* Arrow */}
+                      <div className="flex justify-center">
+                        <ChevronDown size={18} className="text-[#27d34b]/50" />
+                      </div>
+
+                      {/* Flow Step 4 — Revenue */}
+                      <div className="bg-gradient-to-r from-[#27d34b]/20 to-[#008069]/20 rounded-2xl p-4 border border-[#27d34b]/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-lg bg-[#27d34b]/30 flex items-center justify-center">
+                              <TrendingUp size={16} className="text-[#27d34b]" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-white">Sales Pipeline Result</div>
+                              <div className="text-[10px] text-emerald-300/70">320 deals created • 89 closed won</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-black text-[#27d34b]">₹24.5L</div>
+                            <div className="text-[9px] font-bold text-emerald-400/70">Revenue from 1 campaign</div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
           </div>
 
         </div>
       </section>
 
-      {/* ━━━ SECTION: WHY WHATSAPP BEATS EMAIL (MARKETING VALLA USE ENTI) ━━━ */}
+      {/* ━━━ SECTION: WHY WHATSAPP BEATS EMAIL (DIRECT MARKETING ROI) ━━━ */}
       <section id="why-whatsapp" className="py-20 md:py-28 bg-white border-b border-[#e9eeeb]">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           
           <div className="max-w-3xl mx-auto text-center mb-16">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f6ea] px-3.5 py-1 text-xs font-semibold text-[#107038] border border-[#bfe3c8] mb-4">
               <TrendingUp size={13} />
-              <span>Marketing Valla Direct Benefit</span>
+              <span>Direct Marketing ROI</span>
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-[46px] font-extrabold text-[#0c2014] tracking-[-0.02em] mb-4">
               Why WhatsApp generates 27x more sales than email.
@@ -1199,8 +1898,11 @@ export default function LandingPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-6 text-xs font-semibold text-slate-300">
-              <a href="#showcase" className="hover:text-white transition">Bulk Broadcasts</a>
-              <a href="#showcase" className="hover:text-white transition">WhatsApp AI Bot</a>
+              <a href="#showcase" className="hover:text-white transition">Broadcasts</a>
+              <a href="#features-pipeline" className="hover:text-white transition">Sales Pipeline</a>
+              <a href="#features-ai" className="hover:text-white transition">24/7 AI Chatbot</a>
+              <a href="#features-ticketing" className="hover:text-white transition">Ticketing &amp; SLAs</a>
+              <a href="#features-team" className="hover:text-white transition">Team Management</a>
               <a href="#why-whatsapp" className="hover:text-white transition">Why WhatsApp?</a>
               <a href="#faq" className="hover:text-white transition">FAQ</a>
               <Link href="/privacy" className="hover:text-[#27d34b] transition">Privacy Policy</Link>
