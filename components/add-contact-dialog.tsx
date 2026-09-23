@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { UserPlus, Tag, X } from 'lucide-react'
+import { CountryPhoneInput } from '@/components/country-phone-input'
 
 interface AddContactDialogProps {
   organizationId: string
@@ -57,7 +58,6 @@ export function AddContactDialog({
           lastName: formData.lastName.trim(),
           phoneNumber: formData.phoneNumber.trim(),
           email: formData.email.trim() || null,
-          company: formData.company.trim() || null,
           tags: formData.tags,
         }),
       })
@@ -100,81 +100,76 @@ export function AddContactDialog({
           Add Contact
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[480px] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Add New Contact</DialogTitle>
+          <DialogTitle className="text-base font-bold text-slate-900 dark:text-white">
+            Add New Contact
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4 text-slate-900 dark:text-white">
+        <div className="space-y-4 py-3 text-slate-900 dark:text-white">
           {/* Name Grid */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3.5">
             {/* First Name */}
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">First Name *</label>
+              <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-300">
+                First Name *
+              </label>
               <input
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 placeholder="John"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
               />
             </div>
 
             {/* Last Name */}
             <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Last Name</label>
+              <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-300">
+                Last Name
+              </label>
               <input
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                placeholder="Smith"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                placeholder="Doe"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
               />
             </div>
           </div>
 
-          {/* Contact Details Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Phone Number */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Phone Number *</label>
-              <input
-                type="tel"
-                value={formData.phoneNumber}
-                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                placeholder="+1 (416) 555-1234"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-              />
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Include country code (e.g., +1)</p>
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Email</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="john@example.com"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Company */}
+          {/* Phone Number with Google-style Searchable Flag Selector (Default India) */}
           <div>
-            <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200">Company</label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-300">
+              Phone Number *
+            </label>
+            <CountryPhoneInput
+              value={formData.phoneNumber}
+              onChange={(fullVal) => setFormData({ ...formData, phoneNumber: fullVal })}
+              defaultCountryCode="IN"
+              placeholder="98765 43210"
+              required
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Select country code or search country name (Default India +91)</p>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-300">
+              Email
+            </label>
             <input
-              type="text"
-              value={formData.company}
-              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-              placeholder="Tech Corp"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="john@example.com"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium mb-1.5 text-slate-900 dark:text-slate-200 flex items-center justify-between">
+            <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-300 flex items-center justify-between">
               <span>Tags</span>
               <span className="text-xs font-normal text-slate-400">press enter or comma to add</span>
             </label>

@@ -41,7 +41,16 @@ import {
   RotateCcw,
   Calendar,
   Clock,
-  Tag
+  Tag,
+  Search,
+  User,
+  Filter,
+  Check,
+  CheckSquare,
+  History,
+  ChevronDown,
+  SlidersHorizontal,
+  Trash2
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -116,6 +125,16 @@ export default function CampaignsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCreateOpen) {
+        setIsCreateOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCreateOpen])
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [selectedCampaignLogs, setSelectedCampaignLogs] = useState<CampaignLog[]>([])
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
@@ -167,8 +186,28 @@ export default function CampaignsPage() {
   const [scheduledDateIST, setScheduledDateIST] = useState<string>('')
   const [scheduledTimeIST, setScheduledTimeIST] = useState<string>('')
 
-  // Tag filter & selection in Step 2
+  // Tag filter & selection in Step 2 (supporting multi-tag and backwards compatibility)
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null)
+  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
+  const [tagFilterMode, setTagFilterMode] = useState<'any' | 'all'>('any')
+
+  // Multi-Filter states: Name, Phone/Contact, Past Campaigns
+  const [nameSearchQuery, setNameSearchQuery] = useState('')
+  const [phoneSearchQuery, setPhoneSearchQuery] = useState('')
+  const [selectedCampaignFilters, setSelectedCampaignFilters] = useState<string[]>([])
+  const [allCampaignsList, setAllCampaignsList] = useState<Campaign[]>([])
+  const [isLoadingAllCampaigns, setIsLoadingAllCampaigns] = useState(false)
+  const [campaignParticipantsMap, setCampaignParticipantsMap] = useState<Record<string, string[]>>({})
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(false)
+
+  // Popover / Dropdown toggles & searches
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false)
+  const [tagSearchQuery, setTagSearchQuery] = useState('')
+  const [isCampaignDropdownOpen, setIsCampaignDropdownOpen] = useState(false)
+  const [campaignSearchQuery, setCampaignSearchQuery] = useState('')
+  const tagDropdownRef = useRef<HTMLDivElement>(null)
+  const campaignDropdownRef = useRef<HTMLDivElement>(null)
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null)
 
   // New multi-channel states
   const [features, setFeatures] = useState({
@@ -453,6 +492,171 @@ export default function CampaignsPage() {
       .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
       .map(c => c.id)
     setSelectedContactIds(matchingContactIds)
+  }
+
+  // Fetch all past campaigns for the filter selector
+  const fetchAllCampaigns = async () => {
+    const orgId = user?.organization_id
+    if (!orgId) return
+    setIsLoadingAllCampaigns(true)
+    try {
+      const res = await fetch(`/api/campaigns?all=true&organizationId=${orgId}`)
+      const data = await res.json()
+      if (data.success && data.campaigns) {
+        setAllCampaignsList(data.campaigns)
+      }
+    } catch (err) {
+      console.error('Error fetching all campaigns for filter:', err)
+    } finally {
+      setIsLoadingAllCampaigns(false)
+    }
+  }
+
+  // Fetch campaign participants when selectedCampaignFilters changes
+  useEffect(() => {
+    if (selectedCampaignFilters.length === 0) return
+    const missing = selectedCampaignFilters.filter(id => !campaignParticipantsMap[id])
+    if (missing.length === 0) return
+
+    const orgId = user?.organization_id
+    if (!orgId) return
+
+    setIsLoadingParticipants(true)
+    fetch(`/api/campaigns/participants?campaignIds=${missing.join(',')}&organizationId=${orgId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.participantsByCampaign) {
+          setCampaignParticipantsMap(prev => ({
+            ...prev,
+            ...data.participantsByCampaign
+          }))
+        }
+      })
+      .catch(err => console.error('Error fetching campaign participants:', err))
+      .finally(() => setIsLoadingParticipants(false))
+  }, [selectedCampaignFilters, user?.organization_id])
+
+  // Close filter dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
+        setIsTagDropdownOpen(false)
+      }
+      if (campaignDropdownRef.current && !campaignDropdownRef.current.contains(e.target as Node)) {
+        setIsCampaignDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Filter toggles
+  const toggleTagFilter = (tag: string) => {
+    setSelectedTagFilters(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    )
+  }
+
+  const toggleCampaignFilter = (campaignId: string) => {
+    setSelectedCampaignFilters(prev =>
+      prev.includes(campaignId) ? prev.filter(id => id !== campaignId) : [...prev, campaignId]
+    )
+  }
+
+  // Normalized participants Set for all selected past campaigns
+  const selectedCampaignParticipants = useMemo(() => {
+    const set = new Set<string>()
+    for (const campId of selectedCampaignFilters) {
+      const list = campaignParticipantsMap[campId]
+      if (list) {
+        for (const val of list) {
+          if (!val) continue
+          const digits = val.replace(/[^\d]/g, '')
+          if (digits) set.add(digits)
+          set.add(val.toLowerCase().trim())
+        }
+      }
+    }
+    return set
+  }, [selectedCampaignFilters, campaignParticipantsMap])
+
+  // Combined Multi-Filter: Name, Phone/Contact, Multiple Tags, Multiple Past Campaigns
+  const filteredContacts = useMemo(() => {
+    return contacts.filter(c => {
+      // 1. Dedicated Name search
+      if (nameSearchQuery.trim()) {
+        const q = nameSearchQuery.toLowerCase().trim()
+        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
+        if (!fullName.includes(q)) return false
+      }
+
+      // 2. Dedicated Phone / Contact search
+      if (phoneSearchQuery.trim()) {
+        const q = phoneSearchQuery.toLowerCase().trim()
+        const qDigits = q.replace(/[^\d]/g, '')
+        const phoneDigits = (c.phone_number || '').replace(/[^\d]/g, '')
+        const email = (c.email || '').toLowerCase()
+        const matchesPhone = qDigits ? phoneDigits.includes(qDigits) : (c.phone_number || '').toLowerCase().includes(q)
+        const matchesEmail = email.includes(q)
+        if (!matchesPhone && !matchesEmail) return false
+      }
+
+      // 3. Multi-tag selection with ANY / ALL toggle
+      if (selectedTagFilters.length > 0) {
+        const cTags = Array.isArray(c.tags) ? c.tags : []
+        if (tagFilterMode === 'all') {
+          const hasAll = selectedTagFilters.every(t => cTags.includes(t))
+          if (!hasAll) return false
+        } else {
+          const hasAny = selectedTagFilters.some(t => cTags.includes(t))
+          if (!hasAny) return false
+        }
+      }
+
+      // Backwards compatibility for single tag filter if set
+      if (selectedTagFilter) {
+        const cTags = Array.isArray(c.tags) ? c.tags : []
+        if (!cTags.includes(selectedTagFilter)) return false
+      }
+
+      // 4. Past campaigns multi-selection
+      if (selectedCampaignFilters.length > 0) {
+        const phoneDigits = (c.phone_number || '').replace(/[^\d]/g, '')
+        const email = (c.email || '').toLowerCase().trim()
+        const matched = selectedCampaignParticipants.has(phoneDigits) || (email && selectedCampaignParticipants.has(email))
+        if (!matched) return false
+      }
+
+      return true
+    })
+  }, [contacts, nameSearchQuery, phoneSearchQuery, selectedTagFilters, selectedTagFilter, tagFilterMode, selectedCampaignFilters, selectedCampaignParticipants])
+
+  // Batch selection actions for audience
+  const handleSelectAllFiltered = () => {
+    const filteredIds = filteredContacts.map(c => c.id)
+    setSelectedContactIds(prev => Array.from(new Set([...prev, ...filteredIds])))
+  }
+
+  const handleDeselectFiltered = () => {
+    const filteredIdSet = new Set(filteredContacts.map(c => c.id))
+    setSelectedContactIds(prev => prev.filter(id => !filteredIdSet.has(id)))
+  }
+
+  const handleClearAllFilters = () => {
+    setNameSearchQuery('')
+    setPhoneSearchQuery('')
+    setSelectedTagFilters([])
+    setSelectedTagFilter(null)
+    setSelectedCampaignFilters([])
+    setTagSearchQuery('')
+    setCampaignSearchQuery('')
+  }
+
+  const handleCopyPhone = (id: string, phone: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(phone)
+    setCopiedPhoneId(id)
+    setTimeout(() => setCopiedPhoneId(null), 1500)
   }
 
   // Scheduled Campaign Actions
@@ -872,6 +1076,13 @@ export default function CampaignsPage() {
     setCustomCampaignTag('')
     setSelectedContactIds(contacts.map(c => c.id))
     setContactSearchTerm('')
+    setNameSearchQuery('')
+    setPhoneSearchQuery('')
+    setSelectedTagFilters([])
+    setTagFilterMode('any')
+    setSelectedCampaignFilters([])
+    setTagSearchQuery('')
+    setCampaignSearchQuery('')
     setVariableMappings({})
     setErrorMsg('')
     setChannel('whatsapp')
@@ -889,6 +1100,8 @@ export default function CampaignsPage() {
   const startNewCampaign = () => {
     resetWizard()
     setIsCreateOpen(true)
+    fetchAllCampaigns()
+    fetchContacts()
   }
 
   const handleNextStep = () => {
@@ -1393,7 +1606,7 @@ export default function CampaignsPage() {
           <p className="text-[10px] mt-1 text-[#667781] dark:text-[#8696a0]">Launch a new campaign using the top right button.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-4.5 sm:gap-5">
           {filteredCampaigns.map((c) => {
             const isProcessing = c.status === 'PROCESSING' || c.status === 'PENDING'
             const progressPct = c.total_contacts > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_contacts) * 100) : 0
@@ -1415,227 +1628,320 @@ export default function CampaignsPage() {
             return (
               <div 
                 key={c.id}
-                onClick={() => {
-                  if (c.status === 'COMPLETED') {
-                    router.push(`/dashboard/campaigns/${c.id}`)
-                  } else {
-                    fetchCampaignDetails(c.id)
-                  }
-                }}
-                className="bg-white dark:bg-[#1f2c34] p-3 md:p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 group"
+                onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
+                className="group relative bg-white dark:bg-[#1c282f] p-5 sm:p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4.5 overflow-hidden"
               >
-                <div className="flex-1 min-w-0 flex items-start gap-2.5">
-                  <div className={`h-8 w-8 md:h-9 md:w-9 rounded-lg flex items-center justify-center shrink-0 border ${channelBadgeColor}`}>
-                    {channelIcon}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-xs text-[#111b21] dark:text-white truncate group-hover:text-[#008069] dark:group-hover:text-emerald-400 transition-colors">{c.name}</h3>
-                    <div className="flex flex-wrap items-center gap-x-1.5 mt-0.5 text-[9px] md:text-[10px] text-[#8696a0] font-semibold">
-                      <span>Template: <strong className="text-[#54656f] dark:text-[#8696a0]">{c.template_name}</strong></span>
-                      <span>•</span>
-                      <span>{new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                      {c.status === 'SCHEDULED' && c.scheduled_at && (
-                        <>
-                          <span>•</span>
-                          <span className="text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
-                            <Clock size={10} />
-                            <span>Scheduled: {formatISTDateTime(c.scheduled_at)}</span>
-                          </span>
-                        </>
-                      )}
+                {/* Left Status Accent Indicator Strip */}
+                <div 
+                  className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${
+                    c.status === 'COMPLETED' ? 'bg-emerald-500' :
+                    c.status === 'PROCESSING' || c.status === 'PENDING' ? 'bg-amber-400 animate-pulse' :
+                    c.status === 'SCHEDULED' ? 'bg-indigo-500' :
+                    c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-500' :
+                    c.status === 'FAILED' ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-700'
+                  }`} 
+                />
+
+                {/* ROW 1: Header (Channel Avatar + Identity + Status + Active Replies) */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3.5 pl-1.5">
+                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                    <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 border ${channelBadgeColor} shadow-2xs group-hover:scale-105 group-hover:shadow-sm transition-all duration-200 mt-0.5`}>
+                      {channelIcon}
                     </div>
 
-                    {/* Active chats indication badge */}
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      {(c.active_chats_count ?? 0) > 0 ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] md:text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <MessageSquare size={10} className="fill-emerald-500/20" />
-                          <span>{c.active_chats_count} Active {c.active_chats_count === 1 ? 'Chat' : 'Chats'}</span>
-                          {(c.unread_chats_count ?? 0) > 0 && (
-                            <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full ml-0.5 animate-bounce">
-                              {c.unread_chats_count} new
-                            </span>
-                          )}
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      {/* Campaign Title & Status Badge */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className="font-bold text-base sm:text-lg text-[#111b21] dark:text-white truncate group-hover:text-[#008069] dark:group-hover:text-emerald-400 transition-colors">
+                          {c.name}
+                        </h3>
+
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 uppercase tracking-wider shrink-0 ${
+                          c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/60' :
+                          c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60 animate-pulse' :
+                          c.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60' :
+                          c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/60' :
+                          c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/40 text-red-700 border-red-200' :
+                          'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200'
+                        }`}>
+                          {c.status === 'SCHEDULED' && <Calendar size={11} />}
+                          <span>{c.status}</span>
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[9px] text-[#8696a0] dark:text-[#8696a0]/70 font-medium">
-                          <MessageSquare size={10} />
-                          <span>0 active replies</span>
+                      </div>
+
+                      {/* Template & Timestamp Row */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#8696a0]">
+                        <span className="inline-flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-lg text-slate-600 dark:text-slate-300 font-medium">
+                          <Tag size={11} className="text-[#8696a0] shrink-0" />
+                          <span className="text-[#8696a0]">Template:</span>
+                          <strong className="font-semibold truncate max-w-[200px]">{c.template_name}</strong>
                         </span>
-                      )}
+
+                        <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                          <Clock size={11} className="text-[#8696a0] shrink-0" />
+                          <span>{new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </span>
+
+                        {c.status === 'SCHEDULED' && c.scheduled_at && (
+                          <span className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1">
+                            <Clock size={11} />
+                            <span>Scheduled: {formatISTDateTime(c.scheduled_at)}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Active Replies Live Pill */}
+                  <div className="shrink-0 flex items-center sm:self-start">
+                    {(c.active_chats_count ?? 0) > 0 ? (
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-[#008069] dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-800 shadow-2xs">
+                        <span className="relative flex h-2.5 w-2.5 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <MessageSquare size={13} className="fill-current text-[#008069] dark:text-emerald-400 shrink-0" />
+                        <span>{c.active_chats_count} Active {c.active_chats_count === 1 ? 'Reply' : 'Replies'}</span>
+                        {(c.unread_chats_count ?? 0) > 0 && (
+                          <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ml-0.5 animate-bounce">
+                            {c.unread_chats_count} new
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-[#8696a0]/70 font-medium bg-slate-50 dark:bg-slate-800/40 border border-slate-200/40 dark:border-slate-800">
+                        <MessageSquare size={12} />
+                        <span>0 replies</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="w-full md:w-56 shrink-0 space-y-1">
-                  <div className="flex justify-between items-center text-[9px] text-[#667781] dark:text-[#8696a0] font-bold">
-                    <span>Dispatch progress:</span>
-                    <span className="font-mono">{c.sent_count + c.failed_count} / {c.total_contacts} ({progressPct}%)</span>
+                {/* ROW 2: Delivery Metrics & Progress Block */}
+                <div className="space-y-3 bg-slate-50/80 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-200/70 dark:border-slate-800/70 pl-2 sm:pl-4">
+                  {/* Progress Header */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-[#8696a0]">
+                        {isProcessing ? 'Dispatching in Progress' : 'Dispatch Progress'}
+                      </span>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                        progressPct === 100 
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' 
+                          : isProcessing
+                          ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 animate-pulse'
+                          : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}>
+                        {progressPct}% Completed
+                      </span>
+                    </div>
+
+                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {c.sent_count + c.failed_count} <span className="text-slate-400 font-normal">/ {c.total_contacts} Contacts</span>
+                    </span>
                   </div>
-                  <div className="h-1.5 bg-[#e9edef] dark:bg-[#202d36] rounded-full overflow-hidden">
+
+                  {/* Progress Track */}
+                  <div className="h-2.5 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-300/40 dark:border-slate-700/40">
                     <div 
                       className={`h-full rounded-full transition-all duration-500 ${
                         c.status === 'FAILED' ? 'bg-red-500' :
                         c.status === 'SCHEDULED' ? 'bg-indigo-500' :
-                        isProcessing ? 'bg-amber-400' :
-                        'bg-[#008069]'
+                        isProcessing ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400 animate-pulse' :
+                        'bg-gradient-to-r from-[#008069] via-emerald-500 to-teal-400'
                       }`}
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
+
+                  {/* 4 Metric Chips Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
+                      <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Total Targets</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{c.total_contacts}</span>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
+                      <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        <span>Delivered</span>
+                      </span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{c.sent_count}</span>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
+                      <span className={`text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${c.failed_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[#8696a0]'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${c.failed_count > 0 ? 'bg-rose-500' : 'bg-slate-400'}`}></span>
+                        <span>Failures</span>
+                      </span>
+                      <span className={`text-sm font-bold mt-0.5 ${c.failed_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{c.failed_count}</span>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
+                      <span className="text-[10px] uppercase font-bold text-[#008069] dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
+                        <MessageSquare size={11} className="fill-current" />
+                        <span>Active Replies</span>
+                      </span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                        {c.active_chats_count || 0}
+                        {c.reply_rate !== undefined && (
+                          <span className="text-[11px] font-normal text-[#8696a0] ml-1">({c.reply_rate}%)</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between md:justify-end gap-3 shrink-0">
-                  <span className={`text-[9px] font-black px-2 py-0.5 md:py-1 rounded border flex items-center gap-1 ${
-                    c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-100 dark:border-emerald-900/30' :
-                    c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-100 dark:border-amber-900/30 animate-pulse' :
-                    c.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50' :
-                    c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 border-rose-100 dark:border-rose-900/30' :
-                    c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-150 dark:border-red-900/30' :
-                    'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-150'
-                  }`}>
-                    {c.status === 'SCHEDULED' && <Calendar size={10} />}
-                    <span>{c.status}</span>
-                  </span>
+                {/* ROW 3: Dedicated Action Footer */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-1.5" onClick={(e) => e.stopPropagation()}>
+                  {/* Left: Channel indicator label */}
+                  <div className="flex items-center gap-2 text-xs text-[#8696a0]">
+                    <span className="inline-flex items-center gap-1.5 font-medium">
+                      <span className={`w-2 h-2 rounded-full ${
+                        (c.channel || 'whatsapp') === 'whatsapp' ? 'bg-[#008069]' :
+                        c.channel === 'sms' ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}></span>
+                      <span className="capitalize">{c.channel || 'whatsapp'} Broadcast</span>
+                    </span>
+                  </div>
 
-                  {/* Scheduled Actions: Send Now / Cancel Schedule */}
-                  {c.status === 'SCHEDULED' ? (
-                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {/* Right: Unified Action Buttons */}
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {/* Excel Export */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/campaigns?id=${c.id}`)
+                          const data = await res.json()
+                          if (data.success && data.logs) {
+                            const reportData = data.logs.map((log: any) => {
+                              const variables = Object.entries(log.variables_mapped || {})
+                                .map(([k, v]) => `${k}:${v}`)
+                                .join(', ')
+                              return {
+                                Recipient: c.channel === 'email' 
+                                  ? (log.email_address || log.phone_number || '-') 
+                                  : (log.phone_number || log.email_address || '-'),
+                                Status: log.status,
+                                'Message SID / ID': log.message_sid || '-',
+                                'Variables Mapped': variables,
+                                'Error / Details': log.error_message || '-',
+                                'Sent At': new Date(log.created_at).toLocaleString()
+                              }
+                            })
+                            const worksheet = XLSX.utils.json_to_sheet(reportData)
+                            const workbook = XLSX.utils.book_new()
+                            XLSX.utils.book_append_sheet(workbook, worksheet, 'Logs')
+                            XLSX.writeFile(workbook, `${c.name.toLowerCase().replace(/\s+/g, '_')}_report.xlsx`)
+                          }
+                        } catch (err) {
+                          console.error('Error downloading log report from card:', err)
+                        }
+                      }}
+                      className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:text-[#008069] dark:hover:text-emerald-400 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                      title="Download Excel Report"
+                    >
+                      <FileSpreadsheet size={13} />
+                      <span>Excel</span>
+                    </button>
+
+                    {/* Rerun Failed */}
+                    {c.status !== 'PROCESSING' && c.status !== 'PENDING' && c.status !== 'SCHEDULED' && (
                       <button
                         type="button"
-                        onClick={() => handleSendNowScheduled(c.id)}
+                        onClick={() => handleRerunCampaign(c.id, 'failed_only')}
                         disabled={actionLoadingId === c.id}
-                        className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 text-[9px] md:text-[10px] font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
-                        title="Override schedule and send now immediately"
+                        className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs disabled:opacity-50"
+                        title="Rerun failed & pending recipients only"
                       >
                         {actionLoadingId === c.id ? (
-                          <Loader2 size={11} className="animate-spin" />
+                          <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <Play size={10} className="fill-current" />
+                          <RotateCcw size={12} />
                         )}
-                        <span>Send Now</span>
+                        <span>Rerun Failed</span>
                       </button>
+                    )}
+
+                    {/* Scheduled Actions */}
+                    {c.status === 'SCHEDULED' && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleSendNowScheduled(c.id)}
+                          disabled={actionLoadingId === c.id}
+                          className="h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs disabled:opacity-50"
+                          title="Override schedule and send now immediately"
+                        >
+                          {actionLoadingId === c.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Play size={11} className="fill-current" />
+                          )}
+                          <span>Send Now</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelScheduled(c.id)}
+                          disabled={actionLoadingId === c.id}
+                          className="h-9 px-3 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                          title="Cancel this scheduled campaign"
+                        >
+                          <X size={12} />
+                          <span>Cancel</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Stop Processing Campaign */}
+                    {(c.status === 'PROCESSING' || c.status === 'PENDING') && (
                       <button
                         type="button"
-                        onClick={() => handleCancelScheduled(c.id)}
+                        onClick={() => handleStopCampaign(c.id)}
                         disabled={actionLoadingId === c.id}
-                        className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-[9px] md:text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
-                        title="Cancel this scheduled campaign"
+                        className="h-9 px-3.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                        title="Stop Campaign execution"
                       >
-                        <X size={10} />
-                        <span>Cancel</span>
+                        {actionLoadingId === c.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Square size={11} className="fill-current" />
+                        )}
+                        <span>Stop Campaign</span>
                       </button>
-                    </div>
-                  ) : (c.status === 'PROCESSING' || c.status === 'PENDING') ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleStopCampaign(c.id)
-                      }}
-                      disabled={actionLoadingId === c.id}
-                      className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-[9px] md:text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
-                      title="Stop Campaign execution"
-                    >
-                      {actionLoadingId === c.id ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <Square size={10} className="fill-current" />
-                      )}
-                      <span>Stop</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRerunCampaign(c.id, 'failed_only')
-                      }}
-                      disabled={actionLoadingId === c.id}
-                      className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 text-[9px] md:text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
-                      title="Rerun failed & pending recipients only"
-                    >
-                      {actionLoadingId === c.id ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <RotateCcw size={11} />
-                      )}
-                      <span>Rerun Failed & Pending</span>
-                    </button>
-                  )}
-                  
-                  <button
-                    type="button"
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      try {
-                        const res = await fetch(`/api/campaigns?id=${c.id}`)
-                        const data = await res.json()
-                        if (data.success && data.logs) {
-                          const reportData = data.logs.map((log: any) => {
-                            const variables = Object.entries(log.variables_mapped || {})
-                              .map(([k, v]) => `${k}:${v}`)
-                              .join(', ')
-                            return {
-                              Recipient: c.channel === 'email' 
-                                ? (log.email_address || log.phone_number || '-') 
-                                : (log.phone_number || log.email_address || '-'),
-                              Status: log.status,
-                              'Message SID / ID': log.message_sid || '-',
-                              'Variables Mapped': variables,
-                              'Error / Details': log.error_message || '-',
-                              'Sent At': new Date(log.created_at).toLocaleString()
-                            }
-                          })
-                          const worksheet = XLSX.utils.json_to_sheet(reportData)
-                          const workbook = XLSX.utils.book_new()
-                          XLSX.utils.book_append_sheet(workbook, worksheet, 'Logs')
-                          XLSX.writeFile(workbook, `${c.name.toLowerCase().replace(/\s+/g, '_')}_report.xlsx`)
-                        }
-                      } catch (err) {
-                        console.error('Error downloading log report from card:', err)
-                      }
-                    }}
-                    className="h-7 md:h-8 w-7 md:w-8 rounded border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] dark:hover:bg-[#2a3942] text-[#54656f] dark:text-[#8696a0] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-                    title="Download Excel Report"
-                  >
-                    <FileSpreadsheet size={12} className="text-[#008069] dark:text-emerald-400" />
-                  </button>
+                    )}
 
-                  {c.status === 'COMPLETED' && (
+                    {/* View Workspace Full Tab Button */}
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/dashboard/campaigns/${c.id}`)
-                      }}
-                      className="h-7 md:h-8 px-2.5 rounded border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-[9px] md:text-[10px] font-extrabold text-[#008069] dark:text-emerald-300 flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-2xs"
-                      title="Open Full Tab Workspace with Interactive Live Chat"
+                      onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
+                      className="h-9 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-200 hover:text-[#111b21] dark:hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                      title="Open full tab campaign workspace"
                     >
-                      <MessageSquare size={11} className="fill-current text-[#008069] dark:text-emerald-400" />
-                      <span>Chat</span>
-                      {(c.active_chats_count ?? 0) > 0 && (
-                        <span className="bg-[#008069] text-white text-[8px] font-black px-1.5 py-0.2 rounded-full">
-                          {c.active_chats_count}
-                        </span>
-                      )}
+                      <Eye size={13} className="text-slate-500" />
+                      <span>View Workspace</span>
                     </button>
-                  )}
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      fetchCampaignDetails(c.id)
-                    }}
-                    className="h-7 md:h-8 px-2 md:px-2.5 rounded border border-[#e9edef] dark:border-slate-700 bg-white dark:bg-[#202d36] hover:bg-[#f8f9fa] text-[9px] md:text-[10px] font-bold text-[#54656f] dark:text-[#8696a0] flex items-center gap-1 cursor-pointer shrink-0"
-                  >
-                    <Eye size={11} className="md:size-3" />
-                    <span>Stats</span>
-                  </button>
+                    {/* Primary CTA: Open Interactive Chat / Full Tab Workspace */}
+                    {c.status === 'COMPLETED' && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
+                        className="h-9 px-4 rounded-xl bg-gradient-to-r from-[#008069] to-[#00a884] hover:from-[#00705b] hover:to-[#009475] text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-xs hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                        title="Open Full Tab Workspace with Interactive Live Chat"
+                      >
+                        <MessageSquare size={13} className="fill-current" />
+                        <span>Open Chat Workspace</span>
+                        {(c.active_chats_count ?? 0) > 0 && (
+                          <span className="bg-white/25 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                            {c.active_chats_count}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-
               </div>
             )
           })}
@@ -2112,39 +2418,146 @@ export default function CampaignsPage() {
           {renderPagination()}
         </div>
       </div>
-      {renderDetailsModal()}
 
-      {/* Creation Wizard Modal */}
+      {/* Creation Wizard - Full Screen Workspace */}
       {isCreateOpen && (
-        <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#1c282f] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border dark:border-[#2a3942]">
-            {/* Modal Header */}
-            <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] border-b border-[#e9edef] dark:border-[#2a3942] px-5 py-4 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-sm text-[#111b21] dark:text-white">Create Bulk Campaign</h3>
-                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] mt-0.5">Step {wizardStep} of 4: {
-                  wizardStep === 1 ? 'Details & Template' :
-                  wizardStep === 2 ? 'Select Target Audience' :
-                  wizardStep === 3 ? 'Map Variables' :
-                  'Launch Confirmation'
-                }</p>
-              </div>
-              <button 
+        <div className="fixed inset-0 z-50 w-full h-full bg-[#f8f9fa] dark:bg-[#0b141a] flex flex-col animate-in fade-in duration-200 overflow-hidden select-none">
+          {/* Full Screen Top App Bar */}
+          <header className="bg-white dark:bg-[#1f2c34] border-b border-[#e9edef] dark:border-[#2a3942] px-4 md:px-8 py-3 flex items-center justify-between shadow-2xs z-30 shrink-0">
+            {/* Left: Back & Campaign Title */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="p-1 hover:bg-[#e9edef] rounded-full text-[#54656f] dark:text-[#8696a0] transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#202d36] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                title="Exit wizard"
               >
-                <X size={18} />
+                <ArrowLeft size={15} />
+                <span className="hidden sm:inline">Exit</span>
               </button>
+
+              <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#008069] to-[#00a884] text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Megaphone size={18} className="fill-white/20" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-extrabold text-sm md:text-base text-[#111b21] dark:text-white tracking-tight">
+                      Create Bulk Campaign
+                    </h2>
+                    <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/50 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                      Full Screen Workspace
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-[#667781] dark:text-[#8696a0] truncate max-w-[200px] sm:max-w-xs md:max-w-md">
+                    {newCampaignName.trim() ? `Draft: "${newCampaignName}"` : 'Omnichannel broadcast setup'}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-white dark:bg-[#1c282f]">
+            {/* Center: Stepper Pills */}
+            <div className="hidden lg:flex items-center gap-1 bg-[#f0f2f5] dark:bg-[#121b22] p-1 rounded-2xl border border-[#e9edef] dark:border-[#2a3942]">
+              {[
+                { step: 1, label: 'Details & Template' },
+                { step: 2, label: 'Target Audience' },
+                { step: 3, label: 'Map Variables' },
+                { step: 4, label: 'Review & Launch' },
+              ].map((s) => {
+                const isCurrent = wizardStep === s.step
+                const isCompleted = wizardStep > s.step
+                return (
+                  <button
+                    key={s.step}
+                    type="button"
+                    onClick={() => {
+                      if (isCompleted) setWizardStep(s.step as any)
+                    }}
+                    disabled={!isCompleted && !isCurrent}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      isCurrent
+                        ? 'bg-white dark:bg-[#1f2c34] text-[#008069] dark:text-emerald-400 shadow-2xs cursor-default'
+                        : isCompleted
+                        ? 'text-emerald-700 dark:text-emerald-400 hover:bg-white/60 dark:hover:bg-[#1f2c34]/60 cursor-pointer'
+                        : 'text-[#8696a0] opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                        isCurrent
+                          ? 'bg-[#008069] text-white'
+                          : isCompleted
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                      }`}
+                    >
+                      {isCompleted ? '✓' : s.step}
+                    </span>
+                    <span>{s.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Right: Close Button */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 lg:hidden">
+                Step {wizardStep}/4
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-[#2a3942] rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                title="Exit (Esc)"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </header>
+
+          {/* Full Screen Body Workspace */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8f9fa] dark:bg-[#0b141a] scrollbar-thin">
+            <div className={`mx-auto w-full space-y-5 pb-24 transition-all duration-300 ${wizardStep === 2 ? 'max-w-7xl' : 'max-w-4xl'}`}>
+              {/* Mobile Stepper Banner */}
+              <div className="lg:hidden p-3 rounded-xl bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] shadow-2xs flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-white">
+                  Step {wizardStep} of 4:{' '}
+                  {wizardStep === 1
+                    ? 'Details & Template'
+                    : wizardStep === 2
+                    ? 'Select Target Audience'
+                    : wizardStep === 3
+                    ? 'Map Variables'
+                    : 'Launch Confirmation'}
+                </span>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4].map((s) => (
+                    <div
+                      key={s}
+                      className={`h-2 rounded-full transition-all ${
+                        s === wizardStep
+                          ? 'w-6 bg-[#00a884]'
+                          : s < wizardStep
+                          ? 'w-2 bg-emerald-300 dark:bg-emerald-800'
+                          : 'w-2 bg-slate-200 dark:bg-slate-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Error Alert */}
               {errorMsg && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2 text-xs text-red-600">
-                  <AlertCircle size={15} className="mt-0.5 flex-shrink-0" />
-                  <span>{errorMsg}</span>
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-2xl flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300 shadow-2xs">
+                  <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-rose-600 dark:text-rose-400" />
+                  <span className="font-semibold">{errorMsg}</span>
                 </div>
               )}
+
+              {/* Step Contents Container */}
+              <div className={`bg-white dark:bg-[#1c282f] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs transition-all duration-300 ${wizardStep === 2 ? 'p-4 sm:p-6 md:p-7' : 'p-5 md:p-8'}`}>
 
               {/* STEP 1: Details & Template Selection */}
               {wizardStep === 1 && (
@@ -2622,39 +3035,79 @@ export default function CampaignsPage() {
               {/* STEP 2: Select Target Audience */}
               {wizardStep === 2 && (
                 <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Source Mode Switcher */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAudienceSource('db')
+                        setErrorMsg('')
+                        if (!allCampaignsList.length) fetchAllCampaigns()
+                      }}
+                      className={`relative p-4 sm:p-5 rounded-2xl border-2 text-left flex items-start gap-3.5 cursor-pointer transition-all duration-200 group ${
+                        audienceSource === 'db'
+                          ? 'border-[#00a884] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00a884]/20'
+                          : 'border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#152026] hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <div className={`p-3 rounded-xl shrink-0 transition-colors ${
+                        audienceSource === 'db'
+                          ? 'bg-[#00a884] text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-[#00a884]/10 group-hover:text-[#008069]'
+                      }`}>
+                        <Database size={22} />
+                      </div>
+                      <div className="flex-1 min-w-0 pr-6">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">CRM Database Contacts</span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#00a884]/15 text-[#008069] dark:text-emerald-300 border border-[#00a884]/30">
+                            {contacts.length} Records
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Multi-filter by past campaigns, multiple tags, contact phone &amp; name search.
+                        </p>
+                      </div>
+                      {audienceSource === 'db' && (
+                        <div className="absolute top-4 right-4 text-[#00a884]">
+                          <CheckCircle size={18} className="fill-[#00a884] text-white" />
+                        </div>
+                      )}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
                         setAudienceSource('excel')
                         setErrorMsg('')
                       }}
-                      className={`p-4 rounded-xl border text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
+                      className={`relative p-4 sm:p-5 rounded-2xl border-2 text-left flex items-start gap-3.5 cursor-pointer transition-all duration-200 group ${
                         audienceSource === 'excel'
-                          ? 'border-[#00a884] bg-[#e7f7f4]/40 text-[#008069]'
-                          : 'border-[#e9edef] bg-white hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
+                          ? 'border-[#00a884] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00a884]/20'
+                          : 'border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#152026] hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                     >
-                      <FileSpreadsheet size={24} />
-                      <span className="font-bold text-xs">Upload Excel / CSV</span>
-                      <span className="text-[10px] opacity-80">Drag .xlsx sheet columns to send</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAudienceSource('db')
-                        setErrorMsg('')
-                      }}
-                      className={`p-4 rounded-xl border text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
-                        audienceSource === 'db'
-                          ? 'border-[#00a884] bg-[#e7f7f4]/40 text-[#008069]'
-                          : 'border-[#e9edef] bg-white hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
-                      }`}
-                    >
-                      <Database size={24} />
-                      <span className="font-bold text-xs">CRM Database Contacts</span>
-                      <span className="text-[10px] opacity-80">Use existing database records ({contacts.length})</span>
+                      <div className={`p-3 rounded-xl shrink-0 transition-colors ${
+                        audienceSource === 'excel'
+                          ? 'bg-[#00a884] text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-[#00a884]/10 group-hover:text-[#008069]'
+                      }`}>
+                        <FileSpreadsheet size={22} />
+                      </div>
+                      <div className="flex-1 min-w-0 pr-6">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">Upload Excel / CSV</span>
+                          <span className="text-[10px] text-slate-400">Custom Sheet</span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Drag &amp; drop external spreadsheet (.xlsx, .csv) with dynamic placeholder mapping.
+                        </p>
+                      </div>
+                      {audienceSource === 'excel' && (
+                        <div className="absolute top-4 right-4 text-[#00a884]">
+                          <CheckCircle size={18} className="fill-[#00a884] text-white" />
+                        </div>
+                      )}
                     </button>
                   </div>
 
@@ -2662,7 +3115,7 @@ export default function CampaignsPage() {
                     <div className="space-y-4">
                       <div 
                         onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-[#e9edef] hover:border-[#00a884] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#f8f9fa] flex flex-col items-center justify-center gap-2"
+                        className="border-2 border-dashed border-[#e9edef] hover:border-[#00a884] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#f8f9fa] dark:bg-[#152026] flex flex-col items-center justify-center gap-2"
                       >
                         <Upload size={28} className="text-[#8696a0]" />
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">
@@ -2682,7 +3135,7 @@ export default function CampaignsPage() {
 
                       {excelData.length > 0 && (
                         <div className="space-y-3">
-                          <div className="p-3 bg-[#e7f7f4] border border-[#00a884]/20 rounded-xl flex items-center justify-between text-xs text-[#008069]">
+                          <div className="p-3 bg-[#e7f7f4] dark:bg-emerald-950/40 border border-[#00a884]/20 rounded-xl flex items-center justify-between text-xs text-[#008069] dark:text-emerald-300">
                             <span className="font-bold">Loaded {excelData.length} records successfully!</span>
                             <button 
                               onClick={() => {
@@ -2782,230 +3235,692 @@ export default function CampaignsPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-3.5">
-                      {/* Tenant Contacts Summary & Action Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 p-3 rounded-xl">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-[#00a884] rounded-lg shrink-0">
-                            <Users size={18} />
+                    <div className="space-y-4">
+                      {/* Audience KPI & Selection Action Bar */}
+                      <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#152026] border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
+                        {/* Metric Indicators */}
+                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-[#00a884] rounded-xl shrink-0">
+                              <Users size={18} />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <span>Target Audience:</span>
+                                <span className="bg-[#00a884] text-white px-2 py-0.5 rounded-full text-xs font-black font-mono">
+                                  {selectedContactIds.length} / {contacts.length}
+                                </span>
+                                <span className="text-slate-500 font-normal">contacts</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                {selectedContactIds.length === contacts.length
+                                  ? '✓ All contacts across entire tenant selected'
+                                  : `${contacts.length - selectedContactIds.length} contacts currently excluded`}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                              <span>Broadcast to</span>
-                              <span className="bg-[#00a884] text-white px-2 py-0.5 rounded-full text-[11px] font-extrabold font-mono">
-                                {selectedContactIds.length} / {contacts.length}
-                              </span>
-                              <span>tenant contacts</span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                              {selectedContactIds.length === contacts.length
-                                ? '✓ All contacts across the entire tenant are selected'
-                                : `${contacts.length - selectedContactIds.length} contacts currently excluded`}
-                            </div>
+
+                          <div className="h-7 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-slate-500 dark:text-slate-400">Matching filters:</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                              {filteredContacts.length}
+                            </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
+
+                        {/* Batch Action Buttons */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={handleSelectAllFiltered}
+                            disabled={filteredContacts.length === 0}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#00a884] hover:bg-[#00876d] text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Select all contacts that match current filters"
+                          >
+                            <Check size={14} />
+                            <span>Select Matching ({filteredContacts.length})</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleDeselectFiltered}
+                            disabled={filteredContacts.length === 0}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            Deselect Matching
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => setSelectedContactIds(contacts.map(c => c.id))}
-                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                              selectedContactIds.length === contacts.length
-                                ? 'bg-[#00a884] text-white shadow-sm'
-                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-emerald-50'
-                            }`}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
                           >
-                            Select All ({contacts.length})
+                            Select Entire CRM ({contacts.length})
                           </button>
+
                           <button
                             type="button"
                             onClick={() => setSelectedContactIds([])}
-                            className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
                           >
                             Deselect All
                           </button>
                         </div>
                       </div>
 
-                      {/* Tag-Based Selection & Filtering Bar */}
-                      {uniqueContactTags.length > 0 && (
-                        <div className="p-3 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-xl space-y-2">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                              <Tag size={13} className="text-[#008069]" />
-                              <span>Filter & Select by Tag</span>
-                              <span className="text-[10px] text-slate-400 font-normal">
-                                ({uniqueContactTags.length} tags)
+                      {/* Multi-Filter Command Center */}
+                      <div className="p-4 rounded-2xl bg-[#f8f9fa] dark:bg-[#121c22] border border-[#e9edef] dark:border-[#2a3942] space-y-3.5">
+                        {/* Filter Header */}
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-[#00a884]/10 text-[#008069] dark:text-emerald-400 rounded-lg">
+                              <SlidersHorizontal size={15} />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">Audience Multi-Filter Engine</span>
+                              <span className="text-[10px] text-slate-400 hidden sm:inline ml-2">
+                                (All filters combine concurrently: Name + Phone + Tags + Past Campaigns)
                               </span>
                             </div>
-                            {selectedTagFilter && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTagFilter(null)}
-                                className="text-[10px] text-[#008069] hover:underline font-bold cursor-pointer"
-                              >
-                                Clear Tag Filter
-                              </button>
+                          </div>
+
+                          {/* Clear All Filters */}
+                          {(nameSearchQuery || phoneSearchQuery || selectedTagFilters.length > 0 || selectedCampaignFilters.length > 0 || selectedTagFilter) && (
+                            <button
+                              type="button"
+                              onClick={handleClearAllFilters}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:underline cursor-pointer"
+                            >
+                              <RotateCcw size={12} />
+                              <span>Reset All Filters</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 4-Column Concurrent Filter Controls */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {/* Filter 1: Name Search */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <User size={12} className="text-[#00a884]" />
+                                Contact Name
+                              </span>
+                              {nameSearchQuery && (
+                                <span className="text-[9px] text-[#00a884] font-semibold">Active</span>
+                              )}
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Search by name..."
+                                value={nameSearchQuery}
+                                onChange={(e) => setNameSearchQuery(e.target.value)}
+                                className="w-full pl-3 pr-7 py-2 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white shadow-2xs"
+                              />
+                              {nameSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setNameSearchQuery('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Filter 2: Phone / Contact Search */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Phone size={12} className="text-[#00a884]" />
+                                Phone / Email
+                              </span>
+                              {phoneSearchQuery && (
+                                <span className="text-[9px] text-[#00a884] font-semibold">Active</span>
+                              )}
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder={channel === 'email' ? "Search email address..." : "Search digits e.g. 91630..."}
+                                value={phoneSearchQuery}
+                                onChange={(e) => setPhoneSearchQuery(e.target.value)}
+                                className="w-full pl-3 pr-7 py-2 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white shadow-2xs"
+                              />
+                              {phoneSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPhoneSearchQuery('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Filter 3: Multi-Select Tag Dropdown */}
+                          <div className="flex flex-col gap-1 relative" ref={tagDropdownRef}>
+                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Tag size={12} className="text-[#00a884]" />
+                                Filter by Tags
+                              </span>
+                              {selectedTagFilters.length > 0 && (
+                                <span className="text-[10px] font-extrabold text-[#008069] bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded-full">
+                                  {selectedTagFilters.length} selected
+                                </span>
+                              )}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setIsTagDropdownOpen(prev => !prev)}
+                              className={`w-full px-3 py-2 bg-white dark:bg-[#1a252c] border rounded-xl text-xs font-medium flex items-center justify-between transition-all cursor-pointer shadow-2xs ${
+                                selectedTagFilters.length > 0
+                                  ? 'border-[#00a884] text-emerald-800 dark:text-emerald-300 font-bold bg-emerald-50/40'
+                                  : 'border-slate-200 dark:border-[#2a3942] text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <span className="truncate">
+                                {selectedTagFilters.length === 0
+                                  ? 'Select Tags...'
+                                  : `${selectedTagFilters.length} tags: ${selectedTagFilters.slice(0, 2).join(', ')}${selectedTagFilters.length > 2 ? ` (+${selectedTagFilters.length - 2})` : ''}`}
+                              </span>
+                              <ChevronDown size={14} className={`transition-transform shrink-0 ml-1 ${isTagDropdownOpen ? 'rotate-180 text-[#00a884]' : 'text-slate-400'}`} />
+                            </button>
+
+                            {/* Tags Popover Menu */}
+                            {isTagDropdownOpen && (
+                              <div className="absolute top-full left-0 mt-1.5 z-40 w-72 sm:w-80 bg-white dark:bg-[#1c282f] border border-slate-200 dark:border-[#2a3942] rounded-2xl shadow-2xl p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
+                                {/* Search Tags */}
+                                <div className="relative">
+                                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                  <input
+                                    type="text"
+                                    placeholder="Search tags..."
+                                    value={tagSearchQuery}
+                                    onChange={e => setTagSearchQuery(e.target.value)}
+                                    className="w-full pl-7 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white"
+                                  />
+                                </div>
+
+                                {/* Match Mode Toggle */}
+                                <div className="flex items-center justify-between p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-[10px]">
+                                  <span className="font-semibold text-slate-600 dark:text-slate-300">Match:</span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setTagFilterMode('any')}
+                                      className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                                        tagFilterMode === 'any' ? 'bg-[#00a884] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400'
+                                      }`}
+                                      title="Contact matches if it has ANY of the selected tags"
+                                    >
+                                      ANY (OR)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTagFilterMode('all')}
+                                      className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                                        tagFilterMode === 'all' ? 'bg-[#00a884] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400'
+                                      }`}
+                                      title="Contact matches only if it has ALL selected tags"
+                                    >
+                                      ALL (AND)
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Quick Buttons */}
+                                <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const allTags = uniqueContactTags.map(t => t.tag)
+                                      setSelectedTagFilters(allTags)
+                                    }}
+                                    className="text-[#008069] dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+                                  >
+                                    Select All ({uniqueContactTags.length})
+                                  </button>
+                                  {selectedTagFilters.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedTagFilters([])}
+                                      className="text-rose-600 hover:underline font-bold cursor-pointer"
+                                    >
+                                      Clear ({selectedTagFilters.length})
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Tags List */}
+                                <div className="max-h-56 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                                  {uniqueContactTags
+                                    .filter(({ tag }) => !tagSearchQuery.trim() || tag.toLowerCase().includes(tagSearchQuery.toLowerCase().trim()))
+                                    .map(({ tag, count }) => {
+                                      const isChecked = selectedTagFilters.includes(tag)
+                                      return (
+                                        <label
+                                          key={tag}
+                                          className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer select-none transition-colors border ${
+                                            isChecked
+                                              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-[#008069] dark:text-emerald-300 font-bold'
+                                              : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2 truncate">
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => toggleTagFilter(tag)}
+                                              className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
+                                            />
+                                            <span className="truncate">{tag}</span>
+                                          </div>
+                                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                            {count}
+                                          </span>
+                                        </label>
+                                      )
+                                    })}
+                                </div>
+                              </div>
                             )}
                           </div>
 
-                          {/* Tag chips with counts and quick selection buttons */}
-                          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
-                            {uniqueContactTags.map(({ tag, count }) => {
-                              const isTagFiltered = selectedTagFilter === tag
+                          {/* Filter 4: Multi-Select Past Campaigns */}
+                          <div className="flex flex-col gap-1 relative" ref={campaignDropdownRef}>
+                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <History size={12} className="text-[#00a884]" />
+                                Past Campaigns
+                              </span>
+                              {selectedCampaignFilters.length > 0 && (
+                                <span className="text-[10px] font-extrabold text-[#008069] bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded-full">
+                                  {selectedCampaignFilters.length} selected
+                                </span>
+                              )}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCampaignDropdownOpen(prev => !prev)
+                                if (!allCampaignsList.length) fetchAllCampaigns()
+                              }}
+                              className={`w-full px-3 py-2 bg-white dark:bg-[#1a252c] border rounded-xl text-xs font-medium flex items-center justify-between transition-all cursor-pointer shadow-2xs ${
+                                selectedCampaignFilters.length > 0
+                                  ? 'border-[#00a884] text-emerald-800 dark:text-emerald-300 font-bold bg-emerald-50/40'
+                                  : 'border-slate-200 dark:border-[#2a3942] text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <span className="truncate">
+                                {selectedCampaignFilters.length === 0
+                                  ? 'Past Campaigns...'
+                                  : `${selectedCampaignFilters.length} campaigns selected`}
+                              </span>
+                              <ChevronDown size={14} className={`transition-transform shrink-0 ml-1 ${isCampaignDropdownOpen ? 'rotate-180 text-[#00a884]' : 'text-slate-400'}`} />
+                            </button>
+
+                            {/* Campaigns Popover Menu */}
+                            {isCampaignDropdownOpen && (
+                              <div className="absolute top-full right-0 mt-1.5 z-40 w-80 sm:w-96 bg-white dark:bg-[#1c282f] border border-slate-200 dark:border-[#2a3942] rounded-2xl shadow-2xl p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
+                                {/* Search Campaigns */}
+                                <div className="relative">
+                                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                  <input
+                                    type="text"
+                                    placeholder="Search previous campaigns..."
+                                    value={campaignSearchQuery}
+                                    onChange={e => setCampaignSearchQuery(e.target.value)}
+                                    className="w-full pl-7 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white"
+                                  />
+                                </div>
+
+                                {/* Quick Buttons */}
+                                <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                  <span className="text-slate-400">
+                                    {isLoadingAllCampaigns ? 'Loading campaigns...' : `${(allCampaignsList.length || campaigns.length)} campaigns`}
+                                  </span>
+                                  {selectedCampaignFilters.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedCampaignFilters([])}
+                                      className="text-rose-600 hover:underline font-bold cursor-pointer"
+                                    >
+                                      Clear ({selectedCampaignFilters.length})
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Campaign List */}
+                                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
+                                  {isLoadingAllCampaigns ? (
+                                    <div className="flex items-center justify-center py-6 text-xs text-slate-400 gap-2">
+                                      <Loader2 size={16} className="animate-spin text-[#00a884]" />
+                                      <span>Loading previous campaigns...</span>
+                                    </div>
+                                  ) : (allCampaignsList.length > 0 ? allCampaignsList : campaigns)
+                                    .filter(c => !campaignSearchQuery.trim() || c.name.toLowerCase().includes(campaignSearchQuery.toLowerCase().trim()))
+                                    .map(c => {
+                                      const isChecked = selectedCampaignFilters.includes(c.id)
+                                      return (
+                                        <label
+                                          key={c.id}
+                                          className={`flex items-start gap-2.5 p-2 rounded-xl text-xs cursor-pointer select-none transition-colors border ${
+                                            isChecked
+                                              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-slate-900 dark:text-white'
+                                              : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300'
+                                          }`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => toggleCampaignFilter(c.id)}
+                                            className="mt-0.5 rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-bold truncate text-slate-900 dark:text-white">{c.name}</div>
+                                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                                              <span className="capitalize font-semibold text-[#008069]">{c.channel || 'whatsapp'}</span>
+                                              <span>•</span>
+                                              <span>{c.total_contacts || c.sent_count || 0} recipients</span>
+                                              {c.created_at && (
+                                                <>
+                                                  <span>•</span>
+                                                  <span>{formatISTDateTime(c.created_at).split(',')[0]}</span>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </label>
+                                      )
+                                    })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Active Filter Pills Bar */}
+                        {(nameSearchQuery || phoneSearchQuery || selectedTagFilters.length > 0 || selectedCampaignFilters.length > 0) && (
+                          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Filters:</span>
+                            {nameSearchQuery && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                <User size={11} />
+                                <span>Name: &quot;{nameSearchQuery}&quot;</span>
+                                <button type="button" onClick={() => setNameSearchQuery('')} className="hover:text-blue-900 dark:hover:text-white cursor-pointer ml-0.5">
+                                  <X size={12} />
+                                </button>
+                              </span>
+                            )}
+                            {phoneSearchQuery && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                <Phone size={11} />
+                                <span>Phone: &quot;{phoneSearchQuery}&quot;</span>
+                                <button type="button" onClick={() => setPhoneSearchQuery('')} className="hover:text-purple-900 dark:hover:text-white cursor-pointer ml-0.5">
+                                  <X size={12} />
+                                </button>
+                              </span>
+                            )}
+                            {selectedTagFilters.map(t => (
+                              <span key={t} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-300 border border-[#00a884]/40">
+                                <Tag size={11} />
+                                <span>Tag: {t}</span>
+                                <button type="button" onClick={() => toggleTagFilter(t)} className="hover:text-emerald-950 dark:hover:text-white cursor-pointer ml-0.5">
+                                  <X size={12} />
+                                </button>
+                              </span>
+                            ))}
+                            {selectedCampaignFilters.map(campId => {
+                              const camp = (allCampaignsList.length > 0 ? allCampaignsList : campaigns).find(c => c.id === campId)
+                              return (
+                                <span key={campId} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                  <History size={11} />
+                                  <span className="max-w-[120px] truncate">Camp: {camp?.name || campId.slice(0, 8)}</span>
+                                  <button type="button" onClick={() => toggleCampaignFilter(campId)} className="hover:text-amber-950 dark:hover:text-white cursor-pointer ml-0.5">
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              )
+                            })}
+                            <button
+                              type="button"
+                              onClick={handleClearAllFilters}
+                              className="text-[11px] text-rose-600 hover:underline font-bold px-1.5 py-0.5 cursor-pointer ml-auto"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Quick Tag Pills Strip (Top 10 most common tags) */}
+                        {uniqueContactTags.length > 0 && (
+                          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Quick Tags:</span>
+                            {uniqueContactTags.slice(0, 10).map(({ tag, count }) => {
+                              const isChecked = selectedTagFilters.includes(tag)
                               const tagContacts = contacts.filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
                               const allTagSelected = tagContacts.length > 0 && tagContacts.every(c => selectedContactIds.includes(c.id))
-                              const someTagSelected = tagContacts.some(c => selectedContactIds.includes(c.id))
-
                               return (
                                 <div
                                   key={tag}
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition-all ${
-                                    isTagFiltered
-                                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-[#008069] font-bold shadow-xs'
-                                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs border transition-all ${
+                                    isChecked
+                                      ? 'bg-[#00a884] text-white border-[#00a884] font-bold shadow-2xs'
+                                      : 'bg-white dark:bg-[#1a252c] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                                   }`}
                                 >
-                                  {/* Filter view by tag */}
                                   <button
                                     type="button"
-                                    onClick={() => setSelectedTagFilter(isTagFiltered ? null : tag)}
-                                    className="flex items-center gap-1.5 cursor-pointer text-left"
-                                    title={`Click to filter list by tag: ${tag}`}
+                                    onClick={() => toggleTagFilter(tag)}
+                                    className="flex items-center gap-1 cursor-pointer"
+                                    title={`Toggle filter by tag: ${tag}`}
                                   >
                                     <span>{tag}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                                      isTagFiltered ? 'bg-[#00a884] text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                    <span className={`text-[9px] px-1 py-0.1 rounded-full font-mono ${
+                                      isChecked ? 'bg-black/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                     }`}>
                                       {count}
                                     </span>
                                   </button>
-
-                                  {/* Quick Select/Deselect all contacts with this tag */}
                                   <button
                                     type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (allTagSelected) {
-                                        handleDeselectByTag(tag)
-                                      } else {
-                                        handleSelectByTag(tag)
-                                      }
+                                    onClick={() => {
+                                      if (allTagSelected) handleDeselectByTag(tag)
+                                      else handleSelectByTag(tag)
                                     }}
-                                    className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
-                                      allTagSelected
-                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                        : someTagSelected
-                                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:text-emerald-200'
-                                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-100'
+                                    className={`ml-0.5 text-[9px] px-1 py-0.2 rounded font-bold transition-all cursor-pointer ${
+                                      isChecked
+                                        ? (allTagSelected ? 'bg-white text-emerald-800' : 'bg-white/20 text-white hover:bg-white/30')
+                                        : (allTagSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-100 dark:hover:bg-emerald-950')
                                     }`}
-                                    title={allTagSelected ? `Deselect all ${count} contacts with tag "${tag}"` : `Select all ${count} contacts with tag "${tag}"`}
+                                    title={allTagSelected ? `Deselect ${count} contacts with this tag` : `Select all ${count} contacts with this tag`}
                                   >
-                                    {allTagSelected ? '✓ Tag Added' : '+ Add Tag'}
+                                    {allTagSelected ? '✓ Added' : '+ Add'}
                                   </button>
                                 </div>
                               )
                             })}
                           </div>
-                        </div>
-                      )}
-
-                      {/* Search Bar */}
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder={
-                            selectedTagFilter 
-                              ? `Filtering within tag "${selectedTagFilter}"... (name, phone, company)` 
-                              : (channel === 'email' ? "Search tenant contacts by name, email, company, tag..." : "Search tenant contacts by name, phone, company, tag...")
-                          }
-                          value={contactSearchTerm}
-                          onChange={(e) => setContactSearchTerm(e.target.value)}
-                          className="w-full px-3.5 py-2 bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] font-semibold text-[#111b21] dark:text-white"
-                        />
+                        )}
                       </div>
 
-                      {/* Contacts Scroll List */}
-                      <div className="max-h-60 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-2 bg-white dark:bg-[#111b21] space-y-1 scrollbar-thin">
-                        {isLoadingContacts ? (
-                          <div className="flex flex-col items-center justify-center py-8 gap-2 text-xs text-[#008069] font-bold">
-                            <Loader2 className="animate-spin" size={18} />
-                            <span>Loading all tenant contacts...</span>
+                      {/* High-Density Contact Table View */}
+                      <div className="border border-slate-200 dark:border-[#2a3942] rounded-2xl overflow-hidden bg-white dark:bg-[#111b21] shadow-xs">
+                        {/* Table Header Bar */}
+                        <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-slate-50 dark:bg-[#152026] border-b border-slate-200 dark:border-[#2a3942] text-xs font-bold text-slate-600 dark:text-slate-400 select-none">
+                          <div className="col-span-12 sm:col-span-5 flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={filteredContacts.length > 0 && filteredContacts.every(c => selectedContactIds.includes(c.id))}
+                              onChange={(e) => {
+                                if (e.target.checked) handleSelectAllFiltered()
+                                else handleDeselectFiltered()
+                              }}
+                              className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
+                              title="Select or deselect all contacts currently shown"
+                            />
+                            <span>Contact Name &amp; Company</span>
                           </div>
-                        ) : contacts.filter(c => {
-                          const tagMatches = !selectedTagFilter || (Array.isArray(c.tags) && c.tags.includes(selectedTagFilter))
-                          if (!tagMatches) return false
-                          const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
-                          const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
-                          const company = (c.company || '').toLowerCase()
-                          const tags = Array.isArray(c.tags) ? c.tags.join(' ').toLowerCase() : ''
-                          const search = contactSearchTerm.toLowerCase()
-                          return name.includes(search) || targetField.includes(search) || company.includes(search) || tags.includes(search)
-                        }).length === 0 ? (
-                          <div className="text-center py-6 text-[#8696a0] text-xs font-medium">No contacts match search or tag filter</div>
-                        ) : (
-                          contacts.filter(c => {
-                            const tagMatches = !selectedTagFilter || (Array.isArray(c.tags) && c.tags.includes(selectedTagFilter))
-                            if (!tagMatches) return false
-                            const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
-                            const targetField = (channel === 'email' ? c.email || '' : c.phone_number).toLowerCase()
-                            const company = (c.company || '').toLowerCase()
-                            const tags = Array.isArray(c.tags) ? c.tags.join(' ').toLowerCase() : ''
-                            const search = contactSearchTerm.toLowerCase()
-                            return name.includes(search) || targetField.includes(search) || company.includes(search) || tags.includes(search)
-                          }).map(c => {
-                            const isChecked = selectedContactIds.includes(c.id)
-                            return (
-                              <label
-                                key={c.id}
-                                className={`flex items-center gap-3 p-2.5 rounded-lg transition-all cursor-pointer select-none text-xs border ${
-                                  isChecked
-                                    ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40'
-                                    : 'hover:bg-[#f5f6f6] dark:hover:bg-[#1f2c34] border-transparent'
-                                }`}
+                          <div className="hidden sm:block sm:col-span-3">Phone &amp; Channel</div>
+                          <div className="hidden sm:block sm:col-span-3">Tags &amp; Campaign History</div>
+                          <div className="hidden sm:block sm:col-span-1 text-right">Status</div>
+                        </div>
+
+                        {/* Scrollable Rows */}
+                        <div className="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 scrollbar-thin">
+                          {isLoadingContacts ? (
+                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-500">
+                              <Loader2 className="animate-spin text-[#00a884]" size={24} />
+                              <span className="text-xs font-bold">Loading CRM contacts...</span>
+                            </div>
+                          ) : filteredContacts.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                              <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full mb-3">
+                                <Search size={24} />
+                              </div>
+                              <p className="text-sm font-bold text-slate-800 dark:text-white">No contacts match your active filters</p>
+                              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                                Try clearing some of your search queries, tag filters, or past campaigns to view more contacts.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleClearAllFilters}
+                                className="mt-4 px-4 py-2 rounded-xl text-xs font-bold bg-[#00a884] text-white shadow-xs hover:bg-[#00876d] transition-all cursor-pointer"
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    setSelectedContactIds(prev => 
-                                      prev.includes(c.id) 
-                                        ? prev.filter(id => id !== c.id) 
+                                Reset All Filters
+                              </button>
+                            </div>
+                          ) : (
+                            filteredContacts.map(c => {
+                              const isChecked = selectedContactIds.includes(c.id)
+                              const phoneDisplay = channel === 'email' ? (c.email || 'No email registered') : c.phone_number
+                              const phoneClean = (c.phone_number || '').replace(/[^\d]/g, '')
+                              const isPastCampMatch = selectedCampaignFilters.length > 0 && selectedCampaignParticipants.has(phoneClean)
+
+                              return (
+                                <div
+                                  key={c.id}
+                                  onClick={() => {
+                                    setSelectedContactIds(prev =>
+                                      prev.includes(c.id)
+                                        ? prev.filter(id => id !== c.id)
                                         : [...prev, c.id]
                                     )
                                   }}
-                                  className="rounded border-[#e9edef] text-[#00a884] focus:ring-[#00a884] cursor-pointer"
-                                />
-                                <div className="h-7 w-7 rounded-full bg-[#dfe5e7] dark:bg-slate-700 border border-[#e9edef] dark:border-slate-600 flex items-center justify-center font-bold text-[#54656f] dark:text-white text-[10px]">
-                                  {`${c.first_name || 'C'}`.substring(0, 1).toUpperCase()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-[#111b21] dark:text-white truncate">
-                                      {c.first_name} {c.last_name || ''}
+                                  className={`grid grid-cols-12 gap-2 px-4 py-3 items-center transition-colors cursor-pointer select-none text-xs ${
+                                    isChecked
+                                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
+                                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                  }`}
+                                >
+                                  {/* Contact & Avatar */}
+                                  <div className="col-span-12 sm:col-span-5 flex items-center gap-3 min-w-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {}} // Handled by row click
+                                      className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer shrink-0"
+                                    />
+                                    <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-[#008069] dark:text-emerald-300 border border-[#00a884]/20 flex items-center justify-center font-bold text-xs shrink-0">
+                                      {`${c.first_name || 'C'}`.substring(0, 1).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-bold text-slate-900 dark:text-white truncate">
+                                        {c.first_name} {c.last_name || ''}
+                                      </div>
+                                      {c.company && (
+                                        <div className="text-[10px] text-slate-400 truncate">
+                                          {c.company}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Phone / Email */}
+                                  <div className="col-span-6 sm:col-span-3 flex items-center gap-1.5 min-w-0">
+                                    <span className="font-mono text-slate-700 dark:text-slate-300 text-xs truncate">
+                                      {phoneDisplay}
                                     </span>
-                                    {c.company && (
-                                      <span className="text-[10px] text-slate-400 font-normal truncate">
-                                        • {c.company}
+                                    {c.phone_number && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleCopyPhone(c.id, c.phone_number, e)}
+                                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-700 transition-colors shrink-0 cursor-pointer"
+                                        title="Copy phone number"
+                                      >
+                                        {copiedPhoneId === c.id ? (
+                                          <Check size={12} className="text-[#00a884]" />
+                                        ) : (
+                                          <Copy size={12} />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Tags & Campaign Match */}
+                                  <div className="col-span-6 sm:col-span-3 flex items-center gap-1.5 flex-wrap min-w-0">
+                                    {isPastCampMatch && (
+                                      <span className="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800 shrink-0">
+                                        ✓ Past Campaign Match
+                                      </span>
+                                    )}
+                                    {Array.isArray(c.tags) && c.tags.length > 0 ? (
+                                      c.tags.slice(0, 3).map((t: string) => (
+                                        <span
+                                          key={t}
+                                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0 ${
+                                            selectedTagFilters.includes(t)
+                                              ? 'bg-[#00a884]/15 text-[#008069] dark:text-emerald-300 border-[#00a884]/30 font-bold'
+                                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                          }`}
+                                        >
+                                          {t}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400 italic">No tags</span>
+                                    )}
+                                    {Array.isArray(c.tags) && c.tags.length > 3 && (
+                                      <span className="text-[9px] text-slate-400 font-semibold">
+                                        +{c.tags.length - 3}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] truncate font-mono">
-                                    {channel === 'email' ? (c.email || 'No email registered') : c.phone_number}
+
+                                  {/* Status / Selected Check */}
+                                  <div className="hidden sm:flex sm:col-span-1 justify-end">
+                                    {isChecked ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#00a884]">
+                                        <CheckCircle size={14} className="fill-[#00a884] text-white" />
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-300 dark:text-slate-600">—</span>
+                                    )}
                                   </div>
                                 </div>
-                                {Array.isArray(c.tags) && c.tags.length > 0 && (
-                                  <div className="flex items-center gap-1 flex-wrap shrink-0">
-                                    {c.tags.slice(0, 2).map((t: string) => (
-                                      <span key={t} className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[9px] px-1.5 py-0.5 rounded font-semibold border border-slate-200 dark:border-slate-700">
-                                        {t}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </label>
-                            )
-                          })
-                        )}
+                              )
+                            })
+                          )}
+                        </div>
+
+                        {/* Table Bottom Bar */}
+                        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#152026] border-t border-slate-200 dark:border-[#2a3942] flex items-center justify-between text-xs text-slate-500">
+                          <span>
+                            Showing <strong className="text-slate-800 dark:text-white">{filteredContacts.length}</strong> matching contacts
+                          </span>
+                          <span>
+                            <strong className="text-[#008069] dark:text-emerald-400">
+                              {selectedContactIds.filter(id => filteredContacts.some(c => c.id === id)).length}
+                            </strong> of {filteredContacts.length} matching currently selected
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -3486,62 +4401,86 @@ export default function CampaignsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
 
-            {/* Modal Footer */}
-            <div className="bg-[#f0f2f5] border-t border-[#e9edef] px-5 py-4 flex justify-between items-center">
+          {/* Full Screen Sticky Bottom Navigation Footer */}
+          <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#1f2c34]/95 backdrop-blur-md border-t border-[#e9edef] dark:border-[#2a3942] px-4 md:px-8 py-3.5 shadow-2xl shrink-0">
+            <div className="max-w-4xl mx-auto w-full flex items-center justify-between gap-3">
               {wizardStep > 1 ? (
                 <button
                   type="button"
                   onClick={handlePrevStep}
-                  className="h-9 px-4 rounded-xl border border-[#e9edef] bg-white hover:bg-[#f8f9fa] text-xs font-bold text-[#54656f] dark:text-[#8696a0] flex items-center gap-1 transition-all cursor-pointer"
+                  className="h-10 px-4.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#202d36] text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                 >
-                  <ArrowLeft size={14} />
+                  <ArrowLeft size={15} />
                   <span>Back</span>
                 </button>
               ) : (
-                <div />
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="h-10 px-4.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#202d36] text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                >
+                  <span>Cancel</span>
+                </button>
               )}
+
+              <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                <span>
+                  Step {wizardStep} of 4:{' '}
+                  <strong className="text-slate-800 dark:text-white">
+                    {wizardStep === 1
+                      ? 'Details & Template'
+                      : wizardStep === 2
+                      ? 'Select Target Audience'
+                      : wizardStep === 3
+                      ? 'Map Variables'
+                      : 'Launch Confirmation'}
+                  </strong>
+                </span>
+              </div>
 
               {wizardStep < 4 ? (
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className="h-9 px-4 rounded-xl bg-[#00a884] hover:bg-[#008f72] text-xs font-bold text-white flex items-center gap-1 transition-all cursor-pointer"
+                  className="h-10 px-5 rounded-xl bg-[#00a884] hover:bg-[#008f72] text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:shadow-lg active:scale-98"
                 >
                   <span>Continue</span>
-                  <ChevronRight size={14} />
+                  <ChevronRight size={15} />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleLaunchCampaign}
                   disabled={isSubmitting}
-                  className={`h-9 px-5 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50 ${
+                  className={`h-10 px-6 rounded-xl text-xs font-bold text-white flex items-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50 hover:shadow-lg active:scale-98 ${
                     dispatchTiming === 'scheduled'
-                      ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 dark:shadow-none'
                       : 'bg-[#00a884] hover:bg-[#008f72]'
                   }`}
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" />
+                      <Loader2 size={15} className="animate-spin" />
                       <span>{dispatchTiming === 'scheduled' ? 'Scheduling...' : 'Launching...'}</span>
                     </>
                   ) : dispatchTiming === 'scheduled' ? (
                     <>
-                      <Calendar size={14} />
+                      <Calendar size={15} />
                       <span>Schedule Campaign (IST)</span>
                     </>
                   ) : (
                     <>
-                      <Megaphone size={14} />
+                      <Megaphone size={15} />
                       <span>Launch Campaign</span>
                     </>
                   )}
                 </button>
               )}
             </div>
-          </div>
+          </footer>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -37,6 +37,23 @@ export default function DashboardLayout({
   })
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar_collapsed')
+    if (saved !== null) {
+      setIsSidebarCollapsed(saved === 'true')
+    }
+  }, [])
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem('sidebar_collapsed', String(next))
+      return next
+    })
+  }
+
   const [showAssistant, setShowAssistant] = useState(false)
   const [showTickets, setShowTickets] = useState(false)
   const [activeTicketsCount, setActiveTicketsCount] = useState(0)
@@ -650,123 +667,311 @@ export default function DashboardLayout({
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-ba        {/* DESKTOP VERTICAL SIDEBAR */}
-        <aside className="hidden md:flex md:flex-col md:justify-between md:py-4 md:border-r md:border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900 md:w-[64px] md:h-full z-40 select-none flex-shrink-0">
-          
-          {/* Navigation Tabs (Vertical) */}
-          <div className="flex flex-col items-center gap-4 w-full">
-            <nav className="flex flex-col items-center gap-2">
-              {filteredNavItems.map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
-                
-                return (
-                  <span key={item.href} className="contents">
+        {/* DESKTOP COLLAPSIBLE VERTICAL SIDEBAR */}
+        <aside
+          className={`hidden md:flex md:flex-col md:justify-between py-3 border-r border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#111b21] h-full z-40 select-none flex-shrink-0 transition-all duration-300 ease-in-out ${
+            isSidebarCollapsed ? 'md:w-[72px]' : 'md:w-[245px]'
+          }`}
+        >
+          {/* Top Header & Branding */}
+          {!isSidebarCollapsed ? (
+            <div className="flex items-center justify-between px-3.5 pb-3 border-b border-slate-100 dark:border-slate-800/70">
+              <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 group">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#008069] to-[#00a884] flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                  <Megaphone size={18} className="fill-white/20" />
+                </div>
+                <div className="min-w-0 flex flex-col">
+                  <span className="font-extrabold text-xs text-slate-900 dark:text-white tracking-tight truncate">
+                    {orgName || 'Marketing CRM'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium truncate">
+                    Omnichannel Hub
+                  </span>
+                </div>
+              </Link>
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                title="Collapse sidebar"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+              >
+                <PanelLeftClose size={17} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-2 pb-3 border-b border-slate-100 dark:border-slate-800/70">
+              <Link
+                href="/dashboard"
+                title="Marketing CRM"
+                className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#008069] to-[#00a884] flex items-center justify-center text-white shadow-xs shrink-0 hover:scale-105 transition-transform"
+              >
+                <Megaphone size={18} className="fill-white/20" />
+              </Link>
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                title="Expand sidebar"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-[#008069] dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <PanelLeftOpen size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Navigation Items (Vertical) */}
+          {!isSidebarCollapsed ? (
+            <div className="flex-1 overflow-y-auto py-3 px-2 space-y-1 scrollbar-thin">
+              <div className="px-2.5 pb-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400 select-none">
+                Menu
+              </div>
+              <nav className="space-y-1">
+                {filteredNavItems.map((item) => {
+                  const Icon = item.icon
+                  const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+
+                  return (
                     <Link
+                      key={item.href}
                       href={item.href}
-                      title={item.label}
                       onClick={(e) => handleNavClick(e, item.href)}
-                      className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200 group relative ${
                         isActive
-                          ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                          : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-400 font-bold border border-emerald-200/50 dark:border-emerald-800/50 shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/50 font-medium'
                       }`}
                     >
                       {isActive && (
-                        <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
+                        <span className="absolute left-0 top-2 bottom-2 w-1 bg-[#00a884] rounded-r-full" />
                       )}
- 
-                      <Icon
-                        size={18}
-                        className={`transition-transform duration-300 group-hover:scale-110 ${
-                          isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
-                        }`}
-                      />
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon
+                          size={17}
+                          className={`shrink-0 transition-transform duration-200 group-hover:scale-105 ${
+                            isActive
+                              ? 'text-[#008069] dark:text-emerald-400'
+                              : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                          }`}
+                        />
+                        <span className="text-xs truncate tracking-tight">{item.label}</span>
+                      </div>
 
-                      {/* Live Badge for Tickets */}
+                      {/* Right-aligned live badge counters */}
                       {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white shadow-xs">
                           {activeTicketsCount}
                         </span>
                       )}
-
-                      {/* Live Badge for Conversations */}
                       {item.href === '/dashboard' && unreadChatsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-xs">
                           {unreadChatsCount}
                         </span>
                       )}
-
-                      {/* Live Badge for Leads */}
                       {item.href === '/dashboard/leads' && activeLeadsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-indigo-600 text-white shadow-xs">
                           {activeLeadsCount}
                         </span>
                       )}
-                      
-                      {/* Tooltip for desktop */}
-                      <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
-                        {item.label}
-                      </span>
                     </Link>
-                  </span>
+                  )
+                })}
+              </nav>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto py-3 px-2 flex flex-col items-center gap-1.5 scrollbar-thin">
+              {filteredNavItems.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={item.label}
+                    onClick={(e) => handleNavClick(e, item.href)}
+                    className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 group relative flex-shrink-0 ${
+                      isActive
+                        ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    {isActive && (
+                      <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
+                    )}
+
+                    <Icon
+                      size={18}
+                      className={`transition-transform duration-200 group-hover:scale-110 ${
+                        isActive
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
+                      }`}
+                    />
+
+                    {/* Live Badge for Tickets */}
+                    {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        {activeTicketsCount}
+                      </span>
+                    )}
+
+                    {/* Live Badge for Conversations */}
+                    {item.href === '/dashboard' && unreadChatsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        {unreadChatsCount}
+                      </span>
+                    )}
+
+                    {/* Live Badge for Leads */}
+                    {item.href === '/dashboard/leads' && activeLeadsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
+                        {activeLeadsCount}
+                      </span>
+                    )}
+
+                    {/* Tooltip for desktop */}
+                    <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                      {item.label}
+                    </span>
+                  </Link>
                 )
               })}
-            </nav>
-          </div>
+            </div>
+          )}
 
-          {/* User profile, Assistant & Logout (Desktop) */}
-          <div className="flex flex-col items-center gap-3 w-full">
-            {/* Assistant Toggle */}
-            {seeAll && (
-              <button
-                onClick={() => setShowAssistant((prev) => !prev)}
-                title="Marketing Assistant"
+          {/* User profile, Assistant & Actions (Desktop) */}
+          {!isSidebarCollapsed ? (
+            <div className="pt-2 px-2.5 border-t border-slate-100 dark:border-slate-800/70 space-y-2">
+              {/* Marketing Assistant */}
+              {seeAll && (
+                <button
+                  type="button"
+                  onClick={() => setShowAssistant((prev) => !prev)}
+                  className={`flex items-center justify-between w-full px-3 py-2 rounded-xl transition-all cursor-pointer ${
+                    showAssistant
+                      ? 'bg-gradient-to-r from-emerald-500/15 to-teal-500/15 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative">
+                      <Sparkles size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      {hasUnreadAssistantNotif && !showAssistant && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      )}
+                    </div>
+                    <span className="text-xs truncate">Marketing Copilot</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    AI
+                  </span>
+                </button>
+              )}
+
+              {/* User Profile Card */}
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#1a2329] border border-slate-200/60 dark:border-[#2a3942] flex items-center justify-between">
+                <Link
+                  href="/dashboard/profile"
+                  className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-85 transition-opacity"
+                  title="View Profile"
+                >
+                  <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-[#008069] to-[#00a884] text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-2xs">
+                    {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-slate-800 dark:text-white truncate">
+                      {userFullName || (userEmail ? userEmail.split('@')[0] : 'User')}
+                    </div>
+                    <div className="text-[9.5px] text-slate-400 truncate">
+                      {userEmail || 'Account'}
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    title="Logout"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                  >
+                    <LogOut size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="pt-2 flex flex-col items-center gap-2.5 w-full border-t border-slate-100 dark:border-slate-800/70">
+              {seeAll && (
+                <button
+                  type="button"
+                  onClick={() => setShowAssistant((prev) => !prev)}
+                  title="Marketing Assistant"
+                  className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
+                    showAssistant
+                      ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                      : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Sparkles
+                    size={18}
+                    className={`transition-transform duration-300 group-hover:scale-110 ${
+                      showAssistant ? 'text-emerald-600 dark:text-emerald-400' : ''
+                    }`}
+                  />
+                  {hasUnreadAssistantNotif && !showAssistant && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse z-10" />
+                  )}
+                  <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                    Assistant
+                  </span>
+                </button>
+              )}
+
+              {/* Profile Link */}
+              <Link
+                href="/dashboard/profile"
+                title="My Profile"
                 className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
-                  showAssistant
+                  pathname === '/dashboard/profile'
                     ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
                     : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                 }`}
               >
-                <Sparkles size={18} className={`transition-transform duration-300 group-hover:scale-110 ${showAssistant ? 'text-emerald-600 dark:text-emerald-400' : ''}`} />
-                {hasUnreadAssistantNotif && !showAssistant && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse z-10" />
+                {pathname === '/dashboard/profile' && (
+                  <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
                 )}
-                <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
-                  Assistant
+                <div className="flex h-8 w-8 rounded-lg bg-gradient-to-tr from-[#008069] to-[#00a884] text-white items-center justify-center font-bold text-[10px] select-none shadow-2xs">
+                  {userFullName
+                    ? userFullName.substring(0, 2).toUpperCase()
+                    : userEmail
+                    ? userEmail.substring(0, 2).toUpperCase()
+                    : 'US'}
+                </div>
+                <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                  Profile
                 </span>
-              </button>
-            )}
+              </Link>
 
-            {/* Profile Link */}
-            <Link
-              href="/dashboard/profile"
-              title="My Profile"
-              className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
-                pathname === '/dashboard/profile'
-                  ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                  : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-              }`}
-            >
-              {pathname === '/dashboard/profile' && (
-                <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r-full" />
-              )}
-              <div className="flex h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-[10px] border border-slate-200/50 dark:border-slate-700/50 select-none transition-all duration-200 group-hover:border-slate-350 dark:group-hover:border-slate-600">
-                {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
-              </div>
-              <span className="absolute left-[65px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
-                Profile
-              </span>
-            </Link>
-            
-            {/* Logout Icon */}
-            <button
-              onClick={handleLogout}
-              title="Logout"
-              className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
+              {/* Logout Icon */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Logout"
+                className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          )}
         </aside>
 
         {/* MOBILE BOTTOM NAVIGATION BAR — 4 items only */}

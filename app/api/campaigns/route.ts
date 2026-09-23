@@ -13,7 +13,7 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-import { getCampaignsReplyStats, getCampaignDetailedRecipients } from '@/lib/campaign-stats'
+import { getCampaignsReplyStats, getCampaignDetailedRecipients, getCampaignsLogStats } from '@/lib/campaign-stats'
 
 // GET: List all campaigns or get details of a single campaign (including logs and interactive recipient chats)
 export async function GET(request: NextRequest) {
@@ -38,22 +38,24 @@ export async function GET(request: NextRequest) {
 
       if (campaignError) throw campaignError
 
-      // Fetch delivery logs and detailed recipient conversations in parallel
-      const [logsRes, conversations] = await Promise.all([
+      // Fetch delivery logs, detailed recipient conversations, and exact aggregated log stats in parallel
+      const [logsRes, conversations, logStatsMap] = await Promise.all([
         supabase
           .from('campaign_logs')
           .select('*')
           .eq('campaign_id', id)
           .order('created_at', { ascending: true }),
-        getCampaignDetailedRecipients(id)
+        getCampaignDetailedRecipients(id),
+        getCampaignsLogStats([id])
       ])
 
       const logs = logsRes.data || []
       if (logsRes.error) throw logsRes.error
 
-      let computedSent = campaign.sent_count || 0
-      let computedFailed = campaign.failed_count || 0
-      if (logs && logs.length > 0) {
+      const logStat = logStatsMap[id]
+      let computedSent = logStat ? logStat.sent_count : (campaign.sent_count || 0)
+      let computedFailed = logStat ? logStat.failed_count : (campaign.failed_count || 0)
+      if (!logStat && logs && logs.length > 0) {
         computedSent = logs.filter(l => ['SENT', 'DELIVERED', 'READ'].includes(l.status)).length
         computedFailed = logs.filter(l => l.status === 'FAILED').length
       }
@@ -86,9 +88,10 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // List all campaigns with server-side pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '10')
+    // List all campaigns with server-side pagination (or all=true for selection filters)
+    const isAll = searchParams.get('all') === 'true'
+    const page = isAll ? 1 : parseInt(searchParams.get('page') || '1')
+    const limit = isAll ? 500 : parseInt(searchParams.get('limit') || '10')
     const offset = (page - 1) * limit
 
     if (!orgId) {
@@ -122,29 +125,18 @@ export async function GET(request: NextRequest) {
 
     if (campaigns && campaigns.length > 0) {
       const campIds = campaigns.map(c => c.id)
-      const [logStatsRes, replyStatsRes] = await Promise.all([
-        supabase
-          .from('campaign_logs')
-          .select('campaign_id, status')
-          .in('campaign_id', campIds),
+      const [logStatsMap, replyStatsRes] = await Promise.all([
+        getCampaignsLogStats(campIds),
         getCampaignsReplyStats(campIds)
       ])
 
-      const logStats = logStatsRes.data || []
-      const statsMap: Record<string, { sent: number; failed: number }> = {}
-      for (const l of logStats) {
-        if (!statsMap[l.campaign_id]) statsMap[l.campaign_id] = { sent: 0, failed: 0 }
-        if (['SENT', 'DELIVERED', 'READ'].includes(l.status)) {
-          statsMap[l.campaign_id].sent++
-        } else if (l.status === 'FAILED') {
-          statsMap[l.campaign_id].failed++
-        }
-      }
-
       campaigns.forEach(c => {
-        if (statsMap[c.id]) {
-          c.sent_count = statsMap[c.id].sent
-          c.failed_count = statsMap[c.id].failed
+        const logStat = logStatsMap[c.id]
+        if (logStat) {
+          c.sent_count = logStat.sent_count
+          c.failed_count = logStat.failed_count
+          c.delivered_count = logStat.delivered_count
+          c.read_count = logStat.read_count
         }
         const replyStat = replyStatsRes[c.id]
         c.active_chats_count = replyStat?.active_chats_count || 0

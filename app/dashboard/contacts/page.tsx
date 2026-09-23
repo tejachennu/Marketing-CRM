@@ -1,6 +1,7 @@
 'use client'
 
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+import { CountryPhoneInput } from '@/components/country-phone-input'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
@@ -990,11 +991,20 @@ export default function ContactsPage() {
 
       {/* Add/Edit Contact Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#1f2c34] rounded-lg border border-slate-200 dark:border-[#2a3942] shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white">
-            <h2 className="text-base font-bold text-slate-900 dark:text-white mb-4">
-              {editingId ? 'Edit Contact' : 'Add New Contact'}
-            </h2>
+        <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-slate-200 dark:border-[#2a3942] shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                {editingId ? 'Edit Contact' : 'Add New Contact'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 rounded-lg cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -1008,7 +1018,7 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, first_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="John"
                   />
                 </div>
@@ -1022,28 +1032,30 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, last_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="Doe"
                   />
                 </div>
               </div>
 
+              {/* Phone Number with Google-like Searchable Flag Selector (Default India) */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                   Phone Number *
                 </label>
-                <input
-                  type="tel"
+                <CountryPhoneInput
                   value={newContact.phone_number}
-                  onChange={(e) =>
-                    setNewContact({ ...newContact, phone_number: e.target.value })
+                  onChange={(fullVal) =>
+                    setNewContact({ ...newContact, phone_number: fullVal })
                   }
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
-                  placeholder="+1234567890"
+                  defaultCountryCode="IN"
+                  placeholder="98765 43210"
                   required
                 />
+                <p className="text-[10px] text-slate-400 mt-1">Select country code or search country name (Default India +91)</p>
               </div>
 
+              {/* Email */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                   Email
@@ -1054,32 +1066,18 @@ export default function ContactsPage() {
                   onChange={(e) =>
                     setNewContact({ ...newContact, email: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="john@example.com"
                 />
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                  Company
-                </label>
-                <input
-                  type="text"
-                  value={newContact.company}
-                  onChange={(e) =>
-                    setNewContact({ ...newContact, company: e.target.value })
-                  }
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
-                  placeholder="Acme Inc"
-                />
-              </div>
-
+              {/* Tags & Segments */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
                   <span>Tags & Segments</span>
                   <span className="text-[9px] font-normal lowercase text-slate-400">press enter or comma to add</span>
                 </label>
-                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] rounded-lg min-h-[42px] focus-within:border-[#00a884] transition-all">
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] rounded-xl min-h-[42px] focus-within:border-[#00a884] transition-all">
                   {newContact.tags.map((t) => (
                     <span
                       key={t}
@@ -1157,23 +1155,23 @@ export default function ContactsPage() {
               </div>
 
               {error && (
-                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 px-3.5 py-2.5 rounded-lg text-xs font-semibold">
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 px-3.5 py-2.5 rounded-xl text-xs font-semibold">
                   {error}
                 </div>
               )}
 
-              <div className="flex gap-2.5 pt-4">
+              <div className="flex gap-2.5 pt-3">
                 <button
                   onClick={() => setShowAddModal(false)}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-805 transition-colors disabled:opacity-50 text-xs font-bold cursor-pointer"
+                  className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 text-xs font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddContact}
                   disabled={saving || !newContact.phone_number.trim()}
-                  className="flex-1 px-4 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg transition-colors disabled:opacity-50 text-xs font-bold cursor-pointer"
+                  className="flex-1 px-4 py-2.5 bg-[#00a884] hover:bg-[#008069] text-white rounded-xl transition-all shadow-md disabled:opacity-50 text-xs font-bold cursor-pointer"
                 >
                   {saving ? 'Saving...' : editingId ? 'Update' : 'Add Contact'}
                 </button>
