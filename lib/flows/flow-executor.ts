@@ -4,14 +4,8 @@ import {
   WorkflowNode,
   WorkflowEdge,
   FlowSession,
-  MessageNodeData,
-  InteractiveButtonsNodeData,
-  NativeFlowNodeData,
-  CrmDealActionNodeData,
-  TicketActionNodeData,
-  AssignAgentActionNodeData,
-  ConditionBranchNodeData,
 } from './flow-types'
+
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -73,13 +67,35 @@ export function getNextNode(
 }
 
 /**
- * Interpolates dynamic variables like {{name}}, {{phone}}, {{company}}
+ * Interpolates dynamic variables like {{name}}, {{phone}}, {{company}},
+ * and also dotted paths like {{contact.name}}, {{contact.phone}}, {{org.name}}
  */
 export function interpolateVariables(template: string, state: Record<string, any>): string {
   if (!template) return ''
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
-    return state[key] !== undefined && state[key] !== null ? String(state[key]) : match
+  return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, key) => {
+    // Support dotted paths like contact.name
+    const parts = key.split('.')
+    let value: any = state
+    for (const part of parts) {
+      if (value === undefined || value === null) return match
+      value = value[part]
+    }
+    return value !== undefined && value !== null ? String(value) : match
   })
+}
+
+/**
+ * Helper: reads a node data field by trying camelCase first, then snake_case fallback.
+ * This is critical because the canvas builder saves snake_case keys (trigger_type, body, cta_text)
+ * but the TypeScript interfaces define camelCase keys (triggerType, messageText, bodyText).
+ */
+function readNodeField(data: Record<string, any>, ...keys: string[]): any {
+  for (const key of keys) {
+    if (data[key] !== undefined && data[key] !== null && data[key] !== '') {
+      return data[key]
+    }
+  }
+  return undefined
 }
 
 /**
@@ -112,6 +128,8 @@ export async function executeFlowRuntime({
   const buttonInput = (buttonPayload || buttonId || '')
   const cleanInput = (buttonInput || textInput).trim().toLowerCase()
 
+  console.log(`[FlowRuntime] Evaluating message for org=${organizationId}, phone=${contactPhone}, input="${cleanInput}"`)
+
   // 1. Check for an active ongoing session
   const { data: activeSession } = await supabase
     .from('flow_sessions')
@@ -124,6 +142,7 @@ export async function executeFlowRuntime({
     .maybeSingle()
 
   if (activeSession) {
+    console.log(`[FlowRuntime] Found active session ${activeSession.id} at node ${activeSession.current_node_id}`)
     // Load the active workflow
     const { data: workflow } = await supabase
       .from('whatsapp_workflows')
@@ -143,9 +162,10 @@ export async function executeFlowRuntime({
 
         // If current node had buttons, check matching button
         if (currentNode.type === 'interactive_buttons') {
-          const btnData = currentNode.data as InteractiveButtonsNodeData
-          const matchedBtn = btnData.buttons?.find(
-            (b) => b.id.toLowerCase() === cleanInput || b.title.toLowerCase() === cleanInput
+          const btnData = currentNode.data as any
+          const buttons = btnData.buttons || []
+          const matchedBtn = buttons.find(
+            (b: any) => b.id?.toLowerCase() === cleanInput || b.title?.toLowerCase() === cleanInput
           )
           if (matchedBtn?.targetNodeId) {
             nextNode = nodes.find((n) => n.id === matchedBtn.targetNodeId)
@@ -168,86 +188,123 @@ export async function executeFlowRuntime({
             userInput: textInput,
             stateData: { ...activeSession.state_data, ...contactData, last_input: textInput },
           })
+        } else {
+          console.log(`[FlowRuntime] No next node found from ${currentNode.id}, session may be at terminal node`)
         }
       }
     }
   }
 
   // 2. No active session: Check if any active workflow trigger matches the input
-  const { data: activeWorkflows } = await supabase
+  const { data: activeWorkflows, error: wfError } = await supabase
     .from('whatsapp_workflows')
     .select('*')
     .eq('organization_id', organizationId)
     .eq('is_active', true)
 
+  if (wfError) {
+    console.error('[FlowRuntime] Error loading workflows:', wfError)
+  }
+
   if (!activeWorkflows || activeWorkflows.length === 0) {
+    console.log(`[FlowRuntime] No active workflows found for org=${organizationId}`)
     return { handled: false }
   }
 
+  console.log(`[FlowRuntime] Found ${activeWorkflows.length} active workflow(s), checking triggers...`)
+
   for (const wf of activeWorkflows) {
     const startNode = getStartNode(wf)
-    if (!startNode) continue
+    if (!startNode) {
+      console.log(`[FlowRuntime] Workflow "${wf.name}" (${wf.id}) has no trigger node, skipping`)
+      continue
+    }
 
     const triggerData = (startNode.data || {}) as any
+
+    // CRITICAL FIX: Read both camelCase and snake_case keys
+    // Canvas builder saves: trigger_type, match_mode
+    // Type interfaces define: triggerType, matchType
+    const triggerType = readNodeField(triggerData, 'triggerType', 'trigger_type') || 'keyword'
+    const matchType = readNodeField(triggerData, 'matchType', 'match_mode') || 'contains'
     const keywords: string[] = triggerData.keywords || []
+
     let matched = false
 
-    if (triggerData.triggerType === 'keyword' && keywords.length > 0) {
+    console.log(`[FlowRuntime] Workflow "${wf.name}": triggerType=${triggerType}, matchType=${matchType}, keywords=[${keywords.join(',')}], input="${cleanInput}"`)
+
+    if (triggerType === 'keyword' && keywords.length > 0) {
       matched = keywords.some((kw) => {
         const cleanKw = kw.toLowerCase().trim()
-        if (triggerData.matchType === 'exact') return cleanInput === cleanKw
+        if (!cleanKw) return false
+        if (matchType === 'exact') return cleanInput === cleanKw
         return cleanInput.includes(cleanKw)
       })
-    } else if (triggerData.triggerType === 'first_message') {
+    } else if (triggerType === 'first_message') {
       matched = true
     }
+
+    console.log(`[FlowRuntime] Workflow "${wf.name}" trigger matched: ${matched}`)
 
     if (matched) {
       // Find the first actionable node after trigger
       const firstActionNode = getNextNode(wf.canvas_nodes || [], wf.canvas_edges || [], startNode.id)
-      if (firstActionNode) {
-        // Create new active session
-        const { data: newSession } = await supabase
-          .from('flow_sessions')
-          .insert([
-            {
-              organization_id: organizationId,
-              workflow_id: wf.id,
-              conversation_id: conversationId,
-              contact_phone: contactPhone,
-              current_node_id: firstActionNode.id,
-              state_data: { ...contactData, trigger_text: textInput },
-              status: 'IN_PROGRESS',
-            },
-          ])
-          .select()
-          .single()
-
-        // Increment workflow execution counter
-        await supabase
-          .from('whatsapp_workflows')
-          .update({ execution_count: (wf.execution_count || 0) + 1 })
-          .eq('id', wf.id)
-
-        return await processNodeTransition({
-          supabase,
-          workflow: wf,
-          session: newSession,
-          targetNode: firstActionNode,
-          contactPhone,
-          conversationId,
-          userInput: textInput,
-          stateData: { ...contactData, trigger_text: textInput },
-        })
+      if (!firstActionNode) {
+        console.log(`[FlowRuntime] Workflow "${wf.name}": trigger matched but no connected action node found`)
+        continue
       }
+
+      console.log(`[FlowRuntime] Workflow "${wf.name}": advancing to node ${firstActionNode.id} (${firstActionNode.type})`)
+
+      // Create new active session
+      const { data: newSession, error: sessionError } = await supabase
+        .from('flow_sessions')
+        .insert([
+          {
+            organization_id: organizationId,
+            workflow_id: wf.id,
+            conversation_id: conversationId,
+            contact_phone: contactPhone,
+            current_node_id: firstActionNode.id,
+            state_data: { ...contactData, trigger_text: textInput },
+            status: 'IN_PROGRESS',
+          },
+        ])
+        .select()
+        .single()
+
+      if (sessionError) {
+        console.error(`[FlowRuntime] Error creating flow session:`, sessionError)
+        continue
+      }
+
+      // Increment workflow execution counter
+      await supabase
+        .from('whatsapp_workflows')
+        .update({ execution_count: (wf.execution_count || 0) + 1 })
+        .eq('id', wf.id)
+
+      return await processNodeTransition({
+        supabase,
+        workflow: wf,
+        session: newSession,
+        targetNode: firstActionNode,
+        contactPhone,
+        conversationId,
+        userInput: textInput,
+        stateData: { ...contactData, trigger_text: textInput },
+      })
     }
   }
 
+  console.log(`[FlowRuntime] No workflow trigger matched input="${cleanInput}"`)
   return { handled: false }
 }
 
 /**
- * Handles action execution and reply preparation for a node
+ * Handles action execution and reply preparation for a node.
+ * Uses readNodeField() to handle both camelCase and snake_case data keys
+ * since the canvas builder and TypeScript interfaces use different conventions.
  */
 async function processNodeTransition({
   supabase,
@@ -287,10 +344,14 @@ async function processNodeTransition({
       .eq('id', session.id)
   }
 
+  const data = (targetNode.data || {}) as any
+
   // 1. Message Node
+  // Canvas saves: body / Type interface expects: messageText
   if (targetNode.type === 'message') {
-    const data = targetNode.data as MessageNodeData
-    const interpolated = interpolateVariables(data.messageText, stateData)
+    const messageText = readNodeField(data, 'messageText', 'body', 'message_text') || ''
+    const interpolated = interpolateVariables(messageText, stateData)
+    console.log(`[FlowRuntime] Message node ${targetNode.id}: "${interpolated.slice(0, 80)}..."`)
     result.replyMessage = {
       type: 'text',
       body: interpolated,
@@ -299,63 +360,83 @@ async function processNodeTransition({
   }
 
   // 2. Interactive Buttons Node
+  // Canvas saves: body / Type interface expects: bodyText
   else if (targetNode.type === 'interactive_buttons') {
-    const data = targetNode.data as InteractiveButtonsNodeData
-    const interpolated = interpolateVariables(data.bodyText, stateData)
+    const bodyText = readNodeField(data, 'bodyText', 'body', 'body_text') || ''
+    const interpolated = interpolateVariables(bodyText, stateData)
+    console.log(`[FlowRuntime] Buttons node ${targetNode.id}: "${interpolated.slice(0, 80)}..."`)
     result.replyMessage = {
       type: 'interactive_buttons',
       body: interpolated,
-      buttons: (data.buttons || []).map((b) => ({ id: b.id, title: b.title })),
+      buttons: (data.buttons || []).map((b: any) => ({ id: b.id, title: b.title })),
     }
     result.actionTaken = 'sent_interactive_buttons'
   }
 
   // 3. Meta WhatsApp Native Flow Node
+  // Canvas saves: native_flow_id, cta_text / Type expects: flowId, flowCtaText
   else if (targetNode.type === 'native_flow_trigger') {
-    const data = targetNode.data as NativeFlowNodeData
-    const { data: nativeFlow } = await supabase
-      .from('whatsapp_native_flows')
-      .select('*')
-      .eq('id', data.flowId)
-      .maybeSingle()
+    const flowId = readNodeField(data, 'flowId', 'native_flow_id', 'flow_id')
+    const flowCtaText = readNodeField(data, 'flowCtaText', 'cta_text', 'flow_cta_text') || 'Open Form'
+    const flowToken = readNodeField(data, 'flowToken', 'flow_token') || `flow_${Date.now()}`
+    const screenId = readNodeField(data, 'screenId', 'screen_id') || 'DETAILS'
+    const description = readNodeField(data, 'description') || 'Please complete the in-chat form below:'
 
+    let nativeFlow = null
+    if (flowId) {
+      const { data: nf } = await supabase
+        .from('whatsapp_native_flows')
+        .select('*')
+        .eq('id', flowId)
+        .maybeSingle()
+      nativeFlow = nf
+    }
+
+    console.log(`[FlowRuntime] Native flow node ${targetNode.id}: flowId=${flowId}, cta="${flowCtaText}"`)
     result.replyMessage = {
       type: 'native_flow',
-      body: interpolateVariables(data.description || 'Please complete the in-chat form below:', stateData),
+      body: interpolateVariables(description, stateData),
       flowPayload: {
-        flow_id: nativeFlow?.flow_id_meta || nativeFlow?.id,
-        flow_cta: data.flowCtaText || 'Open Form',
-        flow_token: data.flowToken || `flow_${Date.now()}`,
+        flow_id: nativeFlow?.flow_id_meta || nativeFlow?.id || flowId,
+        flow_cta: flowCtaText,
+        flow_token: flowToken,
         flow_action: 'navigate',
-        screen: data.screenId || 'DETAILS',
+        screen: screenId,
       },
     }
     result.actionTaken = 'triggered_whatsapp_native_flow'
   }
 
   // 4. CRM Deal Creation Action Node
+  // Canvas saves: deal_name, monetary_value, pipeline_stage / Type expects: dealTitle, dealValue, stageId
   else if (targetNode.type === 'crm_deal_action') {
-    const data = targetNode.data as CrmDealActionNodeData
-    const dealTitle = interpolateVariables(data.dealTitle || `Deal from ${contactPhone}`, stateData)
+    const dealTitle = readNodeField(data, 'dealTitle', 'deal_name', 'deal_title') || `Deal from ${contactPhone}`
+    const dealValue = readNodeField(data, 'dealValue', 'monetary_value', 'deal_value') || 0
+    const currency = readNodeField(data, 'currency') || 'INR'
+    const source = readNodeField(data, 'source') || 'WhatsApp Flow'
+    const stageId = readNodeField(data, 'stageId', 'pipeline_stage', 'stage_id') || null
+
+    const interpolatedTitle = interpolateVariables(dealTitle, stateData)
+    console.log(`[FlowRuntime] CRM deal node ${targetNode.id}: "${interpolatedTitle}", value=${dealValue}`)
 
     const { data: newDeal } = await supabase
       .from('leads')
       .insert([
         {
           organization_id: workflow.organization_id,
-          title: dealTitle,
-          value: data.dealValue || 0,
-          currency: data.currency || 'INR',
+          title: interpolatedTitle,
+          value: dealValue,
+          currency,
           status: 'active',
-          source: data.source || 'WhatsApp Flow',
-          pipeline_stage_id: data.stageId || null,
+          source,
+          pipeline_stage_id: stageId,
         },
       ])
       .select()
       .maybeSingle()
 
     result.dealCreatedId = newDeal?.id
-    result.actionTaken = `created_crm_deal:${dealTitle}`
+    result.actionTaken = `created_crm_deal:${interpolatedTitle}`
 
     // Automatically advance to the next node if one exists
     const nextNode = getNextNode(workflow.canvas_nodes || [], workflow.canvas_edges || [], targetNode.id)
@@ -375,8 +456,11 @@ async function processNodeTransition({
 
   // 5. Customer Support Ticket Action Node
   else if (targetNode.type === 'ticket_action') {
-    const data = targetNode.data as TicketActionNodeData
-    const subject = interpolateVariables(data.subject || `Support inquiry from ${contactPhone}`, stateData)
+    const subject = readNodeField(data, 'subject') || `Support inquiry from ${contactPhone}`
+    const priority = readNodeField(data, 'priority') || 'medium'
+
+    const interpolatedSubject = interpolateVariables(subject, stateData)
+    console.log(`[FlowRuntime] Ticket node ${targetNode.id}: "${interpolatedSubject}", priority=${priority}`)
 
     const { data: newTicket } = await supabase
       .from('tickets')
@@ -384,8 +468,8 @@ async function processNodeTransition({
         {
           organization_id: workflow.organization_id,
           conversation_id: conversationId,
-          subject,
-          priority: data.priority || 'medium',
+          subject: interpolatedSubject,
+          priority,
           status: 'open',
           tags: ['whatsapp_flow'],
         },
@@ -394,7 +478,7 @@ async function processNodeTransition({
       .maybeSingle()
 
     result.ticketCreatedId = newTicket?.id
-    result.actionTaken = `created_support_ticket:${subject}`
+    result.actionTaken = `created_support_ticket:${interpolatedSubject}`
 
     const nextNode = getNextNode(workflow.canvas_nodes || [], workflow.canvas_edges || [], targetNode.id)
     if (nextNode) {
