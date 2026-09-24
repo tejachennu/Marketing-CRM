@@ -45,6 +45,10 @@ export default function NativeFlowDesignerPage() {
   // Loading & Saving
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [submissions, setSubmissions] = useState<any[]>([])
+  const isPublished = status === 'PUBLISHED' && Boolean(nativeFlow?.flow_id_meta)
   const [copiedJson, setCopiedJson] = useState(false)
   const [showJsonModal, setShowJsonModal] = useState(false)
 
@@ -69,8 +73,9 @@ export default function NativeFlowDesignerPage() {
           }
 
           setNativeFlow(f)
+          setSubmissions(data.submissions || [])
           setFlowName(f.name)
-          setStatus(f.status || 'DRAFT')
+          setStatus(f.flow_id_meta ? f.status : 'DRAFT')
           setCategory(f.categories?.[0] || 'LEAD_GENERATION')
           setScreens(f.screens || [])
         }
@@ -84,27 +89,30 @@ export default function NativeFlowDesignerPage() {
   }, [flowId])
 
   // Save Native Flow
-  const saveFlow = async () => {
+  const saveFlow = async (action?: 'validate' | 'publish') => {
     if (!flowId) return
     setSaving(true)
+    setSaveError('')
+    setFeedback('')
     try {
       const res = await fetch(`/api/flows/native/${flowId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: flowName,
-          status,
+          action,
           categories: [category],
           screens,
         }),
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        setNativeFlow(data.flow)
-      }
-    } catch (err) {
-      console.error('Failed to save native flow:', err)
+      const data = await res.json()
+      if (!res.ok) throw new Error([data.error, ...(data.validationErrors || []).map((error: any) => typeof error === 'string' ? error : error.message)].filter(Boolean).join('\n'))
+      setNativeFlow(data.flow)
+      setStatus(data.flow.status)
+      setFeedback(action === 'publish' ? 'Published on WhatsApp. You can now activate a workflow using this form.' : action === 'validate' ? 'Meta accepted this draft. Review the form before publishing.' : 'Draft saved.')
+    } catch (err: any) {
+      setSaveError(err.message)
     } finally {
       setSaving(false)
     }
@@ -115,6 +123,7 @@ export default function NativeFlowDesignerPage() {
 
   // Add Screen
   const addScreen = () => {
+    if (isPublished) return
     const newScreenId = `SCREEN_${screens.length + 1}`
     const newScreen: MetaFlowScreen = {
       id: newScreenId,
@@ -142,6 +151,7 @@ export default function NativeFlowDesignerPage() {
 
   // Delete Screen
   const deleteScreen = (idx: number) => {
+    if (isPublished) return
     if (screens.length <= 1) {
       alert('A WhatsApp Flow must have at least one screen.')
       return
@@ -153,7 +163,7 @@ export default function NativeFlowDesignerPage() {
 
   // Add Component Field to Current Screen
   const addField = (type: MetaFormField['type']) => {
-    if (!currentScreen) return
+    if (!currentScreen || isPublished) return
     const fieldId = `field_${Date.now().toString(36)}`
     let newField: MetaFormField = {
       id: fieldId,
@@ -176,7 +186,7 @@ export default function NativeFlowDesignerPage() {
 
   // Update Field
   const updateField = (fieldIndex: number, updates: Partial<MetaFormField>) => {
-    if (!currentScreen) return
+    if (!currentScreen || isPublished) return
     const updatedChildren = (currentScreen.layout?.children || []).map((f, i) =>
       i === fieldIndex ? { ...f, ...updates } : f
     )
@@ -185,7 +195,7 @@ export default function NativeFlowDesignerPage() {
 
   // Delete Field
   const deleteField = (fieldIndex: number) => {
-    if (!currentScreen) return
+    if (!currentScreen || isPublished) return
     const updatedChildren = (currentScreen.layout?.children || []).filter((_, i) => i !== fieldIndex)
     updateScreenChildren(updatedChildren)
   }
@@ -246,26 +256,23 @@ export default function NativeFlowDesignerPage() {
             <input
               type="text"
               value={flowName}
+              disabled={isPublished}
               onChange={(e) => setFlowName(e.target.value)}
               className="bg-transparent font-bold text-sm tracking-tight text-white hover:bg-slate-800/40 px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
 
           <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-            Meta Spec v3.1
+            WhatsApp Form
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="text-xs p-1.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 focus:outline-none"
-          >
-            <option value="DRAFT">DRAFT</option>
-            <option value="PUBLISHED">PUBLISHED</option>
-          </select>
-
+          <span className="text-xs text-slate-300">{isPublished ? 'Published on WhatsApp' : 'Draft'}</span>
+          {!isPublished && <>
+            <button disabled={saving} onClick={() => saveFlow('validate')} className="text-xs px-3 py-2 rounded-lg bg-slate-700 disabled:opacity-50">Validate with Meta</button>
+            <button disabled={saving} onClick={() => saveFlow('publish')} className="text-xs px-3 py-2 rounded-lg bg-indigo-600 disabled:opacity-50">Publish to WhatsApp</button>
+          </>}
           <button
             onClick={() => setShowJsonModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/20 text-xs font-semibold shadow-sm transition-all"
@@ -275,8 +282,8 @@ export default function NativeFlowDesignerPage() {
           </button>
 
           <button
-            onClick={saveFlow}
-            disabled={saving}
+            onClick={() => saveFlow()}
+            disabled={saving || isPublished}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
@@ -285,6 +292,17 @@ export default function NativeFlowDesignerPage() {
         </div>
       </header>
 
+      {(saveError || feedback || isPublished) && <div role={saveError ? 'alert' : 'status'} className={`px-5 py-3 text-xs whitespace-pre-wrap border-b ${saveError ? 'bg-rose-950 text-rose-200 border-rose-800' : 'bg-slate-800 text-slate-200 border-slate-700'}`}>
+        {saveError || feedback || 'This form is published. Create a new form to change its fields.'}
+        {nativeFlow?.flow_id_meta && <span className="ml-3 text-slate-400">Meta Flow ID: {nativeFlow.flow_id_meta}</span>}
+      </div>}
+      {submissions.length > 0 && <details className="px-5 py-2 text-xs bg-slate-900 border-b border-slate-700">
+        <summary className="cursor-pointer">Recent responses ({submissions.length})</summary>
+        <div className="max-h-48 overflow-auto py-2 space-y-2">{submissions.map(submission => <div key={submission.id} className="border-b border-slate-700 pb-2">
+          <p>{submission.contact_phone} · {new Date(submission.created_at).toLocaleString()}</p>
+          <pre className="whitespace-pre-wrap text-slate-400">{JSON.stringify(Object.fromEntries(Object.entries(submission.response_payload || {}).filter(([key]) => key !== 'flow_token')), null, 2)}</pre>
+        </div>)}</div>
+      </details>}
       {/* Main Builder Grid */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Column: Screens List & Component Palette */}
@@ -377,7 +395,7 @@ export default function NativeFlowDesignerPage() {
         </aside>
 
         {/* Center Column: Screen Form Designer */}
-        <div className="flex-1 p-6 overflow-y-auto bg-[#0c1216]">
+        <fieldset disabled={isPublished} className="flex-1 min-w-0 p-6 overflow-y-auto bg-[#0c1216]">
           {currentScreen ? (
             <div className="max-w-2xl mx-auto space-y-5">
               {/* Screen Metadata */}
@@ -554,13 +572,13 @@ export default function NativeFlowDesignerPage() {
           ) : (
             <div className="text-center py-20 text-slate-400">Select or create a screen to edit.</div>
           )}
-        </div>
+        </fieldset>
 
         {/* Right Column: Live WhatsApp Mobile Simulator */}
         <aside className="w-96 border-l border-slate-800 bg-[#080d10] p-6 flex flex-col items-center justify-center z-10">
           <div className="text-center mb-3">
-            <span className="text-xs font-bold text-slate-300">Live WhatsApp In-App Preview</span>
-            <p className="text-[10px] text-slate-500">Official Meta Flow v3.1 rendering</p>
+            <span className="text-xs font-bold text-slate-300">Form Preview</span>
+            <p className="text-[10px] text-slate-500">Form preview</p>
           </div>
 
           {/* Smartphone Frame Mockup */}
@@ -712,7 +730,7 @@ export default function NativeFlowDesignerPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileCode2 className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-base">Meta Flow Specification v3.1 JSON</h3>
+                <h3 className="font-bold text-base">Meta Flow Specification v7.3 JSON</h3>
               </div>
               <button onClick={() => setShowJsonModal(false)} className="text-slate-400 hover:text-white">
                 ✕

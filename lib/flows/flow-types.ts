@@ -171,7 +171,7 @@ export interface WhatsAppWorkflow {
   updated_at: string
 }
 
-// Meta Flow Specification v3.1 Primitives
+// Meta Flow Specification v7.3 Primitives
 export type MetaFormComponentType =
   | 'TextCaption'
   | 'TextSubheading'
@@ -213,8 +213,8 @@ export interface MetaFlowScreen {
 }
 
 export interface MetaFlowJSON {
-  version: '3.1'
-  screens: MetaFlowScreen[]
+  version: '7.3'
+  screens: Array<{ id: string; title: string; terminal?: boolean; success?: boolean; data: Record<string, any>; layout: { type: 'SingleColumnLayout'; children: Record<string, any>[] } }>
 }
 
 export interface WhatsAppNativeFlowRecord {
@@ -238,7 +238,7 @@ export interface FlowSession {
   contact_phone: string
   current_node_id: string
   state_data: Record<string, any>
-  status: 'IN_PROGRESS' | 'PAUSED_RAG' | 'COMPLETED' | 'EXPIRED'
+  status: 'IN_PROGRESS' | 'PAUSED_RAG' | 'COMPLETED' | 'EXPIRED' | 'FAILED'
   last_interaction_at: string
   created_at: string
 }

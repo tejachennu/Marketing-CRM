@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
         { id: 'e-2-3', source: 'ai-node-2', target: 'ai-node-3' },
         { id: 'e-3-4', source: 'ai-node-3', target: 'ai-node-4', sourceHandle: 'btn_faq' },
         { id: 'e-3-5', source: 'ai-node-3', target: 'ai-node-5', sourceHandle: 'btn_schedule' },
+        { id: 'e-3-advisor', source: 'ai-node-3', target: 'ai-node-4', sourceHandle: 'btn_advisor' },
       ]
 
       return NextResponse.json({
@@ -143,7 +144,11 @@ Available Node Types:
 7. "ticket_action": data: { title, subject: string, priority: 'low'|'medium'|'high' }
 
 Position nodes cleanly in horizontal left-to-right columns (x: 100, 420, 740, 1060, etc.) with y spaced 100-300 apart.
-Always include an 'ai_rag_node' for intelligent mid-flow customer questions!
+Every button must have a connected edge using sourceHandle equal to its ID. Use at most 3 buttons, each with a title of at most 20 characters.
+An ai_rag_node ends the workflow and delegates the current message to the real knowledge assistant. It cannot resume another step.
+For condition_branch use data { title, variable_name, operator, compare_value }, with operator equals, not_equals, contains, greater_than, less_than, or is_set and edges with sourceHandle "true" and "false".
+Use {{form.field_name}} to reference native form answers. A native_flow_trigger needs an existing native_flow_id selected by the user; never invent a form ID.
+Do not generate unsupported delay or webhook actions. Avoid automatic loops.
 Return ONLY valid JSON without markdown fences.`
 
     const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {

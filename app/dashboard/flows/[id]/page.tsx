@@ -48,7 +48,12 @@ export default function FlowCanvasBuilderPage() {
   const [nodes, setNodes] = useState<WorkflowNode[]>([])
   const [edges, setEdges] = useState<WorkflowEdge[]>([])
   const [flowName, setFlowName] = useState('')
-  const [isActive, setIsActive] = useState(true)
+  const [isActive, setIsActive] = useState(false)
+  const [readinessErrors, setReadinessErrors] = useState<string[]>([])
+  const [saveError, setSaveError] = useState('')
+  const [recentSessions, setRecentSessions] = useState<any[]>([])
+  const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; name: string }>>([])
+  const [simulationCompleted, setSimulationCompleted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
@@ -113,6 +118,9 @@ export default function FlowCanvasBuilderPage() {
           }
 
           setWorkflow(wf)
+          setReadinessErrors(data.readinessErrors || [])
+          setRecentSessions(data.recentSessions || [])
+          setPipelineStages(data.pipelineStages || [])
           setFlowName(wf.name)
           setIsActive(wf.is_active)
           setNodes(wf.canvas_nodes || [])
@@ -143,6 +151,7 @@ export default function FlowCanvasBuilderPage() {
   const saveWorkflow = async () => {
     if (!workflowId) return
     setSaving(true)
+    setSaveError('')
     try {
       const res = await fetch(`/api/flows/workflows/${workflowId}`, {
         method: 'PUT',
@@ -155,12 +164,18 @@ export default function FlowCanvasBuilderPage() {
         }),
       })
 
+      const data = await res.json()
+      if (!res.ok) {
+        setReadinessErrors(data.validationErrors || [])
+        throw new Error(data.error || 'Unable to save workflow')
+      }
       if (res.ok) {
+        setReadinessErrors(data.readinessErrors || [])
         setHasUnsavedChanges(false)
         setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
       }
-    } catch (err) {
-      console.error('Failed to save workflow:', err)
+    } catch (err: any) {
+      setSaveError(err.message)
     } finally {
       setSaving(false)
     }
@@ -495,19 +510,22 @@ export default function FlowCanvasBuilderPage() {
           { id: 'btn_option_2', title: 'Option 2' },
         ],
       }
+    } else if (type === 'condition_branch') {
+      defaultData = { title: 'Route by Answer', variable_name: 'form.budget', operator: 'equals', compare_value: 'tier_2' }
+    } else if (type === 'list_menu') {
+      defaultData = { title: 'List Menu', body: 'How can we help?', button_text: 'Choose', sections: [{ title: 'Options', rows: [{ id: 'sales', title: 'Sales enquiry' }, { id: 'support', title: 'Customer support' }] }] }
+    } else if (type === 'assign_agent_action') {
+      defaultData = { title: 'Hand Off to Team', assignmentType: 'team_queue' }
     } else if (type === 'native_flow_trigger') {
       defaultData = {
         title: 'WhatsApp Native Form',
         cta_text: 'Open Consultation Form',
-        native_flow_id: availableNativeForms[0]?.id || '',
+        native_flow_id: availableNativeForms.find(form => form.status === 'PUBLISHED' && form.flow_id_meta)?.id || '',
         flow_token: 'token_' + Date.now(),
       }
     } else if (type === 'ai_rag_node') {
       defaultData = {
-        title: 'AI RAG Knowledge Guard',
-        system_prompt: 'Answer questions strictly using our verified knowledge base. Then prompt user to resume step.',
-        enable_auto_resume: true,
-        max_turns: 3,
+        title: 'Knowledge Assistant',
       }
     } else if (type === 'crm_deal_action') {
       defaultData = {
@@ -570,7 +588,7 @@ export default function FlowCanvasBuilderPage() {
       // Avoid duplicates
       setEdges((prev) => [
         ...prev.filter(
-          (e) => !(e.source === newEdge.source && e.target === newEdge.target && e.sourceHandle === newEdge.sourceHandle)
+          (e) => !(e.source === newEdge.source && e.sourceHandle === newEdge.sourceHandle)
         ),
         newEdge,
       ])
@@ -590,6 +608,7 @@ export default function FlowCanvasBuilderPage() {
   // Simulator Engine
   const startSimulator = async () => {
     setShowSimulator(true)
+    setSimulationCompleted(false)
     setSimulatorMessages([])
     setSimulatedCurrentNodeId(null)
     setSimulatedState({})
@@ -605,20 +624,23 @@ export default function FlowCanvasBuilderPage() {
         }),
       })
 
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Simulation failed')
       if (res.ok) {
-        const data = await res.json()
+        setSimulationCompleted(Boolean(data.isCompleted))
         setSimulatorMessages([{ sender: 'bot', text: data.reply, buttons: data.buttons, isNativeFlow: data.isNativeFlow, ctaText: data.ctaText }])
         setSimulatedCurrentNodeId(data.currentNodeId)
         setSimulatedState(data.simulatedState || {})
       }
-    } catch (err) {
-      console.error('Simulator error:', err)
+    } catch (err: any) {
+      setSimulatorMessages([{ sender: 'bot', text: err.message }])
     } finally {
       setSimulatingStep(false)
     }
   }
 
-  const sendSimulatorMessage = async (text: string, buttonId?: string) => {
+  const sendSimulatorMessage = async (text: string, buttonId?: string, flowSubmissionData?: Record<string, any>) => {
+    if (simulationCompleted) return
     if (!text.trim() && !buttonId) return
     setSimulatingStep(true)
 
@@ -637,11 +659,14 @@ export default function FlowCanvasBuilderPage() {
           userInput: text,
           buttonId,
           simulatedState,
+          flowSubmissionData,
         }),
       })
 
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Simulation failed')
       if (res.ok) {
-        const data = await res.json()
+        setSimulationCompleted(Boolean(data.isCompleted))
         setSimulatorMessages((prev) => [
           ...prev,
           {
@@ -655,8 +680,8 @@ export default function FlowCanvasBuilderPage() {
         setSimulatedCurrentNodeId(data.currentNodeId)
         setSimulatedState(data.simulatedState || {})
       }
-    } catch (err) {
-      console.error('Simulator step error:', err)
+    } catch (err: any) {
+      setSimulatorMessages(prev => [...prev, { sender: 'bot', text: err.message }])
     } finally {
       setSimulatingStep(false)
     }
@@ -751,6 +776,14 @@ export default function FlowCanvasBuilderPage() {
         </div>
       </header>
 
+      {(saveError || readinessErrors.length > 0) && <div role="alert" className="px-5 py-3 text-xs bg-amber-950 text-amber-100 border-b border-amber-800 max-h-36 overflow-auto">
+        <p className="font-semibold">{saveError || 'Before activating this flow'}</p>
+        {readinessErrors.map((error, index) => <p key={index} className="mt-1">• {error}</p>)}
+      </div>}
+      {recentSessions.some(session => session.status === 'FAILED') && <details className="px-5 py-2 text-xs bg-rose-950 text-rose-200">
+        <summary className="cursor-pointer">Recent execution failures</summary>
+        {recentSessions.filter(session => session.status === 'FAILED').map(session => <p key={session.id} className="py-1">{new Date(session.last_interaction_at).toLocaleString()} · {session.state_data?._last_error || 'Execution failed'} · Step: {session.current_node_id}</p>)}
+      </details>}
       {/* Main Canvas & Drawers Area */}
       <div className="flex-1 flex relative overflow-hidden">
         {/* Left Palette: Add Node Blocks */}
@@ -856,10 +889,17 @@ export default function FlowCanvasBuilderPage() {
                 <Sparkles className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-cyan-200">AI RAG Guard</p>
-                <p className="text-[10px] text-cyan-300/70">Mid-flow FAQ answering</p>
+                <p className="font-semibold text-cyan-200">Knowledge Assistant</p>
+                <p className="text-[10px] text-cyan-300/70">Answer using your knowledge base</p>
               </div>
             </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-teal-400 uppercase tracking-wide">Routing & Handoff</span>
+            {([{ type: 'condition_branch', title: 'Route by Answer', description: 'Branch using a saved form answer' }, { type: 'list_menu', title: 'List Menu', description: 'Offer up to ten choices' }, { type: 'assign_agent_action', title: 'Hand Off to Team', description: 'Pause automation for a person' }] as const).map(item => <button key={item.type} onClick={() => addNode(item.type)} className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 text-xs">
+              <p className="font-semibold text-slate-200">{item.title}</p><p className="text-[10px] text-slate-400">{item.description}</p>
+            </button>)}
           </div>
 
           <div className="space-y-1.5">
@@ -1196,11 +1236,11 @@ export default function FlowCanvasBuilderPage() {
                       </p>
                     )}
 
-                    {node.type === 'interactive_buttons' && (
+                    {['interactive_buttons', 'list_menu', 'condition_branch'].includes(node.type) && (
                       <div className="space-y-1.5">
                         <p className="line-clamp-2 text-slate-400">{node.data?.body}</p>
                         <div className="space-y-1">
-                          {(node.data?.buttons || []).map((btn: any) => (
+                          {(node.type === 'condition_branch' ? [{ id: 'true', title: 'Matches' }, { id: 'false', title: 'Does not match' }] : node.type === 'list_menu' ? (node.data.sections || []).flatMap((section: any) => section.rows || []) : node.data?.buttons || []).map((btn: any) => (
                             <div
                               key={btn.id}
                               className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 border border-teal-500/20 text-[11px] font-medium flex items-center justify-between"
@@ -1233,9 +1273,9 @@ export default function FlowCanvasBuilderPage() {
 
                     {node.type === 'ai_rag_node' && (
                       <div className="p-2 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-cyan-200">
-                        <span className="font-semibold text-[11px]">Mid-Flow AI Interceptor</span>
+                        <span className="font-semibold text-[11px]">Knowledge Assistant</span>
                         <p className="text-[10px] text-cyan-300/70 mt-0.5">
-                          Answers off-topic queries & presents resume chip
+                          Ends this workflow and delegates the reply to your knowledge assistant.
                         </p>
                       </div>
                     )}
@@ -1244,14 +1284,13 @@ export default function FlowCanvasBuilderPage() {
                       <div className="text-[11px] text-amber-200/90">
                         <span>Stage: </span>
                         <span className="font-semibold font-mono">{node.data?.pipeline_stage || 'lead_in'}</span>
-                        <span className="block text-[10px] text-slate-400">Val: ${node.data?.monetary_value || 0}</span>
+                        <span className="block text-[10px] text-slate-400">Value: {node.data?.monetary_value || 0}</span>
                       </div>
                     )}
 
                     {node.type === 'ticket_action' && (
                       <div className="text-[11px] text-amber-200/90">
-                        <span>Priority: </span>
-                        <span className="font-semibold uppercase">{node.data?.priority || 'medium'}</span>
+                        <span>Creates a ticket linked to this contact and conversation.</span>
                       </div>
                     )}
                   </div>
@@ -1271,7 +1310,7 @@ export default function FlowCanvasBuilderPage() {
                   )}
 
                   {/* Right Source Handle (if not button-based) */}
-                  {node.type !== 'interactive_buttons' && (
+                  {!['interactive_buttons', 'list_menu', 'condition_branch', 'assign_agent_action', 'ai_rag_node'].includes(node.type) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1322,6 +1361,10 @@ export default function FlowCanvasBuilderPage() {
               {selectedNode.type === 'trigger' && (
                 <div className="space-y-3">
                   <div>
+                    <label className="text-xs font-semibold text-slate-400">Trigger</label>
+                    <select value={selectedNode.data.trigger_type || 'keyword'} onChange={event => updateNodeData(selectedNode.id, { trigger_type: event.target.value })} className="w-full my-2 p-2 text-xs bg-slate-900 border border-slate-700 rounded-lg"><option value="keyword">Keyword</option><option value="first_message">First message in a conversation</option></select>
+                    <label className="text-xs font-semibold text-slate-400">Keyword matching</label>
+                    <select value={selectedNode.data.match_mode === 'exact' ? 'exact' : 'contains'} onChange={event => updateNodeData(selectedNode.id, { match_mode: event.target.value })} className="w-full my-2 p-2 text-xs bg-slate-900 border border-slate-700 rounded-lg"><option value="contains">Contains keyword</option><option value="exact">Exact match</option></select>
                     <label className="text-xs font-semibold text-slate-400">Inbound Trigger Keywords</label>
                     <p className="text-[10px] text-slate-500">Comma-separated</p>
                     <input
@@ -1337,6 +1380,29 @@ export default function FlowCanvasBuilderPage() {
                   </div>
                 </div>
               )}
+
+              {selectedNode.type === 'condition_branch' && <div className="space-y-3 text-xs">
+                <label className="block">Answer or variable
+                  <input value={selectedNode.data.variable_name || selectedNode.data.variableName || ''} onChange={event => updateNodeData(selectedNode.id, { variable_name: event.target.value, variableName: event.target.value })} placeholder="form.budget" className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" />
+                </label>
+                <label className="block">Comparison
+                  <select value={selectedNode.data.operator || 'equals'} onChange={event => updateNodeData(selectedNode.id, { operator: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg">
+                    {['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].map(operator => <option key={operator} value={operator}>{operator.replaceAll('_', ' ')}</option>)}
+                  </select>
+                </label>
+                <label className="block">Compare with
+                  <input value={selectedNode.data.compare_value ?? selectedNode.data.compareValue ?? ''} onChange={event => updateNodeData(selectedNode.id, { compare_value: event.target.value, compareValue: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" />
+                </label>
+                <p className="text-slate-400">Connect both outputs. Form answers use names such as form.budget or form.full_name.</p>
+              </div>}
+              {selectedNode.type === 'assign_agent_action' && <p className="text-xs text-slate-400">This action returns the conversation to the shared team queue and pauses automatic replies. A teammate can take over in the inbox.</p>}
+              {selectedNode.type === 'list_menu' && <div className="space-y-3 text-xs">
+                <label className="block">Message<textarea value={selectedNode.data.body || ''} onChange={event => updateNodeData(selectedNode.id, { body: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>
+                <label className="block">Menu button<input maxLength={20} value={selectedNode.data.button_text || 'Choose'} onChange={event => updateNodeData(selectedNode.id, { button_text: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>
+                {(selectedNode.data.sections?.[0]?.rows || []).map((row: any, index: number) => <label key={row.id} className="block">{row.id}<input maxLength={24} value={row.title} onChange={event => updateNodeData(selectedNode.id, { sections: [{ title: selectedNode.data.sections[0].title, rows: selectedNode.data.sections[0].rows.map((item: any, itemIndex: number) => itemIndex === index ? { ...item, title: event.target.value } : item) }] })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>)}
+                {(selectedNode.data.sections?.[0]?.rows || []).length < 10 && <button onClick={() => updateNodeData(selectedNode.id, { sections: [{ title: 'Options', rows: [...(selectedNode.data.sections?.[0]?.rows || []), { id: `choice_${Date.now()}`, title: 'New option' }] }] })} className="px-3 py-2 bg-slate-700 rounded-lg">Add choice</button>}
+              </div>}
+              {selectedNode.type === 'ticket_action' && <label className="block text-xs">Ticket subject<input value={selectedNode.data.subject || ''} onChange={event => updateNodeData(selectedNode.id, { subject: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>}
 
               {selectedNode.type === 'message' && (
                 <div className="space-y-3">
@@ -1444,7 +1510,7 @@ export default function FlowCanvasBuilderPage() {
                       <option value="">Select a form...</option>
                       {availableNativeForms.map((form) => (
                         <option key={form.id} value={form.id}>
-                          {form.name} ({form.screens?.length || 1} screens)
+                          {form.name} — {form.status === 'PUBLISHED' && form.flow_id_meta ? 'Published on WhatsApp' : 'Draft: publish first'}
                         </option>
                       ))}
                     </select>
@@ -1456,51 +1522,28 @@ export default function FlowCanvasBuilderPage() {
                       type="text"
                       value={selectedNode.data?.cta_text || ''}
                       onChange={(e) => updateNodeData(selectedNode.id, { cta_text: e.target.value })}
-                      placeholder="e.g. Open Application Form"
+                      maxLength={30}
+                      placeholder="e.g. Open Form"
                       className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
                     />
                   </div>
                 </div>
               )}
 
-              {selectedNode.type === 'ai_rag_node' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400">Knowledge Assistant Instructions</label>
-                    <textarea
-                      rows={4}
-                      value={selectedNode.data?.system_prompt || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { system_prompt: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700 leading-relaxed"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs text-slate-300">Auto-Offer Resume Step</span>
-                    <input
-                      type="checkbox"
-                      checked={selectedNode.data?.enable_auto_resume !== false}
-                      onChange={(e) => updateNodeData(selectedNode.id, { enable_auto_resume: e.target.checked })}
-                      className="rounded accent-emerald-500"
-                    />
-                  </div>
-                </div>
-              )}
+              {selectedNode.type === 'ai_rag_node' && <p className="text-xs text-slate-400">The existing knowledge assistant answers the customer's current message using your organization settings. This action ends the workflow.</p>}
 
               {selectedNode.type === 'crm_deal_action' && (
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-400">Pipeline Stage</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.pipeline_stage || 'lead_in'}
-                      onChange={(e) => updateNodeData(selectedNode.id, { pipeline_stage: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
-                    />
+                    <select value={selectedNode.data?.pipeline_stage || 'lead_in'} onChange={event => updateNodeData(selectedNode.id, { pipeline_stage: event.target.value, stageId: event.target.value })} className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700">
+                      <option value="lead_in">First pipeline stage</option>
+                      {pipelineStages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                    </select>
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Monetary Value ($)</label>
+                    <label className="text-xs font-semibold text-slate-400">Deal value</label>
                     <input
                       type="number"
                       value={selectedNode.data?.monetary_value || 0}
@@ -1585,7 +1628,7 @@ export default function FlowCanvasBuilderPage() {
                         <button
                           onClick={() =>
                             sendSimulatorMessage(
-                              `[Submitted WhatsApp Native Form with { name: 'John Doe', budget: '$10k+' }]`
+                              'Submitted sample form answers', undefined, { full_name: 'Test Customer', budget: 'tier_2' }
                             )
                           }
                           className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-colors"

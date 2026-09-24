@@ -4,6 +4,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime } from '@/lib/flows/flow-executor'
+import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -133,7 +134,7 @@ export async function GET(
   }
 }
 
-export async function POST(
+async function processEvent(
   request: NextRequest,
   { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }
 ) {
@@ -171,11 +172,16 @@ export async function POST(
     }
 
     const payload = await request.json()
-    console.log('[Facebook Webhook POST] Payload received:', JSON.stringify(payload, null, 2))
+    console.log('[Facebook Webhook POST] Event received for organization:', orgId)
 
     const entry = payload.entry?.[0]
     const change = entry?.changes?.[0]
     const value = change?.value
+
+    if ((orgData.whatsapp_business_account_id && entry?.id !== orgData.whatsapp_business_account_id) ||
+        (orgData.whatsapp_phone_number_id && value?.metadata?.phone_number_id !== orgData.whatsapp_phone_number_id)) {
+      return NextResponse.json({ error: 'Webhook account does not match this organization' }, { status: 403 })
+    }
 
     // If it's a status callback, acknowledge and exit
     if (value?.statuses) {
@@ -208,6 +214,7 @@ export async function POST(
             .from('messages')
             .update(updateMsgData)
             .in('twilio_message_sid', sidsToMatch)
+            .eq('organization_id', orgId)
 
           if (msgErr) {
             console.warn('[Facebook Webhook POST] Error updating messages:', msgErr)
@@ -226,6 +233,7 @@ export async function POST(
               error_message: errorDetail,
             })
             .in('message_sid', sidsToMatch)
+            .eq('organization_id', orgId)
         }
       } catch (err) {
         console.error('[Facebook Webhook POST] Error processing status callback:', err)
@@ -248,9 +256,9 @@ export async function POST(
       return NextResponse.json({ error: 'Missing required message parameters' }, { status: 400 })
     }
 
-    const whatsappApiToken = orgData.whatsapp_api_token || process.env.WHATSAPP_API_TOKEN || ''
+    const whatsappApiToken = orgData.whatsapp_api_token || ''
     const whatsappGraphApiVersion = orgData.whatsapp_graph_api_version || process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
-    const whatsappPhoneNumberId = orgData.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
+    const whatsappPhoneNumberId = orgData.whatsapp_phone_number_id || ''
     const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
 
     // Parse message type and content
@@ -417,7 +425,8 @@ export async function POST(
     }
 
     // Step 3: Store incoming message
-    const { data: savedMessage, error: messageError } = await supabase
+    const { data: previousMessage } = await supabase.from('messages').select('id').eq('organization_id', orgId).eq('twilio_message_sid', `FB_${messageSid}`).limit(1).maybeSingle()
+    const { data: savedMessage, error: messageError } = previousMessage ? { data: previousMessage, error: null } : await supabase
       .from('messages')
       .insert([
         {
@@ -444,7 +453,7 @@ export async function POST(
       .from('conversations')
       .update({
         last_message_at: new Date().toISOString(),
-        unread_count: (existingConv?.unread_count || 0) + 1,
+        unread_count: (existingConv?.unread_count || 0) + (previousMessage ? 0 : 1),
       })
       .eq('id', conversation.id)
 
@@ -452,94 +461,42 @@ export async function POST(
       console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
     }
 
-    // Step 4.5: WhatsApp Interactive Flow Engine
-    let flowHandled = false
-    try {
-      const flowExec = await executeFlowRuntime({
-        organizationId: orgId,
-        contactPhone: phoneNumber,
-        conversationId: conversation.id,
-        userInput: messageBody,
-        buttonId: interactiveButtonId,
-        flowSubmissionData,
-      })
-
-      if (flowExec.handled && flowExec.replyMessage) {
-        flowHandled = true
-        const { replyMessage } = flowExec
-        console.log(`[Facebook Webhook Flow] Handled by workflow: ${flowExec.workflowName || flowExec.executedWorkflowId} (${flowExec.actionTaken})`)
-
-        let postBody: any = {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: phoneNumber.replace('+', '').trim(),
-        }
-
-        if (replyMessage.type === 'interactive_buttons' && replyMessage.buttons && replyMessage.buttons.length > 0) {
-          postBody.type = 'interactive'
-          postBody.interactive = {
-            type: 'button',
-            body: { text: replyMessage.body },
-            action: {
-              buttons: replyMessage.buttons.slice(0, 3).map((b) => ({
-                type: 'reply',
-                reply: { id: b.id, title: b.title.slice(0, 20) },
-              })),
-            },
-          }
-        } else if (replyMessage.type === 'native_flow' && replyMessage.flowPayload) {
-          postBody.type = 'interactive'
-          postBody.interactive = replyMessage.flowPayload
-        } else {
-          postBody.type = 'text'
-          postBody.text = { body: replyMessage.body }
-        }
-
-        let fbMessageSid = null
-        if (whatsappPhoneNumberId && whatsappApiToken) {
-          try {
-            const fbRes = await fetch(
-              `https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${whatsappApiToken}`,
-                },
-                body: JSON.stringify(postBody),
-              }
-            )
-            if (fbRes.ok) {
-              const fbData = await fbRes.json()
-              fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
-            } else {
-              const errText = await fbRes.text()
-              console.error('[Facebook Webhook Flow] Failed to dispatch WhatsApp message:', fbRes.status, errText)
-            }
-          } catch (sendErr: any) {
-            console.error('[Facebook Webhook Flow] Error sending WhatsApp message:', sendErr.message)
-          }
-        }
-
-        await supabase.from('messages').insert([
-          {
-            organization_id: orgId,
-            conversation_id: conversation.id,
-            sender_type: 'user',
-            body: replyMessage.body,
-            twilio_message_sid: fbMessageSid,
+    // Step 4.5: Execute and deliver every automatic step in order.
+    if (conversation.auto_reply_enabled !== false) {
+      try {
+        const { count: inboundCount, error: countError } = await supabase.from('messages').select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId).eq('conversation_id', conversation.id).eq('sender_type', 'contact')
+        if (countError) throw countError
+        const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || phoneNumber
+        const flowExec = await executeFlowRuntime({
+          organizationId: orgId, contactPhone: phoneNumber, conversationId: conversation.id,
+          userInput: messageBody, buttonId: interactiveButtonId, flowSubmissionData,
+          messageId: messageSid, isFirstMessage: inboundCount === 1,
+          contactData: { name: contactName, phone: phoneNumber, contact: { ...contact, name: contactName, phone: phoneNumber }, org: { name: orgData.name } },
+          sendReply: async reply => {
+            let sid: string | null = null
+            let failure: string | null = null
+            try {
+              if (!whatsappPhoneNumberId || !whatsappApiToken) throw new Error('WhatsApp Cloud API credentials are missing in Settings')
+              const response = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${whatsappApiToken}` },
+                body: JSON.stringify(buildWhatsAppFlowMessage(phoneNumber, reply)), signal: AbortSignal.timeout(20000),
+              })
+              const data = await response.json()
+              if (!response.ok || data.error || !data.messages?.[0]?.id) throw new Error(data.error?.message || 'Meta did not accept the flow message')
+              sid = `FB_${data.messages[0].id}`
+            } catch (error: any) { failure = error.message }
+            const { error } = await supabase.from('messages').insert({ organization_id: orgId, conversation_id: conversation.id,
+              sender_type: 'user', body: reply.body, twilio_message_sid: sid, status: failure ? 'failed' : 'sent', error_message: failure })
+            if (error) throw error
+            if (failure) throw new Error(failure)
           },
-        ])
-
-        await supabase
-          .from('conversations')
-          .update({ last_message_at: new Date().toISOString() })
-          .eq('id', conversation.id)
-
-        return NextResponse.json({ success: true, handled_by: 'whatsapp_flow_engine' })
+        })
+        if (flowExec.handled) return NextResponse.json({ success: true, handled_by: 'whatsapp_flow_engine', action: flowExec.actionTaken })
+      } catch (error: any) {
+        console.error('[Facebook Webhook Flow] Execution failed:', error.message)
+        return NextResponse.json({ error: 'Workflow execution failed', details: error.message }, { status: 503 })
       }
-    } catch (flowErr: any) {
-      console.error('[Facebook Webhook Flow] Error executing flow runtime:', flowErr)
     }
 
     // Step 5: Chatbot Auto-Reply Trigger
@@ -956,4 +913,25 @@ async function fallbackKeywordSearch(
   }
 
   return []
+}
+
+export async function POST(request: NextRequest, context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }) {
+  let payload: any
+  try { payload = await request.json() }
+  catch { return NextResponse.json({ error: 'Invalid webhook JSON' }, { status: 400 }) }
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value || {}
+      const events = [
+        ...(value.statuses || []).map((status: any) => ({ ...value, messages: undefined, statuses: [status] })),
+        ...(value.messages || []).map((message: any) => ({ ...value, statuses: undefined, messages: [message], contacts: (value.contacts || []).filter((contact: any) => contact.wa_id === message.from) })),
+      ]
+      for (const event of events) {
+        const response = await processEvent(new NextRequest(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context)
+        if (!response.ok) return response
+      }
+    }
+  }
+  return NextResponse.json({ success: true })
 }

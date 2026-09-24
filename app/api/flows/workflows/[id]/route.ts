@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { getWorkflowReadiness } from '@/lib/flows/flow-readiness'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
@@ -36,13 +37,19 @@ export async function GET(
     if (error) throw error
 
     // Fetch related active sessions & submissions count
-    const [sessionsRes, submissionsRes] = await Promise.all([
-      supabase.from('flow_sessions').select('id, status, created_at, updated_at, contact_phone').eq('workflow_id', id).order('updated_at', { ascending: false }).limit(20),
-      supabase.from('flow_submissions').select('id, created_at, contact_phone, submission_data').eq('workflow_id', id).order('created_at', { ascending: false }).limit(20),
+    const [sessionsRes, submissionsRes, stagesRes] = await Promise.all([
+      supabase.from('flow_sessions').select('id, status, created_at, last_interaction_at, contact_phone, current_node_id, state_data').eq('workflow_id', id).order('last_interaction_at', { ascending: false }).limit(20),
+      supabase.from('flow_submissions').select('id, created_at, contact_phone, response_payload').eq('workflow_id', id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('pipeline_stages').select('id,name').eq('organization_id', workflow.organization_id).order('position'),
     ])
 
+    if (sessionsRes.error) throw sessionsRes.error
+    if (submissionsRes.error) throw submissionsRes.error
+    if (stagesRes.error) throw stagesRes.error
     return NextResponse.json({
       workflow,
+      readinessErrors: await getWorkflowReadiness(supabase, workflow),
+      pipelineStages: stagesRes.data || [],
       recentSessions: sessionsRes.data || [],
       recentSubmissions: submissionsRes.data || [],
     })
@@ -82,6 +89,12 @@ export async function PUT(
     if (body.fallback_settings !== undefined) updatePayload.fallback_settings = body.fallback_settings
 
     const supabase = getSupabaseClient()
+    const { data: existing, error: loadError } = await supabase.from('whatsapp_workflows').select('*').eq('id', id).single()
+    if (loadError) throw loadError
+    const candidate = { ...existing, ...updatePayload }
+    if (!Array.isArray(candidate.canvas_nodes) || !Array.isArray(candidate.canvas_edges)) return NextResponse.json({ error: 'Nodes and connections must be arrays' }, { status: 400 })
+    const readinessErrors = await getWorkflowReadiness(supabase, candidate)
+    if (candidate.is_active && readinessErrors.length) return NextResponse.json({ error: 'Fix the following issues before activating this flow', validationErrors: readinessErrors }, { status: 422 })
     const { data: updated, error } = await supabase
       .from('whatsapp_workflows')
       .update(updatePayload)
@@ -91,7 +104,7 @@ export async function PUT(
 
     if (error) throw error
 
-    return NextResponse.json({ workflow: updated })
+    return NextResponse.json({ workflow: updated, readinessErrors })
   } catch (error: any) {
     console.error('[Flows PUT ID] Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

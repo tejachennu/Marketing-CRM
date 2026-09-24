@@ -52,7 +52,7 @@ interface NativeFlowItem {
   name: string
   status: string
   categories: string[]
-  meta_flow_id: string | null
+  flow_id_meta: string | null
   screens: any[]
   created_at: string
 }
@@ -151,6 +151,11 @@ export default function FlowsHubPage() {
         body: JSON.stringify({ is_active: nextActive }),
       })
 
+      if (!res.ok) {
+        const data = await res.json()
+        alert({ title: 'Flow needs attention', message: [data.error, ...(data.validationErrors || [])].filter(Boolean).join('\n') })
+        return
+      }
       if (res.ok) {
         setWorkflows((prev) =>
           prev.map((w) => (w.id === workflow.id ? { ...w, is_active: nextActive } : w))
@@ -179,6 +184,11 @@ export default function FlowsHubPage() {
     if (!confirm(`Are you sure you want to delete native flow "${name}"?`)) return
     try {
       const res = await fetch(`/api/flows/native/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        alert({ title: 'Unable to delete form', message: data.error || 'Please try again' })
+        return
+      }
       if (res.ok) {
         setNativeFlows((prev) => prev.filter((f) => f.id !== id))
       }
@@ -187,23 +197,9 @@ export default function FlowsHubPage() {
     }
   }
 
-  // Toggle native flow status (PUBLISHED / DRAFT)
-  const toggleNativeFlowStatus = async (flow: NativeFlowItem) => {
-    const nextStatus = flow.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED'
-    try {
-      const res = await fetch(`/api/flows/native/${flow.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
-      })
-      if (res.ok) {
-        setNativeFlows((prev) =>
-          prev.map((f) => (f.id === flow.id ? { ...f, status: nextStatus } : f))
-        )
-      }
-    } catch (err) {
-      console.error('Failed to toggle native flow status:', err)
-    }
+  // Publication is validated by Meta in the form designer.
+  const toggleNativeFlowStatus = (flow: NativeFlowItem) => {
+    router.push(`/dashboard/flows/native/${flow.id}`)
   }
 
   // Create an automated conversational workflow that triggers this native form
@@ -409,7 +405,7 @@ export default function FlowsHubPage() {
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">WhatsApp Flows & Automation</h1>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Visual drag & drop workflows, Meta WhatsApp Native Forms (v3.1), and AI RAG mid-flow self-healing.
+              Build conversations, collect form responses, and route qualified leads to your team.
             </p>
           </div>
 
@@ -663,14 +659,14 @@ export default function FlowsHubPage() {
           </div>
         )}
 
-        {/* Tab 2: Meta Native Forms (v3.1) */}
+        {/* Tab 2: Meta Native Forms */}
         {activeTab === 'native_forms' && (
           <div className="space-y-4">
             <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/20 p-4 rounded-2xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Smartphone className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                 <div>
-                  <h4 className="font-semibold text-sm">WhatsApp Native Flow Sheets (Meta Specification v3.1)</h4>
+                  <h4 className="font-semibold text-sm">Native WhatsApp Forms</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Interactive native forms render inside WhatsApp with zero external webview or URL redirects.
                   </p>
@@ -715,19 +711,19 @@ export default function FlowsHubPage() {
                         </span>
                         <button
                           onClick={() => toggleNativeFlowStatus(flow)}
-                          title="Click to toggle PUBLISHED / DRAFT"
+                          title="Open form validation and publishing"
                           className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1.5 ${
-                            flow.status === 'PUBLISHED'
+                            flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta)
                               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
                               : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              flow.status === 'PUBLISHED' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                              flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                             }`}
                           />
-                          <span>{flow.status}</span>
+                          <span>{flow.status === 'PUBLISHED' && !flow.flow_id_meta ? 'Draft' : flow.status}</span>
                         </button>
                       </div>
 
@@ -736,7 +732,7 @@ export default function FlowsHubPage() {
                       <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
                         <span>{flow.screens?.length || 1} Screen(s)</span>
                         <span>•</span>
-                        <span>Meta Spec v3.1</span>
+                        <span>WhatsApp Form</span>
                       </div>
                     </div>
 

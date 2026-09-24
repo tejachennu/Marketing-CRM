@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         .from('flow_sessions')
         .select('workflow_id')
         .in('workflow_id', workflowIds)
-        .eq('status', 'active')
+        .eq('status', 'IN_PROGRESS')
 
       if (sessions) {
         sessions.forEach((s: any) => {
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       organization_id: organizationId,
       name: name.trim(),
       description: description?.trim() || null,
-      is_active: true,
+      is_active: false,
       trigger_type: trigger_type || 'keyword',
       trigger_config: trigger_config || { keywords: ['hi', 'hello', 'start'] },
       canvas_nodes: nodes,

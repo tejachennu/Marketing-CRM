@@ -1,193 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
+import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import type { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
+import { getNextNode, resolveReply, validateWorkflow, readNodeField } from '@/lib/flows/flow-graph'
+import { runFlow, type FlowReply } from '@/lib/flows/flow-runner'
 
 export async function POST(request: NextRequest) {
+  if (!await getAuthenticatedUser(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
-    const body = await request.json()
-    const { nodes, edges, currentNodeId, userInput, buttonId, simulatedState = {} } = body
-
-    if (!nodes || !edges) {
-      return NextResponse.json({ error: 'Missing nodes or edges' }, { status: 400 })
-    }
-
+    const { nodes, edges, currentNodeId, userInput = '', buttonId, simulatedState = {}, flowSubmissionData } = await request.json()
+    const errors = validateWorkflow(nodes, edges)
+    if (errors.length) return NextResponse.json({ error: errors.join('\n'), validationErrors: errors }, { status: 422 })
     const nodeList: WorkflowNode[] = nodes
     const edgeList: WorkflowEdge[] = edges
-
-    // 1. If starting simulator from scratch
-    if (!currentNodeId) {
-      const triggerNode = nodeList.find((n) => n.type === 'trigger')
-      if (!triggerNode) {
-        return NextResponse.json({
-          reply: '⚠️ No starting Trigger node found in canvas. Add a trigger node to begin.',
-          currentNodeId: null,
-          simulatedState,
-        })
-      }
-
-      // Find first connected node after trigger
-      const firstEdge = edgeList.find((e) => e.source === triggerNode.id)
-      if (!firstEdge) {
-        return NextResponse.json({
-          reply: 'Trigger node is not connected to any subsequent message or action.',
-          currentNodeId: triggerNode.id,
-          simulatedState,
-        })
-      }
-
-      const nextNode = nodeList.find((n) => n.id === firstEdge.target)
-      if (!nextNode) {
-        return NextResponse.json({
-          reply: 'Target node not found.',
-          currentNodeId: triggerNode.id,
-          simulatedState,
-        })
-      }
-
-      return processSimulatedNode(nextNode, nodeList, edgeList, simulatedState)
+    let state = { name: 'Test Customer', phone: '+10000000000', contact: { id: 'simulation', name: 'Test Customer', phone: '+10000000000' }, ...simulatedState, last_input: userInput }
+    let next: WorkflowNode | undefined
+    if (!currentNodeId) next = nodeList.find(node => node.type === 'trigger')
+    else {
+      const current = nodeList.find(node => node.id === currentNodeId)
+      if (!current) throw new Error('The current step no longer exists; restart the simulator')
+      if (['stop', 'cancel', 'exit'].includes(userInput.trim().toLowerCase())) return NextResponse.json({ reply: 'Flow cancelled.', isCompleted: true, currentNodeId: null, simulatedState: state })
+      if (['interactive_buttons', 'list_menu'].includes(current.type)) {
+        const result = resolveReply(current, nodes, edges, userInput, buttonId)
+        if (!result.matched) return NextResponse.json({ reply: 'Please choose an option above, or reply “cancel”.', currentNodeId, simulatedState: state })
+        state.last_choice = result.choice!.id
+        state.last_choice_title = result.choice!.title
+        if (current.data.variableName || current.data.variable_name) state[current.data.variableName || current.data.variable_name] = result.choice!.id
+        next = result.next
+      } else if (current.type === 'native_flow_trigger') {
+        if (!flowSubmissionData || typeof flowSubmissionData !== 'object' || Array.isArray(flowSubmissionData)) return NextResponse.json({ reply: 'Submit sample form answers to continue. Ordinary chat messages do not complete a native form.', isNativeFlow: true, ctaText: 'Submit sample answers', currentNodeId, simulatedState: state })
+        state = { ...state, form: flowSubmissionData, submission: flowSubmissionData }
+        next = current.data.onSuccessNodeId ? nodes.find((node: WorkflowNode) => node.id === current.data.onSuccessNodeId) : getNextNode(nodes, edges, current.id)
+      } else next = getNextNode(nodes, edges, current.id)
     }
-
-    // 2. Advancing from an existing node
-    const currentNode = nodeList.find((n) => n.id === currentNodeId)
-    if (!currentNode) {
-      return NextResponse.json({
-        reply: 'Current node not found.',
-        currentNodeId: null,
-        simulatedState,
-      })
-    }
-
-    // Match edge based on button click or default
-    let matchingEdge = edgeList.find((e) => {
-      if (e.source !== currentNode.id) return false
-      if (buttonId && e.sourceHandle) {
-        return e.sourceHandle === buttonId
-      }
-      return true
+    const replies: FlowReply[] = []
+    if (!next) return NextResponse.json({ reply: 'Flow completed.', isCompleted: true, currentNodeId: null, simulatedState: state })
+    const result = await runFlow(nodeList, edgeList, next, state, {
+      send: async reply => { replies.push(reply) },
+      nativeFlow: async node => ({ type: 'native_flow', body: node.data.description || 'Complete the form to continue.', flowPayload: { flow_cta: readNodeField(node.data, 'flowCtaText', 'cta_text') || 'Open Form' } }),
+      action: async (node, state) => {
+        if (node.type === 'crm_deal_action') return { deal_id: 'simulated-deal', simulated_actions: [...(state.simulated_actions || []), 'Would create a CRM lead'] }
+        if (node.type === 'ticket_action') return { ticket_id: 'simulated-ticket', simulated_actions: [...(state.simulated_actions || []), 'Would create a support ticket'] }
+        return { handed_off: true, simulated_actions: [...(state.simulated_actions || []), 'Would assign the conversation and pause automation'] }
+      },
     })
-
-    if (!matchingEdge) {
-      // Check fallback AI RAG node if off-script input
-      const aiNode = nodeList.find((n) => n.type === 'ai_rag_node')
-      if (aiNode && userInput) {
-        return NextResponse.json({
-          reply: `🤖 [AI RAG Intelligent Fallback]: Based on our knowledge base, here is the answer for "${userInput}". \n\n👉 Would you like to resume your previous step?`,
-          buttons: [
-            { id: 'resume_step', title: '↩️ Resume Step' },
-            { id: 'talk_agent', title: '👤 Talk to Agent' },
-          ],
-          currentNodeId: aiNode.id,
-          simulatedState: { ...simulatedState, last_rag_query: userInput },
-          isRag: true,
-        })
-      }
-
-      return NextResponse.json({
-        reply: '✅ Flow completed or reached an endpoint with no further connected nodes.',
-        currentNodeId: currentNode.id,
-        isCompleted: true,
-        simulatedState,
-      })
-    }
-
-    const nextNode = nodeList.find((n) => n.id === matchingEdge.target)
-    if (!nextNode) {
-      return NextResponse.json({
-        reply: 'Connected node target missing.',
-        currentNodeId: currentNode.id,
-        simulatedState,
-      })
-    }
-
-    return processSimulatedNode(nextNode, nodeList, edgeList, simulatedState)
-  } catch (err: any) {
-    console.error('[Simulate POST] Error:', err)
-    return NextResponse.json({ error: err.message || 'Simulation error' }, { status: 500 })
-  }
-}
-
-function processSimulatedNode(
-  node: WorkflowNode,
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  state: Record<string, any>
-): NextResponse {
-  if (node.type === 'message') {
-    const data = node.data as any
+    const last = replies.at(-1)
     return NextResponse.json({
-      reply: data.body || '...',
-      currentNodeId: node.id,
-      nodeType: 'message',
-      simulatedState: state,
+      reply: replies.map(reply => reply.body).join('\n\n') || (result.isRagFallback ? 'Live execution delegates this message to your knowledge assistant. No AI answer is generated in simulation.' : 'Flow completed.'),
+      replies, buttons: last?.buttons || last?.sections?.flatMap(section => section.rows), isNativeFlow: last?.type === 'native_flow', ctaText: last?.flowPayload?.flow_cta,
+      currentNodeId: result.currentNodeId, simulatedState: result.state, isCompleted: result.status === 'COMPLETED' || result.isRagFallback,
     })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Simulation failed' }, { status: 400 })
   }
-
-  if (node.type === 'interactive_buttons') {
-    const data = node.data as any
-    return NextResponse.json({
-      reply: data.body || 'Please select an option:',
-      buttons: data.buttons || [],
-      currentNodeId: node.id,
-      nodeType: 'interactive_buttons',
-      simulatedState: state,
-    })
-  }
-
-  if (node.type === 'native_flow_trigger') {
-    const data = node.data as any
-    return NextResponse.json({
-      reply: `📱 WhatsApp Native Form Sheet: "${data.cta_text || 'Open Form'}"`,
-      isNativeFlow: true,
-      ctaText: data.cta_text || 'Open Interactive Form',
-      flowToken: data.flow_token || 'demo_token',
-      currentNodeId: node.id,
-      nodeType: 'native_flow_trigger',
-      simulatedState: state,
-    })
-  }
-
-  if (node.type === 'crm_deal_action') {
-    const data = node.data as any
-    const nextEdge = edges.find((e) => e.source === node.id)
-    const nextNode = nextEdge ? nodes.find((n) => n.id === nextEdge.target) : null
-
-    const updatedState = { ...state, deal_created: true, deal_title: data.deal_name }
-
-    if (nextNode) {
-      const chained = processSimulatedNode(nextNode, nodes, edges, updatedState)
-      return chained
-    }
-
-    return NextResponse.json({
-      reply: `💼 CRM Action: Successfully created deal "${data.deal_name || 'New Opportunity'}" in pipeline stage "${data.pipeline_stage || 'lead_in'}"!`,
-      currentNodeId: node.id,
-      nodeType: 'crm_deal_action',
-      simulatedState: updatedState,
-    })
-  }
-
-  if (node.type === 'ticket_action') {
-    const data = node.data as any
-    return NextResponse.json({
-      reply: `🎫 Ticket Created: "${data.subject || 'Customer Support Request'}" with priority ${data.priority || 'medium'}. An agent has been alerted.`,
-      currentNodeId: node.id,
-      nodeType: 'ticket_action',
-      simulatedState: { ...state, ticket_created: true },
-    })
-  }
-
-  if (node.type === 'ai_rag_node') {
-    const data = node.data as any
-    return NextResponse.json({
-      reply: `🧠 AI RAG Node: "${data.title || 'Knowledge Assistant'}" ready to answer mid-flow questions.`,
-      currentNodeId: node.id,
-      nodeType: 'ai_rag_node',
-      simulatedState: state,
-    })
-  }
-
-  return NextResponse.json({
-    reply: `Reached ${node.type} (${node.data?.title || node.id})`,
-    currentNodeId: node.id,
-    simulatedState: state,
-  })
 }
