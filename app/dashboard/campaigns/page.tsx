@@ -270,6 +270,7 @@ export default function CampaignsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [user, setUser] = useState<any>(null)
+  const isMasterOrg = user?.organization_id === '303b7a2d-281c-403c-b794-54d1e195ca69'
 
   useEffect(() => {
     const loadFeaturesAndData = async () => {
@@ -293,15 +294,18 @@ export default function CampaignsPage() {
               .eq('id', userData.organization_id)
               .maybeSingle()
             if (orgData) {
+              const isMaster = userData.organization_id === '303b7a2d-281c-403c-b794-54d1e195ca69'
               const enabledFeatures = {
                 enable_ai: orgData.enable_ai !== false,
-                enable_email: orgData.enable_email !== false,
+                enable_email: isMaster && orgData.enable_email !== false,
                 enable_messages: orgData.enable_messages !== false,
-                enable_phone_calls: orgData.enable_phone_calls !== false,
-                enable_sms: orgData.enable_sms !== false,
+                enable_phone_calls: isMaster && orgData.enable_phone_calls !== false,
+                enable_sms: isMaster && orgData.enable_sms !== false,
               }
               setFeatures(enabledFeatures)
-              if (!enabledFeatures.enable_messages && enabledFeatures.enable_email) {
+              if (!isMaster) {
+                setChannel('whatsapp')
+              } else if (!enabledFeatures.enable_messages && enabledFeatures.enable_email) {
                 setChannel('email')
               }
             }
@@ -356,6 +360,10 @@ export default function CampaignsPage() {
 
   // Auto-select first configured channel when availableSenders or features change
   useEffect(() => {
+    if (!isMasterOrg) {
+      setChannel('whatsapp')
+      return
+    }
     const channels: Array<'whatsapp' | 'sms' | 'email'> = []
     if (features.enable_messages && availableSenders.whatsappSenders.length > 0) {
       channels.push('whatsapp')
@@ -369,7 +377,14 @@ export default function CampaignsPage() {
     if (channels.length > 0 && !channels.includes(channel)) {
       setChannel(channels[0])
     }
-  }, [availableSenders, features, channel])
+  }, [availableSenders, features, channel, isMasterOrg])
+
+  // Reset filterChannel if non-master attempts to filter by sms or email
+  useEffect(() => {
+    if (!isMasterOrg && (filterChannel === 'sms' || filterChannel === 'email')) {
+      setFilterChannel('all')
+    }
+  }, [isMasterOrg, filterChannel])
 
   // Auto-polling for active campaigns
   useEffect(() => {
@@ -1561,8 +1576,8 @@ export default function CampaignsPage() {
           {[
             { value: 'all', label: 'All' },
             { value: 'whatsapp', label: 'WhatsApp' },
-            { value: 'sms', label: 'SMS' },
-            { value: 'email', label: 'Email' }
+            ...(isMasterOrg && features.enable_sms ? [{ value: 'sms', label: 'SMS' }] : []),
+            ...(isMasterOrg && features.enable_email ? [{ value: 'email', label: 'Email' }] : [])
           ].map(opt => (
             <button
               key={opt.value}
@@ -2574,50 +2589,52 @@ export default function CampaignsPage() {
                   </div>
 
                   {/* Channel Selection */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">Campaign Channel</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {features.enable_messages && availableSenders.whatsappSenders.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setChannel('whatsapp')}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                            channel === 'whatsapp'
-                              ? 'bg-[#e7f7f4] border-[#00a884] text-[#008069]'
-                              : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
-                          }`}
-                        >
-                          WhatsApp
-                        </button>
-                      )}
-                      {features.enable_messages && features.enable_sms && availableSenders.smsSenders.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setChannel('sms')}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                            channel === 'sms'
-                              ? 'bg-amber-50 border-amber-500 text-amber-700'
-                              : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
-                          }`}
-                        >
-                          SMS
-                        </button>
-                      )}
-                      {features.enable_email && availableSenders.emailSenders.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setChannel('email')}
-                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                            channel === 'email'
-                              ? 'bg-blue-50 border-blue-500 text-blue-700'
-                              : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
-                          }`}
-                        >
-                          Email
-                        </button>
-                      )}
+                  {isMasterOrg && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">Campaign Channel</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {features.enable_messages && availableSenders.whatsappSenders.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setChannel('whatsapp')}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              channel === 'whatsapp'
+                                ? 'bg-[#e7f7f4] border-[#00a884] text-[#008069]'
+                                : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
+                            }`}
+                          >
+                            WhatsApp
+                          </button>
+                        )}
+                        {features.enable_messages && features.enable_sms && availableSenders.smsSenders.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setChannel('sms')}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              channel === 'sms'
+                                ? 'bg-amber-50 border-amber-500 text-amber-700'
+                                : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
+                            }`}
+                          >
+                            SMS
+                          </button>
+                        )}
+                        {features.enable_email && availableSenders.emailSenders.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setChannel('email')}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                              channel === 'email'
+                                ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
+                            }`}
+                          >
+                            Email
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Sender Selection */}
                   <div className="flex flex-col gap-1.5">

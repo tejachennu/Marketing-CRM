@@ -59,19 +59,21 @@ export async function GET(request: NextRequest) {
       envEmail = smtpEmail
     }
 
-    // System environment fallbacks if organization has missing or malformed credentials
-    if ((!accountSid || !accountSid.startsWith('AC')) && process.env.TWILIO_ACCOUNT_SID) {
-      accountSid = process.env.TWILIO_ACCOUNT_SID
-      authToken = process.env.TWILIO_AUTH_TOKEN || ''
-    }
-    if (!envWhatsapp && process.env.TWILIO_WHATSAPP_NUMBER) {
-      envWhatsapp = process.env.TWILIO_WHATSAPP_NUMBER
-    }
-    if (!sendgridKey && process.env.SENDGRID_API_KEY) {
-      sendgridKey = process.env.SENDGRID_API_KEY
-    }
-    if (!envEmail) {
-      envEmail = process.env.SENDGRID_FROM_EMAIL || process.env.HOSTINGER_SMTP_USER || 'support@consularhelpdesk.com'
+    // System environment fallbacks if master organization has missing credentials
+    if (isMasterOrg) {
+      if ((!accountSid || !accountSid.startsWith('AC')) && process.env.TWILIO_ACCOUNT_SID) {
+        accountSid = process.env.TWILIO_ACCOUNT_SID
+        authToken = process.env.TWILIO_AUTH_TOKEN || ''
+      }
+      if (!envWhatsapp && process.env.TWILIO_WHATSAPP_NUMBER) {
+        envWhatsapp = process.env.TWILIO_WHATSAPP_NUMBER
+      }
+      if (!sendgridKey && process.env.SENDGRID_API_KEY) {
+        sendgridKey = process.env.SENDGRID_API_KEY
+      }
+      if (!envEmail) {
+        envEmail = process.env.SENDGRID_FROM_EMAIL || process.env.HOSTINGER_SMTP_USER || 'support@consularhelpdesk.com'
+      }
     }
 
     const smsSenders: Array<{ value: string; label: string }> = []
@@ -185,9 +187,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      smsSenders,
+      smsSenders: isMasterOrg ? smsSenders : [],
       whatsappSenders,
-      emailSenders,
+      emailSenders: isMasterOrg ? emailSenders : [],
     })
   } catch (error) {
     console.error('[API] Get senders error:', error)
