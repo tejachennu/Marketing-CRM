@@ -1249,7 +1249,7 @@ export default function SettingsPage() {
 
           {/* Custom Credentials & Integrations Settings */}
           <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-[#202d36] pb-4">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[#00a884]" />
                 <h2 className="text-base font-bold text-[#111b21] dark:text-white">Custom Credentials & Integrations</h2>
@@ -1264,10 +1264,6 @@ export default function SettingsPage() {
                 <span>Save Credentials</span>
               </button>
             </div>
-
-            <p className="text-xs text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
-              Manage organization-specific credentials for external gateways. If any field is left blank, it will automatically fall back to using default environment configurations.
-            </p>
 
             <div className={`grid grid-cols-1 ${isMasterOrg ? 'md:grid-cols-2' : ''} gap-6`}>
               {/* WhatsApp & SMS Gateway Column */}
