@@ -1390,6 +1390,13 @@ export default function SettingsPage() {
                             if (data.displayPhoneNumber) setWhatsappDefaultPhone(data.displayPhoneNumber)
                             loadData()
                           }}
+                          onDisconnect={() => {
+                            setWhatsappBusinessAccountId('')
+                            setWhatsappPhoneNumberId('')
+                            setWhatsappDefaultPhone('')
+                            setWhatsappApiToken('')
+                            loadData()
+                          }}
                         />
                       )}
 

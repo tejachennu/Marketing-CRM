@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { Loader2, CheckCircle2, AlertCircle, RefreshCw, Zap, ShieldCheck } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, RefreshCw, Zap, ShieldCheck, Unlink } from 'lucide-react'
 
 interface WhatsAppEmbeddedSignupProps {
   organizationId: string
@@ -14,6 +14,7 @@ interface WhatsAppEmbeddedSignupProps {
     phoneNumberId: string
     displayPhoneNumber: string
   }) => void
+  onDisconnect?: () => void
 }
 
 declare global {
@@ -30,10 +31,12 @@ export function WhatsAppEmbeddedSignup({
   currentPhoneNumberId,
   currentPhoneNumber,
   onSuccess,
+  onDisconnect,
 }: WhatsAppEmbeddedSignupProps) {
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -194,6 +197,37 @@ export function WhatsAppEmbeddedSignup({
     }
   }
 
+  const handleDisconnect = async () => {
+    if (!window.confirm('Are you sure you want to disconnect this WhatsApp Business Account?')) {
+      return
+    }
+
+    setError(null)
+    setSuccessMessage(null)
+    setIsDisconnecting(true)
+
+    try {
+      const res = await fetch(`/api/whatsapp/embedded-signup?organizationId=${organizationId}`, {
+        method: 'DELETE',
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to disconnect WhatsApp Business Account.')
+      }
+
+      setSuccessMessage('WhatsApp Business Account disconnected successfully.')
+      if (onDisconnect) {
+        onDisconnect()
+      }
+    } catch (err: any) {
+      console.error('[Meta Embedded Signup] Disconnect error:', err)
+      setError(err?.message || 'Failed to disconnect WhatsApp')
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }
+
   const isLoading = isLaunching || isProcessing
 
   return (
@@ -219,11 +253,23 @@ export function WhatsAppEmbeddedSignup({
 
         </div>
 
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex items-center gap-2">
+          {isConnected && (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={isLoading || isDisconnecting}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer border border-red-200 dark:border-red-900/50 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 disabled:opacity-60"
+            >
+              {isDisconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />}
+              <span>Disconnect</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleLaunchSignup}
-            disabled={isLoading}
+            disabled={isLoading || isDisconnecting}
             className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer ${
               isConnected
                 ? 'bg-white dark:bg-[#1f2c34] hover:bg-gray-50 dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white border border-[#e9edef] dark:border-[#2a3942]'

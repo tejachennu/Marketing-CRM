@@ -236,3 +236,54 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(request)
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Please log in' }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const targetOrgId = searchParams.get('organizationId') || user.organization_id
+    if (!targetOrgId) {
+      return NextResponse.json({ success: false, error: 'Target organization ID is required' }, { status: 400 })
+    }
+
+    const accessCheck = await verifyOrgAccess(request, targetOrgId)
+    if (!accessCheck.authorized) {
+      return NextResponse.json({ success: false, error: accessCheck.error }, { status: accessCheck.status })
+    }
+
+    const admin = getSupabaseAdmin()
+    const { error: updateError } = await admin
+      .from('organizations')
+      .update({
+        whatsapp_phone_number_id: null,
+        whatsapp_business_account_id: null,
+        whatsapp_default_phone: null,
+        whatsapp_api_token: null,
+      })
+      .eq('id', targetOrgId)
+
+    if (updateError) {
+      console.error('[Meta Embedded Signup] Database disconnect error:', updateError)
+      return NextResponse.json(
+        { success: false, error: `Failed to disconnect WhatsApp: ${updateError.message}` },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'WhatsApp Business Account disconnected successfully',
+    })
+  } catch (error: any) {
+    console.error('[Meta Embedded Signup] Disconnect error:', error)
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Internal Server Error' },
+      { status: 500 }
+    )
+  }
+}
+

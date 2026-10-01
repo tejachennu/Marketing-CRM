@@ -2,9 +2,30 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import crypto from 'crypto'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
+
+// Verify Meta X-Hub-Signature-256 HMAC to ensure webhook requests are authentic
+function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const appSecret = process.env.META_APP_SECRET
+  if (!appSecret) {
+    // If app secret is not configured, log warning but allow (for development)
+    console.warn('[Facebook Webhook] META_APP_SECRET not set — skipping signature verification')
+    return true
+  }
+  if (!signatureHeader) {
+    console.warn('[Facebook Webhook] Missing X-Hub-Signature-256 header')
+    return false
+  }
+  const expectedSignature = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex')
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expectedSignature))
+  } catch {
+    return false
+  }
+}
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -916,8 +937,18 @@ async function fallbackKeywordSearch(
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }) {
+  // Read raw body for signature verification
+  const rawBody = await request.text()
+
+  // Verify X-Hub-Signature-256 HMAC (Meta signs every webhook POST)
+  const signature = request.headers.get('x-hub-signature-256')
+  if (!verifyWebhookSignature(rawBody, signature)) {
+    console.error('[Facebook Webhook POST] Signature verification failed — rejecting request')
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+  }
+
   let payload: any
-  try { payload = await request.json() }
+  try { payload = JSON.parse(rawBody) }
   catch { return NextResponse.json({ error: 'Invalid webhook JSON' }, { status: 400 }) }
   for (const entry of payload.entry || []) {
     for (const change of entry.changes || []) {

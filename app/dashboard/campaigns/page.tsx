@@ -595,7 +595,8 @@ export default function CampaignsPage() {
     return set
   }, [selectedCampaignFilters, campaignParticipantsMap])
 
-  // Combined Multi-Filter: Name, Phone/Contact, Multiple Tags, Multiple Past Campaigns
+  // Combined Multi-Filter: Name, Phone/Conta
+  // ct, Multiple Tags, Multiple Past Campaigns
   const filteredContacts = useMemo(() => {
     return contacts.filter(c => {
       // 1. Dedicated Name search
