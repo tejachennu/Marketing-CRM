@@ -1197,7 +1197,7 @@ export default function DashboardLayout({
             ? 'pb-0 h-full' 
             : 'pb-[68px] h-[calc(100vh-68px)]'
         }`}>
-          <div className="h-full w-full p-0">
+          <div className="h-full w-full p-0 flex flex-col overflow-hidden">
             {isPageAllowed() ? (
               children
             ) : (

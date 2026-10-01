@@ -30,6 +30,9 @@ import {
   FileCode2,
   Smartphone,
   Search,
+  ClipboardList,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react'
 
 interface WorkflowItem {
@@ -77,6 +80,7 @@ export default function FlowsHubPage() {
   const [aiPrompt, setAiPrompt] = useState('')
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isCreatingNativeFlow, setIsCreatingNativeFlow] = useState(false)
 
   // Initialize Org
   useEffect(() => {
@@ -360,6 +364,7 @@ export default function FlowsHubPage() {
   // Create Native Flow from Template
   const handleCreateNativeFlow = async (templateKey?: string) => {
     if (!orgId) return
+    setIsCreatingNativeFlow(true)
     try {
       const res = await fetch('/api/flows/native', {
         method: 'POST',
@@ -373,9 +378,14 @@ export default function FlowsHubPage() {
       if (res.ok) {
         const data = await res.json()
         router.push(`/dashboard/flows/native/${data.flow.id}`)
+      } else {
+        const err = await res.json()
+        alert({ title: 'Error', message: err.error || 'Failed to create native flow' })
       }
-    } catch (err) {
-      console.error('Failed to create native flow:', err)
+    } catch (err: any) {
+      alert({ title: 'Error', message: err.message || 'Failed to create native flow' })
+    } finally {
+      setIsCreatingNativeFlow(false)
     }
   }
 
@@ -393,7 +403,7 @@ export default function FlowsHubPage() {
   const activeSessions = workflows.reduce((acc, w) => acc + (w.active_sessions_count || 0), 0)
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0c1317] text-slate-900 dark:text-slate-100 p-4 md:p-8">
+    <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-[#0c1317] text-slate-900 dark:text-slate-100 p-4 md:p-8">
       {/* Header */}
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -627,12 +637,16 @@ export default function FlowsHubPage() {
                         <button
                           onClick={() => toggleWorkflowActive(workflow)}
                           title={workflow.is_active ? 'Pause Flow' : 'Activate Flow'}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            workflow.is_active
+                              ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                              : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                          }`}
                         >
                           {workflow.is_active ? (
-                            <Pause className="w-4 h-4 text-amber-500" />
+                            <Pause className="w-4 h-4" />
                           ) : (
-                            <Play className="w-4 h-4 text-emerald-500" />
+                            <Play className="w-4 h-4" />
                           )}
                         </button>
                         <button
@@ -644,13 +658,23 @@ export default function FlowsHubPage() {
                         </button>
                       </div>
 
-                      <Link
-                        href={`/dashboard/flows/${workflow.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
-                      >
-                        <span>Open Canvas</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/flows/submissions?workflowId=${workflow.id}&name=${encodeURIComponent(workflow.name)}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#162026] text-slate-700 dark:text-slate-200 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-2xs transition-all whitespace-nowrap"
+                          title="View submitted responses"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                          <span>Responses</span>
+                        </Link>
+                        <Link
+                          href={`/dashboard/flows/${workflow.id}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
+                        >
+                          <span>Open Canvas</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -711,55 +735,105 @@ export default function FlowsHubPage() {
                         </span>
                         <button
                           onClick={() => toggleNativeFlowStatus(flow)}
-                          title="Open form validation and publishing"
+                          title={flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? 'Approved and published on Meta WhatsApp Cloud API' : 'Click to open Screen Designer and publish'}
                           className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1.5 ${
                             flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta)
                               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
-                              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
+                              : flow.flow_id_meta
+                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                            }`}
-                          />
-                          <span>{flow.status === 'PUBLISHED' && !flow.flow_id_meta ? 'Draft' : flow.status}</span>
+                          {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              <span>Approved & Live</span>
+                            </>
+                          ) : flow.flow_id_meta ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              <span>Draft (Synced)</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                              <span>Draft</span>
+                            </>
+                          )}
                         </button>
                       </div>
 
                       <h3 className="font-semibold text-base mt-2 line-clamp-1">{flow.name}</h3>
 
-                      <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                      <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>{flow.screens?.length || 1} Screen(s)</span>
                         <span>•</span>
                         <span>WhatsApp Form</span>
                       </div>
+
+                      {/* Approval Status Confirmation */}
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                        {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              <span>Meta Approved</span>
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate" title={`Meta Flow ID: ${flow.flow_id_meta}`}>
+                              ID: {flow.flow_id_meta}
+                            </span>
+                          </>
+                        ) : flow.flow_id_meta ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
+                              <span>Meta Draft Synced</span>
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                              ID: {flow.flow_id_meta}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                            Unpublished Draft (Not submitted to Meta)
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mt-5 flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800/80 gap-2">
-                      <button
-                        onClick={() => deleteNativeFlow(flow.id, flow.name)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
-                        title="Delete Form"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => deleteNativeFlow(flow.id, flow.name)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                          title="Delete Form"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => createWorkflowForNativeFlow(flow)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold hover:bg-emerald-500/20 transition-colors"
-                          title="Create an automated conversational trigger to send this form"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-medium transition-colors"
+                          title="Create an automated conversational trigger for this form"
                         >
-                          <Zap className="w-3.5 h-3.5" />
-                          <span>⚡ Activate in Flow</span>
+                          <Zap className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="hidden sm:inline">Automate</span>
                         </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/flows/submissions?flowId=${flow.id}&name=${encodeURIComponent(flow.name)}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#162026] text-slate-700 dark:text-slate-200 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-2xs transition-all whitespace-nowrap"
+                          title="View submitted responses"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                          <span>Responses</span>
+                        </Link>
 
                         <Link
                           href={`/dashboard/flows/native/${flow.id}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
                         >
-                          <span>Screen Designer</span>
+                          <span>Designer</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       </div>
@@ -952,6 +1026,30 @@ export default function FlowsHubPage() {
                 {isCreating ? 'Creating...' : 'Open Canvas Builder'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen Loader for Flow Creation */}
+      {(isCreating || isGeneratingAi || isCreatingNativeFlow) && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex flex-col items-center justify-center">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-emerald-400 animate-pulse" />
+            </div>
+          </div>
+          <div className="mt-6 text-center">
+            <h3 className="text-lg font-bold text-white">
+              {isGeneratingAi ? 'Generating with AI...' : isCreatingNativeFlow ? 'Creating Native Form...' : 'Creating Your Flow...'}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1 max-w-xs">
+              {isGeneratingAi
+                ? 'Our AI is designing your workflow graph with triggers, messages, and CRM actions.'
+                : isCreatingNativeFlow
+                ? 'Setting up your native WhatsApp form with interactive screens and input fields.'
+                : 'Setting up your workflow canvas with default nodes and connections.'}
+            </p>
           </div>
         </div>
       )}

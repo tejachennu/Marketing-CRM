@@ -1,6 +1,7 @@
 'use client'
 
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 
 import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
@@ -606,7 +607,7 @@ export default function SettingsPage() {
         setSmtpPort(orgData.smtp_port ? String(orgData.smtp_port) : '')
         setSmtpEmail(orgData.smtp_email || '')
         setSmtpPassword(orgData.smtp_password || '')
-        setWhatsappProvider(orgData.whatsapp_provider || 'twilio')
+        setWhatsappProvider(orgData.id === '303b7a2d-281c-403c-b794-54d1e195ca69' ? (orgData.whatsapp_provider || 'twilio') : 'facebook')
         setWhatsappApiToken(orgData.whatsapp_api_token || '')
         setWhatsappDefaultPhone(orgData.whatsapp_default_phone || '')
         setWhatsappGraphApiVersion(orgData.whatsapp_graph_api_version || 'v25.0')
@@ -1282,37 +1283,39 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
-                      WhatsApp Gateway Provider
-                    </label>
-                    <div className="flex gap-4 mb-2 select-none">
-                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="whatsappProvider"
-                          value="twilio"
-                          checked={whatsappProvider === 'twilio'}
-                          onChange={() => setWhatsappProvider('twilio')}
-                          className="accent-[#00a884]"
-                        />
-                        Twilio Gateway
+                  {organization?.id === '303b7a2d-281c-403c-b794-54d1e195ca69' && (
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                        WhatsApp Gateway Provider
                       </label>
-                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="whatsappProvider"
-                          value="facebook"
-                          checked={whatsappProvider === 'facebook'}
-                          onChange={() => setWhatsappProvider('facebook')}
-                          className="accent-[#00a884]"
-                        />
-                        Direct Facebook API
-                      </label>
+                      <div className="flex gap-4 mb-2 select-none">
+                        <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                          <input
+                            type="radio"
+                            name="whatsappProvider"
+                            value="twilio"
+                            checked={whatsappProvider === 'twilio'}
+                            onChange={() => setWhatsappProvider('twilio')}
+                            className="accent-[#00a884]"
+                          />
+                          Twilio Gateway
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                          <input
+                            type="radio"
+                            name="whatsappProvider"
+                            value="facebook"
+                            checked={whatsappProvider === 'facebook'}
+                            onChange={() => setWhatsappProvider('facebook')}
+                            className="accent-[#00a884]"
+                          />
+                          Direct Facebook API
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {whatsappProvider === 'twilio' ? (
+                  {organization?.id === '303b7a2d-281c-403c-b794-54d1e195ca69' && whatsappProvider === 'twilio' ? (
                     <>
                       <div>
                         <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
@@ -1366,90 +1369,118 @@ export default function SettingsPage() {
                       </div>
                     </>
                   ) : (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          WhatsApp Cloud API Token
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showWhatsappApiToken ? 'text' : 'password'}
-                            value={whatsappApiToken}
-                            onChange={(e) => setWhatsappApiToken(e.target.value)}
-                            placeholder="EAAG..."
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                          >
-                            {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          WhatsApp Phone Number ID
-                        </label>
-                        <input
-                          type="text"
-                          value={whatsappPhoneNumberId}
-                          onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-                          placeholder="e.g. 109876543210987"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                    <div className="space-y-4">
+                      {organization && (
+                        <WhatsAppEmbeddedSignup
+                          organizationId={organization.id}
+                          isConnected={Boolean(whatsappPhoneNumberId && (whatsappApiToken || whatsappBusinessAccountId))}
+                          currentWabaId={whatsappBusinessAccountId}
+                          currentPhoneNumberId={whatsappPhoneNumberId}
+                          currentPhoneNumber={whatsappDefaultPhone}
+                          onSuccess={(data) => {
+                            if (data.wabaId) setWhatsappBusinessAccountId(data.wabaId)
+                            if (data.phoneNumberId) setWhatsappPhoneNumberId(data.phoneNumberId)
+                            if (data.displayPhoneNumber) setWhatsappDefaultPhone(data.displayPhoneNumber)
+                            loadData()
+                          }}
                         />
-                      </div>
+                      )}
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          WhatsApp Business Account ID (WABA ID)
-                        </label>
-                        <input
-                          type="text"
-                          value={whatsappBusinessAccountId}
-                          onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
-                          placeholder="e.g. 102938475647382"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                        />
-                        <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                          Required to fetch message templates from Meta. Find it in Meta Business Suite → WhatsApp Manager → Settings.
-                        </p>
-                      </div>
+                      {organization?.id === '303b7a2d-281c-403c-b794-54d1e195ca69' && (
+                      <details className="group border border-[#e9edef] dark:border-[#2a3942] rounded-lg p-3 bg-white dark:bg-[#111b21]/40">
+                        <summary className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider cursor-pointer list-none flex items-center justify-between select-none">
+                          <span>Manual API Credentials & Advanced Settings</span>
+                          <span className="text-[10px] text-[#00a884] font-semibold group-open:hidden">Show ▼</span>
+                          <span className="text-[10px] text-[#00a884] font-semibold hidden group-open:inline">Hide ▲</span>
+                        </summary>
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
-                              Default Sender Phone Number
+                        <div className="space-y-4 pt-3.5 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              WhatsApp Cloud API Token
                             </label>
-                            {whatsappDefaultPhone.trim() && (
-                              <CopyPhoneButton phoneNumber={whatsappDefaultPhone} iconSize={11} className="text-[10px]" showText displayText="Copy" />
-                            )}
+                            <div className="relative">
+                              <input
+                                type={showWhatsappApiToken ? 'text' : 'password'}
+                                value={whatsappApiToken}
+                                onChange={(e) => setWhatsappApiToken(e.target.value)}
+                                placeholder="EAAG..."
+                                className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                              >
+                                {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                              </button>
+                            </div>
                           </div>
-                          <input
-                            type="text"
-                            value={whatsappDefaultPhone}
-                            onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
-                            placeholder="e.g. +14155238886"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                          />
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              WhatsApp Phone Number ID
+                            </label>
+                            <input
+                              type="text"
+                              value={whatsappPhoneNumberId}
+                              onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
+                              placeholder="e.g. 109876543210987"
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              WhatsApp Business Account ID (WABA ID)
+                            </label>
+                            <input
+                              type="text"
+                              value={whatsappBusinessAccountId}
+                              onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
+                              placeholder="e.g. 102938475647382"
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                              Required to fetch message templates from Meta. Auto-filled during Embedded Signup.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="col-span-2">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                                  Default Sender Phone Number
+                                </label>
+                                {whatsappDefaultPhone.trim() && (
+                                  <CopyPhoneButton phoneNumber={whatsappDefaultPhone} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                value={whatsappDefaultPhone}
+                                onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
+                                placeholder="e.g. +14155238886"
+                                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                                API Version
+                              </label>
+                              <input
+                                type="text"
+                                value={whatsappGraphApiVersion}
+                                onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
+                                placeholder="v25.0"
+                                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                            API Version
-                          </label>
-                          <input
-                            type="text"
-                            value={whatsappGraphApiVersion}
-                            onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
-                            placeholder="v25.0"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                          />
-                        </div>
-                      </div>
-                    </>
+                      </details>
+                      )}
+                    </div>
                   )}
                 </div>
 

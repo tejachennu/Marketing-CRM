@@ -35,6 +35,11 @@ import {
   FileText,
   Clock,
   ExternalLink,
+  Timer,
+  Globe,
+  Variable,
+  Tag,
+  Bell,
 } from 'lucide-react'
 import { WorkflowNode, WorkflowEdge, NodeType, isFlowBetaAllowed } from '@/lib/flows/flow-types'
 
@@ -540,6 +545,44 @@ export default function FlowCanvasBuilderPage() {
         subject: 'Inquiry from {{contact.name}}',
         priority: 'medium',
       }
+    } else if (type === 'delay_action') {
+      defaultData = {
+        title: 'Wait / Delay',
+        delay_amount: 1,
+        delay_unit: 'hours',
+        resume_message: '',
+      }
+    } else if (type === 'webhook_action') {
+      defaultData = {
+        title: 'HTTP Webhook',
+        http_method: 'POST',
+        webhook_url: 'https://example.com/api/hook',
+        body_template: '{"contact": "{{contact.name}}", "phone": "{{contact.phone}}"}',
+        response_variable: 'webhook_response',
+        timeout_seconds: 10,
+      }
+    } else if (type === 'set_variable') {
+      defaultData = {
+        title: 'Set Variable',
+        variable_name: 'custom_var',
+        value_expression: '',
+        value_type: 'text',
+      }
+    } else if (type === 'tag_action') {
+      defaultData = {
+        title: 'Tag Contact',
+        tag_action_type: 'add',
+        tags: ['interested'],
+        segment_name: '',
+      }
+    } else if (type === 'notification_action') {
+      defaultData = {
+        title: 'Send Notification',
+        channel: 'email',
+        recipient_email: '',
+        notification_subject: 'New lead from {{contact.name}}',
+        body_template: 'A new lead has submitted a form. Contact: {{contact.phone}}',
+      }
     }
 
     const newNode: WorkflowNode = {
@@ -691,29 +734,34 @@ export default function FlowCanvasBuilderPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-900 text-white">
-        <div className="flex items-center gap-3">
-          <Workflow className="w-6 h-6 text-emerald-400 animate-spin" />
-          <span>Loading Visual Canvas...</span>
+      <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0c1317] text-slate-900 dark:text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Workflow className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          </div>
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Loading Visual Canvas...</span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0f12] text-slate-100 select-none overflow-hidden font-sans">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0a0f12] text-slate-900 dark:text-slate-100 select-none overflow-hidden font-sans">
       {/* Top Header */}
-      <header className="h-14 border-b border-slate-800 bg-[#11181c] px-4 flex items-center justify-between z-20">
+      <header className="h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] px-4 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard/flows"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
 
           <div className="flex items-center gap-2">
-            <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <Workflow className="w-4 h-4" />
             </span>
             <input
@@ -723,7 +771,7 @@ export default function FlowCanvasBuilderPage() {
                 setFlowName(e.target.value)
                 setHasUnsavedChanges(true)
               }}
-              className="bg-transparent font-bold text-sm tracking-tight text-white hover:bg-slate-800/40 px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="bg-transparent font-bold text-sm tracking-tight text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800/40 px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
@@ -734,8 +782,8 @@ export default function FlowCanvasBuilderPage() {
             }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider transition-colors ${
               isActive
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
@@ -759,7 +807,7 @@ export default function FlowCanvasBuilderPage() {
 
           <button
             onClick={startSimulator}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/20 text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold shadow-sm transition-all"
           >
             <Smartphone className="w-3.5 h-3.5" />
             <span>Test Simulator</span>
@@ -776,25 +824,25 @@ export default function FlowCanvasBuilderPage() {
         </div>
       </header>
 
-      {(saveError || readinessErrors.length > 0) && <div role="alert" className="px-5 py-3 text-xs bg-amber-950 text-amber-100 border-b border-amber-800 max-h-36 overflow-auto">
+      {(saveError || readinessErrors.length > 0) && <div role="alert" className="px-5 py-3 text-xs bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-100 border-b border-amber-200 dark:border-amber-800 max-h-36 overflow-auto">
         <p className="font-semibold">{saveError || 'Before activating this flow'}</p>
         {readinessErrors.map((error, index) => <p key={index} className="mt-1">• {error}</p>)}
       </div>}
-      {recentSessions.some(session => session.status === 'FAILED') && <details className="px-5 py-2 text-xs bg-rose-950 text-rose-200">
+      {recentSessions.some(session => session.status === 'FAILED') && <details className="px-5 py-2 text-xs bg-rose-50 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border-b border-rose-200 dark:border-rose-800">
         <summary className="cursor-pointer">Recent execution failures</summary>
         {recentSessions.filter(session => session.status === 'FAILED').map(session => <p key={session.id} className="py-1">{new Date(session.last_interaction_at).toLocaleString()} · {session.state_data?._last_error || 'Execution failed'} · Step: {session.current_node_id}</p>)}
       </details>}
       {/* Main Canvas & Drawers Area */}
       <div className="flex-1 flex relative overflow-hidden">
         {/* Left Palette: Add Node Blocks */}
-        <aside className="w-64 border-r border-slate-800/80 bg-[#11181c] p-3 flex flex-col gap-3 z-10 overflow-y-auto">
+        <aside className="w-64 border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#11181c] p-3 flex flex-col gap-3 z-10 overflow-y-auto">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Canvas Blocks</span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Canvas Blocks</span>
             <p className="text-[11px] text-slate-500 mt-0.5">Click or drag blocks onto canvas</p>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide">Triggers</span>
+            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Triggers</span>
             <button
               draggable
               onDragStart={(e) => {
@@ -802,20 +850,20 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('trigger')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-emerald-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-emerald-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20">
+              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/20">
                 <Play className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-slate-200">Customer Trigger</p>
-                <p className="text-[10px] text-slate-400">Match keywords or ad clicks</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Customer Trigger</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Match keywords or ad clicks</p>
               </div>
             </button>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-teal-400 uppercase tracking-wide">Conversational</span>
+            <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wide">Conversational</span>
             <button
               draggable
               onDragStart={(e) => {
@@ -823,14 +871,14 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('message')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 group-hover:bg-teal-500/20">
+              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:bg-teal-500/20">
                 <MessageSquare className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-slate-200">Text Message</p>
-                <p className="text-[10px] text-slate-400">Send WhatsApp speech bubble</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Text Message</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Send WhatsApp speech bubble</p>
               </div>
             </button>
 
@@ -841,20 +889,20 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('interactive_buttons')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 group-hover:bg-teal-500/20">
+              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:bg-teal-500/20">
                 <ListPlus className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-slate-200">Interactive Buttons</p>
-                <p className="text-[10px] text-slate-400">Quick-reply button options</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Interactive Buttons</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Quick-reply button options</p>
               </div>
             </button>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wide">WhatsApp Native Form</span>
+            <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">WhatsApp Native Form</span>
             <button
               draggable
               onDragStart={(e) => {
@@ -862,20 +910,20 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('native_flow_trigger')}
-              className="w-full text-left p-2.5 rounded-xl bg-indigo-950/20 hover:bg-indigo-900/30 border border-indigo-500/30 hover:border-indigo-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/60 dark:bg-indigo-950/20 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-500/30 hover:border-indigo-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 group-hover:bg-indigo-500/30">
+              <span className="p-1.5 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500/20">
                 <Smartphone className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-indigo-200">Meta Native Flow</p>
-                <p className="text-[10px] text-indigo-300/70">In-app zero-redirect sheet</p>
+                <p className="font-semibold text-indigo-900 dark:text-indigo-200">Meta Native Flow</p>
+                <p className="text-[10px] text-indigo-600/80 dark:text-indigo-300/70">In-app zero-redirect sheet</p>
               </div>
             </button>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wide">AI Intelligence</span>
+            <span className="text-[10px] font-semibold text-cyan-600 dark:text-cyan-400 uppercase tracking-wide">AI Intelligence</span>
             <button
               draggable
               onDragStart={(e) => {
@@ -883,27 +931,27 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('ai_rag_node')}
-              className="w-full text-left p-2.5 rounded-xl bg-cyan-950/20 hover:bg-cyan-900/30 border border-cyan-500/30 hover:border-cyan-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-cyan-50/70 hover:bg-cyan-100/60 dark:bg-cyan-950/20 dark:hover:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-500/30 hover:border-cyan-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 group-hover:bg-cyan-500/30">
+              <span className="p-1.5 rounded-lg bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-500/20">
                 <Sparkles className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-cyan-200">Knowledge Assistant</p>
-                <p className="text-[10px] text-cyan-300/70">Answer using your knowledge base</p>
+                <p className="font-semibold text-cyan-900 dark:text-cyan-200">Knowledge Assistant</p>
+                <p className="text-[10px] text-cyan-600/80 dark:text-cyan-300/70">Answer using your knowledge base</p>
               </div>
             </button>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-teal-400 uppercase tracking-wide">Routing & Handoff</span>
-            {([{ type: 'condition_branch', title: 'Route by Answer', description: 'Branch using a saved form answer' }, { type: 'list_menu', title: 'List Menu', description: 'Offer up to ten choices' }, { type: 'assign_agent_action', title: 'Hand Off to Team', description: 'Pause automation for a person' }] as const).map(item => <button key={item.type} onClick={() => addNode(item.type)} className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 text-xs">
-              <p className="font-semibold text-slate-200">{item.title}</p><p className="text-[10px] text-slate-400">{item.description}</p>
+            <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wide">Routing & Handoff</span>
+            {([{ type: 'condition_branch', title: 'Route by Answer', description: 'Branch using a saved form answer' }, { type: 'list_menu', title: 'List Menu', description: 'Offer up to ten choices' }, { type: 'assign_agent_action', title: 'Hand Off to Team', description: 'Pause automation for a person' }] as const).map(item => <button key={item.type} onClick={() => addNode(item.type)} className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 text-xs transition-all">
+              <p className="font-semibold text-slate-800 dark:text-slate-200">{item.title}</p><p className="text-[10px] text-slate-500 dark:text-slate-400">{item.description}</p>
             </button>)}
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">CRM & Actions</span>
+            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">CRM & Actions</span>
             <button
               draggable
               onDragStart={(e) => {
@@ -911,14 +959,14 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('crm_deal_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20">
+              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20">
                 <Briefcase className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-slate-200">Create Pipeline Deal</p>
-                <p className="text-[10px] text-slate-400">Insert deal into Sales stage</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Create Pipeline Deal</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Insert deal into Sales stage</p>
               </div>
             </button>
 
@@ -929,14 +977,119 @@ export default function FlowCanvasBuilderPage() {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => addNode('ticket_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
             >
-              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20">
+              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20">
                 <Ticket className="w-3.5 h-3.5" />
               </span>
               <div>
-                <p className="font-semibold text-slate-200">Create Ticket</p>
-                <p className="text-[10px] text-slate-400">Escalate to support team</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Create Ticket</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Escalate to support team</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide">Timing & Scheduling</span>
+            <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', 'delay_action')
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode('delay_action')}
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-violet-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+            >
+              <span className="p-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/20">
+                <Timer className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Wait / Delay</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Pause flow for set duration</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Integrations</span>
+            <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', 'webhook_action')
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode('webhook_action')}
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-blue-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+            >
+              <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:bg-blue-500/20">
+                <Globe className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">HTTP Webhook</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Call any external API</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-pink-600 dark:text-pink-400 uppercase tracking-wide">Logic & Variables</span>
+            <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', 'set_variable')
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode('set_variable')}
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-pink-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+            >
+              <span className="p-1.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 group-hover:bg-pink-500/20">
+                <Variable className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Set Variable</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Store or transform data</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">Contact Actions</span>
+            <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', 'tag_action')
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode('tag_action')}
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-orange-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+            >
+              <span className="p-1.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 group-hover:bg-orange-500/20">
+                <Tag className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Tag Contact</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Add tags or segment users</p>
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wide">Team Alerts</span>
+            <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', 'notification_action')
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode('notification_action')}
+              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-rose-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+            >
+              <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:bg-rose-500/20">
+                <Bell className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">Send Notification</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Alert your team via email</p>
               </div>
             </button>
           </div>
@@ -961,23 +1114,23 @@ export default function FlowCanvasBuilderPage() {
               addNode(nodeType, { x: dropCanvasX, y: dropCanvasY })
             }
           }}
-          className={`flex-1 h-full relative overflow-hidden bg-[#0c1216] select-none ${
+          className={`flex-1 h-full relative overflow-hidden bg-slate-50 dark:bg-[#0c1216] select-none ${
             isPanning ? 'cursor-grabbing' : isSpacePressed ? 'cursor-grab' : 'cursor-default'
           }`}
           style={{
             backgroundImage:
-              'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)',
+              'radial-gradient(circle, rgba(100, 116, 139, 0.22) 1px, transparent 1px)',
             backgroundSize: `${Math.round(24 * zoom)}px ${Math.round(24 * zoom)}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`,
           }}
         >
           {/* Floating Connecting Prompt */}
           {connectingFrom && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-medium backdrop-blur-md shadow-lg flex items-center gap-2 animate-bounce">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium backdrop-blur-md shadow-lg flex items-center gap-2 animate-bounce">
               <span>Click a node port to connect, or press Esc to cancel</span>
               <button
                 onClick={() => setConnectingFrom(null)}
-                className="ml-1 text-emerald-400 hover:text-white"
+                className="ml-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-white"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -987,30 +1140,30 @@ export default function FlowCanvasBuilderPage() {
           {/* Zoom & View Controls Toolbar */}
           <div
             onMouseDown={(e) => e.stopPropagation()}
-            className="canvas-control-toolbar absolute bottom-4 left-4 z-30 flex items-center gap-1.5 bg-[#11181c]/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 shadow-xl"
+            className="canvas-control-toolbar absolute bottom-4 left-4 z-30 flex items-center gap-1.5 bg-white/95 dark:bg-[#11181c]/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl"
           >
             <button
               onClick={() => handleZoomStep(-0.1)}
               title="Zoom Out (Cmd -)"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
-            <span className="text-[11px] font-mono px-1.5 text-slate-300 font-semibold min-w-[44px] text-center">
+            <span className="text-[11px] font-mono px-1.5 text-slate-700 dark:text-slate-300 font-semibold min-w-[44px] text-center">
               {Math.round(zoom * 100)}%
             </span>
             <button
               onClick={() => handleZoomStep(0.1)}
               title="Zoom In (Cmd +)"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
-            <div className="w-[1px] h-4 bg-slate-700 mx-0.5" />
+            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
             <button
               onClick={fitToView}
               title="Fit Graph to View"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
@@ -1022,7 +1175,7 @@ export default function FlowCanvasBuilderPage() {
                 setPan({ x: 0, y: 0 })
               }}
               title="Reset Zoom to 100% (Cmd 0)"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -1107,20 +1260,21 @@ export default function FlowCanvasBuilderPage() {
                     <path
                       d={`M ${startX} ${startY} C ${controlX} ${startY}, ${controlX} ${endY}, ${endX} ${endY}`}
                       fill="none"
-                      stroke={isSimulatedActive ? '#10b981' : '#334155'}
+                      stroke={isSimulatedActive ? '#10b981' : undefined}
                       strokeWidth={isSimulatedActive ? 3 : 2}
                       strokeDasharray={isSimulatedActive ? '6,3' : undefined}
-                      className={`transition-colors group-hover:stroke-rose-500/80 ${isSimulatedActive ? 'animate-pulse' : ''}`}
+                      className={`transition-colors group-hover:stroke-rose-500/80 ${
+                        isSimulatedActive ? 'animate-pulse' : 'stroke-slate-400 dark:stroke-slate-700'
+                      }`}
                       markerEnd="url(#arrow)"
                     />
                     {edge.sourceHandle && (
                       <text
                         x={(startX + endX) / 2}
                         y={midY - 8}
-                        fill="#94a3b8"
                         fontSize="10"
                         textAnchor="middle"
-                        className="font-mono bg-slate-900"
+                        className="font-mono fill-slate-600 dark:fill-slate-400"
                       >
                         {edge.sourceHandle}
                       </text>
@@ -1170,34 +1324,49 @@ export default function FlowCanvasBuilderPage() {
                   }}
                   className={`canvas-node-card pointer-events-auto select-none rounded-2xl border transition-shadow cursor-move ${
                     isSelected
-                      ? 'border-emerald-400 shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/30'
+                      ? 'border-emerald-500 shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/30'
                       : isSimulated
                       ? 'border-emerald-500 ring-4 ring-emerald-400/40 animate-pulse'
-                      : 'border-slate-800 bg-[#161f26] hover:border-slate-700 shadow-md'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161f26] hover:border-slate-300 dark:hover:border-slate-700 shadow-md'
                   }`}
                 >
                   {/* Node Header */}
                   <div
                     className={`px-3.5 py-2.5 rounded-t-2xl flex items-center justify-between border-b ${
                       node.type === 'trigger'
-                        ? 'bg-emerald-950/40 border-emerald-900/50 text-emerald-300'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300'
                         : node.type === 'native_flow_trigger'
-                        ? 'bg-indigo-950/40 border-indigo-900/50 text-indigo-300'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50 text-indigo-800 dark:text-indigo-300'
                         : node.type === 'ai_rag_node'
-                        ? 'bg-cyan-950/40 border-cyan-900/50 text-cyan-300'
+                        ? 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900/50 text-cyan-800 dark:text-cyan-300'
                         : node.type === 'crm_deal_action' || node.type === 'ticket_action'
-                        ? 'bg-amber-950/40 border-amber-900/50 text-amber-300'
-                        : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300'
+                        : node.type === 'delay_action'
+                        ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900/50 text-violet-800 dark:text-violet-300'
+                        : node.type === 'webhook_action'
+                        ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50 text-blue-800 dark:text-blue-300'
+                        : node.type === 'set_variable'
+                        ? 'bg-pink-50 dark:bg-pink-950/40 border-pink-200 dark:border-pink-900/50 text-pink-800 dark:text-pink-300'
+                        : node.type === 'tag_action'
+                        ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900/50 text-orange-800 dark:text-orange-300'
+                        : node.type === 'notification_action'
+                        ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300'
+                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/50 text-slate-800 dark:text-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      {node.type === 'trigger' && <Play className="w-3.5 h-3.5 text-emerald-400" />}
-                      {node.type === 'message' && <MessageSquare className="w-3.5 h-3.5 text-teal-400" />}
-                      {node.type === 'interactive_buttons' && <ListPlus className="w-3.5 h-3.5 text-teal-400" />}
-                      {node.type === 'native_flow_trigger' && <Smartphone className="w-3.5 h-3.5 text-indigo-400" />}
-                      {node.type === 'ai_rag_node' && <Sparkles className="w-3.5 h-3.5 text-cyan-400" />}
-                      {node.type === 'crm_deal_action' && <Briefcase className="w-3.5 h-3.5 text-amber-400" />}
-                      {node.type === 'ticket_action' && <Ticket className="w-3.5 h-3.5 text-amber-400" />}
+                      {node.type === 'trigger' && <Play className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                      {node.type === 'message' && <MessageSquare className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />}
+                      {node.type === 'interactive_buttons' && <ListPlus className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />}
+                      {node.type === 'native_flow_trigger' && <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
+                      {node.type === 'ai_rag_node' && <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
+                      {node.type === 'crm_deal_action' && <Briefcase className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                      {node.type === 'ticket_action' && <Ticket className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                      {node.type === 'delay_action' && <Timer className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />}
+                      {node.type === 'webhook_action' && <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                      {node.type === 'set_variable' && <Variable className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />}
+                      {node.type === 'tag_action' && <Tag className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />}
+                      {node.type === 'notification_action' && <Bell className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />}
                       <span className="text-xs font-bold tracking-tight line-clamp-1">
                         {node.data?.title || node.type}
                       </span>
@@ -1209,20 +1378,20 @@ export default function FlowCanvasBuilderPage() {
                         deleteNode(node.id)
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                      className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
 
                   {/* Node Body Content Preview */}
-                  <div className="p-3 text-xs text-slate-300 bg-[#161f26] rounded-b-2xl space-y-2">
+                  <div className="p-3 text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-[#161f26] rounded-b-2xl space-y-2">
                     {node.type === 'trigger' && (
                       <div>
                         <span className="text-[10px] text-slate-500 block uppercase font-semibold">Keywords:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(node.data?.keywords || []).map((kw: string, i: number) => (
-                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800 font-mono text-[10px]">
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono text-[10px]">
                               {kw}
                             </span>
                           ))}
@@ -1231,28 +1400,28 @@ export default function FlowCanvasBuilderPage() {
                     )}
 
                     {node.type === 'message' && (
-                      <p className="line-clamp-3 text-slate-300 font-normal leading-relaxed bg-[#0c1216] p-2 rounded-xl border border-slate-800">
+                      <p className="line-clamp-3 text-slate-700 dark:text-slate-300 font-normal leading-relaxed bg-slate-50 dark:bg-[#0c1216] p-2 rounded-xl border border-slate-200 dark:border-slate-800">
                         {node.data?.body || 'No message content'}
                       </p>
                     )}
 
                     {['interactive_buttons', 'list_menu', 'condition_branch'].includes(node.type) && (
                       <div className="space-y-1.5">
-                        <p className="line-clamp-2 text-slate-400">{node.data?.body}</p>
+                        <p className="line-clamp-2 text-slate-600 dark:text-slate-400">{node.data?.body}</p>
                         <div className="space-y-1">
                           {(node.type === 'condition_branch' ? [{ id: 'true', title: 'Matches' }, { id: 'false', title: 'Does not match' }] : node.type === 'list_menu' ? (node.data.sections || []).flatMap((section: any) => section.rows || []) : node.data?.buttons || []).map((btn: any) => (
                             <div
                               key={btn.id}
-                              className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 border border-teal-500/20 text-[11px] font-medium flex items-center justify-between"
+                              className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-500/10 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-500/20 text-[11px] font-medium flex items-center justify-between"
                             >
                               <span>{btn.title}</span>
                               <button
                                 onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleConnectPort(node.id, btn.id)
+                                   e.stopPropagation()
+                                   handleConnectPort(node.id, btn.id)
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
-                                className="w-3 h-3 rounded-full bg-teal-400 hover:scale-125 transition-transform"
+                                className="w-3 h-3 rounded-full bg-teal-500 hover:scale-125 transition-transform"
                                 title="Connect this button"
                               />
                             </div>
@@ -1262,35 +1431,99 @@ export default function FlowCanvasBuilderPage() {
                     )}
 
                     {node.type === 'native_flow_trigger' && (
-                      <div className="p-2 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-indigo-200">
+                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/20 text-indigo-900 dark:text-indigo-200">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-[11px]">{node.data?.cta_text || 'Open Form'}</span>
-                          <ExternalLink className="w-3 h-3 text-indigo-400" />
+                          <ExternalLink className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                         </div>
-                        <span className="text-[9px] text-indigo-300/60 block mt-1">Zero-redirect native form</span>
+                        <span className="text-[9px] text-indigo-600/80 dark:text-indigo-300/60 block mt-1">Zero-redirect native form</span>
                       </div>
                     )}
 
                     {node.type === 'ai_rag_node' && (
-                      <div className="p-2 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-cyan-200">
+                      <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/20 text-cyan-900 dark:text-cyan-200">
                         <span className="font-semibold text-[11px]">Knowledge Assistant</span>
-                        <p className="text-[10px] text-cyan-300/70 mt-0.5">
+                        <p className="text-[10px] text-cyan-700/80 dark:text-cyan-300/70 mt-0.5">
                           Ends this workflow and delegates the reply to your knowledge assistant.
                         </p>
                       </div>
                     )}
 
                     {node.type === 'crm_deal_action' && (
-                      <div className="text-[11px] text-amber-200/90">
+                      <div className="text-[11px] text-amber-800 dark:text-amber-200/90">
                         <span>Stage: </span>
                         <span className="font-semibold font-mono">{node.data?.pipeline_stage || 'lead_in'}</span>
-                        <span className="block text-[10px] text-slate-400">Value: {node.data?.monetary_value || 0}</span>
+                        <span className="block text-[10px] text-slate-500 dark:text-slate-400">Value: {node.data?.monetary_value || 0}</span>
                       </div>
                     )}
 
                     {node.type === 'ticket_action' && (
-                      <div className="text-[11px] text-amber-200/90">
+                      <div className="text-[11px] text-amber-800 dark:text-amber-200/90">
                         <span>Creates a ticket linked to this contact and conversation.</span>
+                      </div>
+                    )}
+
+                    {node.type === 'delay_action' && (
+                      <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-500/20 text-violet-900 dark:text-violet-200">
+                        <div className="flex items-center gap-1.5">
+                          <Timer className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                          <span className="font-semibold text-[11px]">
+                            Wait {node.data?.delay_amount || 1} {node.data?.delay_unit || 'hours'}
+                          </span>
+                        </div>
+                        {node.data?.resume_message && (
+                          <p className="text-[10px] text-violet-700/80 dark:text-violet-300/60 mt-1 line-clamp-1">Then: {node.data.resume_message}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {node.type === 'webhook_action' && (
+                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-500/20 text-blue-900 dark:text-blue-200 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
+                            {node.data?.http_method || 'POST'}
+                          </span>
+                          <span className="text-[10px] font-mono truncate flex-1">{node.data?.webhook_url || 'https://...'}</span>
+                        </div>
+                        {node.data?.response_variable && (
+                          <p className="text-[9px] text-blue-700/80 dark:text-blue-300/60">→ Save to: {node.data.response_variable}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {node.type === 'set_variable' && (
+                      <div className="p-2 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-500/20 text-pink-900 dark:text-pink-200">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300 font-bold">{node.data?.variable_name || 'var'}</span>
+                          <span className="text-[10px] text-pink-700/60 dark:text-pink-300/60">=</span>
+                          <span className="text-[10px] truncate flex-1 font-mono">{node.data?.value_expression || '(empty)'}</span>
+                        </div>
+                        <p className="text-[9px] text-pink-700/70 dark:text-pink-300/50 mt-1">Type: {node.data?.value_type || 'text'}</p>
+                      </div>
+                    )}
+
+                    {node.type === 'tag_action' && (
+                      <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-500/20 text-orange-900 dark:text-orange-200">
+                        <p className="text-[10px] font-semibold uppercase text-orange-700/80 dark:text-orange-300/70 mb-1">
+                          {node.data?.tag_action_type === 'remove' ? 'Remove Tags' : 'Add Tags'}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {(node.data?.tags || []).map((tag: string, i: number) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-200 text-[10px] font-medium">{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {node.type === 'notification_action' && (
+                      <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-200">
+                        <div className="flex items-center gap-1.5">
+                          <Bell className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                          <span className="text-[11px] font-semibold capitalize">{node.data?.channel || 'email'}</span>
+                        </div>
+                        <p className="text-[10px] text-rose-700/80 dark:text-rose-300/60 mt-1 line-clamp-1">
+                          {node.data?.notification_subject || 'No subject'}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1304,7 +1537,7 @@ export default function FlowCanvasBuilderPage() {
                         handleConnectPort(node.id)
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="w-4 h-4 rounded-full bg-slate-700 hover:bg-emerald-400 border-2 border-[#161f26] absolute -left-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors"
+                      className="w-4 h-4 rounded-full bg-slate-300 hover:bg-emerald-500 dark:bg-slate-700 dark:hover:bg-emerald-400 border-2 border-white dark:border-[#161f26] absolute -left-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors shadow-sm"
                       title="Connect target input"
                     />
                   )}
@@ -1317,8 +1550,8 @@ export default function FlowCanvasBuilderPage() {
                         handleConnectPort(node.id)
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className={`w-4 h-4 rounded-full border-2 border-[#161f26] absolute -right-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors ${
-                        connectingFrom?.nodeId === node.id ? 'bg-emerald-400 ring-4 ring-emerald-500/30' : 'bg-slate-700 hover:bg-emerald-400'
+                      className={`w-4 h-4 rounded-full border-2 border-white dark:border-[#161f26] absolute -right-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors shadow-sm ${
+                        connectingFrom?.nodeId === node.id ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : 'bg-slate-300 hover:bg-emerald-500 dark:bg-slate-700 dark:hover:bg-emerald-400'
                       }`}
                       title="Connect next step"
                     />
@@ -1331,16 +1564,16 @@ export default function FlowCanvasBuilderPage() {
 
         {/* Right Inspector Drawer (Edit Selected Node) */}
         {selectedNode && (
-          <aside className="w-80 border-l border-slate-800 bg-[#11181c] p-4 flex flex-col justify-between z-10 overflow-y-auto">
+          <aside className="w-80 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] p-4 flex flex-col justify-between z-10 overflow-y-auto">
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2">
-                  <Settings2 className="w-4 h-4 text-emerald-400" />
-                  <h3 className="font-bold text-sm">Node Inspector</h3>
+                  <Settings2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="font-bold text-sm text-slate-800 dark:text-white">Node Inspector</h3>
                 </div>
                 <button
                   onClick={() => setSelectedNodeId(null)}
-                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1348,12 +1581,12 @@ export default function FlowCanvasBuilderPage() {
 
               {/* Title Input */}
               <div>
-                <label className="text-xs font-semibold text-slate-400">Node Title</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Node Title</label>
                 <input
                   type="text"
                   value={selectedNode.data?.title || ''}
                   onChange={(e) => updateNodeData(selectedNode.id, { title: e.target.value })}
-                  className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
 
@@ -1361,11 +1594,11 @@ export default function FlowCanvasBuilderPage() {
               {selectedNode.type === 'trigger' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Trigger</label>
-                    <select value={selectedNode.data.trigger_type || 'keyword'} onChange={event => updateNodeData(selectedNode.id, { trigger_type: event.target.value })} className="w-full my-2 p-2 text-xs bg-slate-900 border border-slate-700 rounded-lg"><option value="keyword">Keyword</option><option value="first_message">First message in a conversation</option></select>
-                    <label className="text-xs font-semibold text-slate-400">Keyword matching</label>
-                    <select value={selectedNode.data.match_mode === 'exact' ? 'exact' : 'contains'} onChange={event => updateNodeData(selectedNode.id, { match_mode: event.target.value })} className="w-full my-2 p-2 text-xs bg-slate-900 border border-slate-700 rounded-lg"><option value="contains">Contains keyword</option><option value="exact">Exact match</option></select>
-                    <label className="text-xs font-semibold text-slate-400">Inbound Trigger Keywords</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Trigger</label>
+                    <select value={selectedNode.data.trigger_type || 'keyword'} onChange={event => updateNodeData(selectedNode.id, { trigger_type: event.target.value })} className="w-full my-1.5 p-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg"><option value="keyword">Keyword</option><option value="first_message">First message in a conversation</option></select>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 mt-2 block">Keyword matching</label>
+                    <select value={selectedNode.data.match_mode === 'exact' ? 'exact' : 'contains'} onChange={event => updateNodeData(selectedNode.id, { match_mode: event.target.value })} className="w-full my-1.5 p-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg"><option value="contains">Contains keyword</option><option value="exact">Exact match</option></select>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 mt-2 block">Inbound Trigger Keywords</label>
                     <p className="text-[10px] text-slate-500">Comma-separated</p>
                     <input
                       type="text"
@@ -1375,45 +1608,45 @@ export default function FlowCanvasBuilderPage() {
                           keywords: e.target.value.split(',').map((k) => k.trim()).filter(Boolean),
                         })
                       }
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700 font-mono"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
                     />
                   </div>
                 </div>
               )}
 
               {selectedNode.type === 'condition_branch' && <div className="space-y-3 text-xs">
-                <label className="block">Answer or variable
-                  <input value={selectedNode.data.variable_name || selectedNode.data.variableName || ''} onChange={event => updateNodeData(selectedNode.id, { variable_name: event.target.value, variableName: event.target.value })} placeholder="form.budget" className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" />
+                <label className="block text-slate-700 dark:text-slate-300 font-medium">Answer or variable
+                  <input value={selectedNode.data.variable_name || selectedNode.data.variableName || ''} onChange={event => updateNodeData(selectedNode.id, { variable_name: event.target.value, variableName: event.target.value })} placeholder="form.budget" className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg font-mono" />
                 </label>
-                <label className="block">Comparison
-                  <select value={selectedNode.data.operator || 'equals'} onChange={event => updateNodeData(selectedNode.id, { operator: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg">
+                <label className="block text-slate-700 dark:text-slate-300 font-medium">Comparison
+                  <select value={selectedNode.data.operator || 'equals'} onChange={event => updateNodeData(selectedNode.id, { operator: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg">
                     {['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].map(operator => <option key={operator} value={operator}>{operator.replaceAll('_', ' ')}</option>)}
                   </select>
                 </label>
-                <label className="block">Compare with
-                  <input value={selectedNode.data.compare_value ?? selectedNode.data.compareValue ?? ''} onChange={event => updateNodeData(selectedNode.id, { compare_value: event.target.value, compareValue: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" />
+                <label className="block text-slate-700 dark:text-slate-300 font-medium">Compare with
+                  <input value={selectedNode.data.compare_value ?? selectedNode.data.compareValue ?? ''} onChange={event => updateNodeData(selectedNode.id, { compare_value: event.target.value, compareValue: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg font-mono" />
                 </label>
-                <p className="text-slate-400">Connect both outputs. Form answers use names such as form.budget or form.full_name.</p>
+                <p className="text-slate-500 dark:text-slate-400">Connect both outputs. Form answers use names such as form.budget or form.full_name.</p>
               </div>}
-              {selectedNode.type === 'assign_agent_action' && <p className="text-xs text-slate-400">This action returns the conversation to the shared team queue and pauses automatic replies. A teammate can take over in the inbox.</p>}
+              {selectedNode.type === 'assign_agent_action' && <p className="text-xs text-slate-600 dark:text-slate-400">This action returns the conversation to the shared team queue and pauses automatic replies. A teammate can take over in the inbox.</p>}
               {selectedNode.type === 'list_menu' && <div className="space-y-3 text-xs">
-                <label className="block">Message<textarea value={selectedNode.data.body || ''} onChange={event => updateNodeData(selectedNode.id, { body: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>
-                <label className="block">Menu button<input maxLength={20} value={selectedNode.data.button_text || 'Choose'} onChange={event => updateNodeData(selectedNode.id, { button_text: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>
-                {(selectedNode.data.sections?.[0]?.rows || []).map((row: any, index: number) => <label key={row.id} className="block">{row.id}<input maxLength={24} value={row.title} onChange={event => updateNodeData(selectedNode.id, { sections: [{ title: selectedNode.data.sections[0].title, rows: selectedNode.data.sections[0].rows.map((item: any, itemIndex: number) => itemIndex === index ? { ...item, title: event.target.value } : item) }] })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>)}
-                {(selectedNode.data.sections?.[0]?.rows || []).length < 10 && <button onClick={() => updateNodeData(selectedNode.id, { sections: [{ title: 'Options', rows: [...(selectedNode.data.sections?.[0]?.rows || []), { id: `choice_${Date.now()}`, title: 'New option' }] }] })} className="px-3 py-2 bg-slate-700 rounded-lg">Add choice</button>}
+                <label className="block text-slate-700 dark:text-slate-300 font-medium">Message<textarea value={selectedNode.data.body || ''} onChange={event => updateNodeData(selectedNode.id, { body: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>
+                <label className="block text-slate-700 dark:text-slate-300 font-medium">Menu button<input maxLength={20} value={selectedNode.data.button_text || 'Choose'} onChange={event => updateNodeData(selectedNode.id, { button_text: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>
+                {(selectedNode.data.sections?.[0]?.rows || []).map((row: any, index: number) => <label key={row.id} className="block text-slate-700 dark:text-slate-300 font-medium">{row.id}<input maxLength={24} value={row.title} onChange={event => updateNodeData(selectedNode.id, { sections: [{ title: selectedNode.data.sections[0].title, rows: selectedNode.data.sections[0].rows.map((item: any, itemIndex: number) => itemIndex === index ? { ...item, title: event.target.value } : item) }] })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>)}
+                {(selectedNode.data.sections?.[0]?.rows || []).length < 10 && <button onClick={() => updateNodeData(selectedNode.id, { sections: [{ title: 'Options', rows: [...(selectedNode.data.sections?.[0]?.rows || []), { id: `choice_${Date.now()}`, title: 'New option' }] }] })} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-lg transition-colors">Add choice</button>}
               </div>}
-              {selectedNode.type === 'ticket_action' && <label className="block text-xs">Ticket subject<input value={selectedNode.data.subject || ''} onChange={event => updateNodeData(selectedNode.id, { subject: event.target.value })} className="w-full mt-1 p-2 bg-slate-900 border border-slate-700 rounded-lg" /></label>}
+              {selectedNode.type === 'ticket_action' && <label className="block text-xs text-slate-700 dark:text-slate-300 font-medium">Ticket subject<input value={selectedNode.data.subject || ''} onChange={event => updateNodeData(selectedNode.id, { subject: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>}
 
               {selectedNode.type === 'message' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Message Content</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message Content</label>
                     <textarea
                       rows={5}
                       value={selectedNode.data?.body || ''}
                       onChange={(e) => updateNodeData(selectedNode.id, { body: e.target.value })}
                       placeholder="Type WhatsApp message..."
-                      className="w-full mt-1 p-2.5 text-xs rounded-xl bg-slate-900 border border-slate-700 leading-relaxed focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full mt-1 p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
 
@@ -1428,7 +1661,7 @@ export default function FlowCanvasBuilderPage() {
                               body: (selectedNode.data?.body || '') + ' ' + tag,
                             })
                           }
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700 hover:bg-slate-700"
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                         >
                           {tag}
                         </button>
@@ -1441,17 +1674,17 @@ export default function FlowCanvasBuilderPage() {
               {selectedNode.type === 'interactive_buttons' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Prompt Text</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Prompt Text</label>
                     <textarea
                       rows={3}
                       value={selectedNode.data?.body || ''}
                       onChange={(e) => updateNodeData(selectedNode.id, { body: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Buttons (Max 3)</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Buttons (Max 3)</label>
                     <div className="space-y-1.5 mt-1">
                       {(selectedNode.data?.buttons || []).map((btn: any, idx: number) => (
                         <div key={idx} className="flex items-center gap-1.5">
@@ -1463,14 +1696,14 @@ export default function FlowCanvasBuilderPage() {
                               newButtons[idx] = { ...btn, title: e.target.value }
                               updateNodeData(selectedNode.id, { buttons: newButtons })
                             }}
-                            className="flex-1 p-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700"
+                            className="flex-1 p-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                           />
                           <button
                             onClick={() => {
                               const newButtons = selectedNode.data.buttons.filter((_: any, i: number) => i !== idx)
                               updateNodeData(selectedNode.id, { buttons: newButtons })
                             }}
-                            className="p-1.5 text-slate-400 hover:text-rose-400"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1488,7 +1721,7 @@ export default function FlowCanvasBuilderPage() {
                               buttons: [...(selectedNode.data?.buttons || []), newBtn],
                             })
                           }}
-                          className="w-full py-1.5 rounded-lg border border-dashed border-slate-700 text-xs text-slate-400 hover:text-white hover:border-emerald-500"
+                          className="w-full py-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-emerald-500"
                         >
                           + Add Button
                         </button>
@@ -1501,11 +1734,11 @@ export default function FlowCanvasBuilderPage() {
               {selectedNode.type === 'native_flow_trigger' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Select Meta Native Form</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Select Meta Native Form</label>
                     <select
                       value={selectedNode.data?.native_flow_id || ''}
                       onChange={(e) => updateNodeData(selectedNode.id, { native_flow_id: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                     >
                       <option value="">Select a form...</option>
                       {availableNativeForms.map((form) => (
@@ -1517,48 +1750,316 @@ export default function FlowCanvasBuilderPage() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">CTA Button Text</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">CTA Button Text</label>
                     <input
                       type="text"
                       value={selectedNode.data?.cta_text || ''}
                       onChange={(e) => updateNodeData(selectedNode.id, { cta_text: e.target.value })}
                       maxLength={30}
                       placeholder="e.g. Open Form"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                     />
                   </div>
                 </div>
               )}
 
-              {selectedNode.type === 'ai_rag_node' && <p className="text-xs text-slate-400">The existing knowledge assistant answers the customer's current message using your organization settings. This action ends the workflow.</p>}
+              {selectedNode.type === 'ai_rag_node' && <p className="text-xs text-slate-600 dark:text-slate-400">The existing knowledge assistant answers the customer's current message using your organization settings. This action ends the workflow.</p>}
 
               {selectedNode.type === 'crm_deal_action' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Pipeline Stage</label>
-                    <select value={selectedNode.data?.pipeline_stage || 'lead_in'} onChange={event => updateNodeData(selectedNode.id, { pipeline_stage: event.target.value, stageId: event.target.value })} className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Pipeline Stage</label>
+                    <select value={selectedNode.data?.pipeline_stage || 'lead_in'} onChange={event => updateNodeData(selectedNode.id, { pipeline_stage: event.target.value, stageId: event.target.value })} className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                       <option value="lead_in">First pipeline stage</option>
                       {pipelineStages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400">Deal value</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Deal value</label>
                     <input
                       type="number"
                       value={selectedNode.data?.monetary_value || 0}
                       onChange={(e) => updateNodeData(selectedNode.id, { monetary_value: Number(e.target.value) })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-900 border border-slate-700"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
                     />
+                  </div>
+                </div>
+              )}
+
+              {selectedNode.type === 'delay_action' && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Duration</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={selectedNode.data?.delay_amount || 1}
+                        onChange={(e) => updateNodeData(selectedNode.id, { delay_amount: Math.max(1, Number(e.target.value)) })}
+                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Unit</label>
+                      <select
+                        value={selectedNode.data?.delay_unit || 'hours'}
+                        onChange={(e) => updateNodeData(selectedNode.id, { delay_unit: e.target.value })}
+                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      >
+                        <option value="minutes">Minutes</option>
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message after wait (optional)</label>
+                    <textarea
+                      rows={2}
+                      value={selectedNode.data?.resume_message || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { resume_message: e.target.value })}
+                      placeholder="e.g. Just checking in! Have you had a chance to think about our offer?"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">The flow will pause for the specified duration and then continue to the next step. Great for drip campaigns and follow-ups.</p>
+                </div>
+              )}
+
+              {selectedNode.type === 'webhook_action' && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <div className="w-24">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Method</label>
+                      <select
+                        value={selectedNode.data?.http_method || 'POST'}
+                        onChange={(e) => updateNodeData(selectedNode.id, { http_method: e.target.value })}
+                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                      >
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">URL</label>
+                      <input
+                        type="url"
+                        value={selectedNode.data?.webhook_url || ''}
+                        onChange={(e) => updateNodeData(selectedNode.id, { webhook_url: e.target.value })}
+                        placeholder="https://api.example.com/webhook"
+                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Request Body (JSON)</label>
+                    <textarea
+                      rows={4}
+                      value={selectedNode.data?.body_template || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { body_template: e.target.value })}
+                      placeholder='{"contact": "{{contact.name}}", "phone": "{{contact.phone}}"}'
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono leading-relaxed"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Save response to variable</label>
+                    <input
+                      type="text"
+                      value={selectedNode.data?.response_variable || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { response_variable: e.target.value })}
+                      placeholder="webhook_response"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Timeout (seconds)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={selectedNode.data?.timeout_seconds || 10}
+                      onChange={(e) => updateNodeData(selectedNode.id, { timeout_seconds: Math.min(30, Math.max(1, Number(e.target.value))) })}
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Insert Variables</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['{{contact.name}}', '{{contact.phone}}', '{{form.budget}}', '{{last_choice}}'].map((tag) => (
+                        <button
+                          key={tag}
+                          onClick={() => updateNodeData(selectedNode.id, { body_template: (selectedNode.data?.body_template || '') + ' ' + tag })}
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedNode.type === 'set_variable' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Variable Name</label>
+                    <input
+                      type="text"
+                      value={selectedNode.data?.variable_name || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { variable_name: e.target.value })}
+                      placeholder="e.g. custom_score, user.tier"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Use dot notation for nested: form.total, user.tier</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Value / Expression</label>
+                    <textarea
+                      rows={2}
+                      value={selectedNode.data?.value_expression || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { value_expression: e.target.value })}
+                      placeholder="e.g. premium, {{contact.name}}, true, 42"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Value Type</label>
+                    <select
+                      value={selectedNode.data?.value_type || 'text'}
+                      onChange={(e) => updateNodeData(selectedNode.id, { value_type: e.target.value })}
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="boolean">Boolean (true/false)</option>
+                      <option value="json">JSON Object</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Quick Values</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['{{contact.name}}', '{{last_choice}}', '{{form.budget}}', 'true', '0'].map((tag) => (
+                        <button
+                          key={tag}
+                          onClick={() => updateNodeData(selectedNode.id, { value_expression: tag })}
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedNode.type === 'tag_action' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Action</label>
+                    <select
+                      value={selectedNode.data?.tag_action_type || 'add'}
+                      onChange={(e) => updateNodeData(selectedNode.id, { tag_action_type: e.target.value })}
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="add">Add Tags</option>
+                      <option value="remove">Remove Tags</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Tags</label>
+                    <p className="text-[10px] text-slate-500">Comma-separated</p>
+                    <input
+                      type="text"
+                      value={(selectedNode.data?.tags || []).join(', ')}
+                      onChange={(e) => updateNodeData(selectedNode.id, { tags: e.target.value.split(',').map((t: string) => t.trim()).filter(Boolean) })}
+                      placeholder="e.g. interested, vip, hot-lead"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Segment Name (optional)</label>
+                    <input
+                      type="text"
+                      value={selectedNode.data?.segment_name || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { segment_name: e.target.value })}
+                      placeholder="e.g. Premium Leads, Product A Interest"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Tags and segments help you organize contacts for future campaigns and targeting.</p>
+                </div>
+              )}
+
+              {selectedNode.type === 'notification_action' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Channel</label>
+                    <select
+                      value={selectedNode.data?.channel || 'email'}
+                      onChange={(e) => updateNodeData(selectedNode.id, { channel: e.target.value })}
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="email">Email</option>
+                      <option value="in_app">In-App Notification</option>
+                    </select>
+                  </div>
+                  {selectedNode.data?.channel !== 'in_app' && (
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Recipient Email</label>
+                      <input
+                        type="email"
+                        value={selectedNode.data?.recipient_email || ''}
+                        onChange={(e) => updateNodeData(selectedNode.id, { recipient_email: e.target.value })}
+                        placeholder="team@yourcompany.com"
+                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Subject</label>
+                    <input
+                      type="text"
+                      value={selectedNode.data?.notification_subject || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { notification_subject: e.target.value })}
+                      placeholder="New lead from {{contact.name}}"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message Body</label>
+                    <textarea
+                      rows={3}
+                      value={selectedNode.data?.body_template || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { body_template: e.target.value })}
+                      placeholder="A customer has completed the flow. Contact: {{contact.phone}}"
+                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Insert Variables</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['{{contact.name}}', '{{contact.phone}}', '{{org.name}}', '{{last_choice}}'].map((tag) => (
+                        <button
+                          key={tag}
+                          onClick={() => updateNodeData(selectedNode.id, { body_template: (selectedNode.data?.body_template || '') + ' ' + tag })}
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-800">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => deleteNode(selectedNode.id)}
-                className="w-full py-2 rounded-xl bg-rose-950/40 text-rose-400 hover:bg-rose-900/50 border border-rose-800/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete Node</span>
@@ -1569,12 +2070,12 @@ export default function FlowCanvasBuilderPage() {
 
         {/* Right Drawer: Live Phone Simulator */}
         {showSimulator && (
-          <aside className="w-96 border-l border-slate-800 bg-[#0b1014] flex flex-col z-20 shadow-2xl">
+          <aside className="w-96 border-l border-slate-200 dark:border-slate-800 bg-[#0b1014] flex flex-col z-20 shadow-2xl">
             {/* Simulator Header */}
-            <div className="p-3 bg-[#161f26] border-b border-slate-800 flex items-center justify-between">
+            <div className="p-3 bg-slate-900 dark:bg-[#161f26] border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs font-bold text-slate-200">WhatsApp Live Simulator</span>
+                <span className="text-xs font-bold text-white">WhatsApp Live Simulator</span>
               </div>
               <button
                 onClick={() => setShowSimulator(false)}
@@ -1654,7 +2155,7 @@ export default function FlowCanvasBuilderPage() {
             </div>
 
             {/* Simulator Input Footer */}
-            <div className="p-3 bg-[#161f26] border-t border-slate-800 flex items-center gap-2">
+            <div className="p-3 bg-slate-900 dark:bg-[#161f26] border-t border-slate-800 flex items-center gap-2">
               <input
                 type="text"
                 value={simulatorInput}

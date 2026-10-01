@@ -779,7 +779,7 @@ export default function CampaignsPage() {
     if (!orgId) return
     setTemplateFetchError(null)
     try {
-      const res = await fetch(`/api/templates?organizationId=${orgId}`)
+      const res = await fetch(`/api/templates?organizationId=${orgId}&_t=${Date.now()}`, { cache: 'no-store' })
       const data = await res.json()
       if (data.error) {
         setTemplateFetchError(data.error)
@@ -2679,9 +2679,20 @@ export default function CampaignsPage() {
                   )}
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
-                      {channel === 'whatsapp' ? 'Approved Gateway Template' : 'Choose Base Template (Optional)'}
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
+                        {channel === 'whatsapp' ? 'Approved Gateway Template' : 'Choose Base Template (Optional)'}
+                      </label>
+                      {channel === 'whatsapp' && (
+                        <button
+                          type="button"
+                          onClick={() => fetchTemplates()}
+                          className="text-[11px] text-[#00a884] hover:underline flex items-center gap-1 font-medium transition-colors"
+                        >
+                          <RefreshCw size={11} /> Refresh from Meta
+                        </button>
+                      )}
+                    </div>
                     <select
                       value={selectedTemplate?.sid || ''}
                       onChange={(e) => {

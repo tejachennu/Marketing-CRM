@@ -13,6 +13,9 @@ export type FlowNodeType =
   | 'assign_agent_action'
   | 'delay_action'
   | 'webhook_action'
+  | 'set_variable'
+  | 'tag_action'
+  | 'notification_action'
 
 export type NodeType = FlowNodeType
 
@@ -126,6 +129,45 @@ export interface AssignAgentActionNodeData extends BaseNodeData {
   teamName?: string
 }
 
+export interface DelayActionNodeData extends BaseNodeData {
+  nodeType: 'delay_action'
+  delayAmount: number
+  delayUnit: 'minutes' | 'hours' | 'days'
+  resumeMessage?: string
+}
+
+export interface WebhookActionNodeData extends BaseNodeData {
+  nodeType: 'webhook_action'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  url: string
+  headers?: Record<string, string>
+  bodyTemplate?: string
+  responseVariable?: string
+  timeoutSeconds?: number
+}
+
+export interface SetVariableNodeData extends BaseNodeData {
+  nodeType: 'set_variable'
+  variableName: string
+  valueExpression: string
+  valueType: 'text' | 'number' | 'boolean' | 'json'
+}
+
+export interface TagActionNodeData extends BaseNodeData {
+  nodeType: 'tag_action'
+  action: 'add' | 'remove'
+  tags: string[]
+  segmentName?: string
+}
+
+export interface NotificationActionNodeData extends BaseNodeData {
+  nodeType: 'notification_action'
+  channel: 'email' | 'in_app'
+  recipientEmail?: string
+  subject: string
+  bodyTemplate: string
+}
+
 export type AnyNodeData =
   | TriggerNodeData
   | MessageNodeData
@@ -137,6 +179,11 @@ export type AnyNodeData =
   | CrmDealActionNodeData
   | TicketActionNodeData
   | AssignAgentActionNodeData
+  | DelayActionNodeData
+  | WebhookActionNodeData
+  | SetVariableNodeData
+  | TagActionNodeData
+  | NotificationActionNodeData
   | BaseNodeData
   | Record<string, any>
 

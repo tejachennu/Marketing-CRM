@@ -110,7 +110,7 @@ async function fetchMetaTemplates(
 
   try {
     while (url) {
-      let res: Response = await fetch(url)
+      let res: Response = await fetch(url, { cache: 'no-store' })
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null)
@@ -123,7 +123,7 @@ async function fetchMetaTemplates(
           console.log('[Templates] Retrying Meta API with fallback version v20.0...')
           version = 'v20.0'
           url = `https://graph.facebook.com/${version}/${wabaId}/message_templates?fields=name,status,category,language,components,id&limit=100&access_token=${apiToken}`
-          res = await fetch(url)
+          res = await fetch(url, { cache: 'no-store' })
           if (!res.ok) {
             const errData2 = await res.json().catch(() => null)
             lastError = `Meta WhatsApp API error: ${errData2?.error?.message || errMsg}`
@@ -432,6 +432,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // If using Meta WhatsApp Cloud API: Return live templates directly from Meta
+    if (shouldFetchMeta) {
+      return NextResponse.json(
+        { 
+          templates: metaList, 
+          error: metaApiError, 
+          provider: whatsappConfig.provider,
+          wabaId: whatsappConfig.businessAccountId 
+        },
+        {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        }
+      )
+    }
+
     let dbList: any[] = []
     if (orgId) {
       try {
@@ -473,8 +492,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Merge: DB templates first, then provider-specific templates (Meta or Twilio)
-    const mergedTemplates = [...dbList, ...metaList, ...twilioList]
+    // Merge: DB templates first, then Twilio templates
+    const mergedTemplates = [...dbList, ...twilioList]
 
     if (mergedTemplates.length === 0) {
       return NextResponse.json({ templates: fallbackTemplates, error: metaApiError, provider: whatsappConfig.provider })
