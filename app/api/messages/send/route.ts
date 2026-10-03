@@ -501,7 +501,10 @@ export async function POST(request: NextRequest) {
           }
         } else if (publicMediaUrl) {
           const lowerUrl = publicMediaUrl.toLowerCase()
-          const isImage = lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || lowerUrl.endsWith('.png') || lowerUrl.endsWith('.gif') || lowerUrl.endsWith('.webp')
+          const cleanLower = lowerUrl.split('?')[0].split('#')[0]
+          const isImage = lowerUrl.startsWith('data:image/') || cleanLower.endsWith('.jpg') || cleanLower.endsWith('.jpeg') || cleanLower.endsWith('.png') || cleanLower.endsWith('.gif') || cleanLower.endsWith('.webp')
+          const isVideo = lowerUrl.startsWith('data:video/') || cleanLower.endsWith('.mp4') || cleanLower.endsWith('.webm') || cleanLower.endsWith('.ogg') || cleanLower.endsWith('.mov') || cleanLower.endsWith('.3gp')
+          const isAudio = lowerUrl.startsWith('data:audio/') || cleanLower.endsWith('.mp3') || cleanLower.endsWith('.wav') || cleanLower.endsWith('.ogg') || cleanLower.endsWith('.m4a') || cleanLower.endsWith('.aac') || cleanLower.endsWith('.amr')
           
           let mediaId: string | null = null
           try {
@@ -520,6 +523,23 @@ export async function POST(request: NextRequest) {
             }
             if (msgBody) {
               payload.image.caption = msgBody
+            }
+          } else if (isVideo) {
+            payload.type = 'video'
+            if (mediaId) {
+              payload.video = { id: mediaId }
+            } else {
+              payload.video = { link: publicMediaUrl }
+            }
+            if (msgBody) {
+              payload.video.caption = msgBody
+            }
+          } else if (isAudio) {
+            payload.type = 'audio'
+            if (mediaId) {
+              payload.audio = { id: mediaId }
+            } else {
+              payload.audio = { link: publicMediaUrl }
             }
           } else {
             payload.type = 'document'

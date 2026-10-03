@@ -851,16 +851,30 @@ function ConversationsPageContent() {
 
           // 1. Live update active conversation message status (blue ticks)
           setMessages((prev) =>
-            prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
+            prev.map((m) => {
+              if (m.id !== updatedMsg.id) return m
+              return {
+                ...m,
+                ...updatedMsg,
+                // Crucial: preserve media_url if Realtime update payload omitted it (e.g. TOAST column or omitted payload)
+                media_url: updatedMsg.media_url || m.media_url,
+              }
+            })
           )
 
           // 2. Live update conversation preview in sidebar
           setConversations((prev) =>
-            prev.map((c) =>
-              c.last_message?.id === updatedMsg.id
-                ? { ...c, last_message: { ...c.last_message, ...updatedMsg } }
-                : c
-            )
+            prev.map((c) => {
+              if (c.last_message?.id !== updatedMsg.id) return c
+              return {
+                ...c,
+                last_message: {
+                  ...c.last_message,
+                  ...updatedMsg,
+                  media_url: updatedMsg.media_url || c.last_message?.media_url || null,
+                }
+              }
+            })
           )
         }
       )
@@ -1342,20 +1356,71 @@ function ConversationsPageContent() {
   }
 
   const getDownloadName = (url: string | null): string => {
-    if (!url) return 'download'
+    if (!url) return 'attachment'
+    if (url.startsWith('data:')) {
+      const match = url.match(/^data:([^;]+);/)
+      const mime = match ? match[1] : 'application/octet-stream'
+      const ext = mime.split('/')[1] || 'bin'
+      return `attachment.${ext}`
+    }
+    const hashPart = url.includes('#') ? url.split('#')[1] : ''
+    const hashExtMatch = hashPart.match(/media\.([a-zA-Z0-9]+)/i)
+    if (hashExtMatch) {
+      return `attachment.${hashExtMatch[1]}`
+    }
     const cleanUrl = url.split('?')[0].split('#')[0]
     const parts = cleanUrl.split('/')
-    const lastPart = parts[parts.length - 1] || 'download'
-    return decodeURIComponent(lastPart)
+    const lastPart = parts[parts.length - 1] || 'attachment'
+    try {
+      return decodeURIComponent(lastPart)
+    } catch {
+      return lastPart
+    }
   }
 
   const getMediaType = (url: string | null): 'image' | 'video' | 'audio' | 'document' | null => {
     if (!url) return null
+
+    // 1. Base64 Data URLs (e.g. data:image/png;base64,...)
+    if (url.startsWith('data:image/')) return 'image'
+    if (url.startsWith('data:video/')) return 'video'
+    if (url.startsWith('data:audio/')) return 'audio'
+    if (url.startsWith('data:')) return 'document'
+
+    // 2. Hash extension hint from webhook (e.g. /api/...#media.jpg)
+    const hashPart = url.includes('#') ? url.split('#')[1] : ''
+    const hashExtMatch = hashPart.match(/media\.([a-zA-Z0-9]+)/i)
+    if (hashExtMatch) {
+      const ext = hashExtMatch[1].toLowerCase()
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
+      if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
+      if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
+      return 'document'
+    }
+
+    // 3. Query params or URL path
+    try {
+      const parsed = new URL(url, 'https://dummy.com')
+      const mime = parsed.searchParams.get('mime') || parsed.searchParams.get('type')
+      if (mime) {
+        if (mime.startsWith('image/')) return 'image'
+        if (mime.startsWith('video/')) return 'video'
+        if (mime.startsWith('audio/')) return 'audio'
+      }
+      const extParam = parsed.searchParams.get('ext')
+      if (extParam) {
+        const ext = extParam.toLowerCase()
+        if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
+        if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
+        if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
+      }
+    } catch {}
+
     const cleanUrl = url.split('?')[0].split('#')[0]
     const ext = cleanUrl.split('.').pop()?.toLowerCase() || ''
-    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) return 'image'
-    if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video'
-    if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr'].includes(ext)) return 'audio'
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
+    if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
+    if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
     return 'document'
   }
 
@@ -1550,14 +1615,22 @@ function ConversationsPageContent() {
                             return <Check size={13} className="text-slate-400 dark:text-slate-500 flex-shrink-0" />
                           })()}
                           <span className="truncate">
-                            {conv.last_message.body ? (
+                            {conv.last_message.media_url && (!conv.last_message.body || conv.last_message.body === '[Media Attachment]') ? (
+                              (() => {
+                                const mType = getMediaType(conv.last_message.media_url)
+                                if (mType === 'image') return '📷 Photo'
+                                if (mType === 'video') return '🎥 Video'
+                                if (mType === 'audio') return '🎵 Audio'
+                                return '📄 Document'
+                              })()
+                            ) : conv.last_message.body ? (
                               conv.last_message.body.startsWith('[reply:') ? (
                                 conv.last_message.body.replace(/^\[reply:[^\]]+\]/, '')
                               ) : (
                                 conv.last_message.body
                               )
                             ) : conv.last_message.media_url ? (
-                              /\.(jpeg|jpg|gif|png|webp)/i.test(conv.last_message.media_url) ? '📷 Photo' : '📄 Document'
+                              getMediaType(conv.last_message.media_url) === 'image' ? '📷 Photo' : '📄 Document'
                             ) : ''}
                           </span>
                         </>
@@ -1980,6 +2053,10 @@ function ConversationsPageContent() {
                     replyId = match[1]
                     displayBody = match[2]
                   }
+                }
+
+                if (msg.media_url && displayBody === '[Media Attachment]') {
+                  displayBody = ''
                 }
                 
                 const repliedMsg = isReply ? messages.find(m => m.id === replyId) : null
