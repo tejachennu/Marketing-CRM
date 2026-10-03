@@ -1,8 +1,9 @@
 import type { FlowReply } from './flow-runner'
+import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 
 /** Cloud API message envelope, shared by the runtime and contract tests. */
 export function buildWhatsAppFlowMessage(phone: string, reply: FlowReply) {
-  const base = { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone.replace(/\D/g, '') }
+  const base = { messaging_product: 'whatsapp', recipient_type: 'individual', to: cleanWhatsAppRecipient(phone) }
   if (!reply.body || reply.body.length > (reply.type === 'text' ? 4096 : 1024)) throw new Error('Flow message body is empty or exceeds the WhatsApp limit')
   if (reply.type === 'text') return { ...base, type: 'text', text: { body: reply.body } }
   let interactive: Record<string, any>

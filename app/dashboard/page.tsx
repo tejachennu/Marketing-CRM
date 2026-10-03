@@ -10,11 +10,12 @@ import { canSeeAll } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, FileText, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck
+  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert } from '@/lib/dialog-context'
+import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
 
 function ConversationsPageContent() {
   const router = useRouter()
@@ -1497,9 +1498,8 @@ function ConversationsPageContent() {
             </div>
           ) : (
             sortedConversations.map((conv) => {
-              const contactName = conv.contact
-                ? `${conv.contact.first_name || 'Unknown'} ${conv.contact.last_name || ''}`.trim()
-                : 'Unknown Contact'
+              const contactName = formatContactDisplayName(conv.contact)
+              const avatarInitials = getContactAvatarInitials(conv.contact)
               const isSelected = selectedConversation === conv.id
 
               return (
@@ -1515,7 +1515,7 @@ function ConversationsPageContent() {
                   {/* Avatar */}
                   <div className="relative flex-shrink-0 select-none">
                     <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-[#202c33] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 border border-[#e9edef] dark:border-[#2a3942] text-sm shrink-0">
-                      {contactName.substring(0, 2).toUpperCase()}
+                      {avatarInitials}
                     </div>
                   </div>
 
@@ -1655,16 +1655,16 @@ function ConversationsPageContent() {
                 <ArrowLeft size={18} />
               </button>
               <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 text-xs shadow-sm select-none">
-                {selectedContact.first_name ? selectedContact.first_name.substring(0, 2).toUpperCase() : 'CO'}
+                {getContactAvatarInitials(selectedContact)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef] leading-tight truncate">
-                    {selectedContact.first_name || 'Unknown'} {selectedContact.last_name || ''}
+                    {formatContactDisplayName(selectedContact)}
                   </h3>
                   <button
                     onClick={() => {
-                      setRenameFirst(selectedContact.first_name || '')
+                      setRenameFirst(isBsuid(selectedContact.first_name) ? '' : (selectedContact.first_name || ''))
                       setRenameLast(selectedContact.last_name || '')
                       setRenameCompany(selectedContact.company || '')
                       setRenameError(null)
@@ -1678,14 +1678,19 @@ function ConversationsPageContent() {
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
                   <div className="flex items-center gap-1">
-                    {!(selectedContact.first_name && (selectedContact.first_name.startsWith('+') || selectedContact.first_name.match(/^\d+$/))) && (
+                    {isBsuid(selectedContact.phone_number || selectedContact.first_name) ? (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
+                        <ShieldCheck size={10} className="shrink-0" />
+                        <span>Meta Phone Privacy (BSUID)</span>
+                      </span>
+                    ) : !(selectedContact.first_name && (selectedContact.first_name.startsWith('+') || selectedContact.first_name.match(/^\d+$/))) && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center gap-1 leading-none truncate max-w-[120px] sm:max-w-none">
                         <Phone size={9} className="shrink-0" />
                         <span className="truncate">{selectedContact.phone_number}</span>
                       </p>
                     )}
                     {selectedContact.phone_number && (
-                      <CopyPhoneButton phoneNumber={selectedContact.phone_number} iconSize={10} className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700/60" />
+                      <CopyPhoneButton phoneNumber={selectedContact.phone_number} iconSize={10} className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700/60" title="Copy WhatsApp ID / Phone" />
                     )}
                   </div>
                   

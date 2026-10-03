@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import nodemailer from 'nodemailer'
+import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -289,8 +290,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                   throw new Error('Facebook WhatsApp API credentials must be configured in settings')
                 }
 
-                let cleanToFb = recipientPhone.replace(/^whatsapp:/i, '').replace(/^\+/, '').trim()
-                if (cleanToFb.length === 10 && /^[6-9]/.test(cleanToFb)) {
+                let cleanToFb = cleanWhatsAppRecipient(recipientPhone)
+                if (/^\d{10}$/.test(cleanToFb) && /^[6-9]/.test(cleanToFb)) {
                   cleanToFb = `91${cleanToFb}`
                 }
                 let templateName = ''

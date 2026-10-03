@@ -4,6 +4,7 @@ import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import fs from 'fs'
 import path from 'path'
+import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -307,7 +308,7 @@ export async function POST(request: NextRequest) {
           throw new Error('Facebook WhatsApp API credentials (API Token & Phone ID) must be configured in settings')
         }
 
-        const cleanToFb = contactPhone.replace(/^whatsapp:/i, '').replace(/^\+/, '').trim()
+        const cleanToFb = cleanWhatsAppRecipient(contactPhone)
 
         const publicMediaUrl = msgMediaUrl
           ? (msgMediaUrl.startsWith('http')

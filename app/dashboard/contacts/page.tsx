@@ -25,9 +25,11 @@ import {
   CheckCircle2, 
   AlertCircle,
   Tag,
-  Check
+  Check,
+  ShieldCheck
 } from 'lucide-react'
 import { useConfirm, useAlert } from '@/lib/dialog-context'
+import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
 
 export default function ContactsPage() {
   const confirm = useConfirm()
@@ -681,23 +683,33 @@ export default function ContactsPage() {
                 </tr>
               ) : (
                 contacts.map((contact) => {
-                  const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
+                  const contactName = formatContactDisplayName(contact)
+                  const avatarInitials = getContactAvatarInitials(contact)
+                  const isBsuidContact = isBsuid(contact.phone_number || contact.first_name)
                   const contactTags = Array.isArray(contact.tags) ? contact.tags : []
                   return (
                     <tr key={contact.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
-                            {contactName.substring(0, 2).toUpperCase()}
+                            {avatarInitials}
                           </div>
-                          <p className="font-bold text-xs text-slate-900 dark:text-white">{contactName}</p>
+                          <div>
+                            <p className="font-bold text-xs text-slate-900 dark:text-white">{contactName}</p>
+                            {isBsuidContact && (
+                              <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                <ShieldCheck size={9} />
+                                <span>Meta Privacy ID</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
                           <Phone size={13} className="text-slate-450 dark:text-slate-500 shrink-0" />
-                          <span>{contact.phone_number}</span>
-                          <CopyPhoneButton phoneNumber={contact.phone_number} iconSize={11} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800" />
+                          <span className={isBsuidContact ? 'font-mono text-[11px]' : ''}>{contact.phone_number}</span>
+                          <CopyPhoneButton phoneNumber={contact.phone_number} iconSize={11} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800" title="Copy Phone / WhatsApp ID" />
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -833,17 +845,25 @@ export default function ContactsPage() {
             </div>
           ) : (
             contacts.map((contact) => {
-              const contactName = `${contact.first_name || 'Unknown'} ${contact.last_name || ''}`.trim()
+              const contactName = formatContactDisplayName(contact)
+              const avatarInitials = getContactAvatarInitials(contact)
+              const isBsuidContact = isBsuid(contact.phone_number || contact.first_name)
               const contactTags = Array.isArray(contact.tags) ? contact.tags : []
               return (
                 <div key={contact.id} className="p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
-                        {contactName.substring(0, 2).toUpperCase()}
+                        {avatarInitials}
                       </div>
                       <div>
                         <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight">{contactName}</p>
+                        {isBsuidContact && (
+                          <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            <ShieldCheck size={9} />
+                            <span>Meta Privacy ID</span>
+                          </span>
+                        )}
                         {contact.company && (
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{contact.company}</p>
                         )}

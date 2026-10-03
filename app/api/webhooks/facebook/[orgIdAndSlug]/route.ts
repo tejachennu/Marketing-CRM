@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
+import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
 
 // Verify Meta X-Hub-Signature-256 HMAC to ensure webhook requests are authentic
 function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
@@ -360,15 +361,21 @@ async function processEvent(
       }
     }
 
-    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
-    const phoneNumber = from.trim().startsWith('+') ? from.trim() : '+' + from.trim()
+    // Handle Meta Business-Scoped User ID (BSUID) or standard E.164 phone numbers
+    const rawSender = from.trim()
+    const senderIsBsuid = isBsuid(rawSender)
+    const phoneNumber = senderIsBsuid
+      ? canonicalizeBsuid(rawSender)
+      : (rawSender.startsWith('+') ? rawSender : '+' + rawSender)
 
     // Step 1: Find or create the Contact
+    // If BSUID, search for both canonical "CA.xxx" and legacy "+CA.xxx" to prevent duplicate contact creation
+    const lookupNumbers = senderIsBsuid ? [phoneNumber, `+${phoneNumber}`] : [phoneNumber]
     const { data: existingContact } = await supabase
       .from('contacts')
       .select('id, organization_id')
       .eq('organization_id', orgId)
-      .eq('phone_number', phoneNumber)
+      .in('phone_number', lookupNumbers)
       .limit(1)
       .maybeSingle()
 
@@ -382,8 +389,31 @@ async function processEvent(
         .single()
 
       contact = fullContact
+
+      // Auto-heal legacy or raw BSUID display names
+      const currentFirstName = (contact.first_name || '').trim()
+      const newProfileName = contactObj?.profile?.name?.trim()
+      if (newProfileName && (isBsuid(currentFirstName) || currentFirstName.startsWith('+CA.') || currentFirstName.startsWith('+'))) {
+        await supabase
+          .from('contacts')
+          .update({ first_name: newProfileName })
+          .eq('id', contact.id)
+        contact.first_name = newProfileName
+      } else if (senderIsBsuid && (currentFirstName.startsWith('+') || !currentFirstName || currentFirstName === phoneNumber)) {
+        const friendlyName = formatBsuidLabel(phoneNumber)
+        await supabase
+          .from('contacts')
+          .update({ first_name: friendlyName, phone_number: phoneNumber })
+          .eq('id', contact.id)
+        contact.first_name = friendlyName
+        contact.phone_number = phoneNumber
+      }
     } else {
-      const contactName = contactObj?.profile?.name || phoneNumber
+      let contactName = contactObj?.profile?.name?.trim()
+      if (!contactName) {
+        contactName = senderIsBsuid ? formatBsuidLabel(phoneNumber) : phoneNumber
+      }
+
       const { data: newContact, error: createError } = await supabase
         .from('contacts')
         .insert([
