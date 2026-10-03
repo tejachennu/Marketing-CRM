@@ -4,6 +4,7 @@ import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { CountryPhoneInput } from '@/components/country-phone-input'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -26,17 +27,26 @@ import {
   AlertCircle,
   Tag,
   Check,
-  ShieldCheck
+  ShieldCheck,
+  MessageCircle
 } from 'lucide-react'
 import { useConfirm, useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
 
 export default function ContactsPage() {
+  const router = useRouter()
   const confirm = useConfirm()
   const alert = useAlert()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const handleOpenChat = (contact: Contact) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(`conv_tried_${contact.id}`)
+    }
+    router.push(`/dashboard?contactId=${contact.id}`)
+  }
   
   // Pagination & Search States
   const [currentPage, setCurrentPage] = useState(1)
@@ -690,12 +700,16 @@ export default function ContactsPage() {
                   return (
                     <tr key={contact.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
+                        <div 
+                          onClick={() => handleOpenChat(contact)}
+                          className="flex items-center gap-3 cursor-pointer group/contact select-none"
+                          title="Click to open chat in Inbox"
+                        >
+                          <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none group-hover/contact:border-emerald-500 group-hover/contact:text-emerald-600 transition-colors">
                             {avatarInitials}
                           </div>
                           <div>
-                            <p className="font-bold text-xs text-slate-900 dark:text-white">{contactName}</p>
+                            <p className="font-bold text-xs text-slate-900 dark:text-white group-hover/contact:text-[#00a884] transition-colors">{contactName}</p>
                             {isBsuidContact && (
                               <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium">
                                 <ShieldCheck size={9} />
@@ -814,6 +828,14 @@ export default function ContactsPage() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            onClick={() => handleOpenChat(contact)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70 transition-all font-semibold text-xs shadow-xs cursor-pointer group"
+                            title="Open WhatsApp Chat in Inbox"
+                          >
+                            <MessageCircle size={13} className="text-[#00a884] dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                            <span>Chat</span>
+                          </button>
+                          <button
                             onClick={() => handleEditContact(contact)}
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-blue-600 hover:text-blue-400 transition-colors cursor-pointer"
                             title="Edit"
@@ -852,12 +874,16 @@ export default function ContactsPage() {
               return (
                 <div key={contact.id} className="p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none">
+                    <div 
+                      onClick={() => handleOpenChat(contact)}
+                      className="flex items-center gap-3 cursor-pointer group/mcontact select-none"
+                      title="Click to open chat in Inbox"
+                    >
+                      <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-350 text-xs shadow-sm select-none group-hover/mcontact:border-emerald-500">
                         {avatarInitials}
                       </div>
                       <div>
-                        <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight">{contactName}</p>
+                        <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight group-hover/mcontact:text-[#00a884] transition-colors">{contactName}</p>
                         {isBsuidContact && (
                           <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium">
                             <ShieldCheck size={9} />
@@ -870,6 +896,14 @@ export default function ContactsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenChat(contact)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70 font-semibold text-xs shadow-xs cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors"
+                        title="Open WhatsApp Chat in Inbox"
+                      >
+                        <MessageCircle size={13} className="text-[#00a884] dark:text-emerald-400" />
+                        <span>Chat</span>
+                      </button>
                       <button
                         onClick={() => handleEditContact(contact)}
                         className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-blue-600 hover:text-blue-400 transition-colors"
@@ -1181,6 +1215,21 @@ export default function ContactsPage() {
               )}
 
               <div className="flex gap-2.5 pt-3">
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddModal(false)
+                      const c = contacts.find(item => item.id === editingId)
+                      if (c) handleOpenChat(c)
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-xl transition-colors text-xs font-bold cursor-pointer"
+                    title="Open WhatsApp Chat in Inbox"
+                  >
+                    <MessageCircle size={14} className="text-[#00a884]" />
+                    <span>Open Chat</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setShowAddModal(false)}
                   disabled={saving}

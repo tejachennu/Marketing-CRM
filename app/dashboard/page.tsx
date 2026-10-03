@@ -21,6 +21,7 @@ function ConversationsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const conversationIdParam = searchParams.get('conversationId')
+  const contactIdParam = searchParams.get('contactId')
   const alert = useAlert()
 
   const [conversations, setConversations] = useState<ConversationWithContact[]>([])
@@ -564,13 +565,75 @@ function ConversationsPageContent() {
   }, [user, loadUnreadCount])
 
   // Dynamically fetch selected conversation if it is not in the active conversations list
-  // OR fetch/create conversation if contactId is in the URL and no conversation is selected
+  // OR fetch/create conversation if contactId is in the URL
   useEffect(() => {
     if (!user) return
-    const urlParams = new URLSearchParams(window.location.search)
-    const contactIdParam = urlParams.get('contactId')
+    const currentContactId = contactIdParam || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('contactId') : null)
 
-    if (selectedConversation) {
+    if (currentContactId) {
+      // Check if current selectedConversation already belongs to this contact
+      const currentSelectedConv = conversationsRef.current.find(c => c.id === selectedConversation)
+      if (currentSelectedConv && currentSelectedConv.contact_id === currentContactId) {
+        return
+      }
+
+      const fetchOrCreateByContact = async () => {
+        try {
+          const existingConv = conversationsRef.current.find(c => c.contact_id === currentContactId)
+          if (existingConv) {
+            setSelectedConversation(existingConv.id)
+            return
+          }
+          
+          const { data, error } = await supabase
+            .from('conversations')
+            .select(`
+              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+              contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
+            `)
+            .eq('contact_id', currentContactId)
+            .eq('organization_id', user.organization_id)
+            .maybeSingle()
+            
+          if (error && error.code !== 'PGRST116') throw error
+          
+          if (data) {
+            const conv = {
+              ...data,
+              contact: Array.isArray(data.contact) ? data.contact[0] : data.contact
+            } as ConversationWithContact
+            setConversations(prev => {
+              if (prev.some(c => c.id === conv.id)) return prev
+              return [conv, ...prev]
+            })
+            setSelectedConversation(conv.id)
+          } else {
+            // Create new conversation
+            const { data: newConv, error: createError } = await supabase
+              .from('conversations')
+              .insert([{ organization_id: user.organization_id, contact_id: currentContactId, is_active: true }])
+              .select(`
+                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+                contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
+              `)
+              .single()
+              
+            if (createError) throw createError
+            if (newConv) {
+              const conv = {
+                ...newConv,
+                contact: Array.isArray(newConv.contact) ? newConv.contact[0] : newConv.contact
+              } as ConversationWithContact
+              setConversations(prev => [conv, ...prev])
+              setSelectedConversation(conv.id)
+            }
+          }
+        } catch (err) {
+          console.error('[Dashboard] Error fetching/creating conversation by contactId:', err)
+        }
+      }
+      fetchOrCreateByContact()
+    } else if (selectedConversation) {
       const exists = conversationsRef.current.some((c) => c.id === selectedConversation)
       if (!exists) {
         const fetchSingleConv = async () => {
@@ -619,66 +682,8 @@ function ConversationsPageContent() {
         }
         fetchSingleConv()
       }
-    } else if (contactIdParam && !window.sessionStorage.getItem(`conv_tried_${contactIdParam}`)) {
-      const fetchOrCreateByContact = async () => {
-        try {
-          window.sessionStorage.setItem(`conv_tried_${contactIdParam}`, 'true')
-          const existingConv = conversationsRef.current.find(c => c.contact_id === contactIdParam)
-          if (existingConv) {
-            setSelectedConversation(existingConv.id)
-            return
-          }
-          
-          const { data, error } = await supabase
-            .from('conversations')
-            .select(`
-              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
-              contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
-            `)
-            .eq('contact_id', contactIdParam)
-            .eq('organization_id', user.organization_id)
-            .maybeSingle()
-            
-          if (error && error.code !== 'PGRST116') throw error
-          
-          if (data) {
-            const conv = {
-              ...data,
-              contact: Array.isArray(data.contact) ? data.contact[0] : data.contact
-            } as ConversationWithContact
-            setConversations(prev => {
-              if (prev.some(c => c.id === conv.id)) return prev
-              return [conv, ...prev]
-            })
-            setSelectedConversation(conv.id)
-          } else {
-            // Create new conversation
-            const { data: newConv, error: createError } = await supabase
-              .from('conversations')
-              .insert([{ organization_id: user.organization_id, contact_id: contactIdParam, is_active: true }])
-              .select(`
-                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
-                contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
-              `)
-              .single()
-              
-            if (createError) throw createError
-            if (newConv) {
-              const conv = {
-                ...newConv,
-                contact: Array.isArray(newConv.contact) ? newConv.contact[0] : newConv.contact
-              } as ConversationWithContact
-              setConversations(prev => [conv, ...prev])
-              setSelectedConversation(conv.id)
-            }
-          }
-        } catch (err) {
-          console.error('[Dashboard] Error fetching/creating conversation by contactId:', err)
-        }
-      }
-      fetchOrCreateByContact()
     }
-  }, [selectedConversation, user])
+  }, [selectedConversation, user, contactIdParam])
 
   // ─── Initial Data Load ───
 

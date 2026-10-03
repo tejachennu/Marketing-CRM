@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('')
   const [webhookUrl, setWebhookUrl] = useState('')
-  
+
   // Custom multi-tenant credentials state
   const [twilioAccountSid, setTwilioAccountSid] = useState('')
   const [twilioAuthToken, setTwilioAuthToken] = useState('')
@@ -322,13 +322,13 @@ export default function SettingsPage() {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update teammate permission')
       }
-      
-      setTeammates(prev => prev.map(member => 
-        member.id === teammateId 
-          ? { ...member, [field]: newVal } 
+
+      setTeammates(prev => prev.map(member =>
+        member.id === teammateId
+          ? { ...member, [field]: newVal }
           : member
       ))
-      
+
       showNotification('success', 'Teammate permissions updated successfully.', 'Permissions Updated')
     } catch (err: any) {
       console.error('Update teammate permission error:', err)
@@ -523,21 +523,21 @@ export default function SettingsPage() {
 
   async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls' | 'enable_sms', value: boolean) {
     if (!organization || !user) return
-    
+
     // Optimistic update
     const updatedOrg = { ...organization, [featureKey]: value }
     setOrganization(updatedOrg)
-    
+
     try {
       const { error } = await supabase
         .from('organizations')
         .update({ [featureKey]: value })
         .eq('id', organization.id)
-      
+
       if (error) throw error
-      
+
       showNotification('success', `Successfully ${value ? 'enabled' : 'disabled'} feature.`, 'Settings Updated')
-      
+
       // Dispatch a custom event to notify the layout sidebar to reload feature flags in real-time
       window.dispatchEvent(new Event('organization-features-changed'))
     } catch (err: any) {
@@ -879,7 +879,7 @@ export default function SettingsPage() {
               {notification.message}
             </p>
           </div>
-          <button 
+          <button
             onClick={() => setNotification(null)}
             className="text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] p-1 rounded-full cursor-pointer transition-colors"
           >
@@ -898,22 +898,20 @@ export default function SettingsPage() {
       <div className="flex overflow-x-auto whitespace-nowrap border-b border-[#e9edef] dark:border-[#202d36] mb-6 no-scrollbar -mx-4 px-4 md:-mx-0 md:px-0">
         <button
           onClick={() => setActiveTab('general')}
-          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${
-            activeTab === 'general'
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${activeTab === 'general'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
-          }`}
+            }`}
         >
           General Settings
         </button>
         {organization?.enable_ai !== false && (
           <button
             onClick={() => setActiveTab('knowledge')}
-            className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
-              activeTab === 'knowledge'
+            className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${activeTab === 'knowledge'
                 ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
                 : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
-            }`}
+              }`}
           >
             <BookOpen size={13} />
             Knowledge Base (AI Search)
@@ -921,11 +919,10 @@ export default function SettingsPage() {
         )}
         <button
           onClick={() => setActiveTab('teammates')}
-          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
-            activeTab === 'teammates'
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${activeTab === 'teammates'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
-          }`}
+            }`}
         >
           <Users size={13} />
           Manage Teammates
@@ -933,11 +930,10 @@ export default function SettingsPage() {
 
         <button
           onClick={() => setActiveTab('appearance')}
-          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
-            activeTab === 'appearance'
+          className={`flex-shrink-0 px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${activeTab === 'appearance'
               ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
               : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
-          }`}
+            }`}
         >
           <Sun size={13} />
           Appearance
@@ -991,14 +987,12 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_ai', organization?.enable_ai !== false ? false : true)}
-                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                  }`}
+                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${organization?.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                    }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                      organization?.enable_ai !== false ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${organization?.enable_ai !== false ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -1016,14 +1010,12 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => handleToggleFeature('enable_messages', organization?.enable_messages !== false ? false : true)}
-                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    organization?.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                  }`}
+                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${organization?.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                    }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                      organization?.enable_messages !== false ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${organization?.enable_messages !== false ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -1038,14 +1030,12 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => handleToggleFeature('enable_email', organization?.enable_email !== false ? false : true)}
-                    className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                      organization?.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                    }`}
+                    className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${organization?.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                      }`}
                   >
                     <span
-                      className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                        organization?.enable_email !== false ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                      className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${organization?.enable_email !== false ? 'translate-x-5' : 'translate-x-0'
+                        }`}
                     />
                   </button>
                 </div>
@@ -1061,14 +1051,12 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => handleToggleFeature('enable_phone_calls', organization?.enable_phone_calls !== false ? false : true)}
-                    className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                      organization?.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                    }`}
+                    className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${organization?.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                      }`}
                   >
                     <span
-                      className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                        organization?.enable_phone_calls !== false ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                      className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${organization?.enable_phone_calls !== false ? 'translate-x-5' : 'translate-x-0'
+                        }`}
                     />
                   </button>
                 </div>
@@ -1190,14 +1178,12 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setTicketEmailEnabled(!ticketEmailEnabled)}
-                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                    ticketEmailEnabled ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                  }`}
+                  className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${ticketEmailEnabled ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                    }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                      ticketEmailEnabled ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${ticketEmailEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -1208,7 +1194,7 @@ export default function SettingsPage() {
                     Notification Recipients
                   </label>
                   <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">Select which organization members should receive email notifications:</p>
-                  
+
                   {teammates.length === 0 ? (
                     <div className="text-xs text-[#667781] dark:text-[#8696a0] py-2 italic font-semibold">
                       No active teammates found. Please add team members in the "Manage Teammates" tab first.
@@ -1268,11 +1254,11 @@ export default function SettingsPage() {
             <div className={`grid grid-cols-1 ${isMasterOrg ? 'md:grid-cols-2' : ''} gap-6`}>
               {/* WhatsApp & SMS Gateway Column */}
               <div className={`space-y-6 ${isMasterOrg ? 'border-b md:border-b-0 md:border-r border-[#e9edef] dark:border-[#202d36] pb-6 md:pb-0 md:pr-6' : ''} flex flex-col justify-start`}>
-                
+
                 {/* WHATSAPP GATEWAY SECTION */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp Gateway</h3>
-                  
+
                   {/* Visual Mockup - Chat Inbox */}
                   <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
                     <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
@@ -1401,98 +1387,98 @@ export default function SettingsPage() {
                       )}
 
                       {isMasterOrg && (
-                      <details className="group border border-[#e9edef] dark:border-[#2a3942] rounded-lg p-3 bg-white dark:bg-[#111b21]/40">
-                        <summary className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider cursor-pointer list-none flex items-center justify-between select-none">
-                          <span>Manual API Credentials & Advanced Settings</span>
-                          <span className="text-[10px] text-[#00a884] font-semibold group-open:hidden">Show ▼</span>
-                          <span className="text-[10px] text-[#00a884] font-semibold hidden group-open:inline">Hide ▲</span>
-                        </summary>
+                        <details className="group border border-[#e9edef] dark:border-[#2a3942] rounded-lg p-3 bg-white dark:bg-[#111b21]/40">
+                          <summary className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider cursor-pointer list-none flex items-center justify-between select-none">
+                            <span>Manual API Credentials & Advanced Settings</span>
+                            <span className="text-[10px] text-[#00a884] font-semibold group-open:hidden">Show ▼</span>
+                            <span className="text-[10px] text-[#00a884] font-semibold hidden group-open:inline">Hide ▲</span>
+                          </summary>
 
-                        <div className="space-y-4 pt-3.5 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
-                          <div>
-                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                              WhatsApp Cloud API Token
-                            </label>
-                            <div className="relative">
-                              <input
-                                type={showWhatsappApiToken ? 'text' : 'password'}
-                                value={whatsappApiToken}
-                                onChange={(e) => setWhatsappApiToken(e.target.value)}
-                                placeholder="EAAG..."
-                                className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                              >
-                                {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                              </button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                              WhatsApp Phone Number ID
-                            </label>
-                            <input
-                              type="text"
-                              value={whatsappPhoneNumberId}
-                              onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-                              placeholder="e.g. 109876543210987"
-                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                              WhatsApp Business Account ID (WABA ID)
-                            </label>
-                            <input
-                              type="text"
-                              value={whatsappBusinessAccountId}
-                              onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
-                              placeholder="e.g. 102938475647382"
-                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                            />
-                            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                              Required to fetch message templates from Meta. Auto-filled during Embedded Signup.
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-3">
-                            <div className="col-span-2">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
-                                  Default Sender Phone Number
-                                </label>
-                                {whatsappDefaultPhone.trim() && (
-                                  <CopyPhoneButton phoneNumber={whatsappDefaultPhone} iconSize={11} className="text-[10px]" showText displayText="Copy" />
-                                )}
-                              </div>
-                              <input
-                                type="text"
-                                value={whatsappDefaultPhone}
-                                onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
-                                placeholder="e.g. +14155238886"
-                                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                              />
-                            </div>
+                          <div className="space-y-4 pt-3.5 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
                             <div>
                               <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                                API Version
+                                WhatsApp Cloud API Token
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type={showWhatsappApiToken ? 'text' : 'password'}
+                                  value={whatsappApiToken}
+                                  onChange={(e) => setWhatsappApiToken(e.target.value)}
+                                  placeholder="EAAG..."
+                                  className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                                >
+                                  {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                                WhatsApp Phone Number ID
                               </label>
                               <input
                                 type="text"
-                                value={whatsappGraphApiVersion}
-                                onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
-                                placeholder="v25.0"
+                                value={whatsappPhoneNumberId}
+                                onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
+                                placeholder="e.g. 109876543210987"
                                 className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                               />
                             </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                                WhatsApp Business Account ID (WABA ID)
+                              </label>
+                              <input
+                                type="text"
+                                value={whatsappBusinessAccountId}
+                                onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
+                                placeholder="e.g. 102938475647382"
+                                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                              />
+                              <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                                Required to fetch message templates from Meta. Auto-filled during Embedded Signup.
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="col-span-2">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                                    Default Sender Phone Number
+                                  </label>
+                                  {whatsappDefaultPhone.trim() && (
+                                    <CopyPhoneButton phoneNumber={whatsappDefaultPhone} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                                  )}
+                                </div>
+                                <input
+                                  type="text"
+                                  value={whatsappDefaultPhone}
+                                  onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
+                                  placeholder="e.g. +14155238886"
+                                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                                  API Version
+                                </label>
+                                <input
+                                  type="text"
+                                  value={whatsappGraphApiVersion}
+                                  onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
+                                  placeholder="v25.0"
+                                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </details>
+                        </details>
                       )}
                     </div>
                   )}
@@ -1505,126 +1491,123 @@ export default function SettingsPage() {
 
                     {/* SMS GATEWAY SECTION */}
                     <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h3>
-                    
-                    {/* Toggle switch: only render if Twilio is configured */}
-                    {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' ? (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeature('enable_sms', organization?.enable_sms !== false ? false : true)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                          organization?.enable_sms !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            organization?.enable_sms !== false ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">
-                        Requires Twilio
-                      </span>
-                    )}
-                  </div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h3>
 
-                  {/* SMS Visual Status Mockup */}
-                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
-                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 SMS Gateway Connection</span>
-                      <span className={`${
-                        organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
-                          ? 'bg-emerald-500/20 text-[#00a884]'
-                          : 'bg-gray-500/20 text-gray-500'
-                      } px-1.5 py-0.5 rounded font-bold`}>
-                        {organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
-                          ? 'Active & Enabled'
-                          : 'Inactive / Disabled'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Warning message if Twilio credentials are not configured */}
-                  {!(twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '') ? (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/50 rounded-lg text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed font-medium">
-                      ⚠️ Twilio credentials are required to use the SMS Gateway. 
-                      {whatsappProvider === 'facebook' 
-                        ? ' Please configure Twilio Account SID and Auth Token below to enable the SMS Gateway.'
-                        : ' Please configure Twilio Gateway credentials in the WhatsApp Gateway section above.'
-                      }
-                    </div>
-                  ) : null}
-
-                  {/* If using Facebook for WhatsApp, render Twilio input fields under SMS Gateway section */}
-                  {whatsappProvider === 'facebook' && (
-                    <div className="space-y-4 pt-1">
-                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
-                        Enter Twilio credentials below to send SMS.
-                      </p>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          Twilio Account SID (for SMS)
-                        </label>
-                        <input
-                          type="text"
-                          value={twilioAccountSid}
-                          onChange={(e) => setTwilioAccountSid(e.target.value)}
-                          placeholder="Twilio Account SID"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          Twilio Auth Token (for SMS)
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showTwilioToken ? 'text' : 'password'}
-                            value={twilioAuthToken}
-                            onChange={(e) => setTwilioAuthToken(e.target.value)}
-                            placeholder="Twilio Auth Token"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                          />
+                        {/* Toggle switch: only render if Twilio is configured */}
+                        {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' ? (
                           <button
                             type="button"
-                            onClick={() => setShowTwilioToken(!showTwilioToken)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                            onClick={() => handleToggleFeature('enable_sms', organization?.enable_sms !== false ? false : true)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${organization?.enable_sms !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                              }`}
                           >
-                            {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${organization?.enable_sms !== false ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
                           </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SMS sender phone number input */}
-                  {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
-                          SMS Sender Phone Number
-                        </label>
-                        {twilioWhatsappNumber.trim() && (
-                          <CopyPhoneButton phoneNumber={twilioWhatsappNumber} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                        ) : (
+                          <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">
+                            Requires Twilio
+                          </span>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        value={twilioWhatsappNumber}
-                        onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
-                        placeholder="e.g. +13185069063"
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                      />
-                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                        Twilio active phone number used for outgoing SMS broadcasts.
-                      </p>
+
+                      {/* SMS Visual Status Mockup */}
+                      <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                        <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                          <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 SMS Gateway Connection</span>
+                          <span className={`${organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
+                              ? 'bg-emerald-500/20 text-[#00a884]'
+                              : 'bg-gray-500/20 text-gray-500'
+                            } px-1.5 py-0.5 rounded font-bold`}>
+                            {organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
+                              ? 'Active & Enabled'
+                              : 'Inactive / Disabled'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Warning message if Twilio credentials are not configured */}
+                      {!(twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '') ? (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/50 rounded-lg text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed font-medium">
+                          ⚠️ Twilio credentials are required to use the SMS Gateway.
+                          {whatsappProvider === 'facebook'
+                            ? ' Please configure Twilio Account SID and Auth Token below to enable the SMS Gateway.'
+                            : ' Please configure Twilio Gateway credentials in the WhatsApp Gateway section above.'
+                          }
+                        </div>
+                      ) : null}
+
+                      {/* If using Facebook for WhatsApp, render Twilio input fields under SMS Gateway section */}
+                      {whatsappProvider === 'facebook' && (
+                        <div className="space-y-4 pt-1">
+                          <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
+                            Enter Twilio credentials below to send SMS.
+                          </p>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              Twilio Account SID (for SMS)
+                            </label>
+                            <input
+                              type="text"
+                              value={twilioAccountSid}
+                              onChange={(e) => setTwilioAccountSid(e.target.value)}
+                              placeholder="Twilio Account SID"
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              Twilio Auth Token (for SMS)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showTwilioToken ? 'text' : 'password'}
+                                value={twilioAuthToken}
+                                onChange={(e) => setTwilioAuthToken(e.target.value)}
+                                placeholder="Twilio Auth Token"
+                                className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowTwilioToken(!showTwilioToken)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                              >
+                                {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SMS sender phone number input */}
+                      {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                              SMS Sender Phone Number
+                            </label>
+                            {twilioWhatsappNumber.trim() && (
+                              <CopyPhoneButton phoneNumber={twilioWhatsappNumber} iconSize={11} className="text-[10px]" showText displayText="Copy" />
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            value={twilioWhatsappNumber}
+                            onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
+                            placeholder="e.g. +13185069063"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                          />
+                          <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                            Twilio active phone number used for outgoing SMS broadcasts.
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
                   </>
                 )}
               </div>
@@ -1632,414 +1615,412 @@ export default function SettingsPage() {
               {/* Email Broadcast & AI Sections */}
               {isMasterOrg && (
                 <div className="space-y-6">
-                {/* Email Broadcast Engine */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h3>
-                  
-                  {/* Visual Mockup - Email Dispatch */}
-                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
-                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
-                      <span className="text-[#00a884] font-bold">99.8% Sent</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-700 dark:text-slate-300">
-                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
-                        <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Subject</span>
-                        Summer Sales Campaign
-                      </div>
-                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
-                        <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Status</span>
-                        Dispatched to 1,500 leads
-                      </div>
-                    </div>
-                  </div>
+                  {/* Email Broadcast Engine */}
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h3>
 
-                  <div className="flex flex-col gap-2">
-                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
-                      Email Service Provider
-                    </label>
-                    <div className="flex gap-4 mb-2 select-none">
-                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="emailProvider"
-                          value="sendgrid"
-                          checked={emailProvider === 'sendgrid'}
-                          onChange={() => setEmailProvider('sendgrid')}
-                          className="accent-[#00a884]"
-                        />
-                        SendGrid API
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="emailProvider"
-                          value="smtp"
-                          checked={emailProvider === 'smtp'}
-                          onChange={() => setEmailProvider('smtp')}
-                          className="accent-[#00a884]"
-                        />
-                        Custom SMTP (Nodemailer)
-                      </label>
-                    </div>
-                  </div>
-
-                  {emailProvider === 'sendgrid' ? (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          Email API Key
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showSgKey ? 'text' : 'password'}
-                            value={sendgridApiKey}
-                            onChange={(e) => setSendgridApiKey(e.target.value)}
-                            placeholder="Email Gateway API Key"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowSgKey(!showSgKey)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                          >
-                            {showSgKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
+                    {/* Visual Mockup - Email Dispatch */}
+                    <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                        <span className="text-[#111b21] dark:text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
+                        <span className="text-[#00a884] font-bold">99.8% Sent</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-700 dark:text-slate-300">
+                        <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
+                          <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Subject</span>
+                          Summer Sales Campaign
+                        </div>
+                        <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
+                          <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Status</span>
+                          Dispatched to 1,500 leads
                         </div>
                       </div>
+                    </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          From Email Address
-                        </label>
-                        <input
-                          type="email"
-                          value={sendgridFromEmail}
-                          onChange={(e) => setSendgridFromEmail(e.target.value)}
-                          placeholder="no-reply@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2">
-                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                            SMTP Host
-                          </label>
+                    <div className="flex flex-col gap-2">
+                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">
+                        Email Service Provider
+                      </label>
+                      <div className="flex gap-4 mb-2 select-none">
+                        <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
                           <input
-                            type="text"
-                            value={smtpHost}
-                            onChange={(e) => setSmtpHost(e.target.value)}
-                            placeholder="smtp.mailgun.org"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            type="radio"
+                            name="emailProvider"
+                            value="sendgrid"
+                            checked={emailProvider === 'sendgrid'}
+                            onChange={() => setEmailProvider('sendgrid')}
+                            className="accent-[#00a884]"
                           />
-                        </div>
+                          SendGrid API
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-[#111b21] dark:text-white cursor-pointer">
+                          <input
+                            type="radio"
+                            name="emailProvider"
+                            value="smtp"
+                            checked={emailProvider === 'smtp'}
+                            onChange={() => setEmailProvider('smtp')}
+                            className="accent-[#00a884]"
+                          />
+                          Custom SMTP (Nodemailer)
+                        </label>
+                      </div>
+                    </div>
+
+                    {emailProvider === 'sendgrid' ? (
+                      <>
                         <div>
                           <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                            SMTP Port
+                            Email API Key
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showSgKey ? 'text' : 'password'}
+                              value={sendgridApiKey}
+                              onChange={(e) => setSendgridApiKey(e.target.value)}
+                              placeholder="Email Gateway API Key"
+                              className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSgKey(!showSgKey)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                            >
+                              {showSgKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            From Email Address
                           </label>
                           <input
-                            type="text"
-                            value={smtpPort}
-                            onChange={(e) => setSmtpPort(e.target.value)}
-                            placeholder="587"
+                            type="email"
+                            value={sendgridFromEmail}
+                            onChange={(e) => setSendgridFromEmail(e.target.value)}
+                            placeholder="no-reply@yourdomain.com"
                             className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                           />
                         </div>
-                      </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="col-span-2">
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              SMTP Host
+                            </label>
+                            <input
+                              type="text"
+                              value={smtpHost}
+                              onChange={(e) => setSmtpHost(e.target.value)}
+                              placeholder="smtp.mailgun.org"
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                              SMTP Port
+                            </label>
+                            <input
+                              type="text"
+                              value={smtpPort}
+                              onChange={(e) => setSmtpPort(e.target.value)}
+                              placeholder="587"
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                          </div>
+                        </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          SMTP Username / Email
-                        </label>
-                        <input
-                          type="email"
-                          value={smtpEmail}
-                          onChange={(e) => setSmtpEmail(e.target.value)}
-                          placeholder="postmaster@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                          SMTP Password
-                        </label>
-                        <div className="relative">
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            SMTP Username / Email
+                          </label>
                           <input
-                            type={showSmtpPassword ? 'text' : 'password'}
-                            value={smtpPassword}
-                            onChange={(e) => setSmtpPassword(e.target.value)}
-                            placeholder="SMTP password"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            type="email"
+                            value={smtpEmail}
+                            onChange={(e) => setSmtpEmail(e.target.value)}
+                            placeholder="postmaster@yourdomain.com"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                           />
-                          <button
-                            type="button"
-                            onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                          >
-                            {showSmtpPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                            SMTP Password
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showSmtpPassword ? 'text' : 'password'}
+                              value={smtpPassword}
+                              onChange={(e) => setSmtpPassword(e.target.value)}
+                              placeholder="SMTP password"
+                              className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                            >
+                              {showSmtpPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* AI Assistant Engine */}
+                  <div className="space-y-4 border-t border-[#e9edef] dark:border-[#202d36] pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h3>
+
+                    {/* Visual Mockup - AI suggestions */}
+                    <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                        <span className="text-[#111b21] dark:text-white flex items-center gap-1">🤖 AI Suggested Replies</span>
+                        <span className="text-blue-600 dark:text-blue-400 font-bold">Copilot Active</span>
+                      </div>
+                      <div className="flex gap-1.5 overflow-x-auto py-0.5">
+                        <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                          🤖 AI: Book Consultation Call
+                        </div>
+                        <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                          AI: Send Pricing FAQ
                         </div>
                       </div>
-                    </>
-                  )}
-                </div>
-
-                {/* AI Assistant Engine */}
-                <div className="space-y-4 border-t border-[#e9edef] dark:border-[#202d36] pt-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h3>
-                  
-                  {/* Visual Mockup - AI suggestions */}
-                  <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
-                      <span className="text-[#111b21] dark:text-white flex items-center gap-1">🤖 AI Suggested Replies</span>
-                      <span className="text-blue-600 dark:text-blue-400 font-bold">Copilot Active</span>
                     </div>
-                    <div className="flex gap-1.5 overflow-x-auto py-0.5">
-                      <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
-                        🤖 AI: Book Consultation Call
-                      </div>
-                      <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
-                        AI: Send Pricing FAQ
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                        AI API Key
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showOpenaiKey ? 'text' : 'password'}
+                          value={openaiApiKey}
+                          onChange={(e) => setOpenaiApiKey(e.target.value)}
+                          placeholder="AI Model API Key"
+                          className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                        >
+                          {showOpenaiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
                       </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      AI API Key
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showOpenaiKey ? 'text' : 'password'}
-                        value={openaiApiKey}
-                        onChange={(e) => setOpenaiApiKey(e.target.value)}
-                        placeholder="AI Model API Key"
-                        className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                        AI Chatbot Base Prompt (System Prompt)
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={chatbotBasePrompt}
+                        onChange={(e) => setChatbotBasePrompt(e.target.value)}
+                        placeholder="Enter the custom base/system prompt for your chatbot. Leaving this blank will fall back to the default strict customer service prompt."
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                      >
-                        {showOpenaiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                        Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your knowledge base.
+                      </p>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      AI Chatbot Base Prompt (System Prompt)
-                    </label>
-                    <textarea
-                      rows={6}
-                      value={chatbotBasePrompt}
-                      onChange={(e) => setChatbotBasePrompt(e.target.value)}
-                      placeholder="Enter the custom base/system prompt for your chatbot. Leaving this blank will fall back to the default strict customer service prompt."
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white resize-y"
-                    />
-                    <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                      Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your knowledge base.
-                    </p>
-                  </div>
                 </div>
-              </div>
               )}
             </div>
 
-            {/* Webhook URLs setup block (hidden for tenant accounts) */}
-            {isMasterOrg && (
-              <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-4">
-                <h3 className="text-xs font-bold text-[#111b21] dark:text-white">Dynamic Webhook Configurations</h3>
-                <p className="text-[11px] text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
-                  Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
-                </p>
-                
-                {whatsappProvider === 'twilio' ? (
-                  <div className="space-y-3">
-                    <div>
-                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                        Incoming Message Webhook (Twilio)
-                      </span>
-                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                        <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
-                      </div>
-                    </div>
+            {/* Webhook URLs setup block */}
+            <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-4">
+              <h3 className="text-xs font-bold text-[#111b21] dark:text-white">Dynamic Webhook Configurations</h3>
+              <p className="text-[11px] text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
+                Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
+              </p>
 
-                    <div>
-                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                        Status Callback Webhook (Twilio)
-                      </span>
-                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                        <code className="text-xs text-[#00e676] font-mono">
-                          {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
-                        </code>
-                      </div>
-                    </div>
-
-                    <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
-                      <span className="text-amber-500 font-bold">⚠️</span>
-                      <span>Make sure to select HTTP POST in the Twilio Sandbox/Numbers configuration screen when saving these webhook links.</span>
+              {whatsappProvider === 'twilio' ? (
+                <div className="space-y-3">
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Incoming Message Webhook (Twilio)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                        Callback URL (Facebook Webhook)
-                      </span>
-                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                        <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
-                      </div>
-                    </div>
 
-                    <div>
-                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                        Verify Token (Facebook Webhook Verification)
-                      </span>
-                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                        <code className="text-xs text-[#00e676] font-mono">{organization?.id || 'Save credentials to view Organization ID'}</code>
-                      </div>
-                    </div>
-
-                    <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
-                      <span className="text-amber-500 font-bold">⚠️</span>
-                      <span>Enter this Callback URL and Verify Token in your Meta App Dashboard under WhatsApp Webhook settings. Subscribe to "messages" webhook fields.</span>
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Status Callback Webhook (Twilio)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">
+                        {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
+                      </code>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+
+                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                    <span className="text-amber-500 font-bold">⚠️</span>
+                    <span>Make sure to select HTTP POST in the Twilio Sandbox/Numbers configuration screen when saving these webhook links.</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Callback URL (Facebook Webhook)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                      Verify Token (Facebook Webhook Verification)
+                    </span>
+                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                      <code className="text-xs text-[#00e676] font-mono">{organization?.id || 'Save credentials to view Organization ID'}</code>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                    <span className="text-amber-500 font-bold">⚠️</span>
+                    <span>Enter this Callback URL and Verify Token in your Meta App Dashboard under WhatsApp Webhook settings. Subscribe to "messages" webhook fields.</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Environment Variables Export & Backup */}
           {isMasterOrg && (
             <div className="bg-white dark:bg-[#111b21] rounded-lg border border-[#e9edef] dark:border-[#202d36] p-6 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#00a884]/10 dark:bg-[#00a884]/20 flex items-center justify-center text-[#00a884]">
-                  <Server size={18} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
-                    Export Environment Variables (.env)
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00a884]">
-                      Cloud Backup
-                    </span>
-                  </h2>
-                  <p className="text-xs text-[#667781] dark:text-[#8696a0] font-medium">
-                    Export and backup all server configuration keys directly to your email address or local developer machine.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadEnv}
-                  className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  title="Download .env.local file directly"
-                >
-                  <Download size={14} />
-                  Download .env
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCopyEnv}
-                  disabled={isExportingEnv}
-                  className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  title="Copy .env content to clipboard"
-                >
-                  {copiedEnv ? <Check size={14} className="text-[#00a884]" /> : <Copy size={14} />}
-                  {copiedEnv ? 'Copied!' : 'Copy to Clipboard'}
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-[#f0f2f5]/60 dark:bg-[#1f2c34]/50 border border-[#e9edef] dark:border-[#2a3942] space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3 items-end">
-                <div className="flex-1 w-full">
-                  <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                    Destination Email Address
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      value={exportEnvEmail}
-                      onChange={(e) => setExportEnvEmail(e.target.value)}
-                      placeholder="tejachennu17@gmail.com"
-                      className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
-                    />
-                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8696a0]" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-[#00a884]/10 dark:bg-[#00a884]/20 flex items-center justify-center text-[#00a884]">
+                    <Server size={18} />
                   </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleExportEnvEmail}
-                  disabled={isExportingEnv}
-                  className="w-full sm:w-auto px-5 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
-                >
-                  {isExportingEnv ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" />
-                      Sending .env...
-                    </>
-                  ) : (
-                    <>
-                      <Mail size={15} />
-                      Send .env to Email
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {exportEnvResult && (
-                <div className="mt-3 p-3 rounded-lg bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[#111b21] dark:text-white flex items-center gap-1.5">
-                      {exportEnvResult.emailed ? (
-                        <span className="text-[#00a884]">● Email Delivered</span>
-                      ) : (
-                        <span className="text-amber-500">● Variables Retrieved</span>
-                      )}
-                      <span className="text-[#667781] dark:text-[#8696a0] font-normal">
-                        ({exportEnvResult.varCount || 0} variables detected)
+                  <div>
+                    <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
+                      Export Environment Variables (.env)
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00a884]">
+                        Cloud Backup
                       </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowEnvPreview(!showEnvPreview)}
-                      className="text-[#00a884] hover:underline font-semibold text-[11px]"
-                    >
-                      {showEnvPreview ? 'Hide Preview' : 'Show Masked Preview'}
-                    </button>
+                    </h2>
+                    <p className="text-xs text-[#667781] dark:text-[#8696a0] font-medium">
+                      Export and backup all server configuration keys directly to your email address or local developer machine.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadEnv}
+                    className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    title="Download .env.local file directly"
+                  >
+                    <Download size={14} />
+                    Download .env
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyEnv}
+                    disabled={isExportingEnv}
+                    className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    title="Copy .env content to clipboard"
+                  >
+                    {copiedEnv ? <Check size={14} className="text-[#00a884]" /> : <Copy size={14} />}
+                    {copiedEnv ? 'Copied!' : 'Copy to Clipboard'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#f0f2f5]/60 dark:bg-[#1f2c34]/50 border border-[#e9edef] dark:border-[#2a3942] space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3 items-end">
+                  <div className="flex-1 w-full">
+                    <label className="block text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
+                      Destination Email Address
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={exportEnvEmail}
+                        onChange={(e) => setExportEnvEmail(e.target.value)}
+                        placeholder="tejachennu17@gmail.com"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                      />
+                      <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8696a0]" />
+                    </div>
                   </div>
 
-                  <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">
-                    {exportEnvResult.message || (exportEnvResult.emailed ? `Sent successfully to ${exportEnvResult.recipient}` : 'Ready for download or copy.')}
-                  </p>
-
-                  {showEnvPreview && exportEnvResult.envText && (
-                    <div className="relative mt-2">
-                      <pre className="p-3 bg-[#f0f2f5] dark:bg-[#0c1317] rounded-lg text-[11px] font-mono text-[#111b21] dark:text-[#00e676] overflow-x-auto max-h-56 border border-[#e9edef] dark:border-[#202d36]">
-                        {exportEnvResult.envText}
-                      </pre>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleExportEnvEmail}
+                    disabled={isExportingEnv}
+                    className="w-full sm:w-auto px-5 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
+                  >
+                    {isExportingEnv ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        Sending .env...
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={15} />
+                        Send .env to Email
+                      </>
+                    )}
+                  </button>
                 </div>
-              )}
 
-              <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium flex items-center gap-1.5">
-                <span className="text-amber-500">💡</span>
-                <span>
-                  <strong>Workflow Tip:</strong> After pushing your code to the live deployment (e.g. Vercel / Railway / Cloud Host), click <strong>Send .env to Email</strong> or <strong>Download .env</strong> to instantly retrieve your production configuration for local development.
-                </span>
-              </p>
+                {exportEnvResult && (
+                  <div className="mt-3 p-3 rounded-lg bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#111b21] dark:text-white flex items-center gap-1.5">
+                        {exportEnvResult.emailed ? (
+                          <span className="text-[#00a884]">● Email Delivered</span>
+                        ) : (
+                          <span className="text-amber-500">● Variables Retrieved</span>
+                        )}
+                        <span className="text-[#667781] dark:text-[#8696a0] font-normal">
+                          ({exportEnvResult.varCount || 0} variables detected)
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowEnvPreview(!showEnvPreview)}
+                        className="text-[#00a884] hover:underline font-semibold text-[11px]"
+                      >
+                        {showEnvPreview ? 'Hide Preview' : 'Show Masked Preview'}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-[#667781] dark:text-[#8696a0]">
+                      {exportEnvResult.message || (exportEnvResult.emailed ? `Sent successfully to ${exportEnvResult.recipient}` : 'Ready for download or copy.')}
+                    </p>
+
+                    {showEnvPreview && exportEnvResult.envText && (
+                      <div className="relative mt-2">
+                        <pre className="p-3 bg-[#f0f2f5] dark:bg-[#0c1317] rounded-lg text-[11px] font-mono text-[#111b21] dark:text-[#00e676] overflow-x-auto max-h-56 border border-[#e9edef] dark:border-[#202d36]">
+                          {exportEnvResult.envText}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium flex items-center gap-1.5">
+                  <span className="text-amber-500">💡</span>
+                  <span>
+                    <strong>Workflow Tip:</strong> After pushing your code to the live deployment (e.g. Vercel / Railway / Cloud Host), click <strong>Send .env to Email</strong> or <strong>Download .env</strong> to instantly retrieve your production configuration for local development.
+                  </span>
+                </p>
+              </div>
             </div>
-          </div>
           )}
 
           {/* Support */}
@@ -2127,7 +2108,7 @@ export default function SettingsPage() {
                   {filteredArticles.length === articles.length ? `${articles.length} items` : `${filteredArticles.length} of ${articles.length} found`}
                 </span>
               </div>
-              
+
               <div className="flex items-center gap-2 flex-1 max-w-sm">
                 <div className="relative w-full">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#667781] dark:text-[#8696a0]" />
@@ -2139,7 +2120,7 @@ export default function SettingsPage() {
                     className="w-full pl-9 pr-3.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-[11px] font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                   />
                 </div>
-                
+
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -2535,13 +2516,11 @@ export default function SettingsPage() {
                                   onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
                                   disabled={isManager({ role: member.role } as any)}
                                   title={isManager({ role: member.role } as any) ? 'Admins/Managers always see all' : (member.see_all ? 'Revoke access' : 'Grant full access')}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
-                                    member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
-                                  }`}
+                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
+                                    }`}
                                 >
-                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                    member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
-                                  }`} />
+                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
+                                    }`} />
                                 </button>
                                 <span className="text-[8px] text-[#8696a0] font-semibold">{isManager({ role: member.role } as any) ? 'always' : member.see_all ? 'on' : 'off'}</span>
                               </div>
@@ -2553,13 +2532,11 @@ export default function SettingsPage() {
                                   onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
                                   disabled={isManager({ role: member.role } as any)}
                                   title={isManager({ role: member.role } as any) ? 'Admins/Managers are never read-only' : (member.read_only ? 'Remove read-only' : 'Set read-only')}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
-                                    member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
-                                  }`}
+                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
+                                    }`}
                                 >
-                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                    member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
-                                  }`} />
+                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
+                                    }`} />
                                 </button>
                                 <span className="text-[8px] text-[#8696a0] font-semibold">{member.read_only && !isManager({ role: member.role } as any) ? 'on' : 'off'}</span>
                               </div>
@@ -2617,13 +2594,11 @@ export default function SettingsPage() {
                             <button
                               onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
                               disabled={isManager({ role: member.role } as any)}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
-                                member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
-                              }`}
+                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
+                                }`}
                             >
-                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
-                              }`} />
+                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
+                                }`} />
                             </button>
                           </div>
                           <div className="flex items-center gap-2">
@@ -2631,13 +2606,11 @@ export default function SettingsPage() {
                             <button
                               onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
                               disabled={isManager({ role: member.role } as any)}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
-                                member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
-                              }`}
+                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
+                                }`}
                             >
-                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
-                              }`} />
+                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
+                                }`} />
                             </button>
                           </div>
                         </div>
@@ -2679,7 +2652,7 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="bg-[#f0f2f5] dark:bg-[#111b21] h-2 w-full rounded-full overflow-hidden">
-              <div 
+              <div
                 className="bg-[#00a884] h-full transition-all duration-300"
                 style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
               />
@@ -2701,23 +2674,21 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-4 max-w-md">
               <button
                 onClick={() => toggleTheme('light')}
-                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${
-                  theme === 'light' 
-                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]' 
+                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${theme === 'light'
+                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]'
                     : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
-                }`}
+                  }`}
               >
                 <Sun size={32} className={theme === 'light' ? 'text-amber-500' : 'text-[#667781] dark:text-[#8696a0]'} />
                 <span className={`text-xs font-bold ${theme === 'light' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Light Mode</span>
               </button>
-              
+
               <button
                 onClick={() => toggleTheme('dark')}
-                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${
-                  theme === 'dark' 
-                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]' 
+                className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all ${theme === 'dark'
+                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]'
                     : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
-                }`}
+                  }`}
               >
                 <Moon size={32} className={theme === 'dark' ? 'text-indigo-400' : 'text-[#667781] dark:text-[#8696a0]'} />
                 <span className={`text-xs font-bold ${theme === 'dark' ? 'text-[#111b21] dark:text-white' : 'text-[#667781] dark:text-[#8696a0]'}`}>Dark Mode</span>
