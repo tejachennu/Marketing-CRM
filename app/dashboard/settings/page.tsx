@@ -1850,67 +1850,69 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Webhook URLs setup block */}
-            <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-4">
-              <h3 className="text-xs font-bold text-[#111b21] dark:text-white">Dynamic Webhook Configurations</h3>
-              <p className="text-[11px] text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
-                Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
-              </p>
-              
-              {whatsappProvider === 'twilio' ? (
-                <div className="space-y-3">
-                  <div>
-                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                      Incoming Message Webhook (Twilio)
-                    </span>
-                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                      <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
+            {/* Webhook URLs setup block (hidden for tenant accounts) */}
+            {isMasterOrg && (
+              <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-4 space-y-4">
+                <h3 className="text-xs font-bold text-[#111b21] dark:text-white">Dynamic Webhook Configurations</h3>
+                <p className="text-[11px] text-[#667781] dark:text-[#8696a0] leading-relaxed font-semibold">
+                  Configure your messaging gateway sandbox or phone number to send message triggers and status alerts directly to this workspace instance:
+                </p>
+                
+                {whatsappProvider === 'twilio' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                        Incoming Message Webhook (Twilio)
+                      </span>
+                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                        <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                        Status Callback Webhook (Twilio)
+                      </span>
+                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                        <code className="text-xs text-[#00e676] font-mono">
+                          {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                      <span className="text-amber-500 font-bold">⚠️</span>
+                      <span>Make sure to select HTTP POST in the Twilio Sandbox/Numbers configuration screen when saving these webhook links.</span>
                     </div>
                   </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                        Callback URL (Facebook Webhook)
+                      </span>
+                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                        <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
+                      </div>
+                    </div>
 
-                  <div>
-                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                      Status Callback Webhook (Twilio)
-                    </span>
-                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                      <code className="text-xs text-[#00e676] font-mono">
-                        {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
-                      </code>
+                    <div>
+                      <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
+                        Verify Token (Facebook Webhook Verification)
+                      </span>
+                      <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
+                        <code className="text-xs text-[#00e676] font-mono">{organization?.id || 'Save credentials to view Organization ID'}</code>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
+                      <span className="text-amber-500 font-bold">⚠️</span>
+                      <span>Enter this Callback URL and Verify Token in your Meta App Dashboard under WhatsApp Webhook settings. Subscribe to "messages" webhook fields.</span>
                     </div>
                   </div>
-
-                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
-                    <span className="text-amber-500 font-bold">⚠️</span>
-                    <span>Make sure to select HTTP POST in the Twilio Sandbox/Numbers configuration screen when saving these webhook links.</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                      Callback URL (Facebook Webhook)
-                    </span>
-                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                      <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase mb-1">
-                      Verify Token (Facebook Webhook Verification)
-                    </span>
-                    <div className="bg-[#f0f2f5] dark:bg-[#111b21] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                      <code className="text-xs text-[#00e676] font-mono">{organization?.id || 'Save credentials to view Organization ID'}</code>
-                    </div>
-                  </div>
-
-                  <div className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold flex items-start gap-1">
-                    <span className="text-amber-500 font-bold">⚠️</span>
-                    <span>Enter this Callback URL and Verify Token in your Meta App Dashboard under WhatsApp Webhook settings. Subscribe to "messages" webhook fields.</span>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Environment Variables Export & Backup */}
