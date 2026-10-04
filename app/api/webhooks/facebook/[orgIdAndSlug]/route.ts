@@ -559,9 +559,74 @@ async function processEvent(
     ) {
       console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
       try {
-        // 1. Expand query with synonym dictionary for better matching
+        // 0. Contextual Query Condensation — rewrite follow-up messages as standalone search queries
+        //    This fixes context blindness where "how much is it?" loses the topic from earlier messages
+        let searchQuery = messageBody // default: use raw message if condensation fails or is unnecessary
+
+        try {
+          const { data: historyForCondensation } = await supabase
+            .from('messages')
+            .select('sender_type, body')
+            .eq('conversation_id', conversation.id)
+            .order('created_at', { ascending: false })
+            .limit(6)
+
+          const recentHistory = (historyForCondensation || [])
+            .reverse()
+            .filter((m: any) => m.body && m.body.trim())
+
+          // Only condense if there is conversation history (follow-up scenario)
+          if (recentHistory.length > 0) {
+            const condensationPrompt = `You are a query rewriter. Given the conversation history and the user's latest message, rewrite the latest message as a single standalone search query that captures the full intent including any context from previous messages.
+
+Rules:
+- Output ONLY the rewritten query, nothing else
+- If the latest message is already self-contained (e.g., a greeting like "hi" or "hello", or a complete question), return it as-is
+- Resolve pronouns and references (e.g., "it", "that", "this") using conversation history
+- Keep the query concise (under 30 words)
+- Do NOT add information not implied by the conversation
+
+Conversation history:
+${recentHistory.map((m: any) => `${m.sender_type === 'contact' ? 'Customer' : 'Bot'}: ${m.body}`).join('\n')}
+
+Latest customer message: ${messageBody}
+
+Rewritten standalone query:`
+
+            const condensationRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openAiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: condensationPrompt }],
+                temperature: 0,
+                max_tokens: 80
+              })
+            })
+
+            if (condensationRes.ok) {
+              const condensationData = await condensationRes.json()
+              const condensed = condensationData.choices?.[0]?.message?.content?.trim()
+              if (condensed && condensed.length > 0) {
+                searchQuery = condensed
+                console.log(`[Facebook Webhook Chatbot] Query condensed: "${messageBody}" → "${searchQuery}"`)
+              }
+            } else {
+              console.warn('[Facebook Webhook Chatbot] Query condensation API call failed, using raw message')
+            }
+          } else {
+            console.log('[Facebook Webhook Chatbot] No conversation history, skipping query condensation')
+          }
+        } catch (condensationErr) {
+          console.warn('[Facebook Webhook Chatbot] Query condensation failed, using raw message:', condensationErr)
+        }
+
+        // 1. Expand query with synonym dictionary for better matching (using condensed query)
         const synonyms: SynonymGroup[] = orgData.service_synonyms || []
-        const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(messageBody, synonyms)
+        const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(searchQuery, synonyms)
         console.log(`[Facebook Webhook Chatbot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
 
         // 2. Generate query embedding (using expanded vector query)

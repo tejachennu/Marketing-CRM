@@ -39,8 +39,15 @@ export default function DashboardLayout({
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false)
+  const [isStandalone, setIsStandalone] = useState<boolean>(false)
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('standalone') === 'true' || params.get('standalone') === '1' || params.get('popup') === 'true') {
+        setIsStandalone(true)
+      }
+    }
     const saved = localStorage.getItem('sidebar_collapsed')
     if (saved !== null) {
       setIsSidebarCollapsed(saved === 'true')
@@ -669,6 +676,18 @@ export default function DashboardLayout({
     if (pathname.startsWith('/dashboard/ivr')) return false
     if ((pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts')) && !features.enable_messages && !features.enable_email) return false
     return true
+  }
+
+  if (isStandalone) {
+    return (
+      <DialogProvider>
+        <div className="flex flex-col h-[100dvh] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
+          <main className="flex-1 overflow-hidden h-full">
+            {children}
+          </main>
+        </div>
+      </DialogProvider>
+    )
   }
 
   return (
