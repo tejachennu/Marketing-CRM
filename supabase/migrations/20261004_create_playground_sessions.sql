@@ -39,5 +39,6 @@ CREATE POLICY "Users can delete own playground sessions"
 -- Service role bypass for API routes
 CREATE POLICY "Service role full access on playground_sessions"
   ON playground_sessions FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);

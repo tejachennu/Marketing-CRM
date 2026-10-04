@@ -108,28 +108,38 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request)
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const orgId = user.organization_id
-    if (!orgId) {
-      return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
+      return NextResponse.json({ error: 'Unauthorized: Please log in' }, { status: 401 })
     }
 
     const body = await request.json()
     const { action } = body
 
+    // Support superadmins testing different organizations or fallback to user.organization_id
+    const requestedOrgId = body.organizationId
+    const orgId = (user.role === 'superadmin' && requestedOrgId) 
+      ? requestedOrgId 
+      : (user.organization_id || requestedOrgId)
+
+    if (!orgId) {
+      return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
+    }
+
     const supabase = getSupabaseClient()
 
     // ========== SESSION CRUD ==========
     if (action === 'list_sessions') {
-      const { data, error } = await supabase
+      let query = supabase
         .from('playground_sessions')
         .select('id, title, updated_at, created_at')
         .eq('organization_id', orgId)
-        .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(50)
 
+      if (user.role !== 'superadmin') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { data, error } = await query
       if (error) throw error
       return NextResponse.json({ sessions: data || [] })
     }
@@ -138,14 +148,17 @@ export async function POST(request: NextRequest) {
       const { sessionId } = body
       if (!sessionId) return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 })
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('playground_sessions')
         .select('*')
         .eq('id', sessionId)
         .eq('organization_id', orgId)
-        .eq('user_id', user.id)
-        .single()
 
+      if (user.role !== 'superadmin') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { data, error } = await query.maybeSingle()
       if (error || !data) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
       return NextResponse.json({ session: data })
     }
@@ -171,13 +184,17 @@ export async function POST(request: NextRequest) {
       const { sessionId } = body
       if (!sessionId) return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 })
 
-      const { error } = await supabase
+      let query = supabase
         .from('playground_sessions')
         .delete()
         .eq('id', sessionId)
         .eq('organization_id', orgId)
-        .eq('user_id', user.id)
 
+      if (user.role !== 'superadmin') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { error } = await query
       if (error) throw error
       return NextResponse.json({ success: true })
     }
@@ -186,13 +203,17 @@ export async function POST(request: NextRequest) {
       const { sessionId } = body
       if (!sessionId) return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 })
 
-      const { error } = await supabase
+      let query = supabase
         .from('playground_sessions')
         .update({ messages: [], updated_at: new Date().toISOString() })
         .eq('id', sessionId)
         .eq('organization_id', orgId)
-        .eq('user_id', user.id)
 
+      if (user.role !== 'superadmin') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { error } = await query
       if (error) throw error
       return NextResponse.json({ success: true })
     }
@@ -201,21 +222,31 @@ export async function POST(request: NextRequest) {
       const { sessionId, title } = body
       if (!sessionId || !title) return NextResponse.json({ error: 'Missing sessionId or title' }, { status: 400 })
 
-      const { error } = await supabase
+      let query = supabase
         .from('playground_sessions')
         .update({ title, updated_at: new Date().toISOString() })
         .eq('id', sessionId)
         .eq('organization_id', orgId)
-        .eq('user_id', user.id)
 
+      if (user.role !== 'superadmin') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { error } = await query
       if (error) throw error
       return NextResponse.json({ success: true })
     }
 
     // ========== CHAT MESSAGE ==========
     if (action === 'send_message') {
-      const { sessionId, message, chatHistory } = body
-      if (!sessionId || !message) return NextResponse.json({ error: 'Missing sessionId or message' }, { status: 400 })
+      const { message, chatHistory } = body
+      let sessionId = body.sessionId
+
+      if (!message || !message.trim()) {
+        return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
+      }
+
+      const cleanMessage = message.trim()
 
       // Load organization settings
       const { data: orgData } = await supabase
@@ -224,14 +255,63 @@ export async function POST(request: NextRequest) {
         .eq('id', orgId)
         .maybeSingle()
 
-      const openAiKey = orgData?.openai_api_key || process.env.OPENAI_API_KEY
+      const openAiKey = (orgData?.openai_api_key || process.env.OPENAI_API_KEY || '').trim()
       if (!openAiKey) {
-        return NextResponse.json({ error: 'OpenAI API Key is not configured.' }, { status: 400 })
+        return NextResponse.json({ 
+          error: 'OpenAI API Key is not configured for this organization. Please add it in Settings.' 
+        }, { status: 400 })
       }
 
+      // Ensure session exists or auto-create if new/missing
+      let sessionTitle = 'New Chat'
+      let existingMessages: any[] = []
+
+      if (sessionId && sessionId !== 'new') {
+        const { data: currentSession } = await supabase
+          .from('playground_sessions')
+          .select('id, title, messages')
+          .eq('id', sessionId)
+          .maybeSingle()
+
+        if (currentSession) {
+          sessionTitle = currentSession.title
+          existingMessages = currentSession.messages || []
+        } else {
+          // Session was deleted or not found, re-create it
+          sessionId = null
+        }
+      }
+
+      if (!sessionId || sessionId === 'new') {
+        sessionTitle = cleanMessage.length > 50 ? cleanMessage.substring(0, 47) + '...' : cleanMessage
+        const { data: newSession, error: createErr } = await supabase
+          .from('playground_sessions')
+          .insert({
+            organization_id: orgId,
+            user_id: user.id,
+            title: sessionTitle,
+            messages: []
+          })
+          .select()
+          .single()
+
+        if (createErr || !newSession) {
+          console.error('[Playground Chat] Failed to auto-create session:', createErr)
+          throw createErr || new Error('Failed to create session')
+        }
+        sessionId = newSession.id
+      }
+
+      // Sanitize chat history from client or session
+      const rawHistory = Array.isArray(chatHistory) && chatHistory.length > 0 
+        ? chatHistory 
+        : existingMessages
+
+      const previousMessages = rawHistory
+        .filter((m: any) => m && m.content && typeof m.content === 'string' && m.content.trim())
+
       // Step 0: Contextual query condensation for follow-up messages
-      let searchQuery = message
-      const previousMessages = chatHistory || []
+      let searchQuery = cleanMessage
 
       if (previousMessages.length > 0) {
         try {
@@ -251,7 +331,7 @@ Rules:
 Conversation history:
 ${historyText}
 
-Latest customer message: ${message}
+Latest customer message: ${cleanMessage}
 
 Rewritten standalone query:`
 
@@ -274,7 +354,7 @@ Rewritten standalone query:`
             const condensed = data.choices?.[0]?.message?.content?.trim()
             if (condensed && condensed.length > 0) {
               searchQuery = condensed
-              console.log(`[Playground Chat] Query condensed: "${message}" → "${searchQuery}"`)
+              console.log(`[Playground Chat] Query condensed: "${cleanMessage}" → "${searchQuery}"`)
             }
           }
         } catch (err) {
@@ -352,7 +432,7 @@ Rewritten standalone query:`
 
       // Synonym context
       const faqsText = faqs.map((f: any) => `${f.title} ${f.content}`).join(' ')
-      const activeRelationships = getActiveSynonymRelationships(message, faqsText, synonyms)
+      const activeRelationships = getActiveSynonymRelationships(searchQuery + ' ' + cleanMessage, faqsText, synonyms)
       let synonymContext = ''
       if (activeRelationships.length > 0) {
         synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE:\n${activeRelationships.map(r => `- ${r}`).join('\n')}`
@@ -378,14 +458,18 @@ You MUST respond in JSON format. The JSON object must contain two keys:
       let isRiseTicket = false
 
       try {
-        // Build messages array with history for context
+        const validRoles = new Set(['user', 'assistant', 'system'])
+        const historyForGpt = previousMessages
+          .slice(-10)
+          .map((m: any) => ({
+            role: validRoles.has(m.role) ? m.role : (m.role === 'assistant' ? 'assistant' : 'user'),
+            content: typeof m.content === 'string' ? m.content.trim() : JSON.stringify(m.content)
+          }))
+
         const gptMessages: any[] = [
           { role: 'system', content: systemPrompt },
-          ...previousMessages.slice(-10).map((m: any) => ({
-            role: m.role,
-            content: m.content
-          })),
-          { role: 'user', content: message }
+          ...historyForGpt,
+          { role: 'user', content: cleanMessage }
         ]
 
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -408,7 +492,7 @@ You MUST respond in JSON format. The JSON object must contain two keys:
           const contentString = gptData.choices?.[0]?.message?.content?.trim() || '{}'
           try {
             const parsed = JSON.parse(contentString)
-            botReply = parsed.reply || ''
+            botReply = parsed.reply || parsed.message || parsed.answer || contentString
             isRiseTicket = !!parsed.isRiseTicket
           } catch {
             botReply = contentString
@@ -416,7 +500,7 @@ You MUST respond in JSON format. The JSON object must contain two keys:
 
           // Safety check for escalation
           const lowerReply = botReply.toLowerCase()
-          const lowerMsg = message.toLowerCase()
+          const lowerMsg = cleanMessage.toLowerCase()
           if (!isRiseTicket && (
             lowerReply.includes('support team') || lowerReply.includes('reply you soon') ||
             lowerReply.includes('human agent') || lowerReply.includes('representative') ||
@@ -426,31 +510,33 @@ You MUST respond in JSON format. The JSON object must contain two keys:
             isRiseTicket = true
           }
         } else {
-          botReply = 'Sorry, I encountered an error processing your request.'
+          const errData = await gptResponse.json().catch(() => null)
+          const errMsg = errData?.error?.message || `OpenAI error (${gptResponse.status}): ${gptResponse.statusText}`
+          console.error('[Playground Chat] OpenAI API error:', gptResponse.status, errData)
+          botReply = `Chatbot error: ${errMsg}`
         }
       } catch (err: any) {
-        botReply = 'Sorry, an error occurred. Please try again.'
+        botReply = `Chatbot exception: ${err.message || 'Error communicating with AI service'}`
         console.error('[Playground Chat] GPT error:', err)
       }
 
       // Step 6: Save messages to session
-      const userMsg = { role: 'user', content: message, timestamp: new Date().toISOString() }
-      const botMsg = { role: 'assistant', content: botReply, timestamp: new Date().toISOString(), isRiseTicket, matchedFaqs: faqs.length, condensedQuery: searchQuery !== message ? searchQuery : undefined }
+      const userMsg = { role: 'user', content: cleanMessage, timestamp: new Date().toISOString() }
+      const botMsg = { 
+        role: 'assistant', 
+        content: botReply, 
+        timestamp: new Date().toISOString(), 
+        isRiseTicket, 
+        matchedFaqs: faqs.length, 
+        condensedQuery: searchQuery !== cleanMessage ? searchQuery : undefined 
+      }
 
-      // Fetch existing messages
-      const { data: session } = await supabase
-        .from('playground_sessions')
-        .select('messages, title')
-        .eq('id', sessionId)
-        .single()
-
-      const existingMessages = session?.messages || []
       const updatedMessages = [...existingMessages, userMsg, botMsg]
 
       // Auto-title from first message if still "New Chat"
-      let newTitle = session?.title
-      if (session?.title === 'New Chat' && existingMessages.length === 0) {
-        newTitle = message.length > 50 ? message.substring(0, 47) + '...' : message
+      let newTitle = sessionTitle
+      if (sessionTitle === 'New Chat' && existingMessages.length === 0) {
+        newTitle = cleanMessage.length > 50 ? cleanMessage.substring(0, 47) + '...' : cleanMessage
       }
 
       await supabase
@@ -463,17 +549,19 @@ You MUST respond in JSON format. The JSON object must contain two keys:
         .eq('id', sessionId)
 
       return NextResponse.json({
+        sessionId,
+        title: newTitle,
         reply: botReply,
         isRiseTicket,
         matchedFaqs: faqs,
-        condensedQuery: searchQuery !== message ? searchQuery : null
+        condensedQuery: searchQuery !== cleanMessage ? searchQuery : null
       })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (err: any) {
-    console.error('[Playground Chat API] Error:', err)
+    console.error('[Playground Chat API] Critical Error:', err)
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
   }
 }
