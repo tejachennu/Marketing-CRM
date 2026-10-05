@@ -4,7 +4,7 @@ import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import fs from 'fs'
 import path from 'path'
-import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
+import { cleanWhatsAppRecipient, isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
       isWhatsApp = false
     } else if (requestChannel === 'whatsapp' || templateName || templateSid) {
       isWhatsApp = true
-    } else if (contactPhone && contactPhone.startsWith('whatsapp:')) {
+    } else if (contactPhone && (contactPhone.startsWith('whatsapp:') || isBsuid(contactPhone))) {
       isWhatsApp = true
     } else if (whatsappProvider === 'facebook' || whatsappProvider === 'twilio') {
       // Default to WhatsApp when WhatsApp provider is enabled
@@ -597,7 +597,9 @@ export async function POST(request: NextRequest) {
 
         const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
         const cleanFrom = TWILIO_WHATSAPP_NUMBER.replace('whatsapp:', '')
-        const cleanTo = contactPhone.replace('whatsapp:', '')
+        const cleanTo = isBsuid(contactPhone)
+          ? canonicalizeBsuid(contactPhone)
+          : contactPhone.replace('whatsapp:', '').trim()
 
         const twilioParams: any = {
           to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,

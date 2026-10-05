@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -123,9 +124,11 @@ export async function POST(request: NextRequest) {
 
     console.log('[v0] Received WhatsApp message:', { from, to, messageBody, messageSid, mediaUrl, contentType })
 
-    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
+    // Standardize to canonical BSUID (e.g. CA.1076013191946045) or E.164 phone (+916303012453)
     let phoneNumber = from.replace('whatsapp:', '').trim()
-    if (!phoneNumber.startsWith('+')) {
+    if (isBsuid(phoneNumber)) {
+      phoneNumber = canonicalizeBsuid(phoneNumber)
+    } else if (!phoneNumber.startsWith('+')) {
       phoneNumber = '+' + phoneNumber
     }
 

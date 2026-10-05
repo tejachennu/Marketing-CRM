@@ -4,6 +4,7 @@ import twilio from 'twilio'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
+import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -179,9 +180,11 @@ export async function POST(
 
     console.log(`[Webhook] Received WhatsApp message for Org: ${orgId}`, { from, to, messageBody, messageSid, mediaUrl, contentType })
 
-    // Standardize to E.164 with a leading plus symbol (e.g. +916303012453)
+    // Standardize to canonical BSUID (e.g. CA.1076013191946045) or E.164 phone (+916303012453)
     let phoneNumber = from.replace('whatsapp:', '').trim()
-    if (!phoneNumber.startsWith('+')) {
+    if (isBsuid(phoneNumber)) {
+      phoneNumber = canonicalizeBsuid(phoneNumber)
+    } else if (!phoneNumber.startsWith('+')) {
       phoneNumber = '+' + phoneNumber
     }
 
@@ -538,10 +541,11 @@ You MUST respond in JSON format. The JSON object must contain two keys:
 
                 // 6. Send reply via Twilio
                 let twilioMessageSid = null
+                let sendError: string | null = null
                 try {
                   const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
                   const cleanFrom = twilioWhatsappNumber.replace('whatsapp:', '')
-                  const cleanTo = phoneNumber
+                  const cleanTo = isBsuid(phoneNumber) ? canonicalizeBsuid(phoneNumber) : phoneNumber
 
                   const twilioMsg = await twilioClient.messages.create({
                     body: botReply,
@@ -551,7 +555,8 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                   twilioMessageSid = twilioMsg.sid
                   console.log(`[Webhook Chatbot] Sent Twilio message: ${twilioMessageSid}`)
                 } catch (sendErr: any) {
-                  console.error('[Webhook Chatbot] Failed to send Twilio message:', sendErr.message)
+                  sendError = sendErr?.message || String(sendErr)
+                  console.error('[Webhook Chatbot] Failed to send Twilio message:', sendError)
                 }
 
                 // 7. Save bot reply in messages table
@@ -563,7 +568,9 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                       conversation_id: conversation.id,
                       sender_type: 'user',
                       body: botReply,
-                      twilio_message_sid: twilioMessageSid
+                      twilio_message_sid: twilioMessageSid,
+                      status: sendError ? 'failed' : 'sent',
+                      error_message: sendError
                     }
                   ])
 
