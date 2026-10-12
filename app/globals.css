@@ -212,6 +212,14 @@
   }
 }
 
+/* Horizontally scrollable rows (tab bars, chip lists) without a visible scrollbar */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Authentic WhatsApp Tiled Wallpaper Pattern */
 .wa-chat-wallpaper {
   background-color: var(--wa-bg-chat);
