@@ -262,4 +262,119 @@ export const NATIVE_FLOW_TEMPLATES: Record<
       },
     ],
   },
+
+  SHIPPING_ADDRESS: {
+    name: 'E-commerce Delivery Address Flow',
+    category: 'ORDER_MANAGEMENT',
+    description: 'Collect delivery address, postal code, and delivery speed directly inside WhatsApp with zero redirects.',
+    screens: [
+      {
+        id: 'SHIPPING_DETAILS',
+        title: 'Delivery Address',
+        terminal: false,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            {
+              id: 'header_caption',
+              type: 'TextCaption',
+              label: 'Enter your shipping address for fast order delivery.',
+              name: 'caption',
+            },
+            {
+              id: 'full_name',
+              type: 'TextInput',
+              label: 'Recipient Name',
+              name: 'full_name',
+              required: true,
+              placeholder: 'e.g. John Doe',
+            },
+            {
+              id: 'phone_number',
+              type: 'TextInput',
+              label: 'Contact Phone',
+              name: 'phone_number',
+              required: true,
+              placeholder: 'e.g. +91 9876543210',
+            },
+            {
+              id: 'address_line_1',
+              type: 'TextInput',
+              label: 'House / Flat / Street',
+              name: 'address_line_1',
+              required: true,
+              placeholder: 'e.g. Flat 402, Green Heights, MG Road',
+            },
+            {
+              id: 'address_line_2',
+              type: 'TextInput',
+              label: 'Area / Landmark',
+              name: 'address_line_2',
+              required: false,
+              placeholder: 'e.g. Near City Mall',
+            },
+            {
+              id: 'city',
+              type: 'TextInput',
+              label: 'City',
+              name: 'city',
+              required: true,
+              placeholder: 'e.g. Mumbai',
+            },
+            {
+              id: 'state',
+              type: 'TextInput',
+              label: 'State / Province',
+              name: 'state',
+              required: true,
+              placeholder: 'e.g. Maharashtra',
+            },
+            {
+              id: 'pincode',
+              type: 'TextInput',
+              label: 'PIN / Postal Code',
+              name: 'pincode',
+              required: true,
+              placeholder: 'e.g. 400001',
+            },
+            {
+              id: 'delivery_speed',
+              type: 'RadioGroup',
+              label: 'Delivery Speed',
+              name: 'delivery_speed',
+              required: true,
+              options: [
+                { id: 'standard', title: 'Standard Delivery (2-4 Days)' },
+                { id: 'express', title: 'Express Delivery (Next Day)' },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        id: 'CONFIRM_ADDRESS',
+        title: 'Review and Confirm',
+        terminal: true,
+        layout: {
+          type: 'SingleColumnLayout',
+          children: [
+            {
+              id: 'confirm_msg',
+              type: 'TextBody',
+              label: 'Tap Submit to finalize your address and receive your in-chat payment link.',
+              name: 'confirm_body',
+            },
+            {
+              id: 'delivery_instructions',
+              type: 'TextArea',
+              label: 'Delivery Instructions (Optional)',
+              name: 'instructions',
+              placeholder: 'e.g. Ring bell twice, leave with security...',
+            },
+          ],
+        },
+      },
+    ],
+  },
 }
+

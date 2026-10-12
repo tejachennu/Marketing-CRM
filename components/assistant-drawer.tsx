@@ -236,7 +236,7 @@ export function AssistantDrawer({
           <div>
             <div className="flex items-center gap-1.5">
               <h3 className="text-[13px] font-semibold text-white leading-none">CRM Copilot</h3>
-              <span className="text-[8.5px] font-bold text-white bg-white/20 px-1 py-0.5 rounded uppercase tracking-wider scale-90 leading-none">Beta</span>
+              <span className="text-[10px] font-bold text-white bg-white/20 px-1 py-0.5 rounded uppercase tracking-wider scale-90 leading-none">Beta</span>
             </div>
             <p className="text-[10px] text-white/70 font-medium mt-0.5">{orgName || 'AI Assistant'}</p>
           </div>
@@ -366,7 +366,7 @@ export function AssistantDrawer({
                   {/* Footer */}
                   <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
                     {msg.toolsUsed && msg.toolsUsed.length > 0 && (
-                      <span className="text-[9px] text-[#00a884] dark:text-[#00e676] font-semibold bg-[#00a884]/10 px-1.5 py-0.5 rounded-full">
+                      <span className="text-[10px] text-[#00a884] dark:text-[#00e676] font-semibold bg-[#00a884]/10 px-1.5 py-0.5 rounded-full">
                         ⚡ {msg.toolsUsed.length} tool{msg.toolsUsed.length > 1 ? 's' : ''} used
                       </span>
                     )}

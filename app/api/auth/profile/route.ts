@@ -67,22 +67,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Method 3: Try request body (userId + email sent directly)
-    if (!authUserId) {
-      try {
-        const body = await request.json().catch(() => null)
-        if (body?.userId) {
-          authUserId = body.userId
-          authEmail = body.email || null
-        }
-      } catch {
-        // No body or invalid JSON
-      }
-    }
-
+    // The caller is identified by a verified token only. A user id supplied in the
+    // request body is never trusted: it would let anyone read any user's profile.
     if (!authUserId) {
       return NextResponse.json(
-        { error: 'Unauthorized: no valid auth method found' },
+        { error: 'Unauthorized: No active session found' },
         { status: 401 }
       )
     }

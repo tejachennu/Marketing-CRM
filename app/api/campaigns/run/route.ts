@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
+import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { runCampaignWorker } from './worker/route'
 
 export async function POST(request: NextRequest) {
@@ -13,11 +14,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Launch background worker directly inside Node runtime
-    // This eliminates fragile HTTP self-fetching that gets killed when requests return
-    runCampaignWorker(campaignId).catch(err => {
-      console.error('[Campaign Run] Background worker execution failed for campaign:', campaignId, err)
-    })
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    // Run the worker after the response is sent. `after` keeps the serverless
+    // function alive until the worker settles; a bare floating promise can be
+    // frozen as soon as the response returns.
+    after(() =>
+      runCampaignWorker(campaignId).catch(err => {
+        console.error('[Campaign Run] Background worker execution failed for campaign:', campaignId, err)
+      })
+    )
 
     return NextResponse.json({
       success: true,

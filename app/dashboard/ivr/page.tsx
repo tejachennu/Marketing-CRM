@@ -490,7 +490,7 @@ export default function IVRWorkflowsPage() {
                   <div className="overflow-x-auto border border-[#e9edef] rounded-lg mt-4">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[9px] font-black uppercase tracking-wider text-[#667781]">
+                        <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[10px] font-black uppercase tracking-wider text-[#667781]">
                           <th className="px-6 py-3">Workflow Name & Description</th>
                           <th className="px-6 py-3">Steps</th>
                           <th className="px-6 py-3 text-center">Status</th>
@@ -578,7 +578,7 @@ export default function IVRWorkflowsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-bold text-[#111b21]">{selectedWorkflow.name}</h3>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                           selectedWorkflow.is_active 
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                             : 'bg-gray-50 text-gray-500 border-gray-100'
@@ -667,7 +667,7 @@ export default function IVRWorkflowsPage() {
                             </div>
 
                             {/* Step Type badge */}
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider select-none ${
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider select-none ${
                               step.type === 'say' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
                               step.type === 'gather' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                               step.type === 'dial' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
@@ -679,7 +679,7 @@ export default function IVRWorkflowsPage() {
 
                             {/* Info text if it's the start step */}
                             {step.id === 'start' && (
-                              <span className="text-[9px] text-[#008069] font-bold bg-[#e7f7f4] border border-[#00a884]/20 px-2 py-0.5 rounded-full select-none">
+                              <span className="text-[10px] text-[#008069] font-bold bg-[#e7f7f4] border border-[#00a884]/20 px-2 py-0.5 rounded-full select-none">
                                 Entry Point
                               </span>
                             )}
@@ -730,7 +730,7 @@ export default function IVRWorkflowsPage() {
                                     )
                                   ))}
                                 </select>
-                                <p className="text-[9px] text-[#667781] mt-1.5 font-medium">After reading the TTS prompt, route the call to this step next.</p>
+                                <p className="text-[10px] text-[#667781] mt-1.5 font-medium">After reading the TTS prompt, route the call to this step next.</p>
                               </div>
                             </div>
                           )}
@@ -747,7 +747,7 @@ export default function IVRWorkflowsPage() {
                                 placeholder="e.g. +1234567890"
                                 className="w-full max-w-sm px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0]"
                               />
-                              <p className="text-[9px] text-[#667781] mt-1.5 font-medium">Include country code prefix (e.g. +1 for USA, +44 for UK).</p>
+                              <p className="text-[10px] text-[#667781] mt-1.5 font-medium">Include country code prefix (e.g. +1 for USA, +44 for UK).</p>
                             </div>
                           )}
 
@@ -783,7 +783,7 @@ export default function IVRWorkflowsPage() {
                                     )
                                   ))}
                                 </select>
-                                <p className="text-[9px] text-[#667781] mt-1.5 font-medium">After caller finishes recording, redirect call to this step.</p>
+                                <p className="text-[10px] text-[#667781] mt-1.5 font-medium">After caller finishes recording, redirect call to this step.</p>
                               </div>
                             </div>
                           )}
@@ -837,7 +837,7 @@ export default function IVRWorkflowsPage() {
                               <div className="border border-[#e9edef] rounded-lg overflow-hidden bg-white">
                                 <div className="px-3.5 py-2 bg-[#f8f9fa] border-b border-[#e9edef] flex items-center justify-between select-none">
                                   <span className="text-[10px] font-bold text-[#111b21] uppercase tracking-wider">Keypress Routing Setup</span>
-                                  <span className="text-[9px] text-[#667781] font-semibold">Map digit inputs to target steps</span>
+                                  <span className="text-[10px] text-[#667781] font-semibold">Map digit inputs to target steps</span>
                                 </div>
                                 <div className="p-3 space-y-2">
                                   {/* Existing routes */}
@@ -1093,7 +1093,7 @@ export default function IVRWorkflowsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[9px] font-black uppercase tracking-wider text-[#667781] select-none">
+                    <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[10px] font-black uppercase tracking-wider text-[#667781] select-none">
                       <th className="px-6 py-3">Call SID</th>
                       <th className="px-6 py-3">Caller Number</th>
                       <th className="px-6 py-3">Status</th>
@@ -1111,7 +1111,7 @@ export default function IVRWorkflowsPage() {
                           {call.phone_number || 'Unknown'}
                         </td>
                         <td className="px-6 py-3.5 select-none">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                             call.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                             call.status === 'active' ? 'bg-blue-50 text-blue-700 border-blue-100 animate-pulse' :
                             call.status === 'ended' ? 'bg-slate-50 text-slate-600 border-slate-200' :

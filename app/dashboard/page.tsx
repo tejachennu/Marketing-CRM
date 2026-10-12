@@ -2,7 +2,7 @@
 
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 
-import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
+import { Fragment, useEffect, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
@@ -16,6 +16,8 @@ import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
+import { formatChatListTimestamp, formatChatTime, isSameDay } from '@/lib/chat-dates'
+import { ChatDateSeparator } from '@/components/chat-date-separator'
 
 function ConversationsPageContent() {
   const router = useRouter()
@@ -1464,7 +1466,7 @@ function ConversationsPageContent() {
         <div className="px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between h-[60px] flex-shrink-0 select-none border-b border-[#e9edef] dark:border-[#2a3942]/60">
           <div className="flex items-center gap-3">
             {/* User Profile Avatar */}
-            <div className="h-10 w-10 rounded-full bg-slate-350 dark:bg-[#111b21] flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-sm border border-[#e9edef] dark:border-[#2a3942] select-none">
+            <div className="h-10 w-10 rounded-full bg-slate-300 dark:bg-[#111b21] flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-sm border border-[#e9edef] dark:border-[#2a3942] select-none">
               {user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'ME'}
             </div>
             <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Chats</h2>
@@ -1531,7 +1533,7 @@ function ConversationsPageContent() {
                   <span className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[9px] font-bold transition-all ${
                     unreadFilter 
                       ? 'bg-[#00a884] text-white' 
-                      : 'bg-slate-250 dark:bg-slate-700 text-slate-650 dark:text-slate-400'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-400'
                   }`}>
                     {unreadCount}
                   </span>
@@ -1643,12 +1645,8 @@ function ConversationsPageContent() {
                   {/* Right side column for Time, Pinned, Unread count */}
                   <div className="flex flex-col items-end justify-between h-10 select-none flex-shrink-0 min-w-[65px] relative">
                     {conv.last_message_at && (
-                      <p className={`text-[11.5px] font-medium ${conv.unread_count > 0 ? 'text-[#25d366] dark:text-[#00e676]' : 'text-[#667781] dark:text-[#8696a0]'}`}>
-                        {new Date(conv.last_message_at).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true
-                        })}
+                      <p className={`text-[11.5px] font-medium whitespace-nowrap ${conv.unread_count > 0 ? 'text-[#25d366] dark:text-[#00e676]' : 'text-[#667781] dark:text-[#8696a0]'}`}>
+                        {formatChatListTimestamp(conv.last_message_at)}
                       </p>
                     )}
                     
@@ -1677,7 +1675,7 @@ function ConversationsPageContent() {
                             togglePinConversation(conv.id)
                           }}
                           title="Unpin Chat"
-                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-550 rounded-md cursor-pointer transition-colors"
+                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer transition-colors"
                         >
                           <Pin size={12} className="fill-current text-rose-500" />
                         </button>
@@ -1707,7 +1705,7 @@ function ConversationsPageContent() {
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-bold px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all inline-flex items-center gap-1.5 border border-slate-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-850 shadow-xs active:scale-[0.98]"
+                className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-bold px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all inline-flex items-center gap-1.5 border border-slate-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-800 shadow-xs active:scale-[0.98]"
               >
                 {loadingMore && <Loader2 size={12} className="animate-spin" />}
                 <span>{loadingMore ? 'Loading...' : 'Load More'}</span>
@@ -1779,7 +1777,7 @@ function ConversationsPageContent() {
                       .reverse()
                       .find(m => m.sender_type === 'contact')
 
-                    if (!lastInbound) return <span className="text-[9px] font-bold text-slate-400 dark:text-slate-550 border border-slate-200 dark:border-slate-800 px-1.5 rounded-sm">NO ACTIVE WINDOW</span>
+                    if (!lastInbound) return <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800 px-1.5 rounded-sm">NO ACTIVE WINDOW</span>
 
                     const lastInboundTime = new Date(lastInbound.created_at).getTime()
                     const now = Date.now()
@@ -1792,12 +1790,12 @@ function ConversationsPageContent() {
                     const isClosingSoon = isOpen && remaining < 4 * 60 * 60 * 1000
 
                     return (
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wide border shrink-0 ${
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wide border shrink-0 ${
                         !isOpen
-                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-650 dark:text-rose-455 border-rose-200/40'
+                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-200/40'
                           : isClosingSoon
-                            ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-650 dark:text-amber-450 border-amber-200/40'
-                            : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-650 dark:text-emerald-400 border-emerald-250/30'
+                            ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40'
+                            : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/30'
                       }`}>
                         <span className={`w-1 h-1 rounded-full ${!isOpen ? 'bg-rose-500' : isClosingSoon ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         <span>
@@ -1829,7 +1827,7 @@ function ConversationsPageContent() {
                   className={`px-2 py-1 md:px-3 md:py-1.5 rounded-xl text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all cursor-pointer ${
                     showAiPanel
                       ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/15 dark:text-indigo-400 border border-indigo-500/10 hover:bg-indigo-550/20'
+                      : 'bg-indigo-500/10 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400 border border-indigo-500/10 hover:bg-indigo-500/20'
                   }`}
                 >
                   <Sparkles size={10} className={loadingSuggestions ? 'animate-spin' : ''} />
@@ -1840,19 +1838,19 @@ function ConversationsPageContent() {
               {/* Ticket Controls */}
               {selectedConversation && currentTicket && (
                 <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-2 md:pl-4">
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
                     🎫 Open Ticket
                   </span>
                   <button
                     onClick={() => handleResolveTicket(currentTicket.id)}
-                    className="px-2 py-1 text-[9px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-all cursor-pointer"
+                    className="px-2 py-1 text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-all cursor-pointer"
                     title="Mark ticket as resolved"
                   >
                     Resolve
                   </button>
                   <button
                     onClick={() => openConvertModal(currentTicket)}
-                    className="px-2 py-1 text-[9px] font-bold text-white bg-indigo-500 hover:bg-indigo-650 rounded transition-all cursor-pointer"
+                    className="px-2 py-1 text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-all cursor-pointer"
                     title="Convert ticket to a sales lead"
                   >
                     Make Lead
@@ -1904,20 +1902,20 @@ function ConversationsPageContent() {
           {features.enable_ai && selectedConversation && showAiPanel && (
             <div className="absolute top-[106px] right-4 left-4 max-w-sm md:left-auto md:w-80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-20 overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2 duration-200 select-none">
               {/* Header Bar */}
-              <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-150 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/20">
-                <div className="flex items-center gap-1.5 text-[8.5px] font-black text-indigo-650 dark:text-indigo-400 shrink-0 mr-1 bg-indigo-500/10 dark:bg-indigo-500/15 px-2 py-0.5 rounded-full border border-indigo-500/20">
-                  <Sparkles size={10} className="text-indigo-550 dark:text-indigo-400" />
+              <div className="px-4 py-2.5 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/20">
+                <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-700 dark:text-indigo-400 shrink-0 mr-1 bg-indigo-500/10 dark:bg-indigo-500/15 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                  <Sparkles size={10} className="text-indigo-600 dark:text-indigo-400" />
                   <span>AI SUGGESTIONS</span>
                 </div>
 
                 {loadingSuggestions && (
-                  <div className="flex items-center gap-1 text-[9px] font-bold text-slate-400 dark:text-slate-550">
-                    <Loader2 size={10} className="animate-spin text-indigo-550" />
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                    <Loader2 size={10} className="animate-spin text-indigo-600" />
                   </div>
                 )}
 
                 {aiSuggestionsError && (
-                  <span className="text-[9px] font-bold text-rose-500 py-1 truncate" title={aiSuggestionsError}>
+                  <span className="text-[10px] font-bold text-rose-500 py-1 truncate" title={aiSuggestionsError}>
                     ⚠️ Error
                   </span>
                 )}
@@ -1925,7 +1923,7 @@ function ConversationsPageContent() {
                 {/* Refresh / Generate Button */}
                 <button
                   onClick={() => selectedConversation && fetchSuggestions(selectedConversation)}
-                  className="p-1 hover:bg-slate-150 dark:hover:bg-slate-800 text-slate-450 hover:text-indigo-550 dark:hover:text-indigo-400 rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full transition-colors cursor-pointer shrink-0 ml-auto flex items-center justify-center"
                   title="Refresh Suggestions"
                 >
                   <Sparkles size={11} className={loadingSuggestions ? 'animate-spin' : ''} />
@@ -1934,7 +1932,7 @@ function ConversationsPageContent() {
                 {/* Close Button */}
                 <button
                   onClick={() => setShowAiPanel(false)}
-                  className="p-1 hover:bg-slate-150 dark:hover:bg-slate-800 text-slate-450 hover:text-rose-550 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-rose-600 rounded-full transition-colors cursor-pointer shrink-0 flex items-center justify-center"
                   title="Close panel"
                 >
                   <X size={11} />
@@ -1945,18 +1943,18 @@ function ConversationsPageContent() {
               {loadingSuggestions ? (
                 <div className="p-6 flex flex-col items-center justify-center gap-2">
                   <Loader2 size={20} className="animate-spin text-indigo-500" />
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Analyzing chat...</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Analyzing chat...</span>
                 </div>
               ) : aiSuggestionsError ? (
                 <div className="p-6 text-center text-rose-500">
                   <p className="text-xs font-semibold">Failed to fetch suggestions</p>
                 </div>
               ) : aiSuggestions.length === 0 ? (
-                <div className="p-6 text-center text-slate-450 dark:text-slate-500">
+                <div className="p-6 text-center text-slate-500 dark:text-slate-500">
                   <p className="text-xs font-semibold">No suggestions generated</p>
                   <button
                     onClick={() => selectedConversation && fetchSuggestions(selectedConversation)}
-                    className="mt-2.5 px-2.5 py-1.5 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg text-[9px] font-bold shadow-xs transition-all cursor-pointer"
+                    className="mt-2.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all cursor-pointer"
                   >
                     Generate Smart Replies
                   </button>
@@ -1966,14 +1964,14 @@ function ConversationsPageContent() {
                   {aiSuggestions.map((sug, i) => (
                     <div
                       key={i}
-                      className="group relative bg-[#f8fafc]/50 dark:bg-slate-850 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/15 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 rounded-lg transition-all duration-200 cursor-pointer active:scale-[0.995] shadow-xs"
+                      className="group relative bg-[#f8fafc]/50 dark:bg-slate-800 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/15 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 rounded-lg transition-all duration-200 cursor-pointer active:scale-[0.995] shadow-xs"
                       onClick={() => {
                         setMessageText(sug.text)
                         setShowAiPanel(false)
                       }}
                     >
                       <div className="px-2.5 py-2 flex items-start gap-2">
-                        <div className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-indigo-500/10 flex items-center justify-center text-[9px] font-bold text-indigo-650 dark:text-indigo-400">
+                        <div className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-indigo-500/10 flex items-center justify-center text-[9px] font-bold text-indigo-700 dark:text-indigo-400">
                           {i + 1}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1983,7 +1981,7 @@ function ConversationsPageContent() {
                           {sug.article_title && (
                             <div className="mt-1 flex items-center gap-1">
                               <BookOpen size={8} className="text-indigo-400 shrink-0" />
-                              <span className="text-[8px] font-semibold text-indigo-650 dark:text-indigo-405 truncate max-w-[150px]">
+                              <span className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-400 truncate max-w-[150px]">
                                 {sug.article_title}
                               </span>
                             </div>
@@ -2016,7 +2014,7 @@ function ConversationsPageContent() {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 text-xs font-medium space-y-2 select-none relative z-10">
-                <MessageCircle size={32} className="text-slate-355" />
+                <MessageCircle size={32} className="text-slate-400" />
                 <p>No messages yet. Send a message to start!</p>
               </div>
             ) : (
@@ -2038,9 +2036,10 @@ function ConversationsPageContent() {
                     </button>
                   </div>
                 )}
-                {messages.map((msg) => {
+                {messages.map((msg, index) => {
                 const isUser = msg.sender_type === 'user'
                 const mediaType = getMediaType(msg.media_url)
+                const startsNewDay = index === 0 || !isSameDay(messages[index - 1].created_at, msg.created_at)
                 
                 let isReply = false
                 let replyId = ''
@@ -2062,8 +2061,9 @@ function ConversationsPageContent() {
                 const repliedMsg = isReply ? messages.find(m => m.id === replyId) : null
 
                 return (
+                  <Fragment key={msg.id}>
+                  {startsNewDay && <ChatDateSeparator date={msg.created_at} />}
                   <div
-                    key={msg.id}
                     className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-200 group relative mb-1.5`}
                   >
                     <div
@@ -2185,13 +2185,7 @@ function ConversationsPageContent() {
                       } ${
                         isUser ? 'text-[#667781] dark:text-[#e9edef]/60' : 'text-[#667781] dark:text-[#8696a0]'
                       }`}>
-                        <span>
-                          {new Date(msg.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                          })}
-                        </span>
+                        <span>{formatChatTime(msg.created_at)}</span>
                         {isUser && (() => {
                           if (msg.status === 'failed' || msg.status === 'undelivered') {
                             return (
@@ -2201,7 +2195,7 @@ function ConversationsPageContent() {
                                   className="text-rose-500 ml-0.5 flex-shrink-0 cursor-help"
                                 />
                                 {msg.error_message && (
-                                  <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/tooltip:block bg-red-650 text-white text-[10px] p-2 rounded shadow-md z-30 whitespace-normal min-w-[200px] max-w-[280px] break-words pointer-events-none text-left">
+                                  <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/tooltip:block bg-red-600 text-white text-[10px] p-2 rounded shadow-md z-30 whitespace-normal min-w-[200px] max-w-[280px] break-words pointer-events-none text-left">
                                     {msg.error_message}
                                   </div>
                                 )}
@@ -2219,6 +2213,7 @@ function ConversationsPageContent() {
                       </div>
                     </div>
                   </div>
+                  </Fragment>
                 )
               })}
             </>
@@ -2230,7 +2225,7 @@ function ConversationsPageContent() {
 
           {/* Attachment Preview Area */}
           {attachedFile && (
-            <div className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-150 dark:border-slate-850 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 z-10">
+            <div className="p-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 z-10">
               <div className="flex items-center gap-3">
                 {attachedFile.type.startsWith('image/') ? (
                   <img 
@@ -2247,7 +2242,7 @@ function ConversationsPageContent() {
                   <p className="text-[10px] font-bold truncate text-slate-800 dark:text-white max-w-[200px]">
                     {attachedFile.name}
                   </p>
-                  <p className="text-[9px] text-slate-400 dark:text-slate-500">Attached media</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">Attached media</p>
                 </div>
               </div>
               <button 
@@ -2296,7 +2291,7 @@ function ConversationsPageContent() {
 
                 {isExpired && (
                   <div className="mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none z-10 animate-in fade-in duration-200">
-                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-455 break-words whitespace-normal leading-normal flex-1">
+                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 break-words whitespace-normal leading-normal flex-1">
                       ⚠️ The 24-hour WhatsApp support window has expired. Free-form text messages will be rejected by Meta until the customer replies.
                     </span>
                     <button
@@ -2686,7 +2681,7 @@ function ConversationsPageContent() {
                   onChange={(e) => setLeadForm({ ...leadForm, resolveTicket: e.target.checked })}
                   className="rounded border-[#e9edef] dark:border-[#2a3942] text-[#00a884] focus:ring-[#00a884] accent-[#00a884] cursor-pointer"
                 />
-                <label htmlFor="resolveTicket" className="text-xs font-bold text-slate-650 dark:text-slate-350 cursor-pointer">
+                <label htmlFor="resolveTicket" className="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
                   Mark this ticket as resolved automatically
                 </label>
               </div>
@@ -2754,7 +2749,7 @@ function ConversationsPageContent() {
                 )}
 
                 {liveChatTemplateError && (
-                  <div className="mt-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250/30 text-xs flex flex-col gap-1">
+                  <div className="mt-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/30 text-xs flex flex-col gap-1">
                     <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
                       <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
                       <span>WhatsApp API Credentials Issue</span>

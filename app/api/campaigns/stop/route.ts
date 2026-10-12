@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,9 +20,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
     }
 
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
     const supabase = getSupabaseClient()
 
-    // Fetch campaign to verify ownership
+    // Fetch campaign
     const { data: campaign, error: fetchErr } = await supabase
       .from('campaigns')
       .select('id, organization_id, status')

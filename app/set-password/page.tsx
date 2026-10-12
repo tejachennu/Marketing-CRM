@@ -130,7 +130,7 @@ function SetPasswordContent() {
               </div>
 
               {error && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-250 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 mb-5">
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 mb-5">
                   {error}
                 </div>
               )}
@@ -159,7 +159,7 @@ function SetPasswordContent() {
                     {/* Password Strength Indicator */}
                     {password.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        <div className="flex justify-between text-[9px] font-bold">
+                        <div className="flex justify-between text-[10px] font-bold">
                           <span className="text-[#8696a0]">Strength:</span>
                           <span className={
                             strength === 'strong' ? 'text-[#00a884]' :

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import { sanitizeSearchTerm } from '@/lib/utils'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const unreadOnly = searchParams.get('unread') === 'true'
-    const search = searchParams.get('search') || ''
+    const search = sanitizeSearchTerm(searchParams.get('search'))
     const specificId = searchParams.get('id')
     // assignedTo: when set, restrict conversations to ones assigned to this userId
     // Used for sales_employee role — they only see their own conversations unless see_all is granted

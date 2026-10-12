@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
+import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { isAdmin } from '@/lib/rbac'
+import { MASTER_ORG_ID } from '@/lib/constants'
+
+// This endpoint returns every server secret, so it is limited to platform owners:
+// superadmins and admins of the master organization.
+async function authorizeEnvExport(request: NextRequest): Promise<NextResponse | null> {
+  const user = await getAuthenticatedUser(request)
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized: No active session found' }, { status: 401 })
+  }
+
+  const isPlatformOwner = user.role === 'superadmin' || (user.organization_id === MASTER_ORG_ID && isAdmin(user))
+  if (!isPlatformOwner) {
+    return NextResponse.json({ error: 'Forbidden: Only platform administrators can export environment variables' }, { status: 403 })
+  }
+
+  return null
+}
 
 // OS and runtime environment variables to exclude from export
 const EXCLUDED_PREFIXES = [
@@ -209,6 +228,9 @@ function buildHtmlSummary(envVars: { [key: string]: string }, rawEnv: string): s
 // POST: Email or return environment variables
 export async function POST(request: NextRequest) {
   try {
+    const denied = await authorizeEnvExport(request)
+    if (denied) return denied
+
     let recipientEmail = 'tejachennu17@gmail.com'
     
     try {
@@ -277,6 +299,9 @@ export async function POST(request: NextRequest) {
 // GET: Direct download or preview of environment variables
 export async function GET(request: NextRequest) {
   try {
+    const denied = await authorizeEnvExport(request)
+    if (denied) return denied
+
     const { searchParams } = new URL(request.url)
     const download = searchParams.get('download') === 'true'
     const recipient = searchParams.get('email') || 'tejachennu17@gmail.com'
@@ -290,6 +315,7 @@ export async function GET(request: NextRequest) {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
           'Content-Disposition': 'attachment; filename=".env.local"',
+          'Cache-Control': 'no-store',
         },
       })
     }

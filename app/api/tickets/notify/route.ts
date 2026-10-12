@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
+import { escapeHtml } from '@/lib/utils'
 
 export async function POST(request: Request) {
   try {
@@ -40,6 +41,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ sent: false, reason: 'notifications_disabled' })
     }
 
+    // This route is called server-to-server without a session, so only notify
+    // about a ticket that really exists in this organization.
+    const { data: ticket } = await supabase
+      .from('tickets')
+      .select('id')
+      .eq('id', ticketId)
+      .eq('organization_id', organizationId)
+      .maybeSingle()
+
+    if (!ticket) {
+      return NextResponse.json({ sent: false, reason: 'ticket_not_found' }, { status: 404 })
+    }
+
     const recipientIds: string[] = org.ticket_email_recipients ?? []
     if (recipientIds.length === 0) {
       return NextResponse.json({ sent: false, reason: 'no_recipients' })
@@ -72,12 +86,24 @@ export async function POST(request: Request) {
 
     // ── 4. Build the HTML email ─────────────────────────────────────────
     const orgName = org.name || 'Support'
-    const emailSubject = `🎫 New Support Ticket: ${ticketSubject}`
+    const emailSubject = `🎫 New Support Ticket: ${String(ticketSubject).replace(/\s+/g, ' ').trim()}`
     const timestamp = new Date().toLocaleString('en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
     })
-    const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.example.com'}/tickets`
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, '')
+    const dashboardUrl = `${appUrl}/dashboard/tickets`
+
+    // The subject and contact details come from an inbound customer message: escape them
+    const safe = {
+      orgName: escapeHtml(orgName),
+      emailSubject: escapeHtml(emailSubject),
+      ticketSubject: escapeHtml(ticketSubject),
+      contactName: escapeHtml(contactName || 'N/A'),
+      contactPhone: escapeHtml(contactPhone || 'N/A'),
+      ticketId: escapeHtml(ticketId),
+      dashboardUrl: escapeHtml(dashboardUrl),
+    }
 
     const htmlBody = `
 <!DOCTYPE html>
@@ -85,7 +111,7 @@ export async function POST(request: Request) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${emailSubject}</title>
+  <title>${safe.emailSubject}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f0f2f5;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f5;padding:32px 16px;">
@@ -97,7 +123,7 @@ export async function POST(request: Request) {
           <tr>
             <td style="background-color:#00a884;padding:28px 32px;text-align:center;">
               <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.3px;">
-                ${orgName}
+                ${safe.orgName}
               </h1>
               <p style="margin:6px 0 0;color:rgba(255,255,255,0.9);font-size:14px;font-weight:400;">
                 New Support Ticket Received
@@ -120,19 +146,19 @@ export async function POST(request: Request) {
                       <tr>
                         <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;">
                           <span style="color:#667781;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Subject</span><br />
-                          <span style="color:#111b21;font-size:15px;font-weight:600;">${ticketSubject}</span>
+                          <span style="color:#111b21;font-size:15px;font-weight:600;">${safe.ticketSubject}</span>
                         </td>
                       </tr>
                       <tr>
                         <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;">
                           <span style="color:#667781;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Customer Name</span><br />
-                          <span style="color:#111b21;font-size:15px;">${contactName || 'N/A'}</span>
+                          <span style="color:#111b21;font-size:15px;">${safe.contactName}</span>
                         </td>
                       </tr>
                       <tr>
                         <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;">
                           <span style="color:#667781;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Customer Phone</span><br />
-                          <span style="color:#111b21;font-size:15px;">${contactPhone || 'N/A'}</span>
+                          <span style="color:#111b21;font-size:15px;">${safe.contactPhone}</span>
                         </td>
                       </tr>
                       <tr>
@@ -150,7 +176,7 @@ export async function POST(request: Request) {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center" style="padding:8px 0 16px;">
-                    <a href="${dashboardUrl}" target="_blank" rel="noopener noreferrer"
+                    <a href="${safe.dashboardUrl}" target="_blank" rel="noopener noreferrer"
                        style="display:inline-block;background-color:#00a884;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 36px;border-radius:8px;letter-spacing:0.3px;">
                       View Ticket in Dashboard
                     </a>
@@ -159,7 +185,7 @@ export async function POST(request: Request) {
               </table>
 
               <p style="margin:16px 0 0;color:#667781;font-size:13px;line-height:1.5;text-align:center;">
-                Ticket ID: <span style="font-family:monospace;color:#111b21;">${ticketId}</span>
+                Ticket ID: <span style="font-family:monospace;color:#111b21;">${safe.ticketId}</span>
               </p>
             </td>
           </tr>
@@ -168,7 +194,7 @@ export async function POST(request: Request) {
           <tr>
             <td style="background-color:#f0f2f5;padding:20px 32px;text-align:center;border-top:1px solid #e0e0e0;">
               <p style="margin:0;color:#667781;font-size:12px;line-height:1.5;">
-                This is an automated notification from ${orgName}.<br />
+                This is an automated notification from ${safe.orgName}.<br />
                 Please do not reply to this email.
               </p>
             </td>

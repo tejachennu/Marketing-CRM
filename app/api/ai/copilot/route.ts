@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyRecordAccess, getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
+import { trackChatbotEvent } from '@/lib/ai-analytics'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -108,6 +109,7 @@ Standalone search query:`
 }
 
 export async function POST(request: NextRequest) {
+  const copilotStartTime = Date.now()
   try {
     const body = await request.json()
     const { conversationId, playground } = body
@@ -384,6 +386,23 @@ RESPONSE FORMAT (strict JSON):
     } catch (e) {
       console.error('[Copilot] Failed to parse GPT completion:', e)
     }
+
+    // Track copilot analytics (fire-and-forget)
+    trackChatbotEvent({
+      organization_id: conv.organization_id,
+      conversation_id: conversationId,
+      query: queryText || lastMsg?.body || '',
+      condensed_query: queryText !== lastMsg?.body ? queryText : null,
+      confidence_level: kbArticles.length >= 2 ? 'high' : kbArticles.length === 1 ? 'medium' : 'low',
+      matched_faq_count: kbArticles.length,
+      matched_faq_titles: kbArticles.map((a: any) => a.title),
+      was_escalated: false,
+      was_cached: false,
+      was_greeting: false,
+      response_time_ms: Date.now() - copilotStartTime,
+      model_used: 'gpt-4o-mini',
+      source: 'copilot'
+    })
 
     return NextResponse.json({
       suggestions,

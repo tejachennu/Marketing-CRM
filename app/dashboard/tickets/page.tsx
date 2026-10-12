@@ -8,6 +8,7 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import { useAlert } from '@/lib/dialog-context'
+import { sanitizeSearchTerm } from '@/lib/utils'
 import { Ticket, Clock, CheckCircle2, MessageSquare, TrendingUp, Search, Calendar, X, ChevronLeft, ChevronRight, Loader2, User, Users } from 'lucide-react'
 
 interface TicketItem {
@@ -234,8 +235,8 @@ export default function TicketsPage() {
       }
 
       // Apply search scoping
-      if (searchTerm.trim()) {
-        const search = searchTerm.trim()
+      const search = sanitizeSearchTerm(searchTerm)
+      if (search) {
         
         const { data: matchedContacts } = await supabase
           .from('contacts')
@@ -477,7 +478,7 @@ export default function TicketsPage() {
             <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">Total Tickets</span>
             <h3 className="text-2xl font-extrabold text-slate-800 dark:text-white leading-none">{stats.total}</h3>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-650 dark:text-indigo-400 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 flex items-center justify-center">
             <Ticket size={20} />
           </div>
         </div>
@@ -611,7 +612,7 @@ export default function TicketsPage() {
         ) : tickets.length === 0 ? (
           <div className="p-20 text-center select-none">
             <Ticket size={48} className="mx-auto text-slate-200 dark:text-slate-800 mb-4 animate-bounce duration-[1500ms]" />
-            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-350">No tickets found</h3>
+            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">No tickets found</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try adjusting your filters or search terms.</p>
           </div>
         ) : (
@@ -619,7 +620,7 @@ export default function TicketsPage() {
             <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-left border-collapse text-xs select-none">
               <thead>
-                <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
                   <th className="px-6 py-3.5">Ticket / Inquiry Subject</th>
                   <th className="px-6 py-3.5">Contact Customer</th>
                   <th className="px-6 py-3.5">Date Created</th>
@@ -648,9 +649,9 @@ export default function TicketsPage() {
                       </td>
 
                       {/* Contact */}
-                      <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-350">
+                      <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">
                         <div>{name}</div>
-                        <div className="text-[10px] text-slate-455 dark:text-slate-500 font-medium flex items-center gap-1">
+                        <div className="text-[10px] text-slate-500 dark:text-slate-500 font-medium flex items-center gap-1">
                           <span>{ticket.contacts?.phone_number || ''}</span>
                           {ticket.contacts?.phone_number && (
                             <CopyPhoneButton phoneNumber={ticket.contacts.phone_number} iconSize={10} className="p-0.5" />
@@ -680,7 +681,7 @@ export default function TicketsPage() {
                             ))}
                           </select>
                         ) : (
-                          <span className="font-semibold text-slate-700 dark:text-slate-350">
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
                             {orgUsers.find(u => u.id === ticket.assigned_to)?.full_name || 'Unassigned'}
                           </span>
                         )}
@@ -688,7 +689,7 @@ export default function TicketsPage() {
 
                       {/* Status */}
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
                           ticket.status === 'open'
                             ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
                             : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30'
@@ -763,16 +764,16 @@ export default function TicketsPage() {
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono">ID: {ticket.id}</p>
                     </div>
                     
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase border shrink-0 ${
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border shrink-0 ${
                       ticket.status === 'open'
                         ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
-                        : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-450 border-emerald-200/40 dark:border-emerald-900/30'
+                        : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30'
                     }`}>
                       <span>{ticket.status === 'open' ? 'Active' : 'Resolved'}</span>
                     </span>
                   </div>
 
-                  <div className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-350">
+                  <div className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                     <div className="flex items-center gap-1">
                       <span className="text-slate-400 dark:text-slate-500 font-bold">Contact:</span>
                       <span>{name}</span>
@@ -804,7 +805,7 @@ export default function TicketsPage() {
                         <span>{orgUsers.find(u => u.id === ticket.assigned_to)?.full_name || 'Unassigned'}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-slate-455 dark:text-slate-500 text-[10px]">
+                    <div className="flex items-center gap-1 text-slate-500 dark:text-slate-500 text-[10px]">
                       <Clock size={11} />
                       <span>{formatTime(ticket.created_at)}</span>
                     </div>
@@ -864,14 +865,14 @@ export default function TicketsPage() {
               <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1 || loading}
-                className="p-2 border border-[#e9edef] dark:border-[#2a3942] rounded-xl hover:bg-slate-50 dark:hover:bg-[#1f2c34] text-slate-550 dark:text-slate-350 disabled:opacity-50 disabled:hover:bg-transparent transition-all cursor-pointer flex items-center justify-center"
+                className="p-2 border border-[#e9edef] dark:border-[#2a3942] rounded-xl hover:bg-slate-50 dark:hover:bg-[#1f2c34] text-slate-600 dark:text-slate-300 disabled:opacity-50 disabled:hover:bg-transparent transition-all cursor-pointer flex items-center justify-center"
               >
                 <ChevronLeft size={14} />
               </button>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages || loading}
-                className="p-2 border border-[#e9edef] dark:border-[#2a3942] rounded-xl hover:bg-slate-50 dark:hover:bg-[#1f2c34] text-slate-555 dark:text-slate-355 disabled:opacity-50 disabled:hover:bg-transparent transition-all cursor-pointer flex items-center justify-center"
+                className="p-2 border border-[#e9edef] dark:border-[#2a3942] rounded-xl hover:bg-slate-50 dark:hover:bg-[#1f2c34] text-slate-600 dark:text-slate-300 disabled:opacity-50 disabled:hover:bg-transparent transition-all cursor-pointer flex items-center justify-center"
               >
                 <ChevronRight size={14} />
               </button>
@@ -898,7 +899,7 @@ export default function TicketsPage() {
               </div>
               <button 
                 onClick={() => setShowLeadModal(null)}
-                className="text-slate-400 hover:text-slate-650 dark:hover:text-white transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -990,9 +991,9 @@ export default function TicketsPage() {
                   id="resolveTicket"
                   checked={leadForm.resolveTicket}
                   onChange={(e) => setLeadForm({ ...leadForm, resolveTicket: e.target.checked })}
-                  className="w-3.5 h-3.5 rounded text-[#00a884] focus:ring-[#00a884] border-slate-350 bg-slate-50 cursor-pointer"
+                  className="w-3.5 h-3.5 rounded text-[#00a884] focus:ring-[#00a884] border-slate-300 bg-slate-50 cursor-pointer"
                 />
-                <label htmlFor="resolveTicket" className="font-semibold text-slate-650 dark:text-slate-350 cursor-pointer select-none">
+                <label htmlFor="resolveTicket" className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                   Automatically mark this support ticket as resolved.
                 </label>
               </div>

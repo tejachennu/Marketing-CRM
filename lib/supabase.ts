@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient, Session, SupabaseClient } from '@supabase/supabase-js'
 import { User } from './types'
 import { authSessionManager } from './auth-context'
 
@@ -64,6 +64,32 @@ export function getSupabase(): SupabaseClient {
 }
 
 /**
+ * Copy the Supabase client's current session into our own storage when the token changed.
+ * The auth listener is muted while a restore is in flight, so a token that Supabase
+ * refreshes during restore would otherwise never reach `auth_session`, and every API
+ * call would keep sending the expired access token.
+ */
+function syncStoredSession(session: Session) {
+  if (authSessionManager.getSession()?.access_token === session.access_token) return
+
+  authSessionManager.setSession({
+    access_token: session.access_token,
+    token_type: session.token_type,
+    expires_in: session.expires_in || 3600,
+    expires_at: session.expires_at || Math.floor(Date.now() / 1000) + (session.expires_in || 3600),
+    refresh_token: session.refresh_token,
+    user: session.user,
+  })
+  if (session.user && !authSessionManager.getUser()) {
+    authSessionManager.setUser({
+      id: session.user.id,
+      email: session.user.email || '',
+      phone: session.user.phone || '',
+    })
+  }
+}
+
+/**
  * Restore the Supabase auth session from localStorage.
  * This MUST be called before any supabase.auth.getUser() or RLS-protected queries.
  * It bridges the gap between our API-based login (which stores tokens in localStorage)
@@ -91,6 +117,7 @@ export async function restoreSupabaseSession(): Promise<boolean> {
     // First check if Supabase already has a session (e.g. from its own persistence)
     const { data: { session: existingSession } } = await client.auth.getSession()
     if (existingSession) {
+      syncStoredSession(existingSession)
       sessionRestored = true
       return true
     }
@@ -105,7 +132,7 @@ export async function restoreSupabaseSession(): Promise<boolean> {
     if (!session?.access_token || !session?.refresh_token) return false
 
     // Set the session on the Supabase client (this triggers onAuthStateChange, but our guard suppresses it)
-    const { error } = await client.auth.setSession({
+    const { data: restored, error } = await client.auth.setSession({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
     })
@@ -119,6 +146,9 @@ export async function restoreSupabaseSession(): Promise<boolean> {
       authSessionManager.clearSession()
       return false
     }
+
+    // setSession refreshes an expired access token; keep the refreshed one
+    if (restored.session) syncStoredSession(restored.session)
 
     sessionRestored = true
     return true
@@ -145,7 +175,6 @@ export async function ensureUserProfile(userId: string, email: string): Promise<
       headers['Authorization'] = authHeader
     }
 
-    // Send userId + email in body as fallback auth method
     const res = await fetch('/api/auth/profile', {
       method: 'POST',
       headers,

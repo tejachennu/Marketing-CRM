@@ -249,7 +249,7 @@ export default function LoginPage() {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-250 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400">
                     {error}
                   </div>
                 )}
@@ -318,7 +318,7 @@ export default function LoginPage() {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-250 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400">
                     {error}
                   </div>
                 )}

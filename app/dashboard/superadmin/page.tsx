@@ -113,7 +113,7 @@ function ToggleSwitch({ checked, onChange, label, description }: ToggleProps) {
           {label}
         </span>
         {description && (
-          <span className="text-[9px] text-neutral-500 dark:text-[#8696a0] font-semibold mt-0.5 leading-tight">
+          <span className="text-[10px] text-neutral-500 dark:text-[#8696a0] font-semibold mt-0.5 leading-tight">
             {description}
           </span>
         )}
@@ -941,7 +941,7 @@ export default function SuperAdminPage() {
       {/* Header Dashboard section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 select-none pb-2">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 dark:border-emerald-500/40 text-[9px] font-extrabold uppercase tracking-wider text-[#00a884] dark:text-emerald-400">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 dark:border-emerald-500/40 text-[10px] font-extrabold uppercase tracking-wider text-[#00a884] dark:text-emerald-400">
             <Shield size={10} className="animate-pulse" />
             <span>SUPER ADMIN POWER PANEL</span>
           </div>
@@ -1064,7 +1064,7 @@ export default function SuperAdminPage() {
             {/* Organizations count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#00a884]/30 dark:hover:border-emerald-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
                 <div className="h-8 w-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Building size={15} />
                 </div>
@@ -1073,14 +1073,14 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.organizations}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">active</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">active</span>
               </div>
             </div>
 
             {/* Users count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-blue-500/30 dark:hover:border-blue-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Users</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Users</span>
                 <div className="h-8 w-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Users size={15} />
                 </div>
@@ -1089,14 +1089,14 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.users}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">system</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">system</span>
               </div>
             </div>
 
             {/* Contacts count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-indigo-500/30 dark:hover:border-indigo-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Contacts</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Contacts</span>
                 <div className="h-8 w-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <UserCheck size={15} />
                 </div>
@@ -1105,14 +1105,14 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.contacts}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">records</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">records</span>
               </div>
             </div>
 
             {/* Messages sent/received */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-emerald-500/30 dark:hover:border-emerald-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
                 <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <MessageSquare size={15} />
                 </div>
@@ -1121,14 +1121,14 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.messages}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">sent/recv</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">sent/recv</span>
               </div>
             </div>
 
             {/* Campaigns sent */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-rose-500/30 dark:hover:border-rose-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Campaigns</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Campaigns</span>
                 <div className="h-8 w-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Megaphone size={15} />
                 </div>
@@ -1137,14 +1137,14 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.campaigns}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">dispatched</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">dispatched</span>
               </div>
             </div>
 
             {/* AI Costing */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-amber-500/30 dark:hover:border-amber-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total AI Costing</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total AI Costing</span>
                 <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Sparkles size={15} />
                 </div>
@@ -1153,7 +1153,7 @@ export default function SuperAdminPage() {
                 <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : `$${stats.totalAiCost.toFixed(4)}`}
                 </span>
-                <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
               </div>
             </div>
 
@@ -1275,43 +1275,43 @@ export default function SuperAdminPage() {
                         <td className="py-4 px-4">
                           <div className="flex flex-wrap gap-1.5 select-none">
                             {org.enable_ai !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold text-[9px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-purple-500 animate-pulse" /> AI
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[9px]">Disabled</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                             
                             {org.enable_email !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold text-[9px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-blue-500" /> Email
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[9px]">Disabled</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                             
                             {org.enable_messages !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold text-[9px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-emerald-500" /> Chat
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[9px]">Disabled</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                             
                             {org.enable_phone_calls !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[9px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-amber-500" /> Phone
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[9px]">Disabled</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
 
                             {org.enable_sms !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-extrabold text-[9px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-extrabold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-rose-500" /> SMS
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[9px]">Disabled</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                           </div>
                         </td>
@@ -1359,7 +1359,7 @@ export default function SuperAdminPage() {
             <div>
               <h2 className="text-base font-black text-neutral-800 dark:text-white flex items-center gap-2">
                 <span>{selectedOrgSettings.name} Settings</span>
-                <span className="font-mono text-[9px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                <span className="font-mono text-[10px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                   {selectedOrgSettings.slug}
                 </span>
               </h2>
@@ -1505,7 +1505,7 @@ export default function SuperAdminPage() {
                     <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                       <div className="flex flex-col gap-0.5 pr-2">
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">AI Copilot & Knowledge Base</span>
-                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Suggested conversation replies and scraped article indexing</span>
+                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Suggested conversation replies and scraped article indexing</span>
                       </div>
                       <button
                         type="button"
@@ -1526,7 +1526,7 @@ export default function SuperAdminPage() {
                     <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                       <div className="flex flex-col gap-0.5 pr-2">
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">Messaging (WhatsApp & SMS)</span>
-                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Live chat conversations, SMS broadcasts and templates</span>
+                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Live chat conversations, SMS broadcasts and templates</span>
                       </div>
                       <button
                         type="button"
@@ -1547,7 +1547,7 @@ export default function SuperAdminPage() {
                     <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                       <div className="flex flex-col gap-0.5 pr-2">
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">Email Campaigns</span>
-                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Mass broadcast email marketing and custom templates</span>
+                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Mass broadcast email marketing and custom templates</span>
                       </div>
                       <button
                         type="button"
@@ -1568,7 +1568,7 @@ export default function SuperAdminPage() {
                     <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
                       <div className="flex flex-col gap-0.5 pr-2">
                         <span className="text-xs font-bold text-[#111b21] dark:text-white">Phone Calls & IVR</span>
-                        <span className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Dynamic call flows, automated menus and logs</span>
+                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Dynamic call flows, automated menus and logs</span>
                       </div>
                       <button
                         type="button"
@@ -1600,7 +1600,7 @@ export default function SuperAdminPage() {
                   {whatsappProvider === 'twilio' ? (
                     <div className="space-y-3">
                       <div>
-                        <span className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
+                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
                           Incoming Message Webhook (Twilio)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
@@ -1609,7 +1609,7 @@ export default function SuperAdminPage() {
                       </div>
 
                       <div>
-                        <span className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
+                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
                           Status Callback Webhook (Twilio)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
@@ -1622,7 +1622,7 @@ export default function SuperAdminPage() {
                   ) : (
                     <div className="space-y-3">
                       <div>
-                        <span className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
+                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
                           Callback URL (Facebook Webhook)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
@@ -1631,7 +1631,7 @@ export default function SuperAdminPage() {
                       </div>
 
                       <div>
-                        <span className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
+                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
                           Verify Token (Facebook Webhook Verification)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
@@ -1650,7 +1650,7 @@ export default function SuperAdminPage() {
                 <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 select-none">
                   <div className="flex items-center gap-2">
                     <Key size={16} className="text-[#00a884]" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-neutral-850 dark:text-white">Credentials & Integrations</h3>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">Credentials & Integrations</h3>
                   </div>
                   <button
                     onClick={handleSaveCredentials}
@@ -1675,7 +1675,7 @@ export default function SuperAdminPage() {
                       Provider Selection
                     </label>
                     <div className="flex gap-4 select-none">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-855 dark:text-white cursor-pointer">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white cursor-pointer">
                         <input
                           type="radio"
                           name="whatsappProvider"
@@ -1686,7 +1686,7 @@ export default function SuperAdminPage() {
                         />
                         Twilio Gateway
                       </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-855 dark:text-white cursor-pointer">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white cursor-pointer">
                         <input
                           type="radio"
                           name="whatsappProvider"
@@ -2077,7 +2077,7 @@ export default function SuperAdminPage() {
               <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <FileText size={20} className="text-[#00a884]" />
-                  <h2 className="text-base font-bold text-neutral-850 dark:text-white">Add Manual FAQ / Policy</h2>
+                  <h2 className="text-base font-bold text-neutral-900 dark:text-white">Add Manual FAQ / Policy</h2>
                 </div>
 
                 <div className="space-y-4">
@@ -2124,7 +2124,7 @@ export default function SuperAdminPage() {
               <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-bold text-neutral-850 dark:text-white">Indexed Knowledge Base</h3>
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-white">Indexed Knowledge Base</h3>
                     <span className="text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-neutral-200 dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
                       {articles.length} items
                     </span>
@@ -2162,7 +2162,7 @@ export default function SuperAdminPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-neutral-500 dark:text-[#8696a0]">
+                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-[#8696a0]">
                           <th className="px-6 py-3">Question</th>
                           <th className="px-6 py-3">Answer Preview</th>
                           <th className="px-6 py-3">Indexed Date</th>
@@ -2172,7 +2172,7 @@ export default function SuperAdminPage() {
                       <tbody>
                         {paginatedArticles.map((art) => (
                           <tr key={art.id} className="border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors">
-                            <td className="px-6 py-3.5 font-bold text-neutral-850 dark:text-white max-w-xs">
+                            <td className="px-6 py-3.5 font-bold text-neutral-900 dark:text-white max-w-xs">
                               <p className="truncate">{art.title}</p>
                             </td>
                             <td className="px-6 py-3.5 text-neutral-500 dark:text-[#8696a0] font-medium text-[10px] max-w-sm">
@@ -2197,7 +2197,7 @@ export default function SuperAdminPage() {
 
                     {/* Pagination Controls */}
                     {totalPages > 1 && (
-                      <div className="px-6 py-4 border-t border-neutral-150 dark:border-neutral-800 bg-[#f0f2f5] dark:bg-[#1f2c34]/20 flex items-center justify-between select-none text-[11px] text-neutral-500 dark:text-[#8696a0]">
+                      <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 bg-[#f0f2f5] dark:bg-[#1f2c34]/20 flex items-center justify-between select-none text-[11px] text-neutral-500 dark:text-[#8696a0]">
                         <div className="font-semibold">
                           Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} items
                         </div>
@@ -2309,7 +2309,7 @@ export default function SuperAdminPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                           user.role === 'superadmin' 
                             ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' 
                             : user.role === 'OrgAdmin'
@@ -2357,7 +2357,7 @@ export default function SuperAdminPage() {
                 <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
                   Create Organization
                 </h3>
-                <span className="text-[9px] text-neutral-400 dark:text-[#8696a0] font-bold mt-1 block">
+                <span className="text-[10px] text-neutral-400 dark:text-[#8696a0] font-bold mt-1 block">
                   Fill in the basic and contact information below.
                 </span>
               </div>
@@ -2373,7 +2373,7 @@ export default function SuperAdminPage() {
               {/* Name & Slug */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                     Organization Name *
                   </label>
                   <input
@@ -2387,7 +2387,7 @@ export default function SuperAdminPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                     Slug Identifier *
                   </label>
                   <input
@@ -2404,7 +2404,7 @@ export default function SuperAdminPage() {
               {/* Contact Name & Phone */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                     Contact Person
                   </label>
                   <input
@@ -2417,7 +2417,7 @@ export default function SuperAdminPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                     Contact Phone
                   </label>
                   <input
@@ -2432,7 +2432,7 @@ export default function SuperAdminPage() {
 
               {/* Contact Email */}
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Contact Email Address
                 </label>
                 <input
@@ -2446,7 +2446,7 @@ export default function SuperAdminPage() {
 
               {/* Address */}
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Address
                 </label>
                 <input
@@ -2492,7 +2492,7 @@ export default function SuperAdminPage() {
 
             <form onSubmit={handleUpdateOrgDetails} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Organization Name
                 </label>
                 <input
@@ -2505,7 +2505,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Slug
                 </label>
                 <input
@@ -2549,7 +2549,7 @@ export default function SuperAdminPage() {
             <form onSubmit={handleCreateUser} className="space-y-3">
               
               <div className="space-y-1">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Organization Assignment
                 </label>
                 <select
@@ -2565,7 +2565,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Full Name
                 </label>
                 <input
@@ -2579,7 +2579,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Email Address
                 </label>
                 <input
@@ -2593,7 +2593,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Temporary Password
                 </label>
                 <div className="relative">
@@ -2616,7 +2616,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   System Role
                 </label>
                 <select
@@ -2662,7 +2662,7 @@ export default function SuperAdminPage() {
 
             <form onSubmit={handleUpdateUser} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Organization Assignment
                 </label>
                 <select
@@ -2678,7 +2678,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Full Name
                 </label>
                 <input
@@ -2691,7 +2691,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   Email Address
                 </label>
                 <input
@@ -2704,7 +2704,7 @@ export default function SuperAdminPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[9px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
+                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
                   System Role
                 </label>
                 <select

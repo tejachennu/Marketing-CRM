@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-function getSupabaseAdminClient() {
+export function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -17,7 +17,7 @@ function getSupabaseAdminClient() {
   })
 }
 
-function getSupabaseAnonClient() {
+export function getSupabaseAnonClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -28,64 +28,75 @@ function getSupabaseAnonClient() {
   return createClient(supabaseUrl, supabaseAnonKey)
 }
 
+// Developer accounts that are promoted to superadmin on their first authenticated request.
+// Set SUPERADMIN_EMAILS (comma-separated, may be empty) to override without a code change.
+const DEFAULT_SUPERADMIN_EMAILS = ['tejachennu223@gmail.com', 'tejachennu@blsindia-canada.ca']
+
+export function getSuperAdminEmails(): string[] {
+  const configured = process.env.SUPERADMIN_EMAILS
+  const list = configured !== undefined ? configured.split(',') : DEFAULT_SUPERADMIN_EMAILS
+  return list.map((email) => email.trim().toLowerCase()).filter(Boolean)
+}
+
+export function isSuperAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false
+  return getSuperAdminEmails().includes(email.trim().toLowerCase())
+}
+
+/**
+ * Resolve the Supabase auth user behind a request from its Bearer token,
+ * falling back to the legacy `supabase-auth-token` cookie.
+ */
+async function resolveAuthIdentity(request: NextRequest): Promise<{ id: string; email: string | null } | null> {
+  const candidates: string[] = []
+
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    candidates.push(authHeader.substring(7))
+  }
+
+  const cookieHeader = request.headers.get('cookie') || ''
+  const tokenMatch = cookieHeader.match(/supabase-auth-token=([^;]+)/)
+  if (tokenMatch) {
+    candidates.push(tokenMatch[1])
+  }
+
+  for (const token of candidates) {
+    try {
+      const anonClient = getSupabaseAnonClient()
+      const { data: { user } } = await anonClient.auth.getUser(token)
+      if (user) {
+        return { id: user.id, email: user.email || null }
+      }
+    } catch (tokenErr) {
+      console.warn('[api-auth] Token validation failed:', tokenErr)
+    }
+  }
+
+  return null
+}
+
 export async function getAuthenticatedUser(request: NextRequest) {
   try {
-    let authUserId: string | null = null
-    let authEmail: string | null = null
-
-    // 1. Try Authorization header (Bearer token)
-    const authHeader = request.headers.get('Authorization')
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      try {
-        const anonClient = getSupabaseAnonClient()
-        const { data: { user } } = await anonClient.auth.getUser(token)
-        if (user) {
-          authUserId = user.id
-          authEmail = user.email || null
-        }
-      } catch (tokenErr) {
-        console.warn('[api-auth] Token validation failed:', tokenErr)
-      }
-    }
-
-    // 2. Try cookie
-    if (!authUserId) {
-      const cookieHeader = request.headers.get('cookie') || ''
-      const tokenMatch = cookieHeader.match(/supabase-auth-token=([^;]+)/)
-      if (tokenMatch) {
-        try {
-          const anonClient = getSupabaseAnonClient()
-          const { data: { user } } = await anonClient.auth.getUser(tokenMatch[1])
-          if (user) {
-            authUserId = user.id
-            authEmail = user.email || null
-          }
-        } catch (cookieErr) {
-          console.warn('[api-auth] Cookie validation failed:', cookieErr)
-        }
-      }
-    }
-
-    if (!authUserId) {
+    const identity = await resolveAuthIdentity(request)
+    if (!identity) {
       return null
     }
 
-    // 3. Query user profile
     const adminClient = getSupabaseAdminClient()
     const { data: profile } = await adminClient
       .from('users')
       .select('*')
-      .eq('id', authUserId)
+      .eq('id', identity.id)
       .maybeSingle()
 
-    // Auto-upgrade developer email if role check fails (matching superadmin-auth.ts behaviour)
-    if (profile && profile.role !== 'superadmin' && (authEmail === 'tejachennu223@gmail.com' || authEmail === 'tejachennu@blsindia-canada.ca')) {
+    if (profile && profile.role !== 'superadmin' && isSuperAdminEmail(identity.email)) {
       await adminClient
         .from('users')
         .update({ role: 'superadmin' })
-        .eq('id', authUserId)
+        .eq('id', identity.id)
       profile.role = 'superadmin'
+      console.log(`[api-auth] Auto-upgraded developer email ${identity.email} to superadmin`)
     }
 
     return profile

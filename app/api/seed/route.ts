@@ -2,6 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
+  // This creates a confirmed account with a known password, with no login required.
+  // It is a local development aid; in production it must be switched on explicitly.
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEMO_SEED !== 'true') {
+    return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
+  }
+
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY

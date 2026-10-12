@@ -13,18 +13,28 @@ interface DialogState {
   message: string
   confirmLabel?: string
   cancelLabel?: string
+  destructive?: boolean
   resolve: (value: boolean) => void
 }
 
+type ConfirmOptions = {
+  title: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  /** Style the confirm button as a destructive action (delete, remove, disconnect) */
+  destructive?: boolean
+}
+
 const DialogContext = createContext<{
-  confirm: (options: { title: string; message: string; confirmLabel?: string; cancelLabel?: string }) => Promise<boolean>
+  confirm: (options: ConfirmOptions) => Promise<boolean>
   alert: (options: { title: string; message: string; confirmLabel?: string }) => Promise<void>
 } | null>(null)
 
 export function DialogProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DialogState | null>(null)
 
-  const confirm = (options: { title: string; message: string; confirmLabel?: string; cancelLabel?: string }) => {
+  const confirm = (options: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
       setState({
         isOpen: true,
@@ -33,6 +43,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
         message: options.message,
         confirmLabel: options.confirmLabel || 'OK',
         cancelLabel: options.cancelLabel || 'Cancel',
+        destructive: options.destructive,
         resolve,
       })
     })
@@ -67,28 +78,31 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
         <Dialog open={state.isOpen} onOpenChange={(open) => {
           if (!open) handleClose(false)
         }}>
-          <DialogContent className="sm:max-w-[420px] rounded-2xl border-slate-100 dark:border-slate-800 bg-white dark:bg-[#1f2c34] p-6 shadow-2xl text-slate-800 dark:text-slate-100 select-none">
+          <DialogContent className="sm:max-w-[420px] rounded-2xl border-slate-100 dark:border-slate-800 bg-white dark:bg-[#1f2c34] p-6 shadow-2xl text-slate-800 dark:text-slate-100">
             <DialogHeader className="space-y-2">
-              <DialogTitle className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight">
+              <DialogTitle className="text-base font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
                 {state.title}
               </DialogTitle>
-              <DialogDescription className="text-xs text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">
+              {/* pre-line keeps multi-line messages (e.g. a list of validation errors) readable */}
+              <DialogDescription className="text-[13px] text-[#54656f] dark:text-[#aebac1] leading-relaxed whitespace-pre-line break-words">
                 {state.message}
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2.5 sm:space-x-0">
+            <DialogFooter className="mt-4 flex flex-row items-center justify-end gap-2.5">
               {state.type === 'confirm' && (
                 <Button
                   variant="outline"
                   onClick={() => handleClose(false)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-transparent dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  className="h-9 px-4 border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-transparent dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
                   {state.cancelLabel}
                 </Button>
               )}
               <Button
                 onClick={() => handleClose(true)}
-                className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                className={`h-9 px-4 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-[0.98] cursor-pointer ${
+                  state.destructive ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#008069] hover:bg-[#006d59]'
+                }`}
               >
                 {state.confirmLabel}
               </Button>

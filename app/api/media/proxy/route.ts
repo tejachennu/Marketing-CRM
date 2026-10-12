@@ -10,6 +10,20 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
+// Twilio credentials are attached to the outgoing request, so the host must match exactly.
+// A prefix check is not enough: "https://api.twilio.com.evil.example" also starts with it.
+function parseTwilioMediaUrl(rawUrl: string): URL | null {
+  try {
+    const url = new URL(rawUrl)
+    if (url.protocol !== 'https:' || url.hostname !== 'api.twilio.com') return null
+    if (url.port || url.username || url.password) return null
+    url.hash = ''
+    return url
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -20,7 +34,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Only proxy Twilio media
-    if (!mediaUrl.startsWith('https://api.twilio.com')) {
+    const twilioUrl = parseTwilioMediaUrl(mediaUrl)
+    if (!twilioUrl) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
     }
 
@@ -28,7 +43,7 @@ export async function GET(request: NextRequest) {
     let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || ''
 
     // Try to extract Account SID from the mediaUrl
-    const match = mediaUrl.match(/\/Accounts\/(AC[a-fA-F0-9]{32})\//)
+    const match = twilioUrl.pathname.match(/\/Accounts\/(AC[a-fA-F0-9]{32})\//)
     const extractedSid = match ? match[1] : null
 
     if (extractedSid && extractedSid !== twilioAccountSid) {
@@ -50,12 +65,8 @@ export async function GET(request: NextRequest) {
 
     const authHeader = 'Basic ' + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString('base64')
 
-
-    // Clean hash from URL if present
-    const cleanUrl = mediaUrl.split('#')[0]
-
     // Fetch from Twilio with redirects manual
-    let res = await fetch(cleanUrl, {
+    let res = await fetch(twilioUrl.toString(), {
       headers: {
         'Authorization': authHeader
       },
@@ -80,11 +91,17 @@ export async function GET(request: NextRequest) {
     const arrayBuffer = await res.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
+    // Customer-supplied files are served from our origin: markup that could run scripts
+    // (HTML, SVG, XML) is forced to download instead of rendering as a page.
+    const isActiveContent = /html|svg|xml/i.test(contentType)
+
     // Return the media with correct headers (cache for 1 day)
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'private, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+        ...(isActiveContent ? { 'Content-Disposition': 'attachment' } : {}),
       }
     })
   } catch (err) {

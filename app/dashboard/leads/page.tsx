@@ -6,6 +6,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
+import { sanitizeSearchTerm } from '@/lib/utils'
+import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { Lead, PipelineStage, Contact, User as SupabaseUser } from '@/lib/types'
 import {
   Plus, DollarSign, X, Trash2, MessageCircle, Save, Search,
@@ -67,6 +69,8 @@ const STATUS_CONFIG = {
 }
 
 export default function LeadsPage() {
+  const alert = useAlert()
+  const confirm = useConfirm()
   // ─── Core State ───
   const [leads, setLeads] = useState<LeadWithContact[]>([])
   const [stages, setStages] = useState<PipelineStage[]>([])
@@ -328,10 +332,11 @@ export default function LeadsPage() {
         return
       }
       setSearchingContacts(true)
+      const term = sanitizeSearchTerm(query)
       const { data: contactsData } = await supabase
         .from('contacts')
         .select('*')
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,phone_number.ilike.%${query}%,company.ilike.%${query}%`)
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,phone_number.ilike.%${term}%,company.ilike.%${term}%`)
         .limit(20)
       setContacts((contactsData || []) as Contact[])
     } catch (error) {
@@ -374,11 +379,12 @@ export default function LeadsPage() {
   ) {
     try {
       let contactIds: string[] = []
-      if (queryText.trim()) {
+      const contactTerm = sanitizeSearchTerm(queryText)
+      if (contactTerm) {
         const { data: matchedContacts } = await supabase
           .from('contacts')
           .select('id')
-          .or(`first_name.ilike.%${queryText}%,last_name.ilike.%${queryText}%,company.ilike.%${queryText}%`)
+          .or(`first_name.ilike.%${contactTerm}%,last_name.ilike.%${contactTerm}%,company.ilike.%${contactTerm}%`)
         contactIds = matchedContacts?.map(c => c.id) || []
       }
 
@@ -681,7 +687,7 @@ export default function LeadsPage() {
       await loadData()
     } catch (error) {
       console.error('Error seeding demo data:', error)
-      alert('Failed to seed demo data. Please try again.')
+      alert({ title: 'Demo data not added', message: 'Failed to seed demo data. Please try again.' })
     } finally {
       setActionLoading(false)
     }
@@ -796,7 +802,8 @@ export default function LeadsPage() {
   }
 
   async function handleDeleteLead() {
-    if (!selectedLeadId || !confirm('Delete this lead permanently?')) return
+    if (!selectedLeadId) return
+    if (!(await confirm({ title: 'Delete this lead?', message: 'This permanently removes the lead and cannot be undone.', confirmLabel: 'Delete', destructive: true }))) return
     setIsSaving(true)
     try {
       await supabase.from('leads').delete().eq('id', selectedLeadId)
@@ -1311,7 +1318,7 @@ export default function LeadsPage() {
                             }`}
                           >
                             {s === 'all' ? 'All' : s === 'on_hold' ? 'On Hold' : s.charAt(0).toUpperCase() + s.slice(1)}
-                            <span className="ml-1 opacity-50 text-[9px]">{statusCounts[s]}</span>
+                            <span className="ml-1 opacity-50 text-[10px]">{statusCounts[s]}</span>
                           </button>
                         ))}
                       </div>
@@ -1346,7 +1353,7 @@ export default function LeadsPage() {
                       <label className="text-[10px] font-black uppercase text-[#8696a0] tracking-wider">Date Range</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <span className="text-[9px] text-[#667781] font-bold">From</span>
+                          <span className="text-[10px] text-[#667781] font-bold">From</span>
                           <div className="flex items-center gap-1 bg-[#f0f2f5] dark:bg-slate-950 rounded-lg p-1.5 border border-[#e9edef] dark:border-slate-800">
                             <Calendar size={12} className="text-[#8696a0]" />
                             <input
@@ -1358,7 +1365,7 @@ export default function LeadsPage() {
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <span className="text-[9px] text-[#667781] font-bold">To</span>
+                          <span className="text-[10px] text-[#667781] font-bold">To</span>
                           <div className="flex items-center gap-1 bg-[#f0f2f5] dark:bg-slate-950 rounded-lg p-1.5 border border-[#e9edef] dark:border-slate-800">
                             <Calendar size={12} className="text-[#8696a0]" />
                             <input
@@ -1372,10 +1379,10 @@ export default function LeadsPage() {
                       </div>
                       
                       <div className="flex gap-2 pt-1">
-                        <button onClick={() => setDateRangePreset('this_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[9px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
+                        <button onClick={() => setDateRangePreset('this_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[10px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
                           This Month
                         </button>
-                        <button onClick={() => setDateRangePreset('last_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[9px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
+                        <button onClick={() => setDateRangePreset('last_month')} className="flex-1 py-1 bg-[#f0f2f5] dark:bg-slate-800 hover:bg-[#e9edef] dark:hover:bg-slate-700 text-[#111b21] dark:text-slate-200 text-[10px] font-bold rounded-md transition-colors border border-[#e9edef] dark:border-slate-700 cursor-pointer">
                           Last Month
                         </button>
                       </div>
@@ -1479,19 +1486,19 @@ export default function LeadsPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0"><Calendar size={15} className="text-amber-500" /></div>
-                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Last Month Won</p><p className="text-sm font-black text-[#111b21] dark:text-white">{wonLastMonth.length} <span className="text-[10px] font-semibold text-[#8696a0]">deals</span></p></div>
+                <div><p className="text-[10px] font-black uppercase text-[#8696a0]">Last Month Won</p><p className="text-sm font-black text-[#111b21] dark:text-white">{wonLastMonth.length} <span className="text-[10px] font-semibold text-[#8696a0]">deals</span></p></div>
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center flex-shrink-0"><Target size={15} className="text-pink-500" /></div>
-                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Conversion Rate</p><p className="text-sm font-black text-[#111b21] dark:text-white">{conversionRate}%</p></div>
+                <div><p className="text-[10px] font-black uppercase text-[#8696a0]">Conversion Rate</p><p className="text-sm font-black text-[#111b21] dark:text-white">{conversionRate}%</p></div>
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><TrendingUp size={15} className="text-blue-500" /></div>
-                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Revenue YTD</p><p className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(wonRevenueYTD)}</p></div>
+                <div><p className="text-[10px] font-black uppercase text-[#8696a0]">Revenue YTD</p><p className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(wonRevenueYTD)}</p></div>
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#e9edef] dark:border-slate-800 p-3 shadow-sm flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0"><Clock size={15} className="text-rose-500" /></div>
-                <div><p className="text-[9px] font-black uppercase text-[#8696a0]">Stale Leads</p><p className="text-sm font-black text-[#111b21] dark:text-white">{staleLeads.length} <span className="text-[10px] font-semibold text-[#8696a0]">&gt;7d</span></p></div>
+                <div><p className="text-[10px] font-black uppercase text-[#8696a0]">Stale Leads</p><p className="text-sm font-black text-[#111b21] dark:text-white">{staleLeads.length} <span className="text-[10px] font-semibold text-[#8696a0]">&gt;7d</span></p></div>
               </div>
             </div>
 
@@ -1768,21 +1775,21 @@ export default function LeadsPage() {
                 {/* Trend metrics */}
                 <div className="space-y-3 border-t md:border-t-0 md:border-l border-[#e9edef] dark:border-slate-800 pt-3 md:pt-0 md:pl-4">
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Daily Revenue Avg</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Daily Revenue Avg</p>
                     <p className="text-sm font-black text-[#111b21] dark:text-white">{formatCurrency(Math.round(avgDailyRevenue))}</p>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Daily Deals Avg</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Daily Deals Avg</p>
                     <p className="text-sm font-black text-[#111b21] dark:text-white">{avgDailySales.toFixed(1)}</p>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">vs Last Month</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">vs Last Month</p>
                     <p className={`text-sm font-black ${revenueGrowthVsLast >= 0 ? 'text-[#00a884]' : 'text-rose-500'}`}>
                       {revenueGrowthVsLast >= 0 ? '+' : ''}{revenueGrowthVsLast}%
                     </p>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-wider text-[#8696a0]">Pipeline at Risk</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#8696a0]">Pipeline at Risk</p>
                     <p className="text-sm font-black text-amber-600">{staleLeads.length} leads</p>
                   </div>
                 </div>
@@ -1899,19 +1906,19 @@ export default function LeadsPage() {
             ) : (
               <div className="bg-white dark:bg-[#111b21] rounded-xl border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden">
                 {/* Table Header (Desktop only) */}
-                <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_110px_90px_100px] gap-0 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f8f9fa] dark:bg-[#182229] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
-                  <button onClick={() => handleSort('title')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors text-left border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
+                <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_110px_90px_100px] gap-0 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f8f9fa] dark:bg-[#182229] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                  <button onClick={() => handleSort('title')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors text-left border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[10px]">
                     Contact / Deal {sortField === 'title' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Stage</span>
-                  <button onClick={() => handleSort('value')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
+                  <button onClick={() => handleSort('value')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[10px]">
                     Value {sortField === 'value' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Status</span>
                   <span>Priority</span>
                   <span>Source</span>
                   <span>Assigned To</span>
-                  <button onClick={() => handleSort('last_activity_at')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[9px]">
+                  <button onClick={() => handleSort('last_activity_at')} className="flex items-center gap-1 cursor-pointer hover:text-[#111b21] dark:hover:text-white transition-colors border-0 bg-transparent p-0 font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] text-[10px]">
                     Activity {sortField === 'last_activity_at' && <ArrowUpDown size={9} />}
                   </button>
                   <span>Actions</span>
@@ -1958,7 +1965,7 @@ export default function LeadsPage() {
                         </div>
 
                         {/* Badges Row */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[9px] mt-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] mt-0.5">
                           <span className="px-2 py-0.5 rounded-full font-bold text-white truncate"
                             style={{ backgroundColor: lead.stage?.color || '#8696a0' }}>
                             {lead.stage?.name || 'Unknown'}
@@ -1970,10 +1977,10 @@ export default function LeadsPage() {
                             <PriorityIcon size={9} />
                             {priorityCfg.label}
                           </span>
-                          <span className="text-[9px] text-[#667781] dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
+                          <span className="text-[10px] text-[#667781] dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-700/50">
                             {(lead.source || 'other').replace('_', ' ')}
                           </span>
-                          <span className="text-[9px] font-bold text-[#54656f] dark:text-slate-300 bg-[#f0f2f5] dark:bg-slate-800 px-1.5 py-0.5 rounded border border-[#e9edef] dark:border-slate-700/50 flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-[#54656f] dark:text-slate-300 bg-[#f0f2f5] dark:bg-slate-800 px-1.5 py-0.5 rounded border border-[#e9edef] dark:border-slate-700/50 flex items-center gap-1">
                             <User size={9} />
                             {lead.assigned_to ? users.find((u: any) => u.id === lead.assigned_to)?.full_name || 'Unknown' : 'Unassigned'}
                           </span>
@@ -1981,7 +1988,7 @@ export default function LeadsPage() {
 
                         {/* Footer Row: Activity + Actions */}
                         <div className="flex items-center justify-between border-t border-[#f5f6f6] dark:border-[#202d36] pt-2 mt-1">
-                          <div className="text-[9px] text-[#8696a0] dark:text-slate-500 font-medium">
+                          <div className="text-[10px] text-[#8696a0] dark:text-slate-500 font-medium">
                             Activity: {daysSince(lead.last_activity_at || lead.created_at)}
                           </div>
                           
@@ -1996,7 +2003,7 @@ export default function LeadsPage() {
                                 </button>
                                 <button onClick={() => handleStatusChange(lead.id, 'lost')}
                                   title="Mark Lost"
-                                  className="p-1 rounded-md bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-450 hover:bg-red-100 border border-red-100 dark:border-red-900/50 cursor-pointer transition-all">
+                                  className="p-1 rounded-md bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 border border-red-100 dark:border-red-900/50 cursor-pointer transition-all">
                                   <Ban size={12} />
                                 </button>
                               </>
@@ -2004,7 +2011,7 @@ export default function LeadsPage() {
                             {(lead.status === 'won' || lead.status === 'lost' || lead.status === 'on_hold') && (
                               <button onClick={() => handleStatusChange(lead.id, 'active')}
                                 title="Reactivate"
-                                className="p-1 px-2 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[9px] font-bold">
+                                className="p-1 px-2 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[10px] font-bold">
                                 Reactivate
                               </button>
                             )}
@@ -2016,7 +2023,7 @@ export default function LeadsPage() {
                       <div className="hidden md:grid md:grid-cols-[2fr_1.2fr_100px_120px_80px_80px_110px_90px_100px] gap-0 items-center">
                         {/* Contact / Deal */}
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="h-8 w-8 rounded-full bg-[#dfe5e7] dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-[#54656f] dark:text-slate-350 flex-shrink-0 border border-[#e9edef] dark:border-slate-800">
+                          <div className="h-8 w-8 rounded-full bg-[#dfe5e7] dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-[#54656f] dark:text-slate-300 flex-shrink-0 border border-[#e9edef] dark:border-slate-800">
                             {(lead.contact?.first_name || 'U').substring(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
@@ -2027,7 +2034,7 @@ export default function LeadsPage() {
 
                         {/* Stage */}
                         <div className="flex items-center">
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white truncate"
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white truncate"
                             style={{ backgroundColor: lead.stage?.color || '#8696a0' }}>
                             {lead.stage?.name || 'Unknown'}
                           </span>
@@ -2040,14 +2047,14 @@ export default function LeadsPage() {
 
                         {/* Status */}
                         <div className="flex items-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
                             {statusCfg.label}
                           </span>
                         </div>
 
                         {/* Priority */}
                         <div className="flex items-center">
-                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${priorityCfg.bg} ${priorityCfg.color} border ${priorityCfg.border}`}>
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold ${priorityCfg.bg} ${priorityCfg.color} border ${priorityCfg.border}`}>
                             <PriorityIcon size={9} />
                             {priorityCfg.label}
                           </span>
@@ -2087,7 +2094,7 @@ export default function LeadsPage() {
                           {(lead.status === 'won' || lead.status === 'lost' || lead.status === 'on_hold') && (
                             <button onClick={() => handleStatusChange(lead.id, 'active')}
                               title="Reactivate"
-                              className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[9px] font-bold">
+                              className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 border border-emerald-100 dark:border-emerald-900/50 cursor-pointer transition-all text-[10px] font-bold">
                               Reactivate
                             </button>
                           )}
@@ -2257,7 +2264,7 @@ export default function LeadsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[9px] font-black uppercase tracking-wider text-[#667781] select-none">
+                    <tr className="border-b border-[#e9edef] bg-[#f8f9fa] text-[10px] font-black uppercase tracking-wider text-[#667781] select-none">
                       <th className="px-4 py-2.5 w-12 text-center">Rank</th>
                       <th className="px-4 py-2.5">Employee</th>
                       <th className="px-4 py-2.5">Role</th>
@@ -2291,7 +2298,7 @@ export default function LeadsPage() {
                               </div>
                               <div className="flex flex-col min-w-0">
                                 <span className="truncate">{emp.user.full_name || 'No name'}</span>
-                                <span className="text-[9px] text-[#8696a0] font-normal font-sans truncate">{emp.user.email}</span>
+                                <span className="text-[10px] text-[#8696a0] font-normal font-sans truncate">{emp.user.email}</span>
                               </div>
                             </div>
                           </td>
@@ -2790,15 +2797,15 @@ export default function LeadsPage() {
               {/* Won/Lost Reason (if applicable) */}
               {(selectedLeadData.status === 'won' || selectedLeadData.status === 'lost') && selectedLeadData.won_lost_reason && (
                 <div className={`p-3 rounded-lg border ${selectedLeadData.status === 'won' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                  <span className="text-[9px] font-black uppercase tracking-wider text-[#667781]">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#667781]">
                     {selectedLeadData.status === 'won' ? 'Won Note' : 'Lost Reason'}
                   </span>
                   <p className="text-xs font-medium text-[#111b21] mt-1">{selectedLeadData.won_lost_reason}</p>
                   {selectedLeadData.won_at && (
-                    <p className="text-[9px] text-[#8696a0] mt-1">Won on {new Date(selectedLeadData.won_at).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-[#8696a0] mt-1">Won on {new Date(selectedLeadData.won_at).toLocaleDateString()}</p>
                   )}
                   {selectedLeadData.lost_at && (
-                    <p className="text-[9px] text-[#8696a0] mt-1">Lost on {new Date(selectedLeadData.lost_at).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-[#8696a0] mt-1">Lost on {new Date(selectedLeadData.lost_at).toLocaleDateString()}</p>
                   )}
                 </div>
               )}
@@ -2806,7 +2813,7 @@ export default function LeadsPage() {
               {/* Contact Card */}
               {selectedLeadData.contact && (
                 <div className="p-4 bg-[#f8f9fa] border border-[#e9edef] rounded-xl space-y-3">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-[#667781]">Linked Contact</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#667781]">Linked Contact</span>
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-[#dfe5e7] border border-[#e9edef] flex items-center justify-center font-bold text-xs text-[#54656f]">
                       {(selectedLeadData.contact.first_name || 'U').substring(0, 2).toUpperCase()}
@@ -2881,7 +2888,7 @@ export default function LeadsPage() {
                       <div className="flex-1 min-w-0 bg-white p-2.5 rounded-lg border border-[#e9edef] shadow-sm">
                         <div className="flex justify-between items-start mb-0.5">
                           <span className="text-[10px] font-bold text-[#111b21]">{act.user?.full_name || 'System'}</span>
-                          <span className="text-[8px] text-[#8696a0] whitespace-nowrap ml-2">
+                          <span className="text-[10px] text-[#8696a0] whitespace-nowrap ml-2">
                             {new Date(act.created_at).toLocaleString()}
                           </span>
                         </div>
@@ -3003,7 +3010,7 @@ export default function LeadsPage() {
                             <div className="grid grid-cols-2 gap-4 text-left">
                               <div className="p-3 rounded-xl bg-gradient-to-b from-slate-50 to-white dark:from-slate-950/60 dark:to-slate-900 border border-[#e9edef] dark:border-slate-800/60 shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-1 h-full bg-[#00a884]/20" />
-                                <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                                <h5 className="text-[10px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
                                   <Flame size={10} className="text-amber-500" /> Lead Rating
                                 </h5>
                                 <div className="flex flex-col gap-1.5 items-start">
@@ -3019,7 +3026,7 @@ export default function LeadsPage() {
                               </div>
                               <div className="p-3 rounded-xl bg-gradient-to-b from-slate-50 to-white dark:from-slate-950/60 dark:to-slate-900 border border-[#e9edef] dark:border-slate-800/60 shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/20" />
-                                <h5 className="text-[9px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                                <h5 className="text-[10px] font-bold text-[#667781] dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center gap-1">
                                   <Target size={10} className="text-blue-500" /> Closure Prob.
                                 </h5>
                                 <div className="flex flex-col gap-1.5 items-start">
@@ -3093,7 +3100,7 @@ export default function LeadsPage() {
               )}
 
               {/* Timestamps */}
-              <div className="text-[9px] text-[#8696a0] font-medium space-y-1 pt-2 border-t border-[#e9edef]">
+              <div className="text-[10px] text-[#8696a0] font-medium space-y-1 pt-2 border-t border-[#e9edef]">
                 <p>Created: {new Date(selectedLeadData.created_at).toLocaleString()}</p>
                 <p>Last Activity: {selectedLeadData.last_activity_at ? new Date(selectedLeadData.last_activity_at).toLocaleString() : 'N/A'}</p>
               </div>
@@ -3162,11 +3169,11 @@ function StatCard({ label, value, icon, color, sub }: {
     <div className="bg-[#f8f9fa] rounded-lg border border-[#e9edef] px-2.5 py-1.5 flex flex-col justify-center min-w-0">
       <div className="flex items-center gap-1">
         <span className={`${color} opacity-80 shrink-0`}>{icon}</span>
-        <span className="text-[8px] font-black uppercase tracking-wider text-[#667781] truncate">{label}</span>
+        <span className="text-[10px] font-black uppercase tracking-wider text-[#667781] truncate">{label}</span>
       </div>
       <div className="flex items-baseline justify-between mt-0.5 gap-1.5">
         <span className={`text-xs md:text-sm font-black font-mono ${color} leading-none`}>{value}</span>
-        {sub && <span className="text-[8px] text-[#8696a0] font-bold truncate">{sub}</span>}
+        {sub && <span className="text-[10px] text-[#8696a0] font-bold truncate">{sub}</span>}
       </div>
     </div>
   )
@@ -3175,7 +3182,7 @@ function StatCard({ label, value, icon, color, sub }: {
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[9px] font-black uppercase tracking-wider text-[#54656f]">{label}</label>
+      <label className="text-[10px] font-black uppercase tracking-wider text-[#54656f]">{label}</label>
       {children}
     </div>
   )

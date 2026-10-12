@@ -1436,7 +1436,7 @@ export default function FlowCanvasBuilderPage() {
                           <span className="font-semibold text-[11px]">{node.data?.cta_text || 'Open Form'}</span>
                           <ExternalLink className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                         </div>
-                        <span className="text-[9px] text-indigo-600/80 dark:text-indigo-300/60 block mt-1">Zero-redirect native form</span>
+                        <span className="text-[10px] text-indigo-600/80 dark:text-indigo-300/60 block mt-1">Zero-redirect native form</span>
                       </div>
                     )}
 
@@ -1486,7 +1486,7 @@ export default function FlowCanvasBuilderPage() {
                           <span className="text-[10px] font-mono truncate flex-1">{node.data?.webhook_url || 'https://...'}</span>
                         </div>
                         {node.data?.response_variable && (
-                          <p className="text-[9px] text-blue-700/80 dark:text-blue-300/60">→ Save to: {node.data.response_variable}</p>
+                          <p className="text-[10px] text-blue-700/80 dark:text-blue-300/60">→ Save to: {node.data.response_variable}</p>
                         )}
                       </div>
                     )}
@@ -1498,7 +1498,7 @@ export default function FlowCanvasBuilderPage() {
                           <span className="text-[10px] text-pink-700/60 dark:text-pink-300/60">=</span>
                           <span className="text-[10px] truncate flex-1 font-mono">{node.data?.value_expression || '(empty)'}</span>
                         </div>
-                        <p className="text-[9px] text-pink-700/70 dark:text-pink-300/50 mt-1">Type: {node.data?.value_type || 'text'}</p>
+                        <p className="text-[10px] text-pink-700/70 dark:text-pink-300/50 mt-1">Type: {node.data?.value_type || 'text'}</p>
                       </div>
                     )}
 
@@ -2140,7 +2140,7 @@ export default function FlowCanvasBuilderPage() {
                       </div>
                     )}
                   </div>
-                  <span className="text-[9px] text-slate-500 mt-1 px-1">
+                  <span className="text-[10px] text-slate-500 mt-1 px-1">
                     {msg.sender === 'user' ? 'You' : 'Assistant Bot'}
                   </span>
                 </div>

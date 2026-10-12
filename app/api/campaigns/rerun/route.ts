@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { runCampaignWorker } from '../run/worker/route'
 
 function getSupabaseClient() {
@@ -18,6 +19,11 @@ export async function POST(request: NextRequest) {
     const { campaignId, rerunType } = await request.json()
     if (!campaignId) {
       return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
+    }
+
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()
@@ -87,10 +93,12 @@ export async function POST(request: NextRequest) {
         .eq('id', campaignId)
     }
 
-    // Trigger asynchronous campaign execution directly in background
-    runCampaignWorker(campaignId).catch(err => {
-      console.error('[Campaign Rerun API] Error running worker:', err)
-    })
+    // Trigger asynchronous campaign execution once the response has been sent
+    after(() =>
+      runCampaignWorker(campaignId).catch(err => {
+        console.error('[Campaign Rerun API] Error running worker:', err)
+      })
+    )
 
     return NextResponse.json({
       success: true,

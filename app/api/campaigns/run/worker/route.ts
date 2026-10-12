@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import nodemailer from 'nodemailer'
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
+import { verifyRecordAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -872,6 +873,11 @@ export async function POST(request: NextRequest) {
 
     if (!campaignId) {
       return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
+    }
+
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const result = await runCampaignWorker(campaignId)

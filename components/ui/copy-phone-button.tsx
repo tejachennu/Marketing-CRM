@@ -68,7 +68,7 @@ export function CopyPhoneButton({
       {copied ? (
         <span className="inline-flex items-center gap-1 text-emerald-500 font-bold text-[10px]">
           <Check size={iconSize} className="shrink-0 animate-in zoom-in-75 duration-150" />
-          {showText && <span className="text-[9px] uppercase tracking-wider">Copied</span>}
+          {showText && <span className="text-[10px] uppercase tracking-wider">Copied</span>}
         </span>
       ) : (
         <Copy

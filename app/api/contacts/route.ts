@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
+import { sanitizeSearchTerm } from '@/lib/utils'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     const limitParam = searchParams.get('limit')
     const isAll = searchParams.get('all') === 'true' || limitParam === 'all' || limitParam === '0'
     const limit = isAll ? 50000 : parseInt(limitParam || '20', 10)
-    const search = searchParams.get('search') || ''
+    const search = sanitizeSearchTerm(searchParams.get('search'))
     const tagFilter = searchParams.get('tag') || ''
     const offset = isAll ? 0 : (page - 1) * limit
 

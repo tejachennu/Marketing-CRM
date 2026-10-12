@@ -6,12 +6,14 @@ import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 import { useEffect, useState, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { useConfirm } from '@/lib/dialog-context'
 import { User, Organization } from '@/lib/types'
 import { getRoleDisplay, ASSIGNABLE_ROLES, canManageTeam, isManager } from '@/lib/rbac'
 import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X, Download, Mail, Check, Copy, Server } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function SettingsPage() {
+  const confirm = useConfirm()
   const [user, setUser] = useState<User | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
   const isMasterOrg = organization?.id === '303b7a2d-281c-403c-b794-54d1e195ca69'
@@ -157,7 +159,7 @@ export default function SettingsPage() {
         body: JSON.stringify({ email: exportEnvEmail.trim() }),
       })
       const data = await res.json()
-      setExportEnvResult(data)
+      setExportEnvResult(data.success ? data : null)
       if (data.success) {
         if (data.emailed) {
           showNotification('success', `Environment variables (.env) sent to ${data.recipient}! (${data.varCount} variables found)`, 'Export Sent')
@@ -175,8 +177,25 @@ export default function SettingsPage() {
     }
   }
 
-  function handleDownloadEnv() {
-    window.open('/api/settings/export-env?download=true', '_blank')
+  async function handleDownloadEnv() {
+    try {
+      // Fetched (not opened in a new tab) so the request carries the session token
+      const res = await fetch('/api/settings/export-env?download=true')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to download environment variables')
+      }
+      const url = URL.createObjectURL(await res.blob())
+      const link = document.createElement('a')
+      link.href = url
+      link.download = '.env.local'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      showNotification('error', err.message || 'Failed to download environment variables', 'Download Failed')
+    }
   }
 
   async function handleCopyEnv() {
@@ -196,14 +215,14 @@ export default function SettingsPage() {
         body: JSON.stringify({ email: exportEnvEmail.trim() }),
       })
       const data = await res.json()
-      setExportEnvResult(data)
+      setExportEnvResult(data.success ? data : null)
       if (data.envText) {
         await navigator.clipboard.writeText(data.envText)
         setCopiedEnv(true)
         showNotification('success', `Copied ${data.varCount} environment variables to clipboard!`, 'Copied')
         setTimeout(() => setCopiedEnv(false), 3000)
       } else {
-        showNotification('error', 'No environment variables found', 'Copy Failed')
+        showNotification('error', data.error || 'No environment variables found', 'Copy Failed')
       }
     } catch (err: any) {
       showNotification('error', 'Failed to fetch environment variables', 'Error')
@@ -287,7 +306,7 @@ export default function SettingsPage() {
 
   async function handleDeleteTeammate(teammateId: string) {
     if (!user?.organization_id) return
-    if (!confirm('Are you sure you want to remove this teammate? They will no longer be able to log in.')) return
+    if (!(await confirm({ title: 'Remove this teammate?', message: 'They will no longer be able to log in.', confirmLabel: 'Remove', destructive: true }))) return
 
     try {
       const res = await fetch(`/api/teammates?userId=${teammateId}&organizationId=${user.organization_id}`, {
@@ -480,7 +499,8 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteArticle(id: string) {
-    if (!user || !confirm('Are you sure you want to delete this article? It will be removed from the AI search index.')) return
+    if (!user) return
+    if (!(await confirm({ title: 'Delete this article?', message: 'It will be removed from the AI search index.', confirmLabel: 'Delete', destructive: true }))) return
     try {
       const res = await fetch(`/api/knowledge?id=${id}`, {
         method: 'DELETE'
@@ -852,7 +872,7 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteSynonym(index: number) {
-    if (!confirm('Are you sure you want to delete this synonym group?')) return
+    if (!(await confirm({ title: 'Delete this synonym group?', message: 'The AI will stop treating these terms as equivalent.', confirmLabel: 'Delete', destructive: true }))) return
     const oldGroup = synonymGroups[index]
     const updated = synonymGroups.filter((_, i) => i !== index)
     await saveSynonyms(updated)
@@ -1220,7 +1240,7 @@ export default function SettingsPage() {
                             <div className="flex flex-col">
                               <span className="font-bold">{member.full_name || 'Unnamed Teammate'}</span>
                               <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium">
-                                {member.email} • <span className="uppercase text-[8px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-black">{member.role}</span>
+                                {member.email} • <span className="uppercase text-[10px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-black">{member.role}</span>
                               </span>
                             </div>
                           </label>
@@ -1261,15 +1281,15 @@ export default function SettingsPage() {
 
                   {/* Visual Mockup - Chat Inbox */}
                   <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                    <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                       <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 Active Chat Session</span>
                       <span className="bg-emerald-500/20 text-[#00a884] px-1.5 py-0.5 rounded font-bold">Live Status</span>
                     </div>
                     <div className="space-y-1.5 max-h-16 overflow-hidden flex flex-col">
-                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[9px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
+                      <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[10px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
                         I want to set up automatic responses
                       </div>
-                      <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[9px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
+                      <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[10px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
                         Input your Account details and your gateway starts routing chats instantly!
                         <span className="text-emerald-600 dark:text-emerald-300 text-[6px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
                       </div>
@@ -1516,7 +1536,7 @@ export default function SettingsPage() {
 
                       {/* SMS Visual Status Mockup */}
                       <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                        <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                        <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                           <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 SMS Gateway Connection</span>
                           <span className={`${organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
                               ? 'bg-emerald-500/20 text-[#00a884]'
@@ -1621,17 +1641,17 @@ export default function SettingsPage() {
 
                     {/* Visual Mockup - Email Dispatch */}
                     <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                         <span className="text-[#111b21] dark:text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
                         <span className="text-[#00a884] font-bold">99.8% Sent</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-700 dark:text-slate-300">
+                      <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-700 dark:text-slate-300">
                         <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
-                          <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Subject</span>
+                          <span className="text-slate-400 dark:text-slate-500 block text-[10px] font-bold">Subject</span>
                           Summer Sales Campaign
                         </div>
                         <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
-                          <span className="text-slate-400 dark:text-slate-500 block text-[7px] font-bold">Status</span>
+                          <span className="text-slate-400 dark:text-slate-500 block text-[10px] font-bold">Status</span>
                           Dispatched to 1,500 leads
                         </div>
                       </div>
@@ -1777,15 +1797,15 @@ export default function SettingsPage() {
 
                     {/* Visual Mockup - AI suggestions */}
                     <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
-                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[8px] text-[#667781] dark:text-slate-400 font-bold">
+                      <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                         <span className="text-[#111b21] dark:text-white flex items-center gap-1">🤖 AI Suggested Replies</span>
                         <span className="text-blue-600 dark:text-blue-400 font-bold">Copilot Active</span>
                       </div>
                       <div className="flex gap-1.5 overflow-x-auto py-0.5">
-                        <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                        <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[10px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
                           🤖 AI: Book Consultation Call
                         </div>
-                        <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[8px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                        <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[10px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
                           AI: Send Pricing FAQ
                         </div>
                       </div>
@@ -2153,7 +2173,7 @@ export default function SettingsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                    <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
                       <th className="px-6 py-3">Question</th>
                       <th className="px-6 py-3">Answer Preview</th>
                       <th className="px-6 py-3">Indexed Date</th>
@@ -2368,7 +2388,7 @@ export default function SettingsPage() {
                 const rd = getRoleDisplay(r.value)
                 return (
                   <div key={r.value} className="flex items-start gap-2.5">
-                    <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border flex-shrink-0 ${rd.bg} ${rd.color} ${rd.border}`}>
+                    <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border flex-shrink-0 ${rd.bg} ${rd.color} ${rd.border}`}>
                       {rd.label}
                     </span>
                     <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-tight">{r.description}</p>
@@ -2376,7 +2396,7 @@ export default function SettingsPage() {
                 )
               })}
             </div>
-            <p className="text-[9px] text-[#8696a0] mt-3 border-t border-[#e9edef] dark:border-[#2a3942] pt-2.5">
+            <p className="text-[10px] text-[#8696a0] mt-3 border-t border-[#e9edef] dark:border-[#2a3942] pt-2.5">
               💡 <strong className="text-[#667781]">Full Access</strong> toggle grants a Sales Employee visibility into all org chats & leads. &nbsp;
               <strong className="text-[#667781]">Read Only</strong> toggle allows viewing but blocks sending/editing.
             </p>
@@ -2477,7 +2497,7 @@ export default function SettingsPage() {
                   <div className="hidden sm:block">
                     <table className="w-full min-w-[850px] text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[9px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
+                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
                           <th className="px-4 py-3">Name</th>
                           <th className="px-4 py-3">Email</th>
                           <th className="px-4 py-3">Role</th>
@@ -2503,7 +2523,7 @@ export default function SettingsPage() {
                               {(() => {
                                 const rd = getRoleDisplay(member.role)
                                 return (
-                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
                                     {rd.label}
                                   </span>
                                 )
@@ -2516,13 +2536,13 @@ export default function SettingsPage() {
                                   onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
                                   disabled={isManager({ role: member.role } as any)}
                                   title={isManager({ role: member.role } as any) ? 'Admins/Managers always see all' : (member.see_all ? 'Revoke access' : 'Grant full access')}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
+                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-200 dark:bg-slate-700'
                                     }`}
                                 >
                                   <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
                                     }`} />
                                 </button>
-                                <span className="text-[8px] text-[#8696a0] font-semibold">{isManager({ role: member.role } as any) ? 'always' : member.see_all ? 'on' : 'off'}</span>
+                                <span className="text-[10px] text-[#8696a0] font-semibold">{isManager({ role: member.role } as any) ? 'always' : member.see_all ? 'on' : 'off'}</span>
                               </div>
                             </td>
                             <td className="px-4 py-3.5 text-center">
@@ -2532,13 +2552,13 @@ export default function SettingsPage() {
                                   onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
                                   disabled={isManager({ role: member.role } as any)}
                                   title={isManager({ role: member.role } as any) ? 'Admins/Managers are never read-only' : (member.read_only ? 'Remove read-only' : 'Set read-only')}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
+                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
                                     }`}
                                 >
                                   <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
                                     }`} />
                                 </button>
-                                <span className="text-[8px] text-[#8696a0] font-semibold">{member.read_only && !isManager({ role: member.role } as any) ? 'on' : 'off'}</span>
+                                <span className="text-[10px] text-[#8696a0] font-semibold">{member.read_only && !isManager({ role: member.role } as any) ? 'on' : 'off'}</span>
                               </div>
                             </td>
                             <td className="px-4 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium">
@@ -2582,7 +2602,7 @@ export default function SettingsPage() {
                           {(() => {
                             const rd = getRoleDisplay(member.role)
                             return (
-                              <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
                                 {rd.label}
                               </span>
                             )
@@ -2590,11 +2610,11 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center gap-4 py-1.5 border-t border-b border-[#e9edef]/60 dark:border-[#2a3942]/60 select-none text-[10px] font-bold">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-555 dark:text-slate-400 text-[9px] uppercase tracking-wide">Full Access</span>
+                            <span className="text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-wide">Full Access</span>
                             <button
                               onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
                               disabled={isManager({ role: member.role } as any)}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-250 dark:bg-slate-700'
+                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager({ role: member.role } as any) ? 'bg-[#00a884]' : 'bg-slate-200 dark:bg-slate-700'
                                 }`}
                             >
                               <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
@@ -2602,11 +2622,11 @@ export default function SettingsPage() {
                             </button>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-555 dark:text-slate-400 text-[9px] uppercase tracking-wide">Read Only</span>
+                            <span className="text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-wide">Read Only</span>
                             <button
                               onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
                               disabled={isManager({ role: member.role } as any)}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-250 dark:bg-slate-700'
+                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager({ role: member.role } as any) ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
                                 }`}
                             >
                               <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager({ role: member.role } as any) ? 'translate-x-3' : 'translate-x-0'
@@ -2614,7 +2634,7 @@ export default function SettingsPage() {
                             </button>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between text-[9px] text-[#667781] dark:text-[#8696a0] pt-1">
+                        <div className="flex items-center justify-between text-[10px] text-[#667781] dark:text-[#8696a0] pt-1">
                           <span>Joined {new Date(member.created_at).toLocaleDateString()}</span>
                           {member.id !== user?.id && member.role !== 'owner' ? (
                             <button
@@ -2625,7 +2645,7 @@ export default function SettingsPage() {
                               <span>Remove</span>
                             </button>
                           ) : (
-                            <span className="text-[9px] text-[#8696a0] font-bold bg-[#f0f2f5] dark:bg-[#111b21] px-2 py-1 rounded border border-[#e9edef] dark:border-[#2a3942]">
+                            <span className="text-[10px] text-[#8696a0] font-bold bg-[#f0f2f5] dark:bg-[#111b21] px-2 py-1 rounded border border-[#e9edef] dark:border-[#2a3942]">
                               Protected
                             </span>
                           )}

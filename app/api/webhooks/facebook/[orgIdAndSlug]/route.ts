@@ -7,6 +7,13 @@ import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } 
 import { executeFlowRuntime } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
+import { trackChatbotEvent } from '@/lib/ai-analytics'
+import { classifyGreeting } from '@/lib/greeting-classifier'
+import {
+  handleInboundCommerceOrder,
+  handleInboundAddressSubmission,
+  handleInboundPaymentConfirmation,
+} from '@/lib/commerce/commerce-webhook-handler'
 
 // Verify Meta X-Hub-Signature-256 HMAC to ensure webhook requests are authentic
 function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
@@ -296,6 +303,14 @@ async function processEvent(
     const type = message.type
     if (type === 'text') {
       messageBody = message.text?.body || ''
+    } else if (type === 'order') {
+      const orderData = message.order
+      const itemCount = (orderData?.product_items || []).length
+      const note = orderData?.text ? ` (Note: "${orderData.text}")` : ''
+      messageBody = `🛒 [WhatsApp Cart Order]: ${itemCount} item(s) selected${note}`
+    } else if (type === 'payment') {
+      const payData = message.payment
+      messageBody = `💳 [WhatsApp In-Chat Payment]: Reference ${payData?.reference_id || 'N/A'}, Status: ${payData?.status || 'success'}`
     } else if (type === 'interactive') {
       const interactive = message.interactive
       if (interactive?.type === 'button_reply') {
@@ -304,6 +319,8 @@ async function processEvent(
       } else if (interactive?.type === 'list_reply') {
         messageBody = interactive.list_reply?.title || ''
         interactiveButtonId = interactive.list_reply?.id
+      } else if (interactive?.type === 'payment_status') {
+        messageBody = `💳 [WhatsApp Payment Status]: Reference ${interactive.payment_status?.reference_id || 'N/A'}, Status: ${interactive.payment_status?.status || 'completed'}`
       } else if (interactive?.type === 'nfm_reply') {
         try {
           const respStr = interactive.nfm_reply?.response_json
@@ -512,6 +529,107 @@ async function processEvent(
       console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
     }
 
+    // ── Commerce Wing: Process in-chat e-commerce events ───────────────
+    if (orgData.enable_commerce !== false) {
+      // A. Native cart order from WhatsApp
+      if (type === 'order' && message.order) {
+        try {
+          console.log('[Facebook Webhook] Processing native WhatsApp cart order for contact:', contact.id)
+          await handleInboundCommerceOrder({
+            organization: orgData,
+            contact,
+            conversation,
+            orderPayload: message.order,
+            customerPhone: phoneNumber,
+          })
+          return NextResponse.json({ success: true, handled_by: 'commerce_order_engine' })
+        } catch (commErr: any) {
+          console.error('[Facebook Webhook Commerce] Failed to handle cart order:', commErr)
+        }
+      }
+
+      // B. Native Address Flow submission
+      const flowToken = message.interactive?.nfm_reply?.flow_token || ''
+      if (flowSubmissionData && (flowToken.startsWith('order_') || flowSubmissionData.address_line_1 || flowSubmissionData.pincode)) {
+        try {
+          console.log('[Facebook Webhook] Processing address flow submission for contact:', contact.id)
+          await handleInboundAddressSubmission({
+            organization: orgData,
+            contact,
+            conversation,
+            submissionData: flowSubmissionData,
+            flowToken,
+            customerPhone: phoneNumber,
+          })
+          return NextResponse.json({ success: true, handled_by: 'commerce_address_engine' })
+        } catch (commErr: any) {
+          console.error('[Facebook Webhook Commerce] Failed to handle address submission:', commErr)
+        }
+      }
+
+      // C. Native in-chat payment authorization
+      if (type === 'payment' || (type === 'interactive' && message.interactive?.type === 'payment_status')) {
+        try {
+          const paymentPayload = message.payment || message.interactive?.payment_status
+          console.log('[Facebook Webhook] Processing payment update for contact:', contact.id)
+          await handleInboundPaymentConfirmation({
+            organization: orgData,
+            contact,
+            conversation,
+            paymentPayload,
+            customerPhone: phoneNumber,
+          })
+          return NextResponse.json({ success: true, handled_by: 'commerce_payment_engine' })
+        } catch (commErr: any) {
+          console.error('[Facebook Webhook Commerce] Failed to handle payment update:', commErr)
+        }
+      }
+
+      // D. Cash on Delivery confirmation button
+      if (interactiveButtonId && interactiveButtonId.startsWith('cod_confirm_')) {
+        const orderId = interactiveButtonId.replace('cod_confirm_', '')
+        // Only this customer's own unpaid order in this organization can be confirmed.
+        // An old button tapped again must not reopen an order that is already paid or shipped.
+        const { data: confirmedOrders, error: codErr } = await supabase
+          .from('commerce_orders')
+          .update({
+            status: 'cod_confirmed',
+            payment_method: 'cod',
+            payment_status: 'pending',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', orderId)
+          .eq('organization_id', orgId)
+          .eq('contact_id', contact.id)
+          .in('status', ['cart_submitted', 'awaiting_address', 'payment_pending'])
+          .select('id')
+
+        if (codErr) {
+          console.error('[Facebook Webhook Commerce] Failed to confirm COD order:', codErr)
+        }
+
+        if (confirmedOrders && confirmedOrders.length > 0 && whatsappPhoneNumberId && whatsappApiToken) {
+          await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${whatsappApiToken}`,
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: phoneNumber.replace('+', '').trim(),
+              type: 'text',
+              text: {
+                body: '🎉 Order confirmed for Cash on Delivery! We are preparing your shipment.',
+              },
+            }),
+          })
+        }
+        return NextResponse.json({ success: true, handled_by: 'commerce_cod_engine' })
+      }
+    }
+
     // Step 4.5: Execute and deliver every automatic step in order.
     if (conversation.auto_reply_enabled !== false) {
       try {
@@ -550,6 +668,70 @@ async function processEvent(
       }
     }
 
+    if (
+      orgData.enable_ai !== false &&
+      conversation.auto_reply_enabled !== false &&
+      messageBody &&
+      openAiKey
+    ) {
+      const greetingResult = classifyGreeting(messageBody)
+      if (greetingResult.isGreeting) {
+        console.log(`[Facebook Webhook Chatbot] Greeting detected (${greetingResult.category}), sent instant reply without OpenAI`)
+
+        let fbMessageSid = null
+        if (whatsappPhoneNumberId && whatsappApiToken) {
+          try {
+            const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${whatsappApiToken}`
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: phoneNumber.replace('+', '').trim(),
+                type: 'text',
+                text: {
+                  body: greetingResult.suggestedReply
+                }
+              })
+            })
+
+            if (fbRes.ok) {
+              const fbData = await fbRes.json()
+              fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+              console.log(`[Facebook Webhook Chatbot] Sent Facebook message: ${fbMessageSid}`)
+            } else {
+              const errText = await fbRes.text()
+              console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message: ${fbRes.status} ${errText}`)
+            }
+          } catch (sendErr: any) {
+            console.error('[Facebook Webhook Chatbot] Failed to send Facebook message:', sendErr.message)
+          }
+        }
+
+        await supabase
+          .from('messages')
+          .insert([
+            {
+              organization_id: orgId,
+              conversation_id: conversation.id,
+              sender_type: 'user',
+              body: greetingResult.suggestedReply,
+              twilio_message_sid: fbMessageSid
+            }
+          ])
+
+        await supabase
+          .from('conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversation.id)
+
+        return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'greeting_classifier' })
+      }
+    }
+
     // Step 5: Chatbot Auto-Reply Trigger
     if (
       orgData.enable_ai !== false &&
@@ -558,6 +740,7 @@ async function processEvent(
       openAiKey
     ) {
       console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
+      const chatbotStartTime = Date.now()
       try {
         // 0. Contextual Query Condensation — rewrite follow-up messages as standalone search queries
         //    This fixes context blindness where "how much is it?" loses the topic from earlier messages
@@ -871,6 +1054,26 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                       twilio_message_sid: fbMessageSid
                     }
                   ])
+
+                // Track chatbot analytics (fire-and-forget)
+                trackChatbotEvent({
+                  organization_id: orgId,
+                  conversation_id: conversation.id,
+                  query: messageBody,
+                  condensed_query: searchQuery !== messageBody ? searchQuery : null,
+                  confidence_level: faqs.length >= 2 ? 'high' : faqs.length === 1 ? 'medium' : 'low',
+                  best_similarity: null, // similarity score not easily available here
+                  matched_faq_count: faqs.length,
+                  matched_faq_titles: faqs.map((f: any) => f.title),
+                  was_escalated: isRiseTicket,
+                  was_cached: false,
+                  was_greeting: false,
+                  response_time_ms: Date.now() - chatbotStartTime,
+                  model_used: 'gpt-4o-mini',
+                  source: 'whatsapp'
+                })
+
+                // Note: Greeting-handled messages are tracked separately in the greeting classifier block
 
                 // 8. Update conversation timestamp
                 await supabase

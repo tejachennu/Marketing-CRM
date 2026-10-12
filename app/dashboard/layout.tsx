@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { canSeeAll } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -122,6 +122,16 @@ export default function DashboardLayout({
     return () => window.removeEventListener('active-conversation-changed', handleActiveChatChange)
   }, [])
 
+  // Let keyboard users dismiss the mobile drawer
+  useEffect(() => {
+    if (!showSideDrawer) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowSideDrawer(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSideDrawer])
+
   // If path changes from dashboard, ensure chat view selection is reset
   useEffect(() => {
     if (pathname !== '/dashboard') {
@@ -206,12 +216,23 @@ export default function DashboardLayout({
   useEffect(() => {
     let isRedirecting = false
     const originalFetch = window.fetch
+
+    // The session token must only ever be sent to our own API, never to a third-party host
+    const isSameOrigin = (target: RequestInfo | URL) => {
+      try {
+        const raw = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url
+        return new URL(raw, window.location.origin).origin === window.location.origin
+      } catch {
+        return false
+      }
+    }
+
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       let finalInput = input
       let finalInit = init || {}
 
       const session = authSessionManager.getSession()
-      if (session?.access_token) {
+      if (session?.access_token && isSameOrigin(input)) {
         if (typeof input === 'string' || input instanceof URL) {
           finalInit.headers = finalInit.headers || {}
           if (finalInit.headers instanceof Headers) {
@@ -611,8 +632,12 @@ export default function DashboardLayout({
 
   const seeAll = canSeeAll({ role: userRole, see_all: userSeeAll } as any)
 
+  // Badges are small pills: cap the label so a busy inbox cannot overflow them
+  const formatCount = (count: number) => (count > 99 ? '99+' : String(count))
+
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
+    { href: '/dashboard/commerce', label: 'Commerce', icon: ShoppingBag },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
@@ -697,9 +722,9 @@ export default function DashboardLayout({
 
       {/* Main Body below app bar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* WhatsApp Web Responsive vertical Sidebar / Mobile Bottom-ba        {/* DESKTOP VERTICAL SIDEBAR */}
         {/* DESKTOP COLLAPSIBLE VERTICAL SIDEBAR */}
         <aside
+          aria-label="Primary"
           className={`hidden md:flex md:flex-col md:justify-between py-3 border-r border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#111b21] h-full z-40 select-none flex-shrink-0 transition-all duration-300 ease-in-out ${
             isSidebarCollapsed ? 'md:w-[72px]' : 'md:w-[245px]'
           }`}
@@ -724,6 +749,7 @@ export default function DashboardLayout({
                 type="button"
                 onClick={toggleSidebar}
                 title="Collapse sidebar"
+                aria-label="Collapse sidebar"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               >
                 <PanelLeftClose size={17} />
@@ -742,6 +768,7 @@ export default function DashboardLayout({
                 type="button"
                 onClick={toggleSidebar}
                 title="Expand sidebar"
+                aria-label="Expand sidebar"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-[#008069] dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <PanelLeftOpen size={16} />
@@ -752,7 +779,7 @@ export default function DashboardLayout({
           {/* Navigation Items (Vertical) */}
           {!isSidebarCollapsed ? (
             <div className="flex-1 overflow-y-auto py-3 px-2 space-y-1 scrollbar-thin">
-              <div className="px-2.5 pb-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400 select-none">
+              <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 select-none">
                 Menu
               </div>
               <nav className="space-y-1">
@@ -764,8 +791,9 @@ export default function DashboardLayout({
                     <Link
                       key={item.href}
                       href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
                       onClick={(e) => handleNavClick(e, item.href)}
-                      className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-200 group relative ${
+                      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition-all duration-200 group relative ${
                         isActive
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-400 font-bold border border-emerald-200/50 dark:border-emerald-800/50 shadow-2xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/50 font-medium'
@@ -783,23 +811,23 @@ export default function DashboardLayout({
                               : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                           }`}
                         />
-                        <span className="text-xs truncate tracking-tight">{item.label}</span>
+                        <span className="text-[13px] truncate tracking-tight">{item.label}</span>
                       </div>
 
                       {/* Right-aligned live badge counters */}
                       {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white shadow-xs">
-                          {activeTicketsCount}
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-rose-500 text-white shadow-xs">
+                          {formatCount(activeTicketsCount)}
                         </span>
                       )}
                       {item.href === '/dashboard' && unreadChatsCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-xs">
-                          {unreadChatsCount}
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-emerald-600 text-white shadow-xs">
+                          {formatCount(unreadChatsCount)}
                         </span>
                       )}
                       {item.href === '/dashboard/leads' && activeLeadsCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-indigo-600 text-white shadow-xs">
-                          {activeLeadsCount}
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-indigo-600 text-white shadow-xs">
+                          {formatCount(activeLeadsCount)}
                         </span>
                       )}
                     </Link>
@@ -818,6 +846,8 @@ export default function DashboardLayout({
                     key={item.href}
                     href={item.href}
                     title={item.label}
+                    aria-label={item.label}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={(e) => handleNavClick(e, item.href)}
                     className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 group relative flex-shrink-0 ${
                       isActive
@@ -840,27 +870,27 @@ export default function DashboardLayout({
 
                     {/* Live Badge for Tickets */}
                     {item.href === '/dashboard/tickets' && activeTicketsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
-                        {activeTicketsCount}
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
+                        {formatCount(activeTicketsCount)}
                       </span>
                     )}
 
                     {/* Live Badge for Conversations */}
                     {item.href === '/dashboard' && unreadChatsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
-                        {unreadChatsCount}
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
+                        {formatCount(unreadChatsCount)}
                       </span>
                     )}
 
                     {/* Live Badge for Leads */}
                     {item.href === '/dashboard/leads' && activeLeadsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse z-10">
-                        {activeLeadsCount}
+                      <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
+                        {formatCount(activeLeadsCount)}
                       </span>
                     )}
 
                     {/* Tooltip for desktop */}
-                    <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                    <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-700 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
                       {item.label}
                     </span>
                   </Link>
@@ -892,7 +922,7 @@ export default function DashboardLayout({
                     </div>
                     <span className="text-xs truncate">Marketing Copilot</span>
                   </div>
-                  <span className="px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] leading-none font-extrabold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                     AI
                   </span>
                 </button>
@@ -912,7 +942,7 @@ export default function DashboardLayout({
                     <div className="text-xs font-bold text-slate-800 dark:text-white truncate">
                       {userFullName || (userEmail ? userEmail.split('@')[0] : 'User')}
                     </div>
-                    <div className="text-[9.5px] text-slate-400 truncate">
+                    <div className="text-[10px] text-slate-400 truncate">
                       {userEmail || 'Account'}
                     </div>
                   </div>
@@ -924,6 +954,7 @@ export default function DashboardLayout({
                     type="button"
                     onClick={toggleTheme}
                     title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
@@ -932,6 +963,7 @@ export default function DashboardLayout({
                     type="button"
                     onClick={handleLogout}
                     title="Logout"
+                    aria-label="Logout"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
                   >
                     <LogOut size={13} />
@@ -946,6 +978,8 @@ export default function DashboardLayout({
                   type="button"
                   onClick={() => setShowAssistant((prev) => !prev)}
                   title="Marketing Assistant"
+                  aria-label="Marketing Assistant"
+                  aria-pressed={showAssistant}
                   className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                     showAssistant
                       ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
@@ -961,7 +995,7 @@ export default function DashboardLayout({
                   {hasUnreadAssistantNotif && !showAssistant && (
                     <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse z-10" />
                   )}
-                  <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                  <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-700 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
                     Assistant
                   </span>
                 </button>
@@ -971,6 +1005,7 @@ export default function DashboardLayout({
               <Link
                 href="/dashboard/profile"
                 title="My Profile"
+                aria-label="My Profile"
                 className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                   pathname === '/dashboard/profile'
                     ? 'bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
@@ -987,7 +1022,7 @@ export default function DashboardLayout({
                     ? userEmail.substring(0, 2).toUpperCase()
                     : 'US'}
                 </div>
-                <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-750 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
+                <span className="absolute left-[70px] bg-slate-900 text-slate-100 dark:bg-slate-800 border border-slate-700 text-[10px] font-bold py-1.5 px-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap scale-90 group-hover:scale-100 origin-left">
                   Profile
                 </span>
               </Link>
@@ -997,6 +1032,7 @@ export default function DashboardLayout({
                 type="button"
                 onClick={handleLogout}
                 title="Logout"
+                aria-label="Logout"
                 className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-900/50 hover:bg-rose-500/10 border border-slate-200/50 dark:border-slate-800/80 text-slate-400 hover:text-rose-500 transition-all duration-200 shadow-sm cursor-pointer"
               >
                 <LogOut size={16} />
@@ -1007,7 +1043,7 @@ export default function DashboardLayout({
 
         {/* MOBILE BOTTOM NAVIGATION BAR — 4 items only */}
         {!hasActiveChat && (
-          <div className="md:hidden fixed bottom-0 left-0 right-0 h-[68px] bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md z-45 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)] flex items-center justify-around px-2" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <nav aria-label="Primary" className="md:hidden fixed bottom-0 left-0 right-0 h-[68px] bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md z-45 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)] flex items-center justify-around px-2" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           {/* Chats */}
           {features.enable_messages && (
             <Link
@@ -1022,12 +1058,12 @@ export default function DashboardLayout({
               }`}>
                 <MessageCircle size={20} />
               </div>
-              <span className={`text-[9px] font-bold tracking-normal mt-0.5 uppercase ${
+              <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
                 pathname === '/dashboard' ? 'text-[#00a884] dark:text-[#00e676]' : 'text-slate-400 dark:text-slate-500'
               }`}>Chats</span>
               {unreadChatsCount > 0 && (
-                <span className="absolute top-1 right-2 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50 animate-pulse">
-                  {unreadChatsCount}
+                <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
+                  {formatCount(unreadChatsCount)}
                 </span>
               )}
             </Link>
@@ -1047,12 +1083,12 @@ export default function DashboardLayout({
               }`}>
                 <Ticket size={20} />
               </div>
-              <span className={`text-[9px] font-bold tracking-normal mt-0.5 uppercase ${
+              <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
                 pathname.startsWith('/dashboard/tickets') ? 'text-[#00a884] dark:text-[#00e676]' : 'text-slate-400 dark:text-slate-500'
               }`}>Tickets</span>
               {activeTicketsCount > 0 && (
-                <span className="absolute top-1 right-2 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50 animate-pulse">
-                  {activeTicketsCount}
+                <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
+                  {formatCount(activeTicketsCount)}
                 </span>
               )}
             </Link>
@@ -1071,19 +1107,22 @@ export default function DashboardLayout({
             }`}>
               <TrendingUp size={20} />
             </div>
-            <span className={`text-[9px] font-bold tracking-normal mt-0.5 uppercase ${
+            <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
               pathname.startsWith('/dashboard/leads') ? 'text-[#00a884] dark:text-[#00e676]' : 'text-slate-400 dark:text-slate-500'
             }`}>Pipeline</span>
             {activeLeadsCount > 0 && (
-              <span className="absolute top-1 right-2 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50 animate-pulse">
-                {activeLeadsCount}
+              <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
+                {formatCount(activeLeadsCount)}
               </span>
             )}
           </Link>
 
           {/* More (opens side drawer) */}
           <button
+            type="button"
             onClick={() => setShowSideDrawer(true)}
+            aria-haspopup="dialog"
+            aria-expanded={showSideDrawer}
             className="flex flex-col items-center justify-center flex-1 h-full py-1.5 group relative border-0 bg-transparent cursor-pointer"
           >
             <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
@@ -1093,7 +1132,7 @@ export default function DashboardLayout({
             }`}>
               <Menu size={20} />
             </div>
-            <span className={`text-[9px] font-bold tracking-normal mt-0.5 uppercase ${
+            <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
               showSideDrawer ? 'text-[#00a884] dark:text-[#00e676]' : 'text-slate-400 dark:text-slate-500'
             }`}>More</span>
             {/* Unread dot for assistant notifications */}
@@ -1101,12 +1140,12 @@ export default function DashboardLayout({
               <span className="absolute top-1.5 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse" />
             )}
           </button>
-          </div>
+          </nav>
         )}
 
         {/* MOBILE SLIDE-OUT SIDE DRAWER */}
         {showSideDrawer && (
-          <div className="md:hidden fixed inset-0 z-[100]">
+          <div className="md:hidden fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-label="Menu">
             {/* Backdrop */}
             <div
               className="absolute inset-0 bg-black/50 backdrop-blur-[2px] animate-in fade-in duration-200"
@@ -1214,7 +1253,7 @@ export default function DashboardLayout({
         <main className={`flex-1 overflow-hidden bg-slate-50 dark:bg-[#090d16] relative md:pb-0 md:h-full ${
           hasActiveChat 
             ? 'pb-0 h-full' 
-            : 'pb-[68px] h-[calc(100vh-68px)]'
+            : 'pb-[68px] h-[calc(100dvh-68px)]'
         }`}>
           <div className="h-full w-full p-0 flex flex-col overflow-hidden">
             {isPageAllowed() ? (
@@ -1244,7 +1283,7 @@ export default function DashboardLayout({
           
           {/* Onboarding Credentials Checklist Overlay */}
           {showOnboarding && (
-            <div className={`fixed bottom-16 md:bottom-6 right-6 z-50 max-w-sm w-[calc(100%-3rem)] bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl p-5 select-none transition-all duration-300 transform ${isMinimized ? 'translate-y-[calc(100%-55px)]' : 'translate-y-0'}`}>
+            <div className={`fixed bottom-[80px] md:bottom-6 right-6 z-50 max-w-sm w-[calc(100%-3rem)] bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl p-5 select-none transition-all duration-300 transform ${isMinimized ? 'translate-y-[calc(100%-55px)]' : 'translate-y-0'}`}>
               {/* Card Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[#e9edef] dark:border-[#2a3942] cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
                 <div className="flex items-center gap-2">
@@ -1252,7 +1291,7 @@ export default function DashboardLayout({
                   <h4 className="text-xs font-bold text-[#111b21] dark:text-white">Configure Your Workspace</h4>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full cursor-pointer hover:bg-[#e9edef] dark:hover:bg-[#2a3942] transition-colors">
+                  <button type="button" aria-label={isMinimized ? 'Expand setup checklist' : 'Minimize setup checklist'} className="text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full cursor-pointer hover:bg-[#e9edef] dark:hover:bg-[#2a3942] transition-colors">
                     <ChevronUp size={14} className={`transform transition-transform duration-300 ${isMinimized ? '' : 'rotate-180'}`} />
                   </button>
                   <button 
@@ -1261,6 +1300,8 @@ export default function DashboardLayout({
                       setShowOnboarding(false);
                       localStorage.setItem('onboarding_dismissed', 'true');
                     }}
+                    type="button"
+                    aria-label="Dismiss setup checklist"
                     className="text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full cursor-pointer hover:bg-[#e9edef] dark:hover:bg-[#2a3942] transition-colors"
                   >
                     <X size={14} />
@@ -1277,8 +1318,8 @@ export default function DashboardLayout({
 
                   <div className="bg-white dark:bg-[#111b21] rounded-xl p-3 border border-[#e9edef] dark:border-[#2a3942] space-y-3">
                     <div className="flex items-center justify-between text-[11px] font-bold">
-                      <span className="text-[#667781] dark:text-[#8696a0] uppercase tracking-wider text-[9px]">Features & Channels</span>
-                      <span className="text-[#00a884] font-mono text-[9px]">Status</span>
+                      <span className="text-[#667781] dark:text-[#8696a0] uppercase tracking-wider text-[10px]">Features & Channels</span>
+                      <span className="text-[#00a884] font-mono text-[10px]">Status</span>
                     </div>
 
                     {/* SMS / WhatsApp */}
@@ -1289,7 +1330,7 @@ export default function DashboardLayout({
                           {credentialsStatus.twilio ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
-                      <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
                         Enables 1-on-1 chats, WhatsApp templates, and bulk text campaigns.
                       </p>
                     </div>
@@ -1302,7 +1343,7 @@ export default function DashboardLayout({
                           {credentialsStatus.sendgrid ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
-                      <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
                         Enables visual HTML rich newsletters, sender verification, and email wizard.
                       </p>
                     </div>
@@ -1315,7 +1356,7 @@ export default function DashboardLayout({
                           {credentialsStatus.openai ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
-                      <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
+                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-medium leading-tight">
                         Enables smart message suggestions, sitemap crawling, and voice calling bots.
                       </p>
                     </div>
@@ -1353,24 +1394,24 @@ export default function DashboardLayout({
 
           {/* Realtime Ticket Toast Notification */}
           {ticketToast && (
-            <div className="fixed top-4 right-4 z-[9999] flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-emerald-500/30 dark:border-emerald-500/20 shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: '4px solid #00a884' }}>
+            <div className="fixed top-4 right-4 z-[9999] flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-emerald-500/30 dark:border-emerald-500/20 shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-[calc(100%-2rem)] select-none" role="status" aria-live="polite" style={{ borderLeft: '4px solid #00a884' }}>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-bold text-[#111b21] dark:text-white mb-0.5">🎫 New Support Ticket</h4>
                 <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{ticketToast.subject}</p>
-                <p className="text-[9px] text-[#667781] dark:text-[#8696a0] font-semibold">From: {ticketToast.contactName}</p>
+                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">From: {ticketToast.contactName}</p>
                 <div className="mt-2.5 flex items-center gap-2">
                   <button
                     onClick={() => {
                       router.push(`/dashboard?conversationId=${ticketToast.conversationId}`)
                       setTicketToast(null)
                     }}
-                    className="px-2.5 py-1 bg-[#00a884] hover:bg-[#008069] text-white text-[9px] font-bold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
+                    className="px-2.5 py-1 bg-[#00a884] hover:bg-[#008069] text-white text-[10px] font-bold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
                   >
                     View Chat
                   </button>
                   <button
                     onClick={() => setTicketToast(null)}
-                    className="px-2.5 py-1 bg-slate-150 hover:bg-slate-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-slate-700 dark:text-slate-200 text-[9px] font-bold rounded-lg shadow-xs transition-all cursor-pointer"
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg shadow-xs transition-all cursor-pointer"
                   >
                     Dismiss
                   </button>

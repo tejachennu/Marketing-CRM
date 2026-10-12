@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { sanitizeSearchTerm } from '@/lib/utils'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -24,7 +25,8 @@ async function executeQueryLeads(params: any, orgId: string, supabase: any) {
   if (params.status) query = query.eq('status', params.status)
   if (params.priority) query = query.eq('priority', params.priority)
   if (params.assigned_to) query = query.eq('assigned_to', params.assigned_to)
-  if (params.search) query = query.or(`title.ilike.%${params.search}%,description.ilike.%${params.search}%`)
+  const leadSearch = sanitizeSearchTerm(params.search)
+  if (leadSearch) query = query.or(`title.ilike.%${leadSearch}%,description.ilike.%${leadSearch}%`)
   if (params.min_value) query = query.gte('value', params.min_value)
 
   if (params.date_range) {
@@ -82,8 +84,9 @@ async function executeQueryContacts(params: any, orgId: string, supabase: any) {
     .select('id, first_name, last_name, phone_number, email, company, tags, created_at', { count: 'exact' })
     .eq('organization_id', orgId)
 
-  if (params.search) {
-    query = query.or(`first_name.ilike.%${params.search}%,last_name.ilike.%${params.search}%,phone_number.ilike.%${params.search}%,email.ilike.%${params.search}%,company.ilike.%${params.search}%`)
+  const contactSearch = sanitizeSearchTerm(params.search)
+  if (contactSearch) {
+    query = query.or(`first_name.ilike.%${contactSearch}%,last_name.ilike.%${contactSearch}%,phone_number.ilike.%${contactSearch}%,email.ilike.%${contactSearch}%,company.ilike.%${contactSearch}%`)
   }
   if (params.tag) {
     query = query.contains('tags', [params.tag])

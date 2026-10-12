@@ -31,8 +31,10 @@ import {
 } from 'lucide-react'
 import { MetaFlowScreen, MetaFormField, isFlowBetaAllowed } from '@/lib/flows/flow-types'
 import { compileMetaFlowJSON } from '@/lib/flows/meta-flows-spec'
+import { useAlert } from '@/lib/dialog-context'
 
 export default function NativeFlowDesignerPage() {
+  const alert = useAlert()
   const params = useParams()
   const router = useRouter()
   const flowId = params?.flowId as string
@@ -156,7 +158,7 @@ export default function NativeFlowDesignerPage() {
   const deleteScreen = (idx: number) => {
     if (isPublished) return
     if (screens.length <= 1) {
-      alert('A WhatsApp Flow must have at least one screen.')
+      alert({ title: 'Cannot delete this screen', message: 'A WhatsApp Flow must have at least one screen.' })
       return
     }
     const filtered = screens.filter((_, i) => i !== idx)
@@ -390,7 +392,7 @@ export default function NativeFlowDesignerPage() {
 
                     <div className="flex items-center gap-1">
                       {screen.terminal && (
-                        <span className="text-[9px] uppercase px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono">
+                        <span className="text-[10px] uppercase px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono">
                           End
                         </span>
                       )}

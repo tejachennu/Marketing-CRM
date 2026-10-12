@@ -218,7 +218,7 @@ export function CountryPhoneInput({
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      <div className="flex items-center rounded-xl border border-slate-200 dark:border-[#2a3942] bg-white dark:bg-[#111b21] shadow-2xs hover:border-slate-350 dark:hover:border-slate-700 focus-within:border-[#00a884] focus-within:ring-2 focus-within:ring-[#00a884]/20 transition-all overflow-visible">
+      <div className="flex items-center rounded-xl border border-slate-200 dark:border-[#2a3942] bg-white dark:bg-[#111b21] shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 focus-within:border-[#00a884] focus-within:ring-2 focus-within:ring-[#00a884]/20 transition-all overflow-visible">
         {/* Country Code Trigger Button */}
         <button
           type="button"

@@ -173,7 +173,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
 
         {/* Search Bar Input */}
         {tickets.length > 0 && (
-          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/20">
+          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
             <div className="relative">
               <input
                 type="text"
@@ -214,7 +214,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
             </div>
           ) : filteredTickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500">
-              <AlertCircle size={24} className="mb-2 text-slate-350 dark:text-slate-700" />
+              <AlertCircle size={24} className="mb-2 text-slate-400 dark:text-slate-700" />
               <span className="text-[10px] font-bold">No matching tickets found</span>
             </div>
           ) : (
@@ -233,7 +233,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                     <div className="flex flex-col gap-1.5">
                       {/* Priority Action Badge */}
                       <div>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[8px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 tracking-wide uppercase">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 tracking-wide uppercase">
                           AI Fallback
                         </span>
                       </div>
@@ -245,7 +245,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                       onClick={(e) => handleResolveTicket(e, ticket.id)}
                       disabled={resolvingId === ticket.id}
                       title="Mark as Resolved"
-                      className="flex-shrink-0 h-7 w-7 rounded-xl border border-slate-150 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400 hover:text-emerald-600 hover:border-emerald-500/30 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/10 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                      className="flex-shrink-0 h-7 w-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400 hover:text-emerald-600 hover:border-emerald-500/30 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/10 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
                     >
                       {resolvingId === ticket.id ? (
                         <Loader2 size={12} className="animate-spin text-emerald-500" />
@@ -255,7 +255,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between text-[9px] font-bold text-slate-400 dark:text-slate-500 border-t border-slate-50 dark:border-slate-800/80 pt-2.5">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 border-t border-slate-50 dark:border-slate-800/80 pt-2.5">
                     <div className="flex items-center gap-1.5">
                       <User size={10} className="text-slate-400" />
                       <span className="truncate max-w-[120px]">{contactName}</span>

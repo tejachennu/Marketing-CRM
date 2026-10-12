@@ -55,6 +55,7 @@ import {
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
+import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { authSessionManager } from '@/lib/auth-context'
 
 interface Campaign {
@@ -116,6 +117,8 @@ interface Contact {
 
 export default function CampaignsPage() {
   const router = useRouter()
+  const alert = useAlert()
+  const confirm = useConfirm()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateFetchError, setTemplateFetchError] = useState<string | null>(null)
@@ -693,14 +696,14 @@ export default function CampaignsPage() {
         await fetchCampaignDetails(campaignId, false)
       }
     } catch (err: any) {
-      alert(err.message || 'Error triggering scheduled campaign')
+      alert({ title: 'Campaign not sent', message: err.message || 'Error triggering scheduled campaign' })
     } finally {
       setActionLoadingId(null)
     }
   }
 
   const handleCancelScheduled = async (campaignId: string) => {
-    if (!confirm('Are you sure you want to cancel this scheduled campaign?')) return
+    if (!(await confirm({ title: 'Cancel this scheduled campaign?', message: 'It will not be sent at its scheduled time.', confirmLabel: 'Cancel campaign', cancelLabel: 'Keep scheduled', destructive: true }))) return
     setActionLoadingId(campaignId)
     try {
       const res = await fetch('/api/campaigns/scheduled', {
@@ -717,7 +720,7 @@ export default function CampaignsPage() {
         await fetchCampaignDetails(campaignId, false)
       }
     } catch (err: any) {
-      alert(err.message || 'Error cancelling schedule')
+      alert({ title: 'Schedule not cancelled', message: err.message || 'Error cancelling schedule' })
     } finally {
       setActionLoadingId(null)
     }
@@ -757,7 +760,7 @@ export default function CampaignsPage() {
           await fetchCampaignDetails(campaignId)
         }
       } else {
-        alert(data.error || 'Failed to stop campaign')
+        alert({ title: 'Campaign not stopped', message: data.error || 'Failed to stop campaign' })
       }
     } catch (err) {
       console.error('Error stopping campaign:', err)
@@ -781,7 +784,7 @@ export default function CampaignsPage() {
           await fetchCampaignDetails(campaignId)
         }
       } else {
-        alert(data.error || 'Failed to rerun campaign')
+        alert({ title: 'Campaign not restarted', message: data.error || 'Failed to rerun campaign' })
       }
     } catch (err) {
       console.error('Error rerunning campaign:', err)
@@ -1527,7 +1530,7 @@ export default function CampaignsPage() {
           <Send size={15} />
         </div>
         <div className="min-w-0">
-          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Delivered</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Delivered</span>
           <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalSent}</p>
         </div>
       </div>
@@ -1536,7 +1539,7 @@ export default function CampaignsPage() {
           <TrendingUp size={15} />
         </div>
         <div className="min-w-0">
-          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Avg Success</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Avg Success</span>
           <p className="text-lg font-black text-blue-600 dark:text-blue-400 leading-none mt-1">{successRate}%</p>
         </div>
       </div>
@@ -1545,7 +1548,7 @@ export default function CampaignsPage() {
           <AlertCircle size={15} />
         </div>
         <div className="min-w-0">
-          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Failed</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Failed</span>
           <p className="text-lg font-black text-red-500 dark:text-red-400 leading-none mt-1">{totalFailed}</p>
         </div>
       </div>
@@ -1554,7 +1557,7 @@ export default function CampaignsPage() {
           <Target size={15} />
         </div>
         <div className="min-w-0">
-          <span className="text-[9px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Total Dispatched</span>
+          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Total Dispatched</span>
           <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalContacts}</p>
         </div>
       </div>
@@ -1573,7 +1576,7 @@ export default function CampaignsPage() {
         />
       </div>
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex bg-slate-100 dark:bg-[#202d36] p-0.5 rounded-lg border border-slate-150 dark:border-slate-800">
+        <div className="flex bg-slate-100 dark:bg-[#202d36] p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
           {[
             { value: 'all', label: 'All' },
             { value: 'whatsapp', label: 'WhatsApp' },
@@ -2178,7 +2181,7 @@ export default function CampaignsPage() {
                 <ExternalLink size={12} />
                 <span>Full Tab</span>
                 {(selectedCampaign.active_chats_count ?? 0) > 0 && (
-                  <span className="bg-white/20 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                  <span className="bg-white/20 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
                     {selectedCampaign.active_chats_count}
                   </span>
                 )}
@@ -2238,19 +2241,19 @@ export default function CampaignsPage() {
             {/* Modal Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
-                <div className="text-[8px] font-black uppercase text-[#8696a0]">Targets</div>
+                <div className="text-[10px] font-black uppercase text-[#8696a0]">Targets</div>
                 <div className="text-base font-black text-[#111b21] dark:text-white mt-1">{selectedCampaign.total_contacts}</div>
               </div>
               <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
-                <div className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400">Sent</div>
+                <div className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Sent</div>
                 <div className="text-base font-black text-[#008069] dark:text-emerald-400 mt-1">{selectedCampaign.sent_count}</div>
               </div>
               <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
-                <div className="text-[8px] font-black uppercase text-red-500">Failed</div>
+                <div className="text-[10px] font-black uppercase text-red-500">Failed</div>
                 <div className="text-base font-black text-red-500 mt-1">{selectedCampaign.failed_count}</div>
               </div>
               <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs">
-                <div className="text-[8px] font-black uppercase text-blue-600 dark:text-blue-400">Success</div>
+                <div className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400">Success</div>
                 <div className="text-base font-black text-blue-600 dark:text-blue-400 mt-1">
                   {selectedCampaign.total_contacts > 0 
                     ? Math.round((selectedCampaign.sent_count / selectedCampaign.total_contacts) * 100) 
@@ -2308,7 +2311,7 @@ export default function CampaignsPage() {
                   <div className="bg-[#efeae2] dark:bg-[#0b141a]/60 p-4 rounded-xl border border-emerald-100 dark:border-emerald-950/20 max-w-lg w-full shadow-inner relative">
                     <div className="bg-white dark:bg-[#1f2c34] rounded-lg p-3 text-xs leading-relaxed text-[#111b21] dark:text-white shadow-sm relative rounded-tl-none font-sans max-w-[90%]">
                       <p className="whitespace-pre-wrap break-words">{selectedCampaign.template_body}</p>
-                      <div className="text-[8px] text-[#8696a0] text-right mt-1 font-semibold">
+                      <div className="text-[10px] text-[#8696a0] text-right mt-1 font-semibold">
                         {new Date(selectedCampaign.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
@@ -2332,7 +2335,7 @@ export default function CampaignsPage() {
                   {selectedCampaignLogs.length > 0 && (
                     <button
                       onClick={handleDownloadLogsReport}
-                      className="h-7 px-2.5 rounded border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/25 hover:bg-[#e7f7f4] dark:hover:bg-[#008069]/10 text-[9px] md:text-[10px] font-bold text-[#008069] dark:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                      className="h-7 px-2.5 rounded border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/25 hover:bg-[#e7f7f4] dark:hover:bg-[#008069]/10 text-[10px] md:text-[10px] font-bold text-[#008069] dark:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
                       title="Export logs to Excel"
                     >
                       <FileSpreadsheet size={11} />
@@ -2375,7 +2378,7 @@ export default function CampaignsPage() {
                                 : (log.phone_number || log.email_address || '-')}
                             </td>
                             <td className="p-2.5">
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[9px] border ${
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[10px] border ${
                                 log.status === 'READ' ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-200/50' :
                                 log.status === 'DELIVERED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-200/50' :
                                 log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-emerald-950/20 text-[#008069] border-[#00a884]/20' :
@@ -2388,7 +2391,7 @@ export default function CampaignsPage() {
                             <td className="p-2.5">
                               <div className="flex flex-wrap gap-1 max-w-[160px]">
                                 {Object.entries(log.variables_mapped).map(([k, v]) => (
-                                  <span key={k} className="bg-slate-50 dark:bg-slate-850 px-1 py-0.5 rounded text-[8px] border border-slate-100 dark:border-slate-800 text-[#54656f] dark:text-[#8696a0] font-bold font-mono">
+                                  <span key={k} className="bg-slate-50 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px] border border-slate-100 dark:border-slate-800 text-[#54656f] dark:text-[#8696a0] font-bold font-mono">
                                     {k}:{String(v)}
                                   </span>
                                 ))}
@@ -2463,7 +2466,7 @@ export default function CampaignsPage() {
                     <h2 className="font-extrabold text-sm md:text-base text-[#111b21] dark:text-white tracking-tight">
                       Create Bulk Campaign
                     </h2>
-                    <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/50 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/50 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                       Full Screen Workspace
                     </span>
                   </div>
@@ -2788,7 +2791,7 @@ export default function CampaignsPage() {
                     )}
 
                     {channel === 'whatsapp' && templateFetchError && (
-                      <div className="mt-1 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250/30 text-xs flex flex-col gap-1">
+                      <div className="mt-1 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/30 text-xs flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
                           <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
                           <span>WhatsApp API Credentials Issue</span>
@@ -3378,7 +3381,7 @@ export default function CampaignsPage() {
                                 Contact Name
                               </span>
                               {nameSearchQuery && (
-                                <span className="text-[9px] text-[#00a884] font-semibold">Active</span>
+                                <span className="text-[10px] text-[#00a884] font-semibold">Active</span>
                               )}
                             </label>
                             <div className="relative">
@@ -3409,7 +3412,7 @@ export default function CampaignsPage() {
                                 Phone / Email
                               </span>
                               {phoneSearchQuery && (
-                                <span className="text-[9px] text-[#00a884] font-semibold">Active</span>
+                                <span className="text-[10px] text-[#00a884] font-semibold">Active</span>
                               )}
                             </label>
                             <div className="relative">
@@ -3752,7 +3755,7 @@ export default function CampaignsPage() {
                                     title={`Toggle filter by tag: ${tag}`}
                                   >
                                     <span>{tag}</span>
-                                    <span className={`text-[9px] px-1 py-0.1 rounded-full font-mono ${
+                                    <span className={`text-[10px] px-1 py-0.1 rounded-full font-mono ${
                                       isChecked ? 'bg-black/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                     }`}>
                                       {count}
@@ -3764,7 +3767,7 @@ export default function CampaignsPage() {
                                       if (allTagSelected) handleDeselectByTag(tag)
                                       else handleSelectByTag(tag)
                                     }}
-                                    className={`ml-0.5 text-[9px] px-1 py-0.2 rounded font-bold transition-all cursor-pointer ${
+                                    className={`ml-0.5 text-[10px] px-1 py-0.2 rounded font-bold transition-all cursor-pointer ${
                                       isChecked
                                         ? (allTagSelected ? 'bg-white text-emerald-800' : 'bg-white/20 text-white hover:bg-white/30')
                                         : (allTagSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-100 dark:hover:bg-emerald-950')
@@ -3917,7 +3920,7 @@ export default function CampaignsPage() {
                                       <span className="text-[10px] text-slate-400 italic">No tags</span>
                                     )}
                                     {Array.isArray(c.tags) && c.tags.length > 3 && (
-                                      <span className="text-[9px] text-slate-400 font-semibold">
+                                      <span className="text-[10px] text-slate-400 font-semibold">
                                         +{c.tags.length - 3}
                                       </span>
                                     )}
@@ -4121,7 +4124,7 @@ export default function CampaignsPage() {
                                   ) : (
                                     <div className="bg-slate-100 dark:bg-slate-800 rounded-t-md h-28 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-1.5 border border-dashed border-slate-200 dark:border-slate-700">
                                       <FileSpreadsheet size={20} />
-                                      <span className="text-[9px] font-medium">📷 Image Header (Approved Asset)</span>
+                                      <span className="text-[10px] font-medium">📷 Image Header (Approved Asset)</span>
                                     </div>
                                   )}
                                 </div>
@@ -4141,7 +4144,7 @@ export default function CampaignsPage() {
                                   ) : (
                                     <div className="bg-slate-100 dark:bg-slate-800 rounded-t-md h-28 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-1.5 border border-dashed border-slate-200 dark:border-slate-700">
                                       <Play size={20} />
-                                      <span className="text-[9px] font-medium">🎥 Video Header (Approved Asset)</span>
+                                      <span className="text-[10px] font-medium">🎥 Video Header (Approved Asset)</span>
                                     </div>
                                   )}
                                 </div>
@@ -4155,7 +4158,7 @@ export default function CampaignsPage() {
                                   <div className="bg-slate-100 dark:bg-slate-800/80 rounded p-2 flex items-center justify-between border border-slate-200/50 dark:border-slate-700/60">
                                     <div className="flex items-center gap-2 truncate">
                                       <FileText size={16} className="text-red-500 flex-shrink-0" />
-                                      <span className="truncate max-w-[150px] text-[9px] font-bold text-slate-750 dark:text-slate-350">
+                                      <span className="truncate max-w-[150px] text-[10px] font-bold text-slate-800 dark:text-slate-300">
                                         {docFilename}
                                       </span>
                                     </div>
@@ -4180,7 +4183,7 @@ export default function CampaignsPage() {
                                 headerText = headerText.replace(/\{\{[^\}]+\}\}/g, val)
                               }
                               return (
-                                <div className="px-3 pt-3 font-bold text-xs text-slate-850 dark:text-slate-100 leading-tight">
+                                <div className="px-3 pt-3 font-bold text-xs text-slate-900 dark:text-slate-100 leading-tight">
                                   {headerText}
                                 </div>
                               )
@@ -4193,7 +4196,7 @@ export default function CampaignsPage() {
                           <div className="px-3 pt-2 pb-1 text-[11px] leading-relaxed">
                             <p className="whitespace-pre-wrap break-words">{getPreviewMessage()}</p>
                             
-                            <div className="text-[8px] text-[#667781] dark:text-[#8696a0] text-right mt-1 font-semibold select-none">
+                            <div className="text-[10px] text-[#667781] dark:text-[#8696a0] text-right mt-1 font-semibold select-none">
                               10:00 AM
                             </div>
                           </div>
@@ -4218,7 +4221,7 @@ export default function CampaignsPage() {
                                   return (
                                     <div 
                                       key={idx} 
-                                      className="py-2 px-3 text-center font-bold text-[10px] text-[#008069] dark:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-850/50 cursor-pointer flex items-center justify-center gap-1.5 border-b border-[#f0f2f5] dark:border-slate-700/30 last:border-b-0 transition-colors"
+                                      className="py-2 px-3 text-center font-bold text-[10px] text-[#008069] dark:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer flex items-center justify-center gap-1.5 border-b border-[#f0f2f5] dark:border-slate-700/30 last:border-b-0 transition-colors"
                                     >
                                       <span>{btn.text}</span>
                                       {icon}

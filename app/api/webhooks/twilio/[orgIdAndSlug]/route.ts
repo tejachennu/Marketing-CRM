@@ -5,6 +5,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
+import { classifyGreeting } from '@/lib/greeting-classifier'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -329,6 +330,58 @@ export async function POST(
 
     // Step 7: Auto-Reply Chatbot Trigger
     const twilioWhatsappNumber = orgData.twilio_whatsapp_number || process.env.TWILIO_WHATSAPP_NUMBER || ''
+
+    if (
+      orgData.enable_ai !== false &&
+      conversation.auto_reply_enabled !== false &&
+      messageBody &&
+      openAiKey
+    ) {
+      const greetingResult = classifyGreeting(messageBody)
+      if (greetingResult.isGreeting) {
+        console.log(`[Twilio Webhook Chatbot] Greeting detected (${greetingResult.category}), sent instant reply without OpenAI`)
+
+        let twilioMessageSid: string | null = null
+        let sendError: string | null = null
+        try {
+          const twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+          const cleanFrom = twilioWhatsappNumber.replace('whatsapp:', '')
+          const cleanTo = isBsuid(phoneNumber) ? canonicalizeBsuid(phoneNumber) : phoneNumber
+
+          const twilioMsg = await twilioClient.messages.create({
+            body: greetingResult.suggestedReply,
+            to: isWhatsApp ? `whatsapp:${cleanTo}` : cleanTo,
+            from: isWhatsApp ? `whatsapp:${cleanFrom}` : cleanFrom
+          })
+          twilioMessageSid = twilioMsg.sid
+          console.log(`[Twilio Webhook Chatbot] Sent Twilio message: ${twilioMessageSid}`)
+        } catch (sendErr: any) {
+          sendError = sendErr?.message || String(sendErr)
+          console.error('[Twilio Webhook Chatbot] Failed to send Twilio message:', sendError)
+        }
+
+        await supabase
+          .from('messages')
+          .insert([
+            {
+              organization_id: orgId,
+              conversation_id: conversation.id,
+              sender_type: 'user',
+              body: greetingResult.suggestedReply,
+              twilio_message_sid: twilioMessageSid,
+              status: sendError ? 'failed' : 'sent',
+              error_message: sendError
+            }
+          ])
+
+        await supabase
+          .from('conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversation.id)
+
+        return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'greeting_classifier' })
+      }
+    }
 
     if (
       orgData.enable_ai !== false &&

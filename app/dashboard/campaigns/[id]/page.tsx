@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
+import { Fragment, useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import {
@@ -45,6 +45,8 @@ import {
 } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { formatChatListTimestamp, formatChatTime, isSameDay } from '@/lib/chat-dates'
+import { ChatDateSeparator } from '@/components/chat-date-separator'
 
 interface WhatsAppTemplate {
   sid: string
@@ -985,7 +987,7 @@ export default function CampaignFullTabPage() {
                 <h1 className="text-xs sm:text-sm md:text-base font-extrabold text-[#111b21] dark:text-white truncate max-w-[160px] xs:max-w-[220px] sm:max-w-xs md:max-w-md">
                   {campaign.name}
                 </h1>
-                <span className={`text-[9px] sm:text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+                <span className={`text-[10px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
                   campaign.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/60' :
                   campaign.status === 'PROCESSING' || campaign.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60 animate-pulse' :
                   campaign.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60' :
@@ -1027,7 +1029,7 @@ export default function CampaignFullTabPage() {
               {activeChatsCount} Active {activeChatsCount === 1 ? 'Chat' : 'Chats'}
             </span>
             {unreadChatsCount > 0 && (
-              <span className="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full ml-0.5 animate-bounce">
+              <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ml-0.5 animate-bounce">
                 {unreadChatsCount} need reply
               </span>
             )}
@@ -1049,7 +1051,7 @@ export default function CampaignFullTabPage() {
               <MessageSquare size={13} className="text-[#008069] dark:text-emerald-400" />
               <span>Live Chats</span>
               {activeChatsCount > 0 && (
-                <span className="bg-[#008069] text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                <span className="bg-[#008069] text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
                   {activeChatsCount}
                 </span>
               )}
@@ -1137,7 +1139,7 @@ export default function CampaignFullTabPage() {
                 >
                   <span>Needs Reply</span>
                   {unreadChatsCount > 0 && (
-                    <span className="bg-white text-rose-600 text-[8px] font-black px-1.5 py-0.2 rounded-full">
+                    <span className="bg-white text-rose-600 text-[10px] font-black px-1.5 py-0.2 rounded-full">
                       {unreadChatsCount}
                     </span>
                   )}
@@ -1212,16 +1214,8 @@ export default function CampaignFullTabPage() {
                             <h4 className="text-xs font-bold text-[#111b21] dark:text-white truncate">
                               {displayName}
                             </h4>
-                            <span className="text-[9px] text-[#8696a0] shrink-0 font-medium">
-                              {rec.last_message_at
-                                ? new Date(rec.last_message_at).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : new Date(rec.dispatched_at).toLocaleDateString([], {
-                                    month: 'short',
-                                    day: 'numeric',
-                                  })}
+                            <span className="text-[10px] text-[#8696a0] shrink-0 font-medium whitespace-nowrap">
+                              {formatChatListTimestamp(rec.last_message_at || rec.dispatched_at)}
                             </span>
                           </div>
 
@@ -1229,7 +1223,7 @@ export default function CampaignFullTabPage() {
                             <span>{displayPhone}</span>
                             {rec.dispatch_status && (
                               <span
-                                className={`text-[8px] font-black px-1.5 py-0.2 rounded border uppercase ${
+                                className={`text-[10px] font-black px-1.5 py-0.2 rounded border uppercase ${
                                   rec.dispatch_status === 'DELIVERED'
                                     ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border-emerald-200/50'
                                     : rec.dispatch_status === 'READ'
@@ -1266,12 +1260,12 @@ export default function CampaignFullTabPage() {
                             {/* Unread badge & Replied Badge */}
                             <div className="flex items-center gap-1 shrink-0">
                               {rec.has_replied && (
-                                <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
                                   Replied
                                 </span>
                               )}
                               {rec.unread_count > 0 && (
-                                <span className="bg-rose-500 text-white text-[9px] font-black h-4 min-w-4 px-1 rounded-full flex items-center justify-center shadow-xs">
+                                <span className="bg-rose-500 text-white text-[10px] font-black h-4 min-w-4 px-1 rounded-full flex items-center justify-center shadow-xs">
                                   {rec.unread_count}
                                 </span>
                               )}
@@ -1330,18 +1324,18 @@ export default function CampaignFullTabPage() {
                             : selectedRecipient.contact_phone || selectedRecipient.phone_number}
                         </h3>
                         {selectedRecipient.has_replied && (
-                          <span className="text-[8px] font-black px-1.5 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                          <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                             Active Reply
                           </span>
                         )}
 
                         {/* Meta 24-Hour Free Service Window Badge */}
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wide border shrink-0 ${
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border shrink-0 ${
                             !metaWindowStatus.hasInbound
                               ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
                               : !metaWindowStatus.isOpen
-                              ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-650 dark:text-rose-400 border-rose-200/60'
+                              ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/60'
                               : metaWindowStatus.isClosingSoon
                               ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200/60'
                               : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/60'
@@ -1384,7 +1378,7 @@ export default function CampaignFullTabPage() {
                           {copiedPhone ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                         </button>
                         <span>•</span>
-                        <span className="uppercase text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="uppercase text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                           {selectedRecipient.dispatch_status}
                         </span>
                       </div>
@@ -1452,7 +1446,7 @@ export default function CampaignFullTabPage() {
                         <span>DISPATCHED CAMPAIGN MESSAGE • {new Date(selectedRecipient.dispatched_at).toLocaleString()}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[#8696a0] uppercase text-[9px]">
+                        <span className="font-mono text-[#8696a0] uppercase text-[10px]">
                           STATUS: {selectedRecipient.dispatch_status}
                         </span>
                         <button
@@ -1496,13 +1490,15 @@ export default function CampaignFullTabPage() {
                       </div>
                     </div>
                   ) : (
-                    displayedMessages.map((msg) => {
+                    displayedMessages.map((msg, index) => {
                       const isUser = msg.sender_type === 'user'
                       const isTemp = msg.id.startsWith('temp-')
+                      const startsNewDay = index === 0 || !isSameDay(displayedMessages[index - 1].created_at, msg.created_at)
 
                       return (
+                        <Fragment key={msg.id}>
+                        {startsNewDay && <ChatDateSeparator date={msg.created_at} />}
                         <div
-                          key={msg.id}
                           className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                         >
                           <div
@@ -1539,13 +1535,8 @@ export default function CampaignFullTabPage() {
                             <p className="whitespace-pre-wrap break-words">{msg.body}</p>
 
                             {/* Timestamp & Status */}
-                            <div className="flex items-center justify-end gap-1 mt-1 text-[8.5px] text-[#8696a0]">
-                              <span>
-                                {new Date(msg.created_at).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
+                            <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#8696a0]">
+                              <span>{formatChatTime(msg.created_at)}</span>
                               {isUser && (
                                 <span>
                                   {isTemp || msg.status === 'sending' ? (
@@ -1560,6 +1551,7 @@ export default function CampaignFullTabPage() {
                             </div>
                           </div>
                         </div>
+                        </Fragment>
                       )
                     })
                   )}
@@ -1587,7 +1579,7 @@ export default function CampaignFullTabPage() {
                   <div className="mx-4 mb-2 bg-white/95 dark:bg-[#111b21]/95 backdrop-blur-md border border-indigo-200 dark:border-indigo-900/50 rounded-2xl shadow-xl z-20 overflow-hidden flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-200 select-none">
                     {/* Header Bar */}
                     <div className="px-3.5 py-2 flex items-center justify-between border-b border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20">
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                      <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
                         <Sparkles size={10} className="text-indigo-600 dark:text-indigo-400" />
                         <span>AI Smart Suggestions</span>
                       </div>
@@ -1661,7 +1653,7 @@ export default function CampaignFullTabPage() {
                                 {sug.text}
                               </p>
                               {sug.article_title && (
-                                <div className="mt-1 flex items-center gap-1 text-[8.5px] text-indigo-600 dark:text-indigo-400 font-semibold truncate">
+                                <div className="mt-1 flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold truncate">
                                   <BookOpen size={9} />
                                   <span className="truncate">{sug.article_title}</span>
                                 </div>
@@ -1724,7 +1716,7 @@ export default function CampaignFullTabPage() {
                     {/* Rephrase Dropdown */}
                     {showRephraseDropdown && (
                       <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-[#111b21] rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-150">
-                        <div className="px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                        <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
                           Rephrase Tone
                         </div>
                         <button
@@ -1984,7 +1976,7 @@ export default function CampaignFullTabPage() {
                   {/* Phone Mockup Status Bar */}
                   <div className="bg-[#005c4b] text-white/90 text-[10px] px-4 py-1 flex items-center justify-between font-mono select-none">
                     <span>9:41</span>
-                    <div className="flex items-center gap-1.5 text-[9px]">
+                    <div className="flex items-center gap-1.5 text-[10px]">
                       <span>5G</span>
                       <span>100%</span>
                     </div>
@@ -2003,7 +1995,7 @@ export default function CampaignFullTabPage() {
                           </span>
                           <CheckCircle2 size={11} className="text-emerald-300 shrink-0 fill-emerald-300 text-white" />
                         </div>
-                        <span className="text-[9px] text-white/80 block leading-tight">
+                        <span className="text-[10px] text-white/80 block leading-tight">
                           Official WhatsApp Business Account
                         </span>
                       </div>
@@ -2024,13 +2016,13 @@ export default function CampaignFullTabPage() {
                   >
                     {/* Date Badge */}
                     <div className="text-center">
-                      <span className="bg-white/85 dark:bg-[#1f2c34]/90 text-[9px] font-bold text-[#54656f] dark:text-[#8696a0] px-2.5 py-0.5 rounded-md shadow-2xs uppercase">
+                      <span className="bg-white/85 dark:bg-[#1f2c34]/90 text-[10px] font-bold text-[#54656f] dark:text-[#8696a0] px-2.5 py-0.5 rounded-md shadow-2xs uppercase">
                         Today
                       </span>
                     </div>
 
                     {/* Security Pill */}
-                    <div className="p-2 bg-[#ffeecd] dark:bg-amber-950/40 rounded-lg text-center text-[9px] text-amber-900 dark:text-amber-300 font-medium leading-tight flex items-center justify-center gap-1 shadow-2xs">
+                    <div className="p-2 bg-[#ffeecd] dark:bg-amber-950/40 rounded-lg text-center text-[10px] text-amber-900 dark:text-amber-300 font-medium leading-tight flex items-center justify-center gap-1 shadow-2xs">
                       <ShieldCheck size={11} className="shrink-0" />
                       <span>Messages and calls are end-to-end encrypted.</span>
                     </div>
@@ -2039,7 +2031,7 @@ export default function CampaignFullTabPage() {
                     <div className="flex justify-end">
                       <div className="bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-white rounded-xl rounded-tr-none px-3.5 py-2.5 shadow-xs max-w-[95%] text-xs leading-relaxed relative font-sans">
                         <p className="whitespace-pre-wrap break-words">{simulatedBody}</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-[8.5px] text-[#54656f] dark:text-[#8696a0] select-none">
+                        <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#54656f] dark:text-[#8696a0] select-none">
                           <span>11:51 AM</span>
                           <CheckCheck size={12} className="text-[#53bdeb]" />
                         </div>
@@ -2088,7 +2080,7 @@ export default function CampaignFullTabPage() {
                       Template Specification
                     </span>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                     APPROVED & ACTIVE
                   </span>
                 </div>
@@ -2104,7 +2096,7 @@ export default function CampaignFullTabPage() {
                   <div className="p-3 bg-[#f8f9fa] dark:bg-[#202d36] rounded-xl border border-[#e9edef] dark:border-slate-700/60">
                     <span className="text-[10px] uppercase font-bold text-[#8696a0] block mb-0.5">Category & Channel</span>
                     <div className="flex items-center gap-1.5 font-bold text-[#111b21] dark:text-white">
-                      <span className="px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[9px]">UTILITY</span>
+                      <span className="px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px]">UTILITY</span>
                       <span className="capitalize">{campaign.channel || 'whatsapp'}</span>
                     </div>
                   </div>
@@ -2128,7 +2120,7 @@ export default function CampaignFullTabPage() {
                     <span className="text-[10.5px] uppercase font-extrabold text-slate-500 dark:text-slate-400 tracking-wider">
                       Detected Variables ({detectedVariables.length})
                     </span>
-                    <span className="text-[9.5px] text-[#8696a0]">Mapped per recipient</span>
+                    <span className="text-[10px] text-[#8696a0]">Mapped per recipient</span>
                   </div>
                   {detectedVariables.length === 0 ? (
                     <p className="text-xs text-[#8696a0] italic">No dynamic parameters in this template body.</p>
@@ -2192,19 +2184,19 @@ export default function CampaignFullTabPage() {
                 {/* Breakdown Legend */}
                 <div className="grid grid-cols-4 gap-2 pt-1 text-center">
                   <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#202d36]">
-                    <span className="text-[9px] uppercase font-bold text-[#8696a0] block">Targets</span>
+                    <span className="text-[10px] uppercase font-bold text-[#8696a0] block">Targets</span>
                     <span className="text-xs font-extrabold text-[#111b21] dark:text-white">{campaign.total_contacts}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20">
-                    <span className="text-[9px] uppercase font-bold text-[#008069] dark:text-emerald-400 block">Sent</span>
+                    <span className="text-[10px] uppercase font-bold text-[#008069] dark:text-emerald-400 block">Sent</span>
                     <span className="text-xs font-extrabold text-[#008069] dark:text-emerald-400">{campaign.sent_count}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-blue-50/70 dark:bg-blue-950/20">
-                    <span className="text-[9px] uppercase font-bold text-blue-600 dark:text-blue-400 block">Read / Deliv</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 block">Read / Deliv</span>
                     <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">{logDeliveredCount}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-teal-50/70 dark:bg-teal-950/20">
-                    <span className="text-[9px] uppercase font-bold text-teal-700 dark:text-teal-300 block">Replies</span>
+                    <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 block">Replies</span>
                     <span className="text-xs font-extrabold text-teal-700 dark:text-teal-300">{activeChatsCount}</span>
                   </div>
                 </div>
@@ -2382,14 +2374,14 @@ export default function CampaignFullTabPage() {
                           {/* Status Badge */}
                           <td className="p-3.5">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-extrabold text-[9px] uppercase tracking-wide border shadow-2xs ${
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-extrabold text-[10px] uppercase tracking-wide border shadow-2xs ${
                                 (rec.dispatch_status || '').toUpperCase() === 'READ'
-                                  ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-650 dark:text-blue-400 border-blue-200/60'
+                                  ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200/60'
                                   : (rec.dispatch_status || '').toUpperCase() === 'DELIVERED'
                                   ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200/60'
                                   : (rec.dispatch_status || '').toUpperCase() === 'SENT'
                                   ? 'bg-[#e7f7f4] text-[#008069] dark:bg-emerald-950/20 dark:text-emerald-300 border-[#00a884]/20'
-                                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-650 dark:text-rose-400 border-rose-200/60'
+                                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/60'
                               }`}
                             >
                               {(rec.dispatch_status || '').toUpperCase() === 'READ' || (rec.dispatch_status || '').toUpperCase() === 'DELIVERED' ? (
@@ -2402,7 +2394,7 @@ export default function CampaignFullTabPage() {
                               <span>{rec.dispatch_status}</span>
                             </span>
                             {rec.error_message && (
-                              <div className="text-[9px] text-rose-500 font-medium mt-1 truncate max-w-[150px]" title={rec.error_message}>
+                              <div className="text-[10px] text-rose-500 font-medium mt-1 truncate max-w-[150px]" title={rec.error_message}>
                                 {rec.error_message}
                               </div>
                             )}
@@ -2411,7 +2403,7 @@ export default function CampaignFullTabPage() {
                           {/* Replied Indicator */}
                           <td className="p-3.5">
                             {rec.has_replied ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                 <span>Replied</span>
                               </span>
@@ -2429,7 +2421,7 @@ export default function CampaignFullTabPage() {
                                 Object.entries(rec.variables_mapped || {}).map(([k, v]) => (
                                   <span
                                     key={k}
-                                    className="bg-[#f0f2f5] dark:bg-[#202d36] px-2 py-0.5 rounded-md text-[9px] border border-[#e9edef] dark:border-slate-700 text-[#54656f] dark:text-[#8696a0] font-mono"
+                                    className="bg-[#f0f2f5] dark:bg-[#202d36] px-2 py-0.5 rounded-md text-[10px] border border-[#e9edef] dark:border-slate-700 text-[#54656f] dark:text-[#8696a0] font-mono"
                                   >
                                     <strong className="text-[#111b21] dark:text-white">{k}:</strong> {String(v)}
                                   </span>

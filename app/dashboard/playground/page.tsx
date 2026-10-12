@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { useConfirm } from '@/lib/dialog-context'
 
 // ===========================
 // Types
@@ -96,6 +97,7 @@ async function authFetch(url: string, init: RequestInit = {}): Promise<Response>
 // Chat Mode Component
 // ===========================
 function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?: boolean }) {
+  const confirm = useConfirm()
   const [sessions, setSessions] = useState<PlaygroundSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -229,7 +231,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
 
   async function clearChat() {
     if (!activeSessionId) return
-    if (!confirm('Are you sure you want to clear all messages in this conversation?')) return
+    if (!(await confirm({ title: 'Clear this conversation?', message: 'All messages in this chat will be removed.', confirmLabel: 'Clear', destructive: true }))) return
 
     try {
       await authFetch('/api/ai/playground-chat', {
@@ -469,7 +471,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                     ) : (
                       <>
                         <p className="text-[11px] truncate leading-tight">{session.title}</p>
-                        <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">{formatDate(session.updated_at)}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{formatDate(session.updated_at)}</p>
                       </>
                     )}
                   </div>
@@ -483,7 +485,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                         <Edit3 size={11} />
                       </button>
                       <button
-                        onClick={e => { e.stopPropagation(); if (confirm('Delete this chat session?')) deleteSession(session.id) }}
+                        onClick={async e => { e.stopPropagation(); if (await confirm({ title: 'Delete this chat session?', message: 'Its messages will be removed permanently.', confirmLabel: 'Delete', destructive: true })) deleteSession(session.id) }}
                         title="Delete"
                         className="p-1 hover:bg-red-100 dark:hover:bg-red-950/30 rounded text-slate-400 hover:text-red-500"
                       >
@@ -571,7 +573,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                     className="text-left p-3 bg-white dark:bg-[#1f2c34] rounded-xl border border-slate-200/80 dark:border-slate-700/80 hover:border-[#00a884] dark:hover:border-[#00a884] text-slate-700 dark:text-slate-300 hover:text-[#00a884] dark:hover:text-[#00a884] transition-all text-[11px] font-medium leading-snug shadow-2xs group cursor-pointer"
                   >
                     <span className="line-clamp-2">{q}</span>
-                    <div className="mt-1.5 flex items-center gap-1 text-[9px] text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity font-bold">
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity font-bold">
                       <span>Send prompt</span>
                       <ArrowRight size={10} />
                     </div>
@@ -594,23 +596,23 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                     <div className="flex items-center justify-end gap-1.5 mt-1.5 pt-0.5 border-t border-black/5 dark:border-white/5">
                       {msg.condensedQuery && (
                         <span 
-                          className="text-[9px] bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.2 rounded font-medium cursor-help" 
+                          className="text-[10px] bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 px-1.5 py-0.2 rounded font-medium cursor-help" 
                           title={`Context Query: "${msg.condensedQuery}"`}
                         >
                           🔍 rewritten
                         </span>
                       )}
                       {msg.isRiseTicket && (
-                        <span className="text-[9px] bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 px-1.5 py-0.2 rounded font-semibold">
+                        <span className="text-[10px] bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 px-1.5 py-0.2 rounded font-semibold">
                           🎟️ escalate
                         </span>
                       )}
                       {msg.matchedFaqs !== undefined && msg.matchedFaqs > 0 && (
-                        <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-medium">
+                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-medium">
                           {msg.matchedFaqs} FAQ{msg.matchedFaqs > 1 ? 's' : ''}
                         </span>
                       )}
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">
                         {formatTime(msg.timestamp)}
                       </span>
                     </div>
@@ -962,7 +964,7 @@ export default function PlaygroundPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100">AI Playground</h1>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#00a884]/10 text-[#00a884]">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#00a884]/10 text-[#00a884]">
                   Popup Window
                 </span>
               </div>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { useAlert } from '@/lib/dialog-context'
+import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
 import {
   Workflow,
@@ -63,6 +63,7 @@ interface NativeFlowItem {
 export default function FlowsHubPage() {
   const router = useRouter()
   const alert = useAlert()
+  const confirm = useConfirm()
 
   const [orgId, setOrgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -172,7 +173,7 @@ export default function FlowsHubPage() {
 
   // Delete workflow
   const deleteWorkflow = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete workflow "${name}"?`)) return
+    if (!(await confirm({ title: 'Delete this workflow?', message: `"${name}" will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
     try {
       const res = await fetch(`/api/flows/workflows/${id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -185,7 +186,7 @@ export default function FlowsHubPage() {
 
   // Delete native flow
   const deleteNativeFlow = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete native flow "${name}"?`)) return
+    if (!(await confirm({ title: 'Delete this native flow?', message: `"${name}" will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
     try {
       const res = await fetch(`/api/flows/native/${id}`, { method: 'DELETE' })
       if (!res.ok) {

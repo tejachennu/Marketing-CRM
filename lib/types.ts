@@ -35,6 +35,15 @@ export interface Organization {
   ticket_email_enabled?: boolean | null
   ticket_email_recipients?: string[] | null
   currency?: string | null
+  enable_commerce?: boolean | null
+  meta_catalog_id?: string | null
+  meta_commerce_account_id?: string | null
+  commerce_payment_gateway?: 'razorpay' | 'payu' | 'cashfree' | 'link' | 'cod' | null
+  commerce_gateway_config_name?: string | null
+  commerce_enable_cod?: boolean | null
+  commerce_default_shipping_fee?: number | null
+  commerce_free_shipping_threshold?: number | null
+  commerce_address_flow_id?: string | null
 }
 
 export interface User {
@@ -141,3 +150,85 @@ export interface ConversationWithContact extends Conversation {
   lead?: Lead
   last_message?: Message
 }
+
+export interface CommerceProduct {
+  id: string
+  organization_id: string
+  retailer_id: string
+  title: string
+  description?: string | null
+  price: number
+  currency: string
+  image_url?: string | null
+  website_url?: string | null
+  category?: string | null
+  is_available: boolean
+  inventory_count?: number | null
+  metadata?: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export interface CommerceOrderItem {
+  id: string
+  order_id: string
+  product_id?: string | null
+  retailer_id: string
+  title: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  image_url?: string | null
+  created_at: string
+}
+
+export interface CommerceOrder {
+  id: string
+  organization_id: string
+  contact_id?: string | null
+  conversation_id?: string | null
+  lead_id?: string | null
+  order_number: string
+  status: 'cart_submitted' | 'awaiting_address' | 'payment_pending' | 'paid' | 'cod_confirmed' | 'shipped' | 'delivered' | 'canceled'
+  checkout_type: 'in_chat' | 'website_redirect'
+  catalog_id?: string | null
+  subtotal: number
+  shipping_fee: number
+  tax_amount: number
+  total_amount: number
+  currency: string
+  payment_method?: 'whatsapp_pay' | 'razorpay_link' | 'cod' | null
+  payment_status: 'pending' | 'paid' | 'failed' | 'refunded'
+  shipping_address?: {
+    full_name?: string
+    phone_number?: string
+    address_line_1?: string
+    address_line_2?: string
+    city?: string
+    state?: string
+    pincode?: string
+    delivery_speed?: string
+    notes?: string
+  } | null
+  customer_note?: string | null
+  meta_order_id?: string | null
+  meta_payment_reference?: string | null
+  items?: CommerceOrderItem[]
+  contact?: Contact
+  created_at: string
+  updated_at: string
+}
+
+export interface CommerceTransaction {
+  id: string
+  order_id: string
+  organization_id: string
+  gateway: string
+  transaction_id: string
+  amount: number
+  currency: string
+  status: string
+  raw_payload?: Record<string, any>
+  created_at: string
+}
+

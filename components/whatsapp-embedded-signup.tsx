@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Loader2, CheckCircle2, AlertCircle, RefreshCw, Zap, ShieldCheck, Unlink } from 'lucide-react'
+import { useConfirm } from '@/lib/dialog-context'
 
 interface WhatsAppEmbeddedSignupProps {
   organizationId: string
@@ -33,6 +34,7 @@ export function WhatsAppEmbeddedSignup({
   onSuccess,
   onDisconnect,
 }: WhatsAppEmbeddedSignupProps) {
+  const confirm = useConfirm()
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -198,9 +200,13 @@ export function WhatsAppEmbeddedSignup({
   }
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Are you sure you want to disconnect this WhatsApp Business Account?')) {
-      return
-    }
+    const confirmed = await confirm({
+      title: 'Disconnect WhatsApp?',
+      message: 'This WhatsApp Business Account will stop sending and receiving messages in the CRM.',
+      confirmLabel: 'Disconnect',
+      destructive: true,
+    })
+    if (!confirmed) return
 
     setError(null)
     setSuccessMessage(null)

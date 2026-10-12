@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
+import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { MASTER_ORG_ID } from '@/lib/constants'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -13,10 +15,19 @@ function getSupabaseClient() {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const orgId = searchParams.get('organizationId')
+    const user = await getAuthenticatedUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: No active session found' }, { status: 401 })
+    }
 
-    const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+    const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('organizationId') || user.organization_id
+
+    if (user.role !== 'superadmin' && orgId !== user.organization_id) {
+      return NextResponse.json({ error: 'Forbidden: You do not have access to this organization\'s data' }, { status: 403 })
+    }
+
+    const isMasterOrg = !orgId || orgId === MASTER_ORG_ID
 
     let accountSid = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
     let authToken = isMasterOrg ? (process.env.TWILIO_AUTH_TOKEN || '') : ''

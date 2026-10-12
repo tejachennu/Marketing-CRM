@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
+import { isSuperAdminEmail } from '@/lib/api-auth-helper'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -20,15 +21,38 @@ function getSupabaseAdminClient() {
 }
 
 export async function POST(request: NextRequest) {
+  // Tracked so a failed signup does not leave a half-created tenant behind
+  let createdOrgId: string | null = null
+  let createdAuthUserId: string | null = null
+  let supabase: ReturnType<typeof getSupabaseAdminClient> | null = null
+
   try {
-    const supabase = getSupabaseAdminClient()
-    const { email, password, fullName, companyName } = await request.json()
+    supabase = getSupabaseAdminClient()
+    const body = await request.json()
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const password = typeof body.password === 'string' ? body.password : ''
+    const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : ''
+    const companyName = typeof body.companyName === 'string' ? body.companyName.trim() : ''
 
     if (!email || !password || !fullName || !companyName) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 })
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters long' }, { status: 400 })
+    }
+
+    // Signup skips email verification, and these addresses are promoted to superadmin on
+    // login. They must therefore never be registrable by whoever types them in first.
+    if (isSuperAdminEmail(email)) {
+      return NextResponse.json({ error: 'This email address cannot be used to sign up' }, { status: 403 })
     }
 
     // Create organization first
@@ -49,6 +73,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (orgError) throw orgError
+    createdOrgId = orgData.id
 
     // Create auth user via Supabase
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -58,6 +83,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (authError) throw authError
+    createdAuthUserId = authData.user.id
 
     // Create user profile
     const { error: userError } = await supabase.from('users').insert([
@@ -71,6 +97,10 @@ export async function POST(request: NextRequest) {
     ])
 
     if (userError) throw userError
+
+    // The account is complete from here on; demo data below is best-effort
+    createdOrgId = null
+    createdAuthUserId = null
 
     // Create demo data
     const { data: stagesData } = await supabase
@@ -231,6 +261,16 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('[v0] Signup error:', error)
+
+    // Roll back partial work (e.g. the email was already registered) so retries start clean
+    if (supabase) {
+      try {
+        if (createdAuthUserId) await supabase.auth.admin.deleteUser(createdAuthUserId)
+        if (createdOrgId) await supabase.from('organizations').delete().eq('id', createdOrgId)
+      } catch (cleanupErr) {
+        console.error('[Signup] Failed to clean up after error:', cleanupErr)
+      }
+    }
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Signup failed',
