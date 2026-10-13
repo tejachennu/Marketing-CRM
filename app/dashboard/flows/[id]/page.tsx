@@ -1,470 +1,498 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Workflow,
+  AlertCircle,
   ArrowLeft,
-  Save,
-  Play,
-  Pause,
-  Plus,
-  Trash2,
-  Sparkles,
-  Smartphone,
-  MessageSquare,
-  ListPlus,
-  HelpCircle,
-  Briefcase,
-  Ticket,
+  CheckCircle2,
+  Loader2,
   Maximize2,
+  Pause,
+  Play,
+  RotateCcw,
+  Save,
+  Smartphone,
+  Workflow,
+  X,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
-  ChevronRight,
-  X,
-  Check,
-  Send,
-  AlertCircle,
-  Split,
-  Bot,
-  User,
-  Settings2,
-  CornerDownRight,
-  FileText,
-  Clock,
-  ExternalLink,
-  Timer,
-  Globe,
-  Variable,
-  Tag,
-  Bell,
 } from 'lucide-react'
-import { WorkflowNode, WorkflowEdge, NodeType, isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import type { NodeType, WorkflowEdge, WorkflowNode } from '@/lib/flows/flow-types'
+import { getWorkflowIssues } from '@/lib/flows/flow-graph'
+import {
+  BODY_PADDING,
+  HEADER_HEIGHT,
+  INPUT_ANCHOR,
+  NODE_WIDTH,
+  PALETTE,
+  PREVIEW_GAP,
+  PREVIEW_HEIGHT,
+  ROW_GAP,
+  ROW_HEIGHT,
+  TONE_CLASSES,
+  estimateNodeHeight,
+  getNodeDefinition,
+  getNodeOutputs,
+  getNodeSummary,
+  getOutputAnchor,
+  uid,
+} from '@/components/flows/node-catalog'
+import { NodeInspector } from '@/components/flows/node-inspector'
+import { FlowSimulator, type SimulatorMessage } from '@/components/flows/flow-simulator'
+
+type Panel = 'inspector' | 'simulator' | 'issues' | null
+
+const PORT_SIZE = 14
+const MIN_ZOOM = 0.25
+const MAX_ZOOM = 2
+
+/** A smooth left-to-right curve between two points, readable even when the target is behind the source. */
+function edgePath(sx: number, sy: number, ex: number, ey: number) {
+  const bend = Math.max(50, Math.abs(ex - sx) * 0.5)
+  return `M ${sx} ${sy} C ${sx + bend} ${sy}, ${ex - bend} ${ey}, ${ex} ${ey}`
+}
+
+/** The input fields of a form (captions and other display-only elements are skipped). */
+function getFormFields(form: any): any[] {
+  return (Array.isArray(form?.screens) ? form.screens : [])
+    .flatMap((screen: any) => screen?.layout?.children || [])
+    .filter((field: any) => field?.name && !['TextCaption', 'TextSubheading', 'TextBody', 'Footer'].includes(field.type))
+}
+
+/** Sample answers for a form, so the test panel can continue past a form step. */
+function buildSampleAnswers(form: any): Record<string, any> {
+  const answers: Record<string, any> = {}
+  {
+    for (const field of getFormFields(form)) {
+      const firstOption = field.options?.[0]?.id
+      if (field.type === 'OptIn') answers[field.name] = true
+      else if (field.type === 'CheckboxGroup') answers[field.name] = firstOption ? [firstOption] : []
+      else if (field.type === 'Dropdown' || field.type === 'RadioGroup') answers[field.name] = firstOption || 'option'
+      else if (field.type === 'DatePicker') answers[field.name] = new Date().toISOString().slice(0, 10)
+      else if (field.type === 'TimePicker') answers[field.name] = '10:00'
+      else answers[field.name] = field.input_type === 'email' ? 'test@example.com' : field.input_type === 'number' ? '10' : 'Sample answer'
+    }
+  }
+  return Object.keys(answers).length ? answers : { full_name: 'Test Customer' }
+}
 
 export default function FlowCanvasBuilderPage() {
   const params = useParams()
-  const router = useRouter()
   const workflowId = params?.id as string
 
-  // Flow State
-  const [workflow, setWorkflow] = useState<any>(null)
+  // ── Flow data ──────────────────────────────────────────────────────────────
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading')
   const [nodes, setNodes] = useState<WorkflowNode[]>([])
   const [edges, setEdges] = useState<WorkflowEdge[]>([])
   const [flowName, setFlowName] = useState('')
   const [isActive, setIsActive] = useState(false)
-  const [readinessErrors, setReadinessErrors] = useState<string[]>([])
+  const [environmentIssues, setEnvironmentIssues] = useState<string[]>([])
   const [saveError, setSaveError] = useState('')
   const [recentSessions, setRecentSessions] = useState<any[]>([])
   const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; name: string }>>([])
-  const [simulationCompleted, setSimulationCompleted] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [nativeForms, setNativeForms] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [dirty, setDirty] = useState(false)
 
-  // Selection & UI State
+  // ── Selection and panels ───────────────────────────────────────────────────
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string; handleId?: string } | null>(null)
-  const [showSimulator, setShowSimulator] = useState(false)
-  const [availableNativeForms, setAvailableNativeForms] = useState<any[]>([])
+  const [panel, setPanel] = useState<Panel>(null)
 
-  // Canvas Viewport (Pan & Zoom)
+  // ── Viewport (pan and zoom). Refs mirror state for the window-level listeners. ──
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [isPanning, setIsPanning] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-
-  // Node Dragging State
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
-  const [nodeDragOffset, setNodeDragOffset] = useState({ x: 0, y: 0 })
-
-  // Spacebar pan & connection preview state
-  const [isSpacePressed, setIsSpacePressed] = useState(false)
-  const isSpacePressedRef = useRef(false)
-  const [canvasMousePos, setCanvasMousePos] = useState<{ x: number; y: number } | null>(null)
-
-  // Synchronized refs for high-performance window-level event tracking
   const panRef = useRef(pan)
   const zoomRef = useRef(zoom)
   const nodesRef = useRef(nodes)
-  const draggingNodeIdRef = useRef<string | null>(null)
-  const nodeDragOffsetRef = useRef({ x: 0, y: 0 })
-  const isPanningRef = useRef(false)
-  const dragStartRef = useRef({ x: 0, y: 0 })
+  const dragRef = useRef<{ nodeId: string; offsetX: number; offsetY: number } | null>(null)
+  const panStartRef = useRef<{ x: number; y: number } | null>(null)
+  const connectingRef = useRef(connectingFrom)
 
-  useEffect(() => { panRef.current = pan }, [pan])
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
   useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { connectingRef.current = connectingFrom }, [connectingFrom])
 
-  // Simulator State
-  const [simulatorMessages, setSimulatorMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string; buttons?: any[]; isNativeFlow?: boolean; ctaText?: string }>>([])
-  const [simulatedCurrentNodeId, setSimulatedCurrentNodeId] = useState<string | null>(null)
+  const applyView = useCallback((nextZoom: number, nextPan: { x: number; y: number }) => {
+    const roundedZoom = Math.round(nextZoom * 100) / 100
+    const roundedPan = { x: Math.round(nextPan.x), y: Math.round(nextPan.y) }
+    zoomRef.current = roundedZoom
+    panRef.current = roundedPan
+    setZoom(roundedZoom)
+    setPan(roundedPan)
+  }, [])
+
+  // ── Simulator ──────────────────────────────────────────────────────────────
+  const [simulatorMessages, setSimulatorMessages] = useState<SimulatorMessage[]>([])
+  const [simulatedNodeId, setSimulatedNodeId] = useState<string | null>(null)
   const [simulatedState, setSimulatedState] = useState<Record<string, any>>({})
   const [simulatorInput, setSimulatorInput] = useState('')
-  const [simulatingStep, setSimulatingStep] = useState(false)
+  const [simulatorBusy, setSimulatorBusy] = useState(false)
+  const [simulationCompleted, setSimulationCompleted] = useState(false)
 
-  // Fetch Workflow & Native Forms
+  // ── Load ───────────────────────────────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false
     async function loadFlow() {
       if (!workflowId) return
-      setLoading(true)
+      setLoadState('loading')
       try {
         const res = await fetch(`/api/flows/workflows/${workflowId}`)
-        if (res.ok) {
-          const data = await res.json()
-          const wf = data.workflow
+        if (!res.ok) throw new Error('not found')
+        const data = await res.json()
+        if (cancelled) return
+        const workflow = data.workflow
 
-          if (!isFlowBetaAllowed(wf.organization_id)) {
-            router.replace('/dashboard')
-            return
-          }
+        setFlowName(workflow.name || '')
+        setIsActive(Boolean(workflow.is_active))
+        setNodes(Array.isArray(workflow.canvas_nodes) ? workflow.canvas_nodes : [])
+        setEdges(Array.isArray(workflow.canvas_edges) ? workflow.canvas_edges : [])
+        setEnvironmentIssues(data.environmentErrors || [])
+        setRecentSessions(data.recentSessions || [])
+        setPipelineStages(data.pipelineStages || [])
+        setLoadState('ready')
 
-          setWorkflow(wf)
-          setReadinessErrors(data.readinessErrors || [])
-          setRecentSessions(data.recentSessions || [])
-          setPipelineStages(data.pipelineStages || [])
-          setFlowName(wf.name)
-          setIsActive(wf.is_active)
-          setNodes(wf.canvas_nodes || [])
-          setEdges(wf.canvas_edges || [])
-          if (wf.canvas_nodes?.length > 0) {
-            setSelectedNodeId(wf.canvas_nodes[0].id)
-          }
-
-          // Fetch native forms for the org
-          if (wf.organization_id) {
-            const formsRes = await fetch(`/api/flows/native?organizationId=${wf.organization_id}`)
-            if (formsRes.ok) {
-              const formsData = await formsRes.json()
-              setAvailableNativeForms(formsData.flows || [])
-            }
-          }
+        if (workflow.organization_id) {
+          const formsRes = await fetch(`/api/flows/native?organizationId=${workflow.organization_id}`)
+          if (formsRes.ok && !cancelled) setNativeForms((await formsRes.json()).flows || [])
         }
-      } catch (err) {
-        console.error('Failed to load workflow:', err)
-      } finally {
-        setLoading(false)
+      } catch {
+        if (!cancelled) setLoadState('missing')
       }
     }
     loadFlow()
+    return () => {
+      cancelled = true
+    }
   }, [workflowId])
 
-  // Save changes
-  const saveWorkflow = async () => {
-    if (!workflowId) return
+  // ── Validation: computed live from the canvas, so problems show as they are made ──
+  const graphIssues = useMemo(() => getWorkflowIssues(nodes, edges), [nodes, edges])
+  const issuesByNode = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const issue of graphIssues) {
+      if (!issue.nodeId) continue
+      map.set(issue.nodeId, [...(map.get(issue.nodeId) || []), issue.message])
+    }
+    return map
+  }, [graphIssues])
+  const issueCount = graphIssues.length + environmentIssues.length
+  const hasTrigger = nodes.some((node) => node.type === 'trigger')
+
+  // Variables the inspector can offer: built-ins, variables set in this flow and form answers
+  const variables = useMemo(() => {
+    const list = ['contact.name', 'contact.phone', 'org.name', 'last_choice_title', 'last_input']
+    for (const node of nodes) {
+      const data: Record<string, any> = node.data || {}
+      if (node.type === 'set_variable' && (data.variableName || data.variable_name)) list.push(String(data.variableName || data.variable_name))
+      if (node.type === 'native_flow_trigger') {
+        const form = nativeForms.find((item) => item.id === (data.flowId || data.native_flow_id || data.flow_id))
+        for (const field of getFormFields(form)) list.push(`form.${field.name}`)
+      }
+    }
+    return [...new Set(list)]
+  }, [nodes, nativeForms])
+
+  const markDirty = () => setDirty(true)
+
+  // ── Save ───────────────────────────────────────────────────────────────────
+  const saveWorkflow = async (overrides: { is_active?: boolean } = {}): Promise<boolean> => {
+    if (!workflowId || saving) return false
     setSaving(true)
     setSaveError('')
+    const nextActive = overrides.is_active ?? isActive
     try {
       const res = await fetch(`/api/flows/workflows/${workflowId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: flowName,
-          is_active: isActive,
+          name: flowName.trim() || 'Untitled flow',
+          is_active: nextActive,
           canvas_nodes: nodes,
           canvas_edges: edges,
         }),
       })
-
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setReadinessErrors(data.validationErrors || [])
-        throw new Error(data.error || 'Unable to save workflow')
+        if (Array.isArray(data.environmentErrors)) setEnvironmentIssues(data.environmentErrors)
+        throw new Error(
+          res.status === 422
+            ? nextActive && isActive
+              ? 'This flow is live, so it can only be saved when it has no problems. Fix them, or pause the flow first.'
+              : 'This flow has problems that must be fixed before it can go live.'
+            : data.error || 'Unable to save the flow'
+        )
       }
-      if (res.ok) {
-        setReadinessErrors(data.readinessErrors || [])
-        setHasUnsavedChanges(false)
-        setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
-      }
+      setEnvironmentIssues(data.environmentErrors || [])
+      setIsActive(Boolean(data.workflow?.is_active))
+      if (!flowName.trim()) setFlowName('Untitled flow')
+      setDirty(false)
+      setLastSaved(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
+      return true
     } catch (err: any) {
       setSaveError(err.message)
+      return false
     } finally {
       setSaving(false)
     }
   }
 
-  // Fit view function to auto-center all nodes nicely
-  const fitToView = useCallback(() => {
-    if (nodesRef.current.length === 0) {
-      zoomRef.current = 1
-      panRef.current = { x: 0, y: 0 }
-      setZoom(1)
-      setPan({ x: 0, y: 0 })
+  const toggleActive = async () => {
+    if (isActive) {
+      await saveWorkflow({ is_active: false })
       return
     }
-
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-
-    const minX = Math.min(...nodesRef.current.map((n) => n.position.x))
-    const maxX = Math.max(...nodesRef.current.map((n) => n.position.x + 300))
-    const minY = Math.min(...nodesRef.current.map((n) => n.position.y))
-    const maxY = Math.max(...nodesRef.current.map((n) => n.position.y + 220))
-
-    const graphWidth = Math.max(100, maxX - minX)
-    const graphHeight = Math.max(100, maxY - minY)
-
-    const padding = 100
-    const availableWidth = Math.max(200, rect.width - padding * 2)
-    const availableHeight = Math.max(200, rect.height - padding * 2)
-
-    const scaleX = availableWidth / graphWidth
-    const scaleY = availableHeight / graphHeight
-    const targetZoom = Math.min(1.2, Math.max(0.35, Math.min(scaleX, scaleY)))
-
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
-
-    const targetPanX = rect.width / 2 - centerX * targetZoom
-    const targetPanY = rect.height / 2 - centerY * targetZoom
-
-    const finalZoom = Math.round(targetZoom * 100) / 100
-    const finalPan = { x: Math.round(targetPanX), y: Math.round(targetPanY) }
-
-    zoomRef.current = finalZoom
-    panRef.current = finalPan
-
-    setZoom(finalZoom)
-    setPan(finalPan)
-  }, [])
-
-  // Zoom centered on canvas viewport
-  const handleZoomStep = (delta: number) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
-    const currentZoom = zoomRef.current
-    const newZoom = Math.min(2.5, Math.max(0.2, Math.round((currentZoom + delta) * 100) / 100))
-
-    if (rect) {
-      const centerX = rect.width / 2
-      const centerY = rect.height / 2
-      const newPanX = centerX - (centerX - panRef.current.x) * (newZoom / currentZoom)
-      const newPanY = centerY - (centerY - panRef.current.y) * (newZoom / currentZoom)
-      const finalPan = { x: Math.round(newPanX), y: Math.round(newPanY) }
-      panRef.current = finalPan
-      setPan(finalPan)
+    const wentLive = await saveWorkflow({ is_active: true })
+    if (!wentLive) {
+      // The server refuses to activate a flow with problems and saves nothing in that case.
+      // Keep the work: store it as a paused draft, then show what has to be fixed.
+      await saveWorkflow({ is_active: false })
+      setSaveError('This flow has problems that must be fixed before it can go live.')
+      setPanel('issues')
     }
-    zoomRef.current = newZoom
-    setZoom(newZoom)
   }
 
-  // Imperative non-passive wheel listener on canvasRef to prevent browser window zoom & back navigation
+  // Latest save function for the keyboard shortcut (the listener is registered once)
+  const saveRef = useRef(saveWorkflow)
+  saveRef.current = saveWorkflow
+
+  // Warn before leaving with unsaved work
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  // ── Viewport helpers ───────────────────────────────────────────────────────
+  const fitToView = useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const all = nodesRef.current
+    if (!rect || all.length === 0) {
+      applyView(1, { x: 0, y: 0 })
+      return
+    }
+    const minX = Math.min(...all.map((node) => node.position.x))
+    const maxX = Math.max(...all.map((node) => node.position.x + NODE_WIDTH))
+    const minY = Math.min(...all.map((node) => node.position.y))
+    const maxY = Math.max(...all.map((node) => node.position.y + estimateNodeHeight(node)))
+    const padding = 60
+    const scale = Math.min(
+      (rect.width - padding * 2) / Math.max(100, maxX - minX),
+      (rect.height - padding * 2) / Math.max(100, maxY - minY)
+    )
+    const nextZoom = Math.min(1, Math.max(MIN_ZOOM, scale))
+    applyView(nextZoom, {
+      x: rect.width / 2 - ((minX + maxX) / 2) * nextZoom,
+      y: rect.height / 2 - ((minY + maxY) / 2) * nextZoom,
+    })
+  }, [applyView])
+
+  // Frame the whole flow once it has loaded
+  useEffect(() => {
+    if (loadState !== 'ready') return
+    const frame = requestAnimationFrame(fitToView)
+    return () => cancelAnimationFrame(frame)
+  }, [loadState, fitToView])
+
+  const zoomBy = useCallback((delta: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const current = zoomRef.current
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current + delta))
+    if (!rect) return applyView(next, panRef.current)
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    applyView(next, { x: cx - (cx - panRef.current.x) * (next / current), y: cy - (cy - panRef.current.y) * (next / current) })
+  }, [applyView])
+
+  const centerOnNode = (nodeId: string) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const node = nodesRef.current.find((item) => item.id === nodeId)
+    if (!rect || !node) return
+    applyView(zoomRef.current, {
+      x: rect.width / 2 - (node.position.x + NODE_WIDTH / 2) * zoomRef.current,
+      y: rect.height / 2 - (node.position.y + estimateNodeHeight(node) / 2) * zoomRef.current,
+    })
+  }
+
+  // Wheel: scroll pans, Ctrl/Cmd + wheel (and trackpad pinch) zooms around the pointer
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-
+    if (!canvas || loadState !== 'ready') return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
       const rect = canvas.getBoundingClientRect()
-      const currentZoom = zoomRef.current
-      const currentPan = panRef.current
-
-      if (e.ctrlKey || e.metaKey) {
-        // Trackpad pinch-to-zoom or Ctrl/Cmd + Mouse Wheel
-        const zoomIntensity = 0.003
-        const delta = -e.deltaY
-        const factor = Math.exp(delta * zoomIntensity)
-        const newZoom = Math.min(2.5, Math.max(0.2, currentZoom * factor))
-
-        const mouseX = e.clientX - rect.left
-        const mouseY = e.clientY - rect.top
-
-        const newPanX = mouseX - (mouseX - currentPan.x) * (newZoom / currentZoom)
-        const newPanY = mouseY - (mouseY - currentPan.y) * (newZoom / currentZoom)
-
-        const finalZoom = Math.round(newZoom * 100) / 100
-        const finalPan = { x: Math.round(newPanX), y: Math.round(newPanY) }
-
-        zoomRef.current = finalZoom
-        panRef.current = finalPan
-
-        setZoom(finalZoom)
-        setPan(finalPan)
+      if (event.ctrlKey || event.metaKey) {
+        const current = zoomRef.current
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current * Math.exp(-event.deltaY * 0.003)))
+        const mx = event.clientX - rect.left
+        const my = event.clientY - rect.top
+        applyView(next, { x: mx - (mx - panRef.current.x) * (next / current), y: my - (my - panRef.current.y) * (next / current) })
       } else {
-        // Natural 2-finger trackpad panning or mouse wheel scroll
-        const deltaX = e.shiftKey ? e.deltaY : e.deltaX
-        const deltaY = e.shiftKey ? 0 : e.deltaY
-
-        const newPan = {
-          x: Math.round(currentPan.x - deltaX),
-          y: Math.round(currentPan.y - deltaY),
-        }
-
-        panRef.current = newPan
-        setPan(newPan)
+        applyView(zoomRef.current, {
+          x: panRef.current.x - (event.shiftKey ? event.deltaY : event.deltaX),
+          y: panRef.current.y - (event.shiftKey ? 0 : event.deltaY),
+        })
       }
     }
-
     canvas.addEventListener('wheel', onWheel, { passive: false })
-    return () => {
-      canvas.removeEventListener('wheel', onWheel)
-    }
-  }, [])
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [loadState, applyView])
 
-  // Window-level keyboard shortcuts for Space-pan, Zoom +/-, and Escape
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
-
-      if (e.code === 'Space' && !isSpacePressedRef.current) {
-        setIsSpacePressed(true)
-        isSpacePressedRef.current = true
-      }
-
-      if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
-        e.preventDefault()
-        handleZoomStep(0.1)
-      } else if ((e.metaKey || e.ctrlKey) && e.key === '-') {
-        e.preventDefault()
-        handleZoomStep(-0.1)
-      } else if ((e.metaKey || e.ctrlKey) && e.key === '0') {
-        e.preventDefault()
-        zoomRef.current = 1
-        panRef.current = { x: 0, y: 0 }
-        setZoom(1)
-        setPan({ x: 0, y: 0 })
-      } else if (e.key === 'Escape') {
-        setConnectingFrom(null)
-        setSelectedNodeId(null)
-      }
-    }
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setIsSpacePressed(false)
-        isSpacePressedRef.current = false
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
-    }
-  }, [])
-
-  // Node Drag Start: Compute exact unscaled canvas coordinate
-  const handleNodeMouseDown = (e: React.MouseEvent, nodeId: string) => {
-    if (e.button !== 0) return // Left click only
-    if (isSpacePressedRef.current) return // Space held: allow canvas pan
-
-    const target = e.target as HTMLElement
-    // Ignore drag if clicking inside buttons, inputs or port handles
-    if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
-      return
-    }
-
-    e.stopPropagation()
-    e.preventDefault()
-
-    setSelectedNodeId(nodeId)
-    setDraggingNodeId(nodeId)
-    draggingNodeIdRef.current = nodeId
-
+  // ── Editing ────────────────────────────────────────────────────────────────
+  const toCanvasPoint = (clientX: number, clientY: number) => {
     const rect = canvasRef.current?.getBoundingClientRect()
-    const currentZoom = zoomRef.current
-    const currentPan = panRef.current
-    const node = nodesRef.current.find((n) => n.id === nodeId)
-
-    if (rect && node) {
-      // Calculate cursor position in canvas coordinate space
-      const mouseCanvasX = (e.clientX - rect.left - currentPan.x) / currentZoom
-      const mouseCanvasY = (e.clientY - rect.top - currentPan.y) / currentZoom
-
-      const offset = {
-        x: mouseCanvasX - node.position.x,
-        y: mouseCanvasY - node.position.y,
-      }
-      setNodeDragOffset(offset)
-      nodeDragOffsetRef.current = offset
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: (clientX - rect.left - panRef.current.x) / zoomRef.current,
+      y: (clientY - rect.top - panRef.current.y) / zoomRef.current,
     }
   }
 
-  // Canvas Pan Start
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 && e.button !== 1) return // Left or middle click
-    const target = e.target as HTMLElement
+  const addNode = (type: NodeType, position?: { x: number; y: number }) => {
+    if (type === 'trigger' && nodesRef.current.some((node) => node.type === 'trigger')) return
+    const definition = getNodeDefinition(type)
+    const rect = canvasRef.current?.getBoundingClientRect()
+    // Without a drop position, place it in the middle of the view, stepping each new block
+    // down a little so several clicks do not stack blocks exactly on top of each other
+    const cascade = (nodesRef.current.length % 6) * 28
+    const centre = rect ? toCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : { x: 400, y: 300 }
+    const id = `node-${type}-${uid()}`
+    const published = nativeForms.find((form) => form.status === 'PUBLISHED' && form.flow_id_meta)
+    const node: WorkflowNode = {
+      id,
+      type,
+      position: position || { x: Math.round(centre.x - NODE_WIDTH / 2 + cascade), y: Math.round(centre.y - 60 + cascade) },
+      data: definition.createData({ publishedFormId: published?.id }),
+    }
+    setNodes((prev) => [...prev, node])
+    setSelectedNodeId(id)
+    setPanel('inspector')
+    markDirty()
+  }
 
-    // If clicking on a node card or control toolbar, don't initiate canvas pan
-    if (target.closest('.canvas-node-card') || target.closest('.canvas-control-toolbar')) {
+  const deleteNode = useCallback((nodeId: string) => {
+    setNodes((prev) => prev.filter((node) => node.id !== nodeId))
+    setEdges((prev) => prev.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
+    setSelectedNodeId((current) => (current === nodeId ? null : current))
+    setPanel((current) => (current === 'inspector' ? null : current))
+    setDirty(true)
+  }, [])
+
+  const updateNodeData = (nodeId: string, updates: Record<string, any>) => {
+    setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...updates } } : node)))
+    markDirty()
+  }
+
+  /** Remove the connection leaving one output (used when a button or menu row is deleted). */
+  const removeOutputEdge = (nodeId: string, handleId: string) => {
+    setEdges((prev) => prev.filter((edge) => !(edge.source === nodeId && edge.sourceHandle === handleId)))
+    markDirty()
+  }
+
+  const deleteEdge = (edgeId: string) => {
+    setEdges((prev) => prev.filter((edge) => edge.id !== edgeId))
+    markDirty()
+  }
+
+  const startConnection = (nodeId: string, handleId?: string) => {
+    const same = connectingFrom?.nodeId === nodeId && (connectingFrom.handleId || '') === (handleId || '')
+    setConnectingFrom(same ? null : { nodeId, handleId })
+  }
+
+  const completeConnection = (targetId: string) => {
+    const from = connectingRef.current
+    const target = nodesRef.current.find((node) => node.id === targetId)
+    if (!from || !target || from.nodeId === targetId || target.type === 'trigger') return
+    const edge: WorkflowEdge = {
+      id: `edge-${uid()}`,
+      source: from.nodeId,
+      target: targetId,
+      ...(from.handleId ? { sourceHandle: from.handleId } : {}),
+    }
+    // Each output leads to exactly one next step: a new connection replaces the old one
+    setEdges((prev) => [...prev.filter((item) => !(item.source === from.nodeId && (item.sourceHandle || '') === (from.handleId || ''))), edge])
+    setConnectingFrom(null)
+    markDirty()
+  }
+
+  const handleNodeMouseDown = (event: React.MouseEvent, nodeId: string) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (target.closest('button')) return // ports and card buttons handle their own clicks
+    event.stopPropagation()
+    event.preventDefault()
+
+    if (connectingRef.current) {
+      completeConnection(nodeId)
       return
     }
 
+    const node = nodesRef.current.find((item) => item.id === nodeId)
+    if (!node) return
+    const point = toCanvasPoint(event.clientX, event.clientY)
+    dragRef.current = { nodeId, offsetX: point.x - node.position.x, offsetY: point.y - node.position.y }
+    setIsDragging(true)
+    setSelectedNodeId(nodeId)
+    setPanel('inspector')
+  }
+
+  const handleCanvasMouseDown = (event: React.MouseEvent) => {
+    if (event.button !== 0 && event.button !== 1) return
+    const target = event.target as HTMLElement
+    if (target.closest('.canvas-node-card') || target.closest('.canvas-control-toolbar') || target.closest('.canvas-edge')) return
+    panStartRef.current = { x: event.clientX - panRef.current.x, y: event.clientY - panRef.current.y }
     setIsPanning(true)
-    isPanningRef.current = true
-    const start = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y }
-    setDragStart(start)
-    dragStartRef.current = start
     setSelectedNodeId(null)
     setConnectingFrom(null)
+    setPanel((current) => (current === 'inspector' ? null : current))
   }
 
-  // Window-level mousemove and mouseup listeners for buttery-smooth drag & pan
+  // Window-level listeners keep a drag alive when the pointer leaves the canvas
   useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      // 1. Dragging Node
-      if (draggingNodeIdRef.current) {
-        const rect = canvasRef.current?.getBoundingClientRect()
-        if (!rect) return
-
-        const currentZoom = zoomRef.current
-        const currentPan = panRef.current
-        const offset = nodeDragOffsetRef.current
-        const nodeId = draggingNodeIdRef.current
-
-        const mouseCanvasX = (e.clientX - rect.left - currentPan.x) / currentZoom
-        const mouseCanvasY = (e.clientY - rect.top - currentPan.y) / currentZoom
-
-        const newX = Math.round(mouseCanvasX - offset.x)
-        const newY = Math.round(mouseCanvasY - offset.y)
-
-        setNodes((prev) =>
-          prev.map((n) => (n.id === nodeId ? { ...n, position: { x: newX, y: newY } } : n))
-        )
-        setHasUnsavedChanges(true)
+    const onMouseMove = (event: MouseEvent) => {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      if (dragRef.current) {
+        const { nodeId, offsetX, offsetY } = dragRef.current
+        const x = Math.round((event.clientX - rect.left - panRef.current.x) / zoomRef.current - offsetX)
+        const y = Math.round((event.clientY - rect.top - panRef.current.y) / zoomRef.current - offsetY)
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, position: { x, y } } : node)))
+        setDirty(true)
         return
       }
-
-      // 2. Panning Canvas
-      if (isPanningRef.current) {
-        const start = dragStartRef.current
-        const newPan = {
-          x: Math.round(e.clientX - start.x),
-          y: Math.round(e.clientY - start.y),
-        }
-        panRef.current = newPan
-        setPan(newPan)
+      if (panStartRef.current) {
+        const next = { x: Math.round(event.clientX - panStartRef.current.x), y: Math.round(event.clientY - panStartRef.current.y) }
+        panRef.current = next
+        setPan(next)
         return
       }
-
-      // 3. Track mouse position for in-progress edge preview
-      if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect()
-        const currentZoom = zoomRef.current
-        const currentPan = panRef.current
-        const mx = Math.round((e.clientX - rect.left - currentPan.x) / currentZoom)
-        const my = Math.round((e.clientY - rect.top - currentPan.y) / currentZoom)
-        setCanvasMousePos({ x: mx, y: my })
+      if (connectingRef.current) {
+        setPointer({
+          x: Math.round((event.clientX - rect.left - panRef.current.x) / zoomRef.current),
+          y: Math.round((event.clientY - rect.top - panRef.current.y) / zoomRef.current),
+        })
       }
     }
-
     const onMouseUp = () => {
-      if (draggingNodeIdRef.current) {
-        draggingNodeIdRef.current = null
-        setDraggingNodeId(null)
+      if (dragRef.current) {
+        dragRef.current = null
+        setIsDragging(false)
       }
-      if (isPanningRef.current) {
-        isPanningRef.current = false
+      if (panStartRef.current) {
+        panStartRef.current = null
         setIsPanning(false)
       }
     }
-
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
     return () => {
@@ -473,1708 +501,672 @@ export default function FlowCanvasBuilderPage() {
     }
   }, [])
 
-  // Add New Node (from click or drag-and-drop)
-  const addNode = (type: NodeType, position?: { x: number; y: number }) => {
-    const id = `node-${type}-${Date.now().toString(36)}`
-    
-    let posX: number
-    let posY: number
+  // Keyboard: Ctrl/Cmd+S saves, Delete removes the selected block, Esc cancels, +/- zoom
+  const selectedRef = useRef(selectedNodeId)
+  selectedRef.current = selectedNodeId
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+      const command = event.metaKey || event.ctrlKey
 
-    if (position) {
-      posX = position.x
-      posY = position.y
-    } else {
-      // Center of canvas viewport
-      const rect = canvasRef.current?.getBoundingClientRect()
-      const centerX = rect ? rect.width / 2 : 400
-      const centerY = rect ? rect.height / 2 : 300
-      posX = Math.round((centerX - panRef.current.x) / zoomRef.current) - 140
-      posY = Math.round((centerY - panRef.current.y) / zoomRef.current) - 80
-    }
-
-    let defaultData: any = { title: `${type.replace(/_/g, ' ').toUpperCase()}` }
-
-    if (type === 'trigger') {
-      defaultData = {
-        title: 'Keyword Trigger',
-        trigger_type: 'keyword',
-        keywords: ['hi', 'hello', 'start'],
-        match_mode: 'fuzzy',
-      }
-    } else if (type === 'message') {
-      defaultData = {
-        title: 'Send Message',
-        body: 'Hello {{contact.name}}! Thank you for contacting us.',
-      }
-    } else if (type === 'interactive_buttons') {
-      defaultData = {
-        title: 'Interactive Buttons',
-        body: 'Please choose an option to continue:',
-        buttons: [
-          { id: 'btn_option_1', title: 'Option 1' },
-          { id: 'btn_option_2', title: 'Option 2' },
-        ],
-      }
-    } else if (type === 'condition_branch') {
-      defaultData = { title: 'Route by Answer', variable_name: 'form.budget', operator: 'equals', compare_value: 'tier_2' }
-    } else if (type === 'list_menu') {
-      defaultData = { title: 'List Menu', body: 'How can we help?', button_text: 'Choose', sections: [{ title: 'Options', rows: [{ id: 'sales', title: 'Sales enquiry' }, { id: 'support', title: 'Customer support' }] }] }
-    } else if (type === 'assign_agent_action') {
-      defaultData = { title: 'Hand Off to Team', assignmentType: 'team_queue' }
-    } else if (type === 'native_flow_trigger') {
-      defaultData = {
-        title: 'WhatsApp Native Form',
-        cta_text: 'Open Consultation Form',
-        native_flow_id: availableNativeForms.find(form => form.status === 'PUBLISHED' && form.flow_id_meta)?.id || '',
-        flow_token: 'token_' + Date.now(),
-      }
-    } else if (type === 'ai_rag_node') {
-      defaultData = {
-        title: 'Knowledge Assistant',
-      }
-    } else if (type === 'crm_deal_action') {
-      defaultData = {
-        title: 'Create CRM Deal',
-        pipeline_stage: 'lead_in',
-        deal_name: 'Lead from {{contact.name}}',
-        monetary_value: 1000,
-      }
-    } else if (type === 'ticket_action') {
-      defaultData = {
-        title: 'Create Support Ticket',
-        subject: 'Inquiry from {{contact.name}}',
-        priority: 'medium',
-      }
-    } else if (type === 'delay_action') {
-      defaultData = {
-        title: 'Wait / Delay',
-        delay_amount: 1,
-        delay_unit: 'hours',
-        resume_message: '',
-      }
-    } else if (type === 'webhook_action') {
-      defaultData = {
-        title: 'HTTP Webhook',
-        http_method: 'POST',
-        webhook_url: 'https://example.com/api/hook',
-        body_template: '{"contact": "{{contact.name}}", "phone": "{{contact.phone}}"}',
-        response_variable: 'webhook_response',
-        timeout_seconds: 10,
-      }
-    } else if (type === 'set_variable') {
-      defaultData = {
-        title: 'Set Variable',
-        variable_name: 'custom_var',
-        value_expression: '',
-        value_type: 'text',
-      }
-    } else if (type === 'tag_action') {
-      defaultData = {
-        title: 'Tag Contact',
-        tag_action_type: 'add',
-        tags: ['interested'],
-        segment_name: '',
-      }
-    } else if (type === 'notification_action') {
-      defaultData = {
-        title: 'Send Notification',
-        channel: 'email',
-        recipient_email: '',
-        notification_subject: 'New lead from {{contact.name}}',
-        body_template: 'A new lead has submitted a form. Contact: {{contact.phone}}',
-      }
-    }
-
-    const newNode: WorkflowNode = {
-      id,
-      type,
-      position: { x: posX, y: posY },
-      data: defaultData,
-    }
-
-    setNodes((prev) => [...prev, newNode])
-    setSelectedNodeId(id)
-    setHasUnsavedChanges(true)
-  }
-
-  // Delete Node
-  const deleteNode = (nodeId: string) => {
-    setNodes((prev) => prev.filter((n) => n.id !== nodeId))
-    setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId))
-    if (selectedNodeId === nodeId) setSelectedNodeId(null)
-    setHasUnsavedChanges(true)
-  }
-
-  // Delete Edge
-  const deleteEdge = (edgeId: string) => {
-    setEdges((prev) => prev.filter((e) => e.id !== edgeId))
-    setHasUnsavedChanges(true)
-  }
-
-  // Connect Ports
-  const handleConnectPort = (nodeId: string, handleId?: string) => {
-    if (!connectingFrom) {
-      setConnectingFrom({ nodeId, handleId })
-    } else {
-      if (connectingFrom.nodeId === nodeId) {
-        setConnectingFrom(null)
+      if (command && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        saveRef.current()
         return
       }
+      if (typing) return
 
-      const newEdge: WorkflowEdge = {
-        id: `e-${connectingFrom.nodeId}-${nodeId}-${Date.now().toString(36)}`,
-        source: connectingFrom.nodeId,
-        target: nodeId,
-        sourceHandle: connectingFrom.handleId,
+      if (command && (event.key === '=' || event.key === '+')) {
+        event.preventDefault()
+        zoomBy(0.1)
+      } else if (command && event.key === '-') {
+        event.preventDefault()
+        zoomBy(-0.1)
+      } else if (command && event.key === '0') {
+        event.preventDefault()
+        fitToView()
+      } else if (event.key === 'Escape') {
+        setConnectingFrom(null)
+        setSelectedNodeId(null)
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedRef.current) {
+        event.preventDefault()
+        deleteNode(selectedRef.current)
       }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [zoomBy, fitToView, deleteNode])
 
-      // Avoid duplicates
-      setEdges((prev) => [
-        ...prev.filter(
-          (e) => !(e.source === newEdge.source && e.sourceHandle === newEdge.sourceHandle)
-        ),
-        newEdge,
+  // ── Simulator ──────────────────────────────────────────────────────────────
+  const runSimulatorStep = async (payload: Record<string, any>) => {
+    setSimulatorBusy(true)
+    try {
+      const res = await fetch('/api/flows/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodes, edges, ...payload }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The test could not run')
+      setSimulationCompleted(Boolean(data.isCompleted))
+      setSimulatedNodeId(data.isCompleted ? null : data.currentNodeId)
+      setSimulatedState(data.simulatedState || {})
+      const actions: string[] = data.simulatedState?.simulated_actions || []
+      const earlier: string[] = payload.simulatedState?.simulated_actions || []
+      setSimulatorMessages((prev) => [
+        ...prev,
+        // Show CRM actions that just ran, since they produce no chat message of their own
+        ...actions.slice(earlier.length).map((text) => ({ sender: 'system' as const, text })),
+        { sender: 'bot' as const, text: data.reply, buttons: data.buttons, isNativeFlow: data.isNativeFlow, ctaText: data.ctaText },
       ])
-      setConnectingFrom(null)
-      setHasUnsavedChanges(true)
+    } catch (err: any) {
+      setSimulatorMessages((prev) => [...prev, { sender: 'system', text: err.message }])
+    } finally {
+      setSimulatorBusy(false)
     }
   }
 
-  // Update Node Data
-  const updateNodeData = (nodeId: string, updates: Partial<any>) => {
-    setNodes((prev) =>
-      prev.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...updates } } : n))
-    )
-    setHasUnsavedChanges(true)
-  }
-
-  // Simulator Engine
-  const startSimulator = async () => {
-    setShowSimulator(true)
+  const startSimulator = () => {
+    setPanel('simulator')
     setSimulationCompleted(false)
     setSimulatorMessages([])
-    setSimulatedCurrentNodeId(null)
+    setSimulatedNodeId(null)
     setSimulatedState({})
-    setSimulatingStep(true)
-
-    try {
-      const res = await fetch('/api/flows/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodes,
-          edges,
-        }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Simulation failed')
-      if (res.ok) {
-        setSimulationCompleted(Boolean(data.isCompleted))
-        setSimulatorMessages([{ sender: 'bot', text: data.reply, buttons: data.buttons, isNativeFlow: data.isNativeFlow, ctaText: data.ctaText }])
-        setSimulatedCurrentNodeId(data.currentNodeId)
-        setSimulatedState(data.simulatedState || {})
-      }
-    } catch (err: any) {
-      setSimulatorMessages([{ sender: 'bot', text: err.message }])
-    } finally {
-      setSimulatingStep(false)
-    }
-  }
-
-  const sendSimulatorMessage = async (text: string, buttonId?: string, flowSubmissionData?: Record<string, any>) => {
-    if (simulationCompleted) return
-    if (!text.trim() && !buttonId) return
-    setSimulatingStep(true)
-
-    const userMsg = text || (buttonId ? `[Clicked: ${buttonId}]` : '')
-    setSimulatorMessages((prev) => [...prev, { sender: 'user', text: userMsg }])
     setSimulatorInput('')
-
-    try {
-      const res = await fetch('/api/flows/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodes,
-          edges,
-          currentNodeId: simulatedCurrentNodeId,
-          userInput: text,
-          buttonId,
-          simulatedState,
-          flowSubmissionData,
-        }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Simulation failed')
-      if (res.ok) {
-        setSimulationCompleted(Boolean(data.isCompleted))
-        setSimulatorMessages((prev) => [
-          ...prev,
-          {
-            sender: 'bot',
-            text: data.reply,
-            buttons: data.buttons,
-            isNativeFlow: data.isNativeFlow,
-            ctaText: data.ctaText,
-          },
-        ])
-        setSimulatedCurrentNodeId(data.currentNodeId)
-        setSimulatedState(data.simulatedState || {})
-      }
-    } catch (err: any) {
-      setSimulatorMessages(prev => [...prev, { sender: 'bot', text: err.message }])
-    } finally {
-      setSimulatingStep(false)
-    }
+    if (graphIssues.length === 0) runSimulatorStep({})
   }
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+  const sendSimulatorMessage = (text: string, buttonId?: string, flowSubmissionData?: Record<string, any>) => {
+    if (simulationCompleted || simulatorBusy) return
+    setSimulatorMessages((prev) => [...prev, { sender: 'user', text }])
+    setSimulatorInput('')
+    runSimulatorStep({ currentNodeId: simulatedNodeId, userInput: buttonId ? '' : text, buttonId, simulatedState, flowSubmissionData })
+  }
 
-  if (loading) {
+  const submitSimulatedForm = () => {
+    const node = nodes.find((item) => item.id === simulatedNodeId)
+    const data: Record<string, any> = node?.data || {}
+    const form = nativeForms.find((item) => item.id === (data.flowId || data.native_flow_id || data.flow_id))
+    sendSimulatorMessage('Submitted the form', undefined, buildSampleAnswers(form))
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (loadState === 'loading') {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0c1317] text-slate-900 dark:text-white">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Workflow className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-          </div>
-          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Loading Visual Canvas...</span>
+      <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0c1317]">
+        <div className="flex items-center gap-2.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+          <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+          Loading the flow…
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0a0f12] text-slate-900 dark:text-slate-100 select-none overflow-hidden font-sans">
-      {/* Top Header */}
-      <header className="h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] px-4 flex items-center justify-between z-20">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/flows"
-            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
+  if (loadState === 'missing') {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0c1317] p-6">
+        <div className="text-center space-y-3">
+          <Workflow className="w-10 h-10 mx-auto text-slate-400" />
+          <h1 className="text-base font-bold text-slate-900 dark:text-white">This flow could not be opened</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">It may have been deleted, or you may not have access to it.</p>
+          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d59] text-white text-xs font-bold">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to flows
           </Link>
+        </div>
+      </div>
+    )
+  }
 
-          <div className="flex items-center gap-2">
-            <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              <Workflow className="w-4 h-4" />
-            </span>
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId)
+  const failedSessions = recentSessions.filter((session) => session.status === 'FAILED')
+  const formName = (id: string) => nativeForms.find((form) => form.id === id)?.name
+  const stageName = (id: string) => pipelineStages.find((stage) => stage.id === id)?.name
+  const connectedOutputs = new Set(edges.map((edge) => `${edge.source}::${edge.sourceHandle || ''}`))
+
+  return (
+    <>
+      {/* The canvas needs a pointer and room to work */}
+      <div className="md:hidden flex-1 flex items-center justify-center p-6 bg-slate-50 dark:bg-[#0c1317]">
+        <div className="text-center space-y-3 max-w-xs">
+          <Workflow className="w-10 h-10 mx-auto text-slate-400" />
+          <h1 className="text-base font-bold text-slate-900 dark:text-white">Open this on a larger screen</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">The flow builder uses a drag-and-drop canvas that needs a tablet or computer.</p>
+          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] text-white text-xs font-bold">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to flows
+          </Link>
+        </div>
+      </div>
+
+      <div className="hidden md:flex flex-col h-full bg-slate-50 dark:bg-[#0a0f12] text-slate-900 dark:text-slate-100 overflow-hidden">
+        {/* ── Header ── */}
+        <header className="h-14 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] px-3 flex items-center justify-between gap-3 z-20">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link
+              href="/dashboard/flows"
+              aria-label="Back to flows"
+              className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
             <input
               type="text"
               value={flowName}
-              onChange={(e) => {
-                setFlowName(e.target.value)
-                setHasUnsavedChanges(true)
+              maxLength={120}
+              aria-label="Flow name"
+              placeholder="Untitled flow"
+              onChange={(event) => {
+                setFlowName(event.target.value)
+                markDirty()
               }}
-              className="bg-transparent font-bold text-sm tracking-tight text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800/40 px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="min-w-0 w-64 bg-transparent font-bold text-sm text-slate-900 dark:text-white px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/60 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
             />
-          </div>
-
-          <button
-            onClick={() => {
-              setIsActive(!isActive)
-              setHasUnsavedChanges(true)
-            }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider transition-colors ${
-              isActive
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
-            }`}
-          >
-            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-            <span>{isActive ? 'ACTIVE' : 'PAUSED'}</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {lastSaved && (
-            <span className="text-[11px] text-slate-400 hidden sm:inline">
-              Saved at {lastSaved}
+            <span
+              className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold ${
+                isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              {isActive ? 'Live' : 'Paused'}
             </span>
-          )}
+          </div>
 
-          {hasUnsavedChanges && (
-            <span className="text-[11px] text-amber-400 font-medium hidden sm:inline flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-              Unsaved changes
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden lg:inline text-[11px] text-slate-400" aria-live="polite">
+              {saving ? 'Saving…' : dirty ? 'Unsaved changes' : lastSaved ? `Saved ${lastSaved}` : ''}
             </span>
-          )}
 
-          <button
-            onClick={startSimulator}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold shadow-sm transition-all"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Test Simulator</span>
-          </button>
-
-          <button
-            onClick={saveWorkflow}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span>{saving ? 'Saving...' : 'Save Flow'}</span>
-          </button>
-        </div>
-      </header>
-
-      {(saveError || readinessErrors.length > 0) && <div role="alert" className="px-5 py-3 text-xs bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-100 border-b border-amber-200 dark:border-amber-800 max-h-36 overflow-auto">
-        <p className="font-semibold">{saveError || 'Before activating this flow'}</p>
-        {readinessErrors.map((error, index) => <p key={index} className="mt-1">• {error}</p>)}
-      </div>}
-      {recentSessions.some(session => session.status === 'FAILED') && <details className="px-5 py-2 text-xs bg-rose-50 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border-b border-rose-200 dark:border-rose-800">
-        <summary className="cursor-pointer">Recent execution failures</summary>
-        {recentSessions.filter(session => session.status === 'FAILED').map(session => <p key={session.id} className="py-1">{new Date(session.last_interaction_at).toLocaleString()} · {session.state_data?._last_error || 'Execution failed'} · Step: {session.current_node_id}</p>)}
-      </details>}
-      {/* Main Canvas & Drawers Area */}
-      <div className="flex-1 flex relative overflow-hidden">
-        {/* Left Palette: Add Node Blocks */}
-        <aside className="w-64 border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#11181c] p-3 flex flex-col gap-3 z-10 overflow-y-auto">
-          <div>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Canvas Blocks</span>
-            <p className="text-[11px] text-slate-500 mt-0.5">Click or drag blocks onto canvas</p>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Triggers</span>
             <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'trigger')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('trigger')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-emerald-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
+              type="button"
+              onClick={() => setPanel(panel === 'issues' ? null : 'issues')}
+              aria-pressed={panel === 'issues'}
+              className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+                issueCount
+                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-950/60'
+                  : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50'
+              }`}
             >
-              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/20">
-                <Play className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Customer Trigger</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Match keywords or ad clicks</p>
-              </div>
+              {issueCount ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              {issueCount ? `${issueCount} to fix` : 'Ready'}
+            </button>
+
+            <button
+              type="button"
+              onClick={startSimulator}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Test
+            </button>
+
+            <button
+              type="button"
+              onClick={() => saveWorkflow()}
+              disabled={saving || !dirty}
+              title="Save (Ctrl/Cmd + S)"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold disabled:opacity-50 cursor-pointer disabled:cursor-default"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleActive}
+              disabled={saving || (!isActive && graphIssues.length > 0)}
+              title={!isActive && graphIssues.length > 0 ? 'Fix the problems listed under “to fix” before going live' : undefined}
+              className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-bold shadow-sm disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed ${
+                isActive ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#008069] hover:bg-[#006d59] text-white'
+              }`}
+            >
+              {isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              {isActive ? 'Pause' : 'Go live'}
             </button>
           </div>
+        </header>
 
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wide">Conversational</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'message')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('message')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:bg-teal-500/20">
-                <MessageSquare className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Text Message</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Send WhatsApp speech bubble</p>
-              </div>
-            </button>
-
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'interactive_buttons')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('interactive_buttons')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-teal-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:bg-teal-500/20">
-                <ListPlus className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Interactive Buttons</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Quick-reply button options</p>
-              </div>
+        {saveError && (
+          <div role="alert" className="shrink-0 px-4 py-2 text-xs font-medium bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-200 border-b border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-3">
+            <span>{saveError}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setSaveError('')} className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-900/50 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
+        )}
 
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">WhatsApp Native Form</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'native_flow_trigger')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('native_flow_trigger')}
-              className="w-full text-left p-2.5 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/60 dark:bg-indigo-950/20 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-500/30 hover:border-indigo-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500/20">
-                <Smartphone className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-indigo-900 dark:text-indigo-200">Meta Native Flow</p>
-                <p className="text-[10px] text-indigo-600/80 dark:text-indigo-300/70">In-app zero-redirect sheet</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-cyan-600 dark:text-cyan-400 uppercase tracking-wide">AI Intelligence</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'ai_rag_node')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('ai_rag_node')}
-              className="w-full text-left p-2.5 rounded-xl bg-cyan-50/70 hover:bg-cyan-100/60 dark:bg-cyan-950/20 dark:hover:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-500/30 hover:border-cyan-400 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-500/20">
-                <Sparkles className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-cyan-900 dark:text-cyan-200">Knowledge Assistant</p>
-                <p className="text-[10px] text-cyan-600/80 dark:text-cyan-300/70">Answer using your knowledge base</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wide">Routing & Handoff</span>
-            {([{ type: 'condition_branch', title: 'Route by Answer', description: 'Branch using a saved form answer' }, { type: 'list_menu', title: 'List Menu', description: 'Offer up to ten choices' }, { type: 'assign_agent_action', title: 'Hand Off to Team', description: 'Pause automation for a person' }] as const).map(item => <button key={item.type} onClick={() => addNode(item.type)} className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 text-xs transition-all">
-              <p className="font-semibold text-slate-800 dark:text-slate-200">{item.title}</p><p className="text-[10px] text-slate-500 dark:text-slate-400">{item.description}</p>
-            </button>)}
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">CRM & Actions</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'crm_deal_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('crm_deal_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20">
-                <Briefcase className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Create Pipeline Deal</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Insert deal into Sales stage</p>
-              </div>
-            </button>
-
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'ticket_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('ticket_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-amber-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20">
-                <Ticket className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Create Ticket</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Escalate to support team</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide">Timing & Scheduling</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'delay_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('delay_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-violet-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/20">
-                <Timer className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Wait / Delay</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Pause flow for set duration</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Integrations</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'webhook_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('webhook_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-blue-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:bg-blue-500/20">
-                <Globe className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">HTTP Webhook</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Call any external API</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-pink-600 dark:text-pink-400 uppercase tracking-wide">Logic & Variables</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'set_variable')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('set_variable')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-pink-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 group-hover:bg-pink-500/20">
-                <Variable className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Set Variable</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Store or transform data</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">Contact Actions</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'tag_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('tag_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-orange-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 group-hover:bg-orange-500/20">
-                <Tag className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Tag Contact</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Add tags or segment users</p>
-              </div>
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wide">Team Alerts</span>
-            <button
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', 'notification_action')
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode('notification_action')}
-              className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/50 hover:border-rose-500/40 text-xs flex items-center gap-2.5 transition-all group cursor-grab active:cursor-grabbing"
-            >
-              <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:bg-rose-500/20">
-                <Bell className="w-3.5 h-3.5" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Send Notification</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Alert your team via email</p>
-              </div>
-            </button>
-          </div>
-        </aside>
-
-        {/* Center: Infinite Canvas */}
-        <div
-          ref={canvasRef}
-          onMouseDown={handleCanvasMouseDown}
-          onDragOver={(e) => {
-            e.preventDefault()
-            e.dataTransfer.dropEffect = 'copy'
-          }}
-          onDrop={(e) => {
-            e.preventDefault()
-            const nodeType = e.dataTransfer.getData('text/plain') as NodeType
-            if (nodeType) {
-              const rect = canvasRef.current?.getBoundingClientRect()
-              if (!rect) return
-              const dropCanvasX = Math.round((e.clientX - rect.left - panRef.current.x) / zoomRef.current) - 140
-              const dropCanvasY = Math.round((e.clientY - rect.top - panRef.current.y) / zoomRef.current) - 40
-              addNode(nodeType, { x: dropCanvasX, y: dropCanvasY })
-            }
-          }}
-          className={`flex-1 h-full relative overflow-hidden bg-slate-50 dark:bg-[#0c1216] select-none ${
-            isPanning ? 'cursor-grabbing' : isSpacePressed ? 'cursor-grab' : 'cursor-default'
-          }`}
-          style={{
-            backgroundImage:
-              'radial-gradient(circle, rgba(100, 116, 139, 0.22) 1px, transparent 1px)',
-            backgroundSize: `${Math.round(24 * zoom)}px ${Math.round(24 * zoom)}px`,
-            backgroundPosition: `${pan.x}px ${pan.y}px`,
-          }}
-        >
-          {/* Floating Connecting Prompt */}
-          {connectingFrom && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium backdrop-blur-md shadow-lg flex items-center gap-2 animate-bounce">
-              <span>Click a node port to connect, or press Esc to cancel</span>
-              <button
-                onClick={() => setConnectingFrom(null)}
-                className="ml-1 text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Zoom & View Controls Toolbar */}
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            className="canvas-control-toolbar absolute bottom-4 left-4 z-30 flex items-center gap-1.5 bg-white/95 dark:bg-[#11181c]/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl"
-          >
-            <button
-              onClick={() => handleZoomStep(-0.1)}
-              title="Zoom Out (Cmd -)"
-              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="text-[11px] font-mono px-1.5 text-slate-700 dark:text-slate-300 font-semibold min-w-[44px] text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={() => handleZoomStep(0.1)}
-              title="Zoom In (Cmd +)"
-              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
-            <button
-              onClick={fitToView}
-              title="Fit Graph to View"
-              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                zoomRef.current = 1
-                panRef.current = { x: 0, y: 0 }
-                setZoom(1)
-                setPan({ x: 0, y: 0 })
-              }}
-              title="Reset Zoom to 100% (Cmd 0)"
-              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Canvas Transformation Container */}
-          <div
-            className="pointer-events-none absolute inset-0 w-full h-full"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-            }}
-          >
-            {/* SVG Edges Layer */}
-            <svg
-              className="overflow-visible absolute top-0 left-0 w-full h-full pointer-events-none"
-              style={{ zIndex: 1 }}
-            >
-              <defs>
-                <marker
-                  id="arrow"
-                  viewBox="0 0 10 10"
-                  refX="6"
-                  refY="5"
-                  markerWidth="6"
-                  markerHeight="6"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
-                </marker>
-              </defs>
-
-              {/* In-progress connecting line preview */}
-              {connectingFrom && canvasMousePos && (() => {
-                const src = nodes.find((n) => n.id === connectingFrom.nodeId)
-                if (!src) return null
-                const startX = src.position.x + 280
-                const startY = src.position.y + 50
-                const endX = canvasMousePos.x
-                const endY = canvasMousePos.y
-                const controlX = (startX + endX) / 2
-
+        {failedSessions.length > 0 && (
+          <details className="shrink-0 px-4 py-2 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-b border-rose-200 dark:border-rose-900/60">
+            <summary className="cursor-pointer font-semibold">
+              {failedSessions.length} recent run{failedSessions.length === 1 ? '' : 's'} failed
+            </summary>
+            <ul className="mt-1.5 space-y-1">
+              {failedSessions.map((session) => {
+                const failedNode = nodes.find((node) => node.id === session.current_node_id)
                 return (
-                  <path
-                    d={`M ${startX} ${startY} C ${controlX} ${startY}, ${controlX} ${endY}, ${endX} ${endY}`}
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    strokeDasharray="6,4"
-                    className="animate-pulse"
-                    markerEnd="url(#arrow)"
-                  />
-                )
-              })()}
-
-              {edges.map((edge) => {
-                const sourceNode = nodes.find((n) => n.id === edge.source)
-                const targetNode = nodes.find((n) => n.id === edge.target)
-                if (!sourceNode || !targetNode) return null
-
-                // Compute port coordinates
-                const startX = sourceNode.position.x + 280
-                const startY = sourceNode.position.y + 50
-                const endX = targetNode.position.x
-                const endY = targetNode.position.y + 50
-
-                const controlX = (startX + endX) / 2
-                const midY = (startY + endY) / 2
-
-                const isSimulatedActive =
-                  simulatedCurrentNodeId === edge.source || simulatedCurrentNodeId === edge.target
-
-                return (
-                  <g key={edge.id} className="group pointer-events-auto cursor-pointer">
-                    {/* Invisible wider hit area for easy hovering */}
-                    <path
-                      d={`M ${startX} ${startY} C ${controlX} ${startY}, ${controlX} ${endY}, ${endX} ${endY}`}
-                      fill="none"
-                      stroke="transparent"
-                      strokeWidth={16}
-                    />
-                    <path
-                      d={`M ${startX} ${startY} C ${controlX} ${startY}, ${controlX} ${endY}, ${endX} ${endY}`}
-                      fill="none"
-                      stroke={isSimulatedActive ? '#10b981' : undefined}
-                      strokeWidth={isSimulatedActive ? 3 : 2}
-                      strokeDasharray={isSimulatedActive ? '6,3' : undefined}
-                      className={`transition-colors group-hover:stroke-rose-500/80 ${
-                        isSimulatedActive ? 'animate-pulse' : 'stroke-slate-400 dark:stroke-slate-700'
-                      }`}
-                      markerEnd="url(#arrow)"
-                    />
-                    {edge.sourceHandle && (
-                      <text
-                        x={(startX + endX) / 2}
-                        y={midY - 8}
-                        fontSize="10"
-                        textAnchor="middle"
-                        className="font-mono fill-slate-600 dark:fill-slate-400"
+                  <li key={session.id}>
+                    {new Date(session.last_interaction_at).toLocaleString()} · {session.state_data?._last_error || 'Execution failed'}
+                    {failedNode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedNodeId(failedNode.id)
+                          setPanel('inspector')
+                          centerOnNode(failedNode.id)
+                        }}
+                        className="ml-1.5 underline font-semibold cursor-pointer"
                       >
-                        {edge.sourceHandle}
-                      </text>
+                        at “{failedNode.data?.title || getNodeDefinition(failedNode.type).label}”
+                      </button>
                     )}
-                    {/* Delete Edge button on hover */}
-                    <g
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteEdge(edge.id)
-                      }}
-                    >
-                      <circle cx={controlX} cy={midY} r="8" fill="#e11d48" className="hover:scale-125 transition-transform" />
-                      <text
-                        x={controlX}
-                        y={midY + 3.5}
-                        fill="#ffffff"
-                        fontSize="11"
-                        fontWeight="bold"
-                        textAnchor="middle"
-                        className="pointer-events-none select-none font-mono"
-                      >
-                        ×
-                      </text>
-                    </g>
-                  </g>
+                  </li>
                 )
               })}
-            </svg>
+            </ul>
+          </details>
+        )}
 
-            {/* Render Nodes */}
-            {nodes.map((node) => {
-              const isSelected = selectedNodeId === node.id
-              const isSimulated = simulatedCurrentNodeId === node.id
+        <div className="flex-1 flex min-h-0 relative">
+          {/* ── Palette ── */}
+          <aside className="w-60 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] flex flex-col z-10">
+            <div className="px-3 pt-3 pb-2">
+              <h2 className="text-xs font-bold text-slate-900 dark:text-white">Blocks</h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Click to add, or drag onto the canvas.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-3">
+              {PALETTE.map(({ group, items }) => (
+                <div key={group}>
+                  <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">{group}</h3>
+                  <div className="space-y-1">
+                    {items.map((definition) => {
+                      const Icon = definition.icon
+                      const unavailable = definition.type === 'trigger' && hasTrigger
+                      return (
+                        <button
+                          key={definition.type}
+                          type="button"
+                          draggable={!unavailable}
+                          disabled={unavailable}
+                          title={unavailable ? 'A flow has exactly one trigger' : undefined}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData('text/plain', definition.type)
+                            event.dataTransfer.effectAllowed = 'copy'
+                          }}
+                          onClick={() => addNode(definition.type)}
+                          className="w-full text-left p-2 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center gap-2.5 transition-colors cursor-grab active:cursor-grabbing disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-transparent"
+                        >
+                          <span className={`h-8 w-8 shrink-0 rounded-lg flex items-center justify-center ${TONE_CLASSES[definition.tone].chip}`}>
+                            <Icon className="w-4 h-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{definition.label}</span>
+                            <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400 truncate">
+                              {unavailable ? 'Already added' : definition.description}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
 
-              return (
-                <div
-                  key={node.id}
-                  onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
-                  onDragStart={(e) => e.preventDefault()}
-                  style={{
-                    position: 'absolute',
-                    left: `${node.position.x}px`,
-                    top: `${node.position.y}px`,
-                    width: '280px',
-                    zIndex: isSelected ? 10 : 2,
-                  }}
-                  className={`canvas-node-card pointer-events-auto select-none rounded-2xl border transition-shadow cursor-move ${
-                    isSelected
-                      ? 'border-emerald-500 shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/30'
-                      : isSimulated
-                      ? 'border-emerald-500 ring-4 ring-emerald-400/40 animate-pulse'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161f26] hover:border-slate-300 dark:hover:border-slate-700 shadow-md'
-                  }`}
-                >
-                  {/* Node Header */}
+          {/* ── Canvas ── */}
+          <div
+            ref={canvasRef}
+            onMouseDown={handleCanvasMouseDown}
+            onDragOver={(event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'copy'
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              const type = event.dataTransfer.getData('text/plain') as NodeType
+              if (!type || !getNodeDefinition(type).supported) return
+              const point = toCanvasPoint(event.clientX, event.clientY)
+              addNode(type, { x: Math.round(point.x - NODE_WIDTH / 2), y: Math.round(point.y - HEADER_HEIGHT / 2) })
+            }}
+            className={`flex-1 min-w-0 h-full relative overflow-hidden select-none bg-slate-100 dark:bg-[#0c1216] ${
+              isPanning ? 'cursor-grabbing' : connectingFrom ? 'cursor-crosshair' : 'cursor-grab'
+            }`}
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(100, 116, 139, 0.28) 1px, transparent 1px)',
+              backgroundSize: `${Math.round(24 * zoom)}px ${Math.round(24 * zoom)}px`,
+              backgroundPosition: `${pan.x}px ${pan.y}px`,
+            }}
+          >
+            {connectingFrom && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pl-3 pr-1.5 py-1 rounded-full bg-slate-900 text-white text-xs font-medium shadow-lg flex items-center gap-2">
+                Click the block this should lead to
+                <button type="button" onClick={() => setConnectingFrom(null)} className="px-2 py-0.5 rounded-full bg-white/15 hover:bg-white/25 text-[11px] cursor-pointer">
+                  Cancel (Esc)
+                </button>
+              </div>
+            )}
+
+            {nodes.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center max-w-xs">
+                  <Workflow className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">Start with a Trigger</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Add a Trigger from the left, then connect the steps that should follow it.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Zoom controls */}
+            <div
+              onMouseDown={(event) => event.stopPropagation()}
+              className="canvas-control-toolbar absolute bottom-3 left-3 z-30 flex items-center gap-0.5 bg-white dark:bg-[#11181c] p-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-md cursor-default"
+            >
+              <button type="button" onClick={() => zoomBy(-0.1)} aria-label="Zoom out" title="Zoom out" className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-[11px] tabular-nums w-10 text-center font-semibold text-slate-600 dark:text-slate-300">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => zoomBy(0.1)} aria-label="Zoom in" title="Zoom in" className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              <button type="button" onClick={fitToView} aria-label="Fit the flow in view" title="Fit the flow in view" className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <Maximize2 className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={() => applyView(1, panRef.current)} aria-label="Zoom to 100%" title="Zoom to 100%" className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Everything below moves and scales with the viewport */}
+            <div className="pointer-events-none absolute inset-0" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
+              <svg className="overflow-visible absolute top-0 left-0 w-px h-px pointer-events-none" style={{ zIndex: 1 }}>
+                <defs>
+                  <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+                  </marker>
+                  <marker id="flow-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                  </marker>
+                </defs>
+
+                {edges.map((edge) => {
+                  const source = nodes.find((node) => node.id === edge.source)
+                  const target = nodes.find((node) => node.id === edge.target)
+                  if (!source || !target) return null
+                  const out = getOutputAnchor(source, edge.sourceHandle)
+                  const sx = source.position.x + out.x
+                  const sy = source.position.y + out.y
+                  const ex = target.position.x + INPUT_ANCHOR.x
+                  const ey = target.position.y + INPUT_ANCHOR.y
+                  const path = edgePath(sx, sy, ex, ey)
+                  const active = selectedNodeId === edge.source || selectedNodeId === edge.target || simulatedNodeId === edge.target
+                  return (
+                    <g key={edge.id} className="canvas-edge group pointer-events-auto cursor-pointer">
+                      {/* Wide invisible stroke so the connection is easy to hover */}
+                      <path d={path} fill="none" stroke="transparent" strokeWidth={18} />
+                      <path
+                        d={path}
+                        fill="none"
+                        strokeWidth={2}
+                        stroke={active ? '#10b981' : '#94a3b8'}
+                        markerEnd={active ? 'url(#flow-arrow-active)' : 'url(#flow-arrow)'}
+                        className="group-hover:stroke-rose-500"
+                      />
+                      <g
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          deleteEdge(edge.id)
+                        }}
+                      >
+                        <title>Remove this connection</title>
+                        <circle cx={(sx + ex) / 2} cy={(sy + ey) / 2} r={9} fill="#e11d48" />
+                        <path
+                          d={`M ${(sx + ex) / 2 - 3} ${(sy + ey) / 2 - 3} l 6 6 m 0 -6 l -6 6`}
+                          stroke="#fff"
+                          strokeWidth={1.8}
+                          strokeLinecap="round"
+                        />
+                      </g>
+                    </g>
+                  )
+                })}
+
+                {/* The connection being drawn follows the pointer */}
+                {connectingFrom && pointer && (() => {
+                  const source = nodes.find((node) => node.id === connectingFrom.nodeId)
+                  if (!source) return null
+                  const out = getOutputAnchor(source, connectingFrom.handleId)
+                  return (
+                    <path
+                      d={edgePath(source.position.x + out.x, source.position.y + out.y, pointer.x, pointer.y)}
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                    />
+                  )
+                })()}
+              </svg>
+
+              {nodes.map((node) => {
+                const definition = getNodeDefinition(node.type)
+                const Icon = definition.icon
+                const tone = TONE_CLASSES[definition.tone]
+                const outputs = getNodeOutputs(node)
+                const nodeIssues = issuesByNode.get(node.id) || []
+                const isSelected = selectedNodeId === node.id
+                const isSimulated = simulatedNodeId === node.id
+                const canReceive = Boolean(connectingFrom) && connectingFrom?.nodeId !== node.id && node.type !== 'trigger'
+                const isConnectingSource = (handleId?: string) =>
+                  connectingFrom?.nodeId === node.id && (connectingFrom.handleId || '') === (handleId || '')
+
+                return (
                   <div
-                    className={`px-3.5 py-2.5 rounded-t-2xl flex items-center justify-between border-b ${
-                      node.type === 'trigger'
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300'
-                        : node.type === 'native_flow_trigger'
-                        ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50 text-indigo-800 dark:text-indigo-300'
-                        : node.type === 'ai_rag_node'
-                        ? 'bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-900/50 text-cyan-800 dark:text-cyan-300'
-                        : node.type === 'crm_deal_action' || node.type === 'ticket_action'
-                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300'
-                        : node.type === 'delay_action'
-                        ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900/50 text-violet-800 dark:text-violet-300'
-                        : node.type === 'webhook_action'
-                        ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50 text-blue-800 dark:text-blue-300'
-                        : node.type === 'set_variable'
-                        ? 'bg-pink-50 dark:bg-pink-950/40 border-pink-200 dark:border-pink-900/50 text-pink-800 dark:text-pink-300'
-                        : node.type === 'tag_action'
-                        ? 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900/50 text-orange-800 dark:text-orange-300'
-                        : node.type === 'notification_action'
-                        ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300'
-                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/50 text-slate-800 dark:text-slate-300'
+                    key={node.id}
+                    onMouseDown={(event) => handleNodeMouseDown(event, node.id)}
+                    onDragStart={(event) => event.preventDefault()}
+                    style={{ position: 'absolute', left: node.position.x, top: node.position.y, width: NODE_WIDTH, zIndex: isSelected ? 10 : 2 }}
+                    className={`canvas-node-card pointer-events-auto rounded-xl bg-white dark:bg-[#161f26] border shadow-sm transition-shadow ${
+                      isDragging && isSelected ? 'cursor-grabbing shadow-xl' : canReceive ? 'cursor-pointer' : 'cursor-grab'
+                    } ${
+                      isSelected
+                        ? 'border-emerald-500 ring-2 ring-emerald-500/30 shadow-lg'
+                        : isSimulated
+                        ? 'border-emerald-500 ring-4 ring-emerald-400/30'
+                        : canReceive
+                        ? 'border-emerald-400 border-dashed hover:ring-2 hover:ring-emerald-400/40'
+                        : nodeIssues.length
+                        ? 'border-amber-400 dark:border-amber-500/70'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      {node.type === 'trigger' && <Play className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
-                      {node.type === 'message' && <MessageSquare className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />}
-                      {node.type === 'interactive_buttons' && <ListPlus className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />}
-                      {node.type === 'native_flow_trigger' && <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
-                      {node.type === 'ai_rag_node' && <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
-                      {node.type === 'crm_deal_action' && <Briefcase className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
-                      {node.type === 'ticket_action' && <Ticket className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
-                      {node.type === 'delay_action' && <Timer className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />}
-                      {node.type === 'webhook_action' && <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      {node.type === 'set_variable' && <Variable className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />}
-                      {node.type === 'tag_action' && <Tag className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />}
-                      {node.type === 'notification_action' && <Bell className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />}
-                      <span className="text-xs font-bold tracking-tight line-clamp-1">
-                        {node.data?.title || node.type}
+                    <div style={{ height: HEADER_HEIGHT }} className={`px-3 flex items-center gap-2 rounded-t-[11px] border-b ${tone.header}`}>
+                      <span className={`h-7 w-7 shrink-0 rounded-lg flex items-center justify-center ${tone.chip}`}>
+                        <Icon className="w-4 h-4" />
                       </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide leading-none text-slate-500 dark:text-slate-400">{definition.label}</p>
+                        <p className="mt-0.5 text-[13px] font-semibold leading-tight truncate text-slate-900 dark:text-white">{node.data?.title || definition.label}</p>
+                      </div>
+                      {nodeIssues.length > 0 && (
+                        <span title={nodeIssues.join('\n')} className="shrink-0 text-amber-500">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="sr-only">
+                            {nodeIssues.length} problem{nodeIssues.length === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                      )}
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteNode(node.id)
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* Node Body Content Preview */}
-                  <div className="p-3 text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-[#161f26] rounded-b-2xl space-y-2">
-                    {node.type === 'trigger' && (
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase font-semibold">Keywords:</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {(node.data?.keywords || []).map((kw: string, i: number) => (
-                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-mono text-[10px]">
-                              {kw}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {node.type === 'message' && (
-                      <p className="line-clamp-3 text-slate-700 dark:text-slate-300 font-normal leading-relaxed bg-slate-50 dark:bg-[#0c1216] p-2 rounded-xl border border-slate-200 dark:border-slate-800">
-                        {node.data?.body || 'No message content'}
-                      </p>
-                    )}
-
-                    {['interactive_buttons', 'list_menu', 'condition_branch'].includes(node.type) && (
-                      <div className="space-y-1.5">
-                        <p className="line-clamp-2 text-slate-600 dark:text-slate-400">{node.data?.body}</p>
-                        <div className="space-y-1">
-                          {(node.type === 'condition_branch' ? [{ id: 'true', title: 'Matches' }, { id: 'false', title: 'Does not match' }] : node.type === 'list_menu' ? (node.data.sections || []).flatMap((section: any) => section.rows || []) : node.data?.buttons || []).map((btn: any) => (
-                            <div
-                              key={btn.id}
-                              className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-500/10 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-500/20 text-[11px] font-medium flex items-center justify-between"
-                            >
-                              <span>{btn.title}</span>
-                              <button
-                                onClick={(e) => {
-                                   e.stopPropagation()
-                                   handleConnectPort(node.id, btn.id)
-                                }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                className="w-3 h-3 rounded-full bg-teal-500 hover:scale-125 transition-transform"
-                                title="Connect this button"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {node.type === 'native_flow_trigger' && (
-                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/20 text-indigo-900 dark:text-indigo-200">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-[11px]">{node.data?.cta_text || 'Open Form'}</span>
-                          <ExternalLink className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-                        </div>
-                        <span className="text-[10px] text-indigo-600/80 dark:text-indigo-300/60 block mt-1">Zero-redirect native form</span>
-                      </div>
-                    )}
-
-                    {node.type === 'ai_rag_node' && (
-                      <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-500/20 text-cyan-900 dark:text-cyan-200">
-                        <span className="font-semibold text-[11px]">Knowledge Assistant</span>
-                        <p className="text-[10px] text-cyan-700/80 dark:text-cyan-300/70 mt-0.5">
-                          Ends this workflow and delegates the reply to your knowledge assistant.
+                    <div style={{ padding: BODY_PADDING }}>
+                      {outputs ? (
+                        <>
+                          <p style={{ height: PREVIEW_HEIGHT, marginBottom: PREVIEW_GAP }} className="text-xs leading-5 truncate text-slate-600 dark:text-slate-400">
+                            {getNodeSummary(node)}
+                          </p>
+                          {outputs.map((output) => {
+                            const connected = connectedOutputs.has(`${node.id}::${output.id}`)
+                            return (
+                              <div
+                                key={output.id}
+                                style={{ height: ROW_HEIGHT, marginBottom: ROW_GAP }}
+                                className="relative flex items-center px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/70 text-xs font-medium text-slate-700 dark:text-slate-200"
+                              >
+                                <span className="truncate">{output.label}</span>
+                                <button
+                                  type="button"
+                                  aria-label={`Connect “${output.label}” to the next step`}
+                                  title={connected ? 'Connected. Click to choose a different next step' : 'Click, then click the next step'}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    startConnection(node.id, output.id)
+                                  }}
+                                  style={{ width: PORT_SIZE, height: PORT_SIZE, right: -(BODY_PADDING + PORT_SIZE / 2 + 1) }}
+                                  className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-[#161f26] cursor-crosshair transition-transform hover:scale-125 ${
+                                    isConnectingSource(output.id) ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : connected ? tone.port : 'bg-slate-300 dark:bg-slate-600'
+                                  }`}
+                                />
+                              </div>
+                            )
+                          })}
+                        </>
+                      ) : (
+                        <p className="text-xs leading-relaxed line-clamp-3 break-words text-slate-600 dark:text-slate-400">
+                          {getNodeSummary(node, { formName, stageName })}
                         </p>
-                      </div>
+                      )}
+                    </div>
+
+                    {/* Input: connections arrive at the header */}
+                    {node.type !== 'trigger' && (
+                      <span
+                        aria-hidden="true"
+                        style={{ width: PORT_SIZE, height: PORT_SIZE, left: -(PORT_SIZE / 2 + 1), top: HEADER_HEIGHT / 2 - PORT_SIZE / 2 }}
+                        className={`absolute rounded-full border-2 border-white dark:border-[#161f26] ${canReceive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                      />
                     )}
 
-                    {node.type === 'crm_deal_action' && (
-                      <div className="text-[11px] text-amber-800 dark:text-amber-200/90">
-                        <span>Stage: </span>
-                        <span className="font-semibold font-mono">{node.data?.pipeline_stage || 'lead_in'}</span>
-                        <span className="block text-[10px] text-slate-500 dark:text-slate-400">Value: {node.data?.monetary_value || 0}</span>
-                      </div>
-                    )}
-
-                    {node.type === 'ticket_action' && (
-                      <div className="text-[11px] text-amber-800 dark:text-amber-200/90">
-                        <span>Creates a ticket linked to this contact and conversation.</span>
-                      </div>
-                    )}
-
-                    {node.type === 'delay_action' && (
-                      <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-500/20 text-violet-900 dark:text-violet-200">
-                        <div className="flex items-center gap-1.5">
-                          <Timer className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                          <span className="font-semibold text-[11px]">
-                            Wait {node.data?.delay_amount || 1} {node.data?.delay_unit || 'hours'}
-                          </span>
-                        </div>
-                        {node.data?.resume_message && (
-                          <p className="text-[10px] text-violet-700/80 dark:text-violet-300/60 mt-1 line-clamp-1">Then: {node.data.resume_message}</p>
-                        )}
-                      </div>
-                    )}
-
-                    {node.type === 'webhook_action' && (
-                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-500/20 text-blue-900 dark:text-blue-200 space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
-                            {node.data?.http_method || 'POST'}
-                          </span>
-                          <span className="text-[10px] font-mono truncate flex-1">{node.data?.webhook_url || 'https://...'}</span>
-                        </div>
-                        {node.data?.response_variable && (
-                          <p className="text-[10px] text-blue-700/80 dark:text-blue-300/60">→ Save to: {node.data.response_variable}</p>
-                        )}
-                      </div>
-                    )}
-
-                    {node.type === 'set_variable' && (
-                      <div className="p-2 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-500/20 text-pink-900 dark:text-pink-200">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300 font-bold">{node.data?.variable_name || 'var'}</span>
-                          <span className="text-[10px] text-pink-700/60 dark:text-pink-300/60">=</span>
-                          <span className="text-[10px] truncate flex-1 font-mono">{node.data?.value_expression || '(empty)'}</span>
-                        </div>
-                        <p className="text-[10px] text-pink-700/70 dark:text-pink-300/50 mt-1">Type: {node.data?.value_type || 'text'}</p>
-                      </div>
-                    )}
-
-                    {node.type === 'tag_action' && (
-                      <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-500/20 text-orange-900 dark:text-orange-200">
-                        <p className="text-[10px] font-semibold uppercase text-orange-700/80 dark:text-orange-300/70 mb-1">
-                          {node.data?.tag_action_type === 'remove' ? 'Remove Tags' : 'Add Tags'}
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {(node.data?.tags || []).map((tag: string, i: number) => (
-                            <span key={i} className="px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-200 text-[10px] font-medium">{tag}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {node.type === 'notification_action' && (
-                      <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-200">
-                        <div className="flex items-center gap-1.5">
-                          <Bell className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                          <span className="text-[11px] font-semibold capitalize">{node.data?.channel || 'email'}</span>
-                        </div>
-                        <p className="text-[10px] text-rose-700/80 dark:text-rose-300/60 mt-1 line-clamp-1">
-                          {node.data?.notification_subject || 'No subject'}
-                        </p>
-                      </div>
+                    {/* Single "next step" output */}
+                    {!outputs && !definition.terminal && (
+                      <button
+                        type="button"
+                        aria-label="Connect to the next step"
+                        title={connectedOutputs.has(`${node.id}::`) ? 'Connected. Click to choose a different next step' : 'Click, then click the next step'}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          startConnection(node.id)
+                        }}
+                        style={{ width: PORT_SIZE, height: PORT_SIZE, right: -(PORT_SIZE / 2 + 1), top: HEADER_HEIGHT / 2 - PORT_SIZE / 2 }}
+                        className={`absolute rounded-full border-2 border-white dark:border-[#161f26] cursor-crosshair transition-transform hover:scale-125 ${
+                          isConnectingSource() ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : connectedOutputs.has(`${node.id}::`) ? tone.port : 'bg-slate-300 dark:bg-slate-600'
+                        }`}
+                      />
                     )}
                   </div>
-
-                  {/* Ports for Edge Connection */}
-                  {/* Left Target Handle */}
-                  {node.type !== 'trigger' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleConnectPort(node.id)
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="w-4 h-4 rounded-full bg-slate-300 hover:bg-emerald-500 dark:bg-slate-700 dark:hover:bg-emerald-400 border-2 border-white dark:border-[#161f26] absolute -left-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors shadow-sm"
-                      title="Connect target input"
-                    />
-                  )}
-
-                  {/* Right Source Handle (if not button-based) */}
-                  {!['interactive_buttons', 'list_menu', 'condition_branch', 'assign_agent_action', 'ai_rag_node'].includes(node.type) && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleConnectPort(node.id)
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className={`w-4 h-4 rounded-full border-2 border-white dark:border-[#161f26] absolute -right-2 top-1/2 -translate-y-1/2 cursor-crosshair transition-colors shadow-sm ${
-                        connectingFrom?.nodeId === node.id ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : 'bg-slate-300 hover:bg-emerald-500 dark:bg-slate-700 dark:hover:bg-emerald-400'
-                      }`}
-                      title="Connect next step"
-                    />
-                  )}
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Right Inspector Drawer (Edit Selected Node) */}
-        {selectedNode && (
-          <aside className="w-80 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c] p-4 flex flex-col justify-between z-10 overflow-y-auto">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="font-bold text-sm text-slate-800 dark:text-white">Node Inspector</h3>
-                </div>
-                <button
-                  onClick={() => setSelectedNodeId(null)}
-                  className="p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
+          {/* ── Right panel: one of block settings, problems list, or the test chat ── */}
+          {panel === 'inspector' && selectedNode && (
+            <NodeInspector
+              key={selectedNode.id}
+              node={selectedNode}
+              issues={issuesByNode.get(selectedNode.id) || []}
+              nativeForms={nativeForms}
+              pipelineStages={pipelineStages}
+              variables={variables}
+              onChange={(updates) => updateNodeData(selectedNode.id, updates)}
+              onRemoveOutput={(handleId) => removeOutputEdge(selectedNode.id, handleId)}
+              onDelete={() => deleteNode(selectedNode.id)}
+              onClose={() => {
+                setSelectedNodeId(null)
+                setPanel(null)
+              }}
+            />
+          )}
+
+          {panel === 'issues' && (
+            <aside className="w-[340px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#11181c] flex flex-col z-10">
+              <div className="px-4 h-12 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#11181c]">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">{issueCount ? 'Fix before going live' : 'Ready to go live'}</h3>
+                <button type="button" aria-label="Close" onClick={() => setPanel(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-
-              {/* Title Input */}
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Node Title</label>
-                <input
-                  type="text"
-                  value={selectedNode.data?.title || ''}
-                  onChange={(e) => updateNodeData(selectedNode.id, { title: e.target.value })}
-                  className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {issueCount === 0 && (
+                  <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs leading-relaxed text-emerald-800 dark:text-emerald-200">
+                    <CheckCircle2 className="w-5 h-5 mb-1.5" />
+                    No problems found. Use <strong>Test</strong> to try the conversation, then <strong>Go live</strong>.
+                  </div>
+                )}
+                {graphIssues.map((issue) => {
+                  const node = issue.nodeId ? nodes.find((item) => item.id === issue.nodeId) : undefined
+                  return (
+                    <button
+                      key={issue.text}
+                      type="button"
+                      disabled={!node}
+                      onClick={() => {
+                        if (!node) return
+                        setSelectedNodeId(node.id)
+                        setPanel('inspector')
+                        centerOnNode(node.id)
+                      }}
+                      className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-amber-400 disabled:hover:border-slate-200 dark:disabled:hover:border-slate-700 cursor-pointer disabled:cursor-default"
+                    >
+                      <span className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                        <span className="min-w-0">
+                          {node && <span className="block text-xs font-bold text-slate-900 dark:text-white truncate">{node.data?.title || getNodeDefinition(node.type).label}</span>}
+                          <span className="block text-xs leading-relaxed text-slate-600 dark:text-slate-300 first-letter:uppercase">{issue.message}</span>
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+                {environmentIssues.length > 0 && (
+                  <>
+                    <h4 className="pt-2 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Found when last saved</h4>
+                    {environmentIssues.map((issue) => (
+                      <div key={issue} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                        <span className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">{issue}</span>
+                      </div>
+                    ))}
+                    <p className="px-1 text-[11px] text-slate-500 dark:text-slate-400">These are checked on the server. Save again after fixing them.</p>
+                  </>
+                )}
               </div>
+            </aside>
+          )}
 
-              {/* Specific Field Editors */}
-              {selectedNode.type === 'trigger' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Trigger</label>
-                    <select value={selectedNode.data.trigger_type || 'keyword'} onChange={event => updateNodeData(selectedNode.id, { trigger_type: event.target.value })} className="w-full my-1.5 p-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg"><option value="keyword">Keyword</option><option value="first_message">First message in a conversation</option></select>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 mt-2 block">Keyword matching</label>
-                    <select value={selectedNode.data.match_mode === 'exact' ? 'exact' : 'contains'} onChange={event => updateNodeData(selectedNode.id, { match_mode: event.target.value })} className="w-full my-1.5 p-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg"><option value="contains">Contains keyword</option><option value="exact">Exact match</option></select>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 mt-2 block">Inbound Trigger Keywords</label>
-                    <p className="text-[10px] text-slate-500">Comma-separated</p>
-                    <input
-                      type="text"
-                      value={(selectedNode.data?.keywords || []).join(', ')}
-                      onChange={(e) =>
-                        updateNodeData(selectedNode.id, {
-                          keywords: e.target.value.split(',').map((k) => k.trim()).filter(Boolean),
-                        })
-                      }
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'condition_branch' && <div className="space-y-3 text-xs">
-                <label className="block text-slate-700 dark:text-slate-300 font-medium">Answer or variable
-                  <input value={selectedNode.data.variable_name || selectedNode.data.variableName || ''} onChange={event => updateNodeData(selectedNode.id, { variable_name: event.target.value, variableName: event.target.value })} placeholder="form.budget" className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg font-mono" />
-                </label>
-                <label className="block text-slate-700 dark:text-slate-300 font-medium">Comparison
-                  <select value={selectedNode.data.operator || 'equals'} onChange={event => updateNodeData(selectedNode.id, { operator: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg">
-                    {['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].map(operator => <option key={operator} value={operator}>{operator.replaceAll('_', ' ')}</option>)}
-                  </select>
-                </label>
-                <label className="block text-slate-700 dark:text-slate-300 font-medium">Compare with
-                  <input value={selectedNode.data.compare_value ?? selectedNode.data.compareValue ?? ''} onChange={event => updateNodeData(selectedNode.id, { compare_value: event.target.value, compareValue: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg font-mono" />
-                </label>
-                <p className="text-slate-500 dark:text-slate-400">Connect both outputs. Form answers use names such as form.budget or form.full_name.</p>
-              </div>}
-              {selectedNode.type === 'assign_agent_action' && <p className="text-xs text-slate-600 dark:text-slate-400">This action returns the conversation to the shared team queue and pauses automatic replies. A teammate can take over in the inbox.</p>}
-              {selectedNode.type === 'list_menu' && <div className="space-y-3 text-xs">
-                <label className="block text-slate-700 dark:text-slate-300 font-medium">Message<textarea value={selectedNode.data.body || ''} onChange={event => updateNodeData(selectedNode.id, { body: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>
-                <label className="block text-slate-700 dark:text-slate-300 font-medium">Menu button<input maxLength={20} value={selectedNode.data.button_text || 'Choose'} onChange={event => updateNodeData(selectedNode.id, { button_text: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>
-                {(selectedNode.data.sections?.[0]?.rows || []).map((row: any, index: number) => <label key={row.id} className="block text-slate-700 dark:text-slate-300 font-medium">{row.id}<input maxLength={24} value={row.title} onChange={event => updateNodeData(selectedNode.id, { sections: [{ title: selectedNode.data.sections[0].title, rows: selectedNode.data.sections[0].rows.map((item: any, itemIndex: number) => itemIndex === index ? { ...item, title: event.target.value } : item) }] })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>)}
-                {(selectedNode.data.sections?.[0]?.rows || []).length < 10 && <button onClick={() => updateNodeData(selectedNode.id, { sections: [{ title: 'Options', rows: [...(selectedNode.data.sections?.[0]?.rows || []), { id: `choice_${Date.now()}`, title: 'New option' }] }] })} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-lg transition-colors">Add choice</button>}
-              </div>}
-              {selectedNode.type === 'ticket_action' && <label className="block text-xs text-slate-700 dark:text-slate-300 font-medium">Ticket subject<input value={selectedNode.data.subject || ''} onChange={event => updateNodeData(selectedNode.id, { subject: event.target.value })} className="w-full mt-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg" /></label>}
-
-              {selectedNode.type === 'message' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message Content</label>
-                    <textarea
-                      rows={5}
-                      value={selectedNode.data?.body || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { body: e.target.value })}
-                      placeholder="Type WhatsApp message..."
-                      className="w-full mt-1 p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Insert Variables</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {['{{contact.name}}', '{{contact.phone}}', '{{org.name}}'].map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() =>
-                            updateNodeData(selectedNode.id, {
-                              body: (selectedNode.data?.body || '') + ' ' + tag,
-                            })
-                          }
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'interactive_buttons' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Prompt Text</label>
-                    <textarea
-                      rows={3}
-                      value={selectedNode.data?.body || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { body: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Buttons (Max 3)</label>
-                    <div className="space-y-1.5 mt-1">
-                      {(selectedNode.data?.buttons || []).map((btn: any, idx: number) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={btn.title}
-                            onChange={(e) => {
-                              const newButtons = [...selectedNode.data.buttons]
-                              newButtons[idx] = { ...btn, title: e.target.value }
-                              updateNodeData(selectedNode.id, { buttons: newButtons })
-                            }}
-                            className="flex-1 p-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                          />
-                          <button
-                            onClick={() => {
-                              const newButtons = selectedNode.data.buttons.filter((_: any, i: number) => i !== idx)
-                              updateNodeData(selectedNode.id, { buttons: newButtons })
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-
-                      {(selectedNode.data?.buttons || []).length < 3 && (
-                        <button
-                          onClick={() => {
-                            const newBtn = {
-                              id: `btn_${Date.now().toString(36)}`,
-                              title: `Option ${(selectedNode.data?.buttons || []).length + 1}`,
-                            }
-                            updateNodeData(selectedNode.id, {
-                              buttons: [...(selectedNode.data?.buttons || []), newBtn],
-                            })
-                          }}
-                          className="w-full py-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-emerald-500"
-                        >
-                          + Add Button
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'native_flow_trigger' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Select Meta Native Form</label>
-                    <select
-                      value={selectedNode.data?.native_flow_id || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { native_flow_id: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">Select a form...</option>
-                      {availableNativeForms.map((form) => (
-                        <option key={form.id} value={form.id}>
-                          {form.name} — {form.status === 'PUBLISHED' && form.flow_id_meta ? 'Published on WhatsApp' : 'Draft: publish first'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">CTA Button Text</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.cta_text || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { cta_text: e.target.value })}
-                      maxLength={30}
-                      placeholder="e.g. Open Form"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'ai_rag_node' && <p className="text-xs text-slate-600 dark:text-slate-400">The existing knowledge assistant answers the customer's current message using your organization settings. This action ends the workflow.</p>}
-
-              {selectedNode.type === 'crm_deal_action' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Pipeline Stage</label>
-                    <select value={selectedNode.data?.pipeline_stage || 'lead_in'} onChange={event => updateNodeData(selectedNode.id, { pipeline_stage: event.target.value, stageId: event.target.value })} className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
-                      <option value="lead_in">First pipeline stage</option>
-                      {pipelineStages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Deal value</label>
-                    <input
-                      type="number"
-                      value={selectedNode.data?.monetary_value || 0}
-                      onChange={(e) => updateNodeData(selectedNode.id, { monetary_value: Number(e.target.value) })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'delay_action' && (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Duration</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={selectedNode.data?.delay_amount || 1}
-                        onChange={(e) => updateNodeData(selectedNode.id, { delay_amount: Math.max(1, Number(e.target.value)) })}
-                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Unit</label>
-                      <select
-                        value={selectedNode.data?.delay_unit || 'hours'}
-                        onChange={(e) => updateNodeData(selectedNode.id, { delay_unit: e.target.value })}
-                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                      >
-                        <option value="minutes">Minutes</option>
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message after wait (optional)</label>
-                    <textarea
-                      rows={2}
-                      value={selectedNode.data?.resume_message || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { resume_message: e.target.value })}
-                      placeholder="e.g. Just checking in! Have you had a chance to think about our offer?"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">The flow will pause for the specified duration and then continue to the next step. Great for drip campaigns and follow-ups.</p>
-                </div>
-              )}
-
-              {selectedNode.type === 'webhook_action' && (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <div className="w-24">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Method</label>
-                      <select
-                        value={selectedNode.data?.http_method || 'POST'}
-                        onChange={(e) => updateNodeData(selectedNode.id, { http_method: e.target.value })}
-                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                      >
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="DELETE">DELETE</option>
-                      </select>
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">URL</label>
-                      <input
-                        type="url"
-                        value={selectedNode.data?.webhook_url || ''}
-                        onChange={(e) => updateNodeData(selectedNode.id, { webhook_url: e.target.value })}
-                        placeholder="https://api.example.com/webhook"
-                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Request Body (JSON)</label>
-                    <textarea
-                      rows={4}
-                      value={selectedNode.data?.body_template || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { body_template: e.target.value })}
-                      placeholder='{"contact": "{{contact.name}}", "phone": "{{contact.phone}}"}'
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono leading-relaxed"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Save response to variable</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.response_variable || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { response_variable: e.target.value })}
-                      placeholder="webhook_response"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Timeout (seconds)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={selectedNode.data?.timeout_seconds || 10}
-                      onChange={(e) => updateNodeData(selectedNode.id, { timeout_seconds: Math.min(30, Math.max(1, Number(e.target.value))) })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Insert Variables</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {['{{contact.name}}', '{{contact.phone}}', '{{form.budget}}', '{{last_choice}}'].map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() => updateNodeData(selectedNode.id, { body_template: (selectedNode.data?.body_template || '') + ' ' + tag })}
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'set_variable' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Variable Name</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.variable_name || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { variable_name: e.target.value })}
-                      placeholder="e.g. custom_score, user.tier"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                    />
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Use dot notation for nested: form.total, user.tier</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Value / Expression</label>
-                    <textarea
-                      rows={2}
-                      value={selectedNode.data?.value_expression || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { value_expression: e.target.value })}
-                      placeholder="e.g. premium, {{contact.name}}, true, 42"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Value Type</label>
-                    <select
-                      value={selectedNode.data?.value_type || 'text'}
-                      onChange={(e) => updateNodeData(selectedNode.id, { value_type: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                      <option value="boolean">Boolean (true/false)</option>
-                      <option value="json">JSON Object</option>
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Quick Values</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {['{{contact.name}}', '{{last_choice}}', '{{form.budget}}', 'true', '0'].map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() => updateNodeData(selectedNode.id, { value_expression: tag })}
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedNode.type === 'tag_action' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Action</label>
-                    <select
-                      value={selectedNode.data?.tag_action_type || 'add'}
-                      onChange={(e) => updateNodeData(selectedNode.id, { tag_action_type: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="add">Add Tags</option>
-                      <option value="remove">Remove Tags</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Tags</label>
-                    <p className="text-[10px] text-slate-500">Comma-separated</p>
-                    <input
-                      type="text"
-                      value={(selectedNode.data?.tags || []).join(', ')}
-                      onChange={(e) => updateNodeData(selectedNode.id, { tags: e.target.value.split(',').map((t: string) => t.trim()).filter(Boolean) })}
-                      placeholder="e.g. interested, vip, hot-lead"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Segment Name (optional)</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.segment_name || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { segment_name: e.target.value })}
-                      placeholder="e.g. Premium Leads, Product A Interest"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Tags and segments help you organize contacts for future campaigns and targeting.</p>
-                </div>
-              )}
-
-              {selectedNode.type === 'notification_action' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Channel</label>
-                    <select
-                      value={selectedNode.data?.channel || 'email'}
-                      onChange={(e) => updateNodeData(selectedNode.id, { channel: e.target.value })}
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="email">Email</option>
-                      <option value="in_app">In-App Notification</option>
-                    </select>
-                  </div>
-                  {selectedNode.data?.channel !== 'in_app' && (
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Recipient Email</label>
-                      <input
-                        type="email"
-                        value={selectedNode.data?.recipient_email || ''}
-                        onChange={(e) => updateNodeData(selectedNode.id, { recipient_email: e.target.value })}
-                        placeholder="team@yourcompany.com"
-                        className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Subject</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data?.notification_subject || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { notification_subject: e.target.value })}
-                      placeholder="New lead from {{contact.name}}"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-400">Message Body</label>
-                    <textarea
-                      rows={3}
-                      value={selectedNode.data?.body_template || ''}
-                      onChange={(e) => updateNodeData(selectedNode.id, { body_template: e.target.value })}
-                      placeholder="A customer has completed the flow. Contact: {{contact.phone}}"
-                      className="w-full mt-1 p-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Insert Variables</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {['{{contact.name}}', '{{contact.phone}}', '{{org.name}}', '{{last_choice}}'].map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() => updateNodeData(selectedNode.id, { body_template: (selectedNode.data?.body_template || '') + ' ' + tag })}
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-              <button
-                onClick={() => deleteNode(selectedNode.id)}
-                className="w-full py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Node</span>
-              </button>
-            </div>
-          </aside>
-        )}
-
-        {/* Right Drawer: Live Phone Simulator */}
-        {showSimulator && (
-          <aside className="w-96 border-l border-slate-200 dark:border-slate-800 bg-[#0b1014] flex flex-col z-20 shadow-2xl">
-            {/* Simulator Header */}
-            <div className="p-3 bg-slate-900 dark:bg-[#161f26] border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs font-bold text-white">WhatsApp Live Simulator</span>
-              </div>
-              <button
-                onClick={() => setShowSimulator(false)}
-                className="p-1 rounded text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Simulated Phone Frame */}
-            <div
-              className="flex-1 p-3 overflow-y-auto space-y-3"
-              style={{
-                backgroundImage:
-                  'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
-                backgroundSize: '16px 16px',
+          {panel === 'simulator' && (
+            <FlowSimulator
+              messages={simulatorMessages}
+              busy={simulatorBusy}
+              completed={simulationCompleted}
+              blockedReason={
+                graphIssues.length > 0
+                  ? `This flow has ${graphIssues.length} problem${graphIssues.length === 1 ? '' : 's'}. Fix ${graphIssues.length === 1 ? 'it' : 'them'} (see “to fix” at the top), then run the test again.`
+                  : undefined
+              }
+              input={simulatorInput}
+              onInputChange={setSimulatorInput}
+              onSend={(text, buttonId) => sendSimulatorMessage(text, buttonId)}
+              onSubmitForm={submitSimulatedForm}
+              onRestart={startSimulator}
+              onClose={() => {
+                setPanel(selectedNodeId ? 'inspector' : null)
+                setSimulatedNodeId(null)
               }}
-            >
-              {simulatorMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-                >
-                  <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed shadow-sm ${
-                      msg.sender === 'user'
-                        ? 'bg-[#005c4b] text-white rounded-tr-none'
-                        : 'bg-[#202c33] text-slate-100 rounded-tl-none border border-slate-700/50'
-                    }`}
-                  >
-                    <p className="whitespace-pre-line">{msg.text}</p>
-
-                    {/* Interactive Button Chips */}
-                    {msg.buttons && msg.buttons.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-600/50 space-y-1.5">
-                        {msg.buttons.map((b: any) => (
-                          <button
-                            key={b.id}
-                            onClick={() => sendSimulatorMessage('', b.id)}
-                            className="w-full py-1.5 px-3 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-[11px] border border-emerald-500/30 transition-colors flex items-center justify-center gap-1.5"
-                          >
-                            <span>{b.title}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Native Flow CTA */}
-                    {msg.isNativeFlow && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-600/50">
-                        <button
-                          onClick={() =>
-                            sendSimulatorMessage(
-                              'Submitted sample form answers', undefined, { full_name: 'Test Customer', budget: 'tier_2' }
-                            )
-                          }
-                          className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                          <Smartphone className="w-3.5 h-3.5" />
-                          <span>{msg.ctaText || 'Open Interactive Form'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-slate-500 mt-1 px-1">
-                    {msg.sender === 'user' ? 'You' : 'Assistant Bot'}
-                  </span>
-                </div>
-              ))}
-
-              {simulatingStep && (
-                <div className="flex items-center gap-2 text-xs text-slate-400 p-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>Processing node...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Simulator Input Footer */}
-            <div className="p-3 bg-slate-900 dark:bg-[#161f26] border-t border-slate-800 flex items-center gap-2">
-              <input
-                type="text"
-                value={simulatorInput}
-                onChange={(e) => setSimulatorInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendSimulatorMessage(simulatorInput)}
-                placeholder="Type customer reply..."
-                className="flex-1 p-2 text-xs rounded-xl bg-[#0c1216] border border-slate-700 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              <button
-                onClick={() => sendSimulatorMessage(simulatorInput)}
-                disabled={!simulatorInput.trim()}
-                className="p-2 rounded-xl bg-[#008069] text-white hover:bg-[#00705c] disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-          </aside>
-        )}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import type { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
-import { getNextNode, resolveReply, validateWorkflow, readNodeField } from '@/lib/flows/flow-graph'
+import { getNextNode, resolveReply, validateWorkflow, readNodeField, normalizeTags } from '@/lib/flows/flow-graph'
 import { runFlow, type FlowReply } from '@/lib/flows/flow-runner'
 
 export async function POST(request: NextRequest) {
@@ -40,6 +40,10 @@ export async function POST(request: NextRequest) {
       action: async (node, state) => {
         if (node.type === 'crm_deal_action') return { deal_id: 'simulated-deal', simulated_actions: [...(state.simulated_actions || []), 'Would create a CRM lead'] }
         if (node.type === 'ticket_action') return { ticket_id: 'simulated-ticket', simulated_actions: [...(state.simulated_actions || []), 'Would create a support ticket'] }
+        if (node.type === 'tag_action') {
+          const verb = readNodeField(node.data, 'action', 'tag_action_type') === 'remove' ? 'remove' : 'add'
+          return { simulated_actions: [...(state.simulated_actions || []), `Would ${verb} tags: ${normalizeTags(node.data.tags).join(', ')}`] }
+        }
         return { handed_off: true, simulated_actions: [...(state.simulated_actions || []), 'Would assign the conversation and pause automation'] }
       },
     })

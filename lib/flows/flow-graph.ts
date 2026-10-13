@@ -60,11 +60,49 @@ export function matchesTrigger(workflow: WhatsAppWorkflow, input: string, isFirs
   })
 }
 
-const supported = new Set(['trigger', 'message', 'interactive_buttons', 'list_menu', 'native_flow_trigger', 'condition_branch', 'crm_deal_action', 'ticket_action', 'assign_agent_action', 'ai_rag_node'])
-export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
-  const errors: string[] = []
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) return ['Nodes and connections must be arrays']
-  if (nodes.length > 100 || edges.length > 300) return ['Use at most 100 nodes and 300 connections']
+/** Node types the runtime can execute. The builder only offers these; anything else fails validation. */
+export const SUPPORTED_NODE_TYPES = ['trigger', 'message', 'interactive_buttons', 'list_menu', 'native_flow_trigger', 'condition_branch', 'crm_deal_action', 'ticket_action', 'assign_agent_action', 'ai_rag_node', 'set_variable', 'tag_action'] as const
+const supported = new Set<string>(SUPPORTED_NODE_TYPES)
+
+const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype']
+/** State written by the engine itself; a workflow must not be able to overwrite it. */
+const RESERVED_VARIABLE_ROOTS = ['contact', 'org']
+/** A variable path such as `score` or `lead.tier`, or the reason it cannot be used. */
+export function getVariableNameError(name: string): string | null {
+  if (!name) return 'enter a variable name'
+  if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/.test(name)) return 'variable names use letters, numbers and underscores, with dots for nesting'
+  const parts = name.split('.')
+  if (parts.some(part => UNSAFE_KEYS.includes(part))) return 'choose a different variable name'
+  if (RESERVED_VARIABLE_ROOTS.includes(parts[0])) return `"${parts[0]}" is filled in automatically; choose a different variable name`
+  return null
+}
+/** Returns a copy of `state` with `path` set, never touching prototypes or the caller's nested objects. */
+export function setStateValue(state: Record<string, any>, path: string, value: any): Record<string, any> {
+  const [head, ...rest] = path.split('.')
+  if (UNSAFE_KEYS.includes(head)) throw new Error('Unsafe variable name')
+  if (!rest.length) return { ...state, [head]: value }
+  const existing = Object.hasOwn(state, head) && state[head] && typeof state[head] === 'object' && !Array.isArray(state[head]) ? state[head] : {}
+  return { ...state, [head]: setStateValue(existing, rest.join('.'), value) }
+}
+/** Tags as stored on a contact: trimmed, de-duplicated, at most 20. */
+export function normalizeTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return []
+  return [...new Set(tags.map(tag => String(tag ?? '').trim()).filter(Boolean))].slice(0, 20)
+}
+export interface WorkflowIssue {
+  /** The block the problem belongs to; absent for problems with the flow as a whole. */
+  nodeId?: string
+  message: string
+  /** The same text validateWorkflow reports: "<block title>: <message>". */
+  text: string
+}
+
+/** Everything that stops a workflow from running, attached to the block it concerns. */
+export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowIssue[] {
+  const issues: WorkflowIssue[] = []
+  const errors = { push: (message: string) => issues.push({ message, text: message }) }
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) return [{ message: 'Nodes and connections must be arrays', text: 'Nodes and connections must be arrays' }]
+  if (nodes.length > 100 || edges.length > 300) return [{ message: 'Use at most 100 nodes and 300 connections', text: 'Use at most 100 nodes and 300 connections' }]
   if (nodes.filter(node => node.type === 'trigger').length !== 1) errors.push('Add exactly one trigger')
   const ids = new Set(nodes.map(node => node.id))
   if (ids.size !== nodes.length) errors.push('Node IDs must be unique')
@@ -72,7 +110,7 @@ export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): 
   for (const node of nodes) {
     const data = node.data || {}
     const label = data.title || node.id
-    const fail = (message: string) => errors.push(`${label}: ${message}`)
+    const fail = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}` })
     if (!supported.has(node.type)) fail('this action is not supported yet')
     const outgoing = getOutgoingEdges(edges, node.id)
     const handles = outgoing.map(edge => edge.sourceHandle || '')
@@ -113,6 +151,17 @@ export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): 
         if (target ? !ids.has(target) : !getNextNode(nodes, edges, node.id, branch)) fail(`connect the ${branch} branch`)
       }
     }
+    if (node.type === 'set_variable') {
+      const problem = getVariableNameError(String(readNodeField(data, 'variableName', 'variable_name') || '').trim())
+      if (problem) fail(problem)
+      if (!['text', 'number', 'boolean', 'json', undefined].includes(readNodeField(data, 'valueType', 'value_type'))) fail('select a value type')
+    }
+    if (node.type === 'tag_action') {
+      const tags = normalizeTags(data.tags)
+      if (!tags.length) fail('add at least one tag')
+      if (tags.some(tag => tag.length > 50)) fail('tags must be at most 50 characters')
+      if (!['add', 'remove', undefined].includes(readNodeField(data, 'action', 'tag_action_type'))) fail('choose whether to add or remove tags')
+    }
     if (node.type === 'assign_agent_action' && !['specific_user', 'team_queue', undefined].includes(data.assignmentType || data.assignment_type)) fail('select a specific agent or the shared team queue')
     if (node.type === 'assign_agent_action' && (data.assignmentType || data.assignment_type) === 'specific_user' && !readNodeField(data, 'assignedUserId', 'assigned_user_id')) fail('select an agent')
   }
@@ -127,5 +176,10 @@ export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): 
     visiting.delete(node.id); visited.add(node.id); return false
   }
   if (nodes.some(walk)) errors.push('Remove the automatic loop; it would run without waiting for a customer')
-  return [...new Set(errors)]
+  const seen = new Set<string>()
+  return issues.filter(issue => !seen.has(issue.text) && Boolean(seen.add(issue.text)))
+}
+
+export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
+  return getWorkflowIssues(nodes, edges).map(issue => issue.text)
 }

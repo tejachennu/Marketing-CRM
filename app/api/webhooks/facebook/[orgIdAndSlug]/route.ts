@@ -215,9 +215,30 @@ async function processEvent(
     // If it's a status callback, acknowledge and exit
     if (value?.statuses) {
       console.log('[Facebook Webhook POST] Received status callback, acknowledging...')
+
+      // In-chat payment results arrive here, as a status of type "payment" (not as a message).
+      // Without this, a customer could pay and the order would stay "payment pending" forever.
+      const paymentStatuses = (Array.isArray(value.statuses) ? value.statuses : []).filter((item: any) => item?.type === 'payment')
+      if (paymentStatuses.length > 0 && orgData.enable_commerce !== false) {
+        try {
+          for (const paymentStatus of paymentStatuses) {
+            console.log('[Facebook Webhook POST] Processing payment status:', paymentStatus.status, 'for reference', paymentStatus.payment?.reference_id)
+            await handleInboundPaymentConfirmation({
+              organization: orgData,
+              paymentPayload: paymentStatus,
+              customerPhone: paymentStatus.recipient_id ? String(paymentStatus.recipient_id) : undefined,
+            })
+          }
+        } catch (paymentErr) {
+          // Ask Meta to redeliver: recording a payment is idempotent, losing one is not acceptable
+          console.error('[Facebook Webhook POST] Failed to record payment status:', paymentErr)
+          return NextResponse.json({ error: 'Payment status could not be recorded' }, { status: 500 })
+        }
+      }
+
       try {
         const statusObj = value.statuses[0]
-        if (statusObj) {
+        if (statusObj && statusObj.type !== 'payment') {
           const messageSid = statusObj.id
           const status = statusObj.status // 'sent' | 'delivered' | 'read' | 'failed'
           const errorDetail = statusObj.errors?.[0]?.error_data?.details || statusObj.errors?.[0]?.message || null
@@ -541,6 +562,7 @@ async function processEvent(
             conversation,
             orderPayload: message.order,
             customerPhone: phoneNumber,
+            messageId: messageSid,
           })
           return NextResponse.json({ success: true, handled_by: 'commerce_order_engine' })
         } catch (commErr: any) {

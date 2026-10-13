@@ -8,6 +8,7 @@ import {
   buildOrderDetailsMessage,
   buildWebsiteRedirectUrl,
 } from '@/lib/commerce/commerce-messages'
+import { getPaymentGateway } from '@/lib/commerce/commerce-utils'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -117,6 +118,13 @@ export async function POST(request: NextRequest) {
       })
       logSummary = `[Sent Full Catalog Message]`
     } else if (type === 'order_details') {
+      const gateway = getPaymentGateway(org)
+      if (!gateway) {
+        return NextResponse.json(
+          { error: 'Set up a payment gateway in Commerce → Store settings before requesting payment in the chat.' },
+          { status: 400 }
+        )
+      }
       metaPayload = buildOrderDetailsMessage({
         phone,
         referenceId: payload.referenceId,
@@ -126,14 +134,27 @@ export async function POST(request: NextRequest) {
         shippingFee: payload.shippingFee,
         taxAmount: payload.taxAmount,
         items: payload.items,
-        paymentGatewayType: org.commerce_payment_gateway || 'razorpay',
-        paymentGatewayConfigName: org.commerce_gateway_config_name,
+        paymentGatewayType: gateway.type,
+        paymentGatewayConfigName: gateway.configName,
         bodyText: payload.bodyText,
       })
       logSummary = `[Sent WhatsApp Payment Request: ${org.currency || 'INR'} ${payload.totalAmount}]`
     } else if (type === 'website_redirect') {
+      // Never send a customer to a placeholder address
+      let websiteUrl: URL | null = null
+      try {
+        websiteUrl = new URL(String(payload.websiteUrl || ''))
+      } catch {
+        websiteUrl = null
+      }
+      if (!websiteUrl || websiteUrl.protocol !== 'https:') {
+        return NextResponse.json(
+          { error: 'This product has no website link. Add an https:// product page URL to it first.' },
+          { status: 400 }
+        )
+      }
       const redirectUrl = buildWebsiteRedirectUrl({
-        baseUrl: payload.websiteUrl,
+        baseUrl: websiteUrl.toString(),
         productRetailerId: payload.productRetailerId,
         contactId: payload.contactId,
         campaignId: payload.campaignId,

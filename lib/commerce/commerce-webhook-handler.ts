@@ -5,6 +5,8 @@ import {
   OrderDetailsItem,
 } from './commerce-messages'
 import { calculateOrderTotals } from './meta-commerce'
+import { formatMoney, getPaymentGateway, OPEN_CHECKOUT_STATUSES } from './commerce-utils'
+import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -30,15 +32,62 @@ export function generateOrderNumber(now: Date = new Date()): string {
   return `ORD-${datePart}-${suffix}`
 }
 
-// Payment updates that must not mark an order as paid
-const UNSUCCESSFUL_PAYMENT_STATUSES = new Set([
-  'pending', 'failed', 'failure', 'canceled', 'cancelled', 'declined', 'expired', 'error', 'rejected',
-])
+export interface PaymentUpdate {
+  referenceId: string
+  /** Only "paid" marks an order as paid. Anything unrecognised is treated as still pending. */
+  outcome: 'paid' | 'pending' | 'failed'
+  transactionId: string | null
+  /** Amount in major units (rupees, not paise); 0 when Meta did not report one. */
+  amount: number
+  currency: string | null
+}
 
-// An address may only be (re)submitted before the order has been paid or fulfilled
-const ADDRESS_EDITABLE_STATUSES = new Set(['cart_submitted', 'awaiting_address', 'payment_pending'])
+const PAID_STATUSES = new Set(['captured', 'success', 'successful', 'completed', 'paid'])
+const FAILED_STATUSES = new Set(['failed', 'failure', 'canceled', 'cancelled', 'declined', 'expired', 'error', 'rejected'])
+
+/**
+ * Read a payment update from WhatsApp.
+ *
+ * Meta reports gateway payments as a webhook *status* (`statuses[].type === "payment"`), with
+ * `status: "captured" | "pending"` and the details under `payment` (reference_id, amount,
+ * currency, transaction). The flatter shape found on a message is accepted as well.
+ * An order must never be marked paid on a guess, so only an explicit success counts.
+ */
+export function normalizePaymentUpdate(raw: any): PaymentUpdate | null {
+  if (!raw || typeof raw !== 'object') return null
+  const payment = raw.payment && typeof raw.payment === 'object' ? raw.payment : raw
+  const referenceId = String(payment.reference_id || raw.reference_id || '').trim()
+  if (!referenceId) return null
+
+  const status = String(raw.status || payment.status || '').toLowerCase()
+  const transaction = payment.transaction && typeof payment.transaction === 'object' ? payment.transaction : {}
+  const transactionStatus = String(transaction.status || '').toLowerCase()
+
+  let outcome: PaymentUpdate['outcome'] = 'pending'
+  if (FAILED_STATUSES.has(status) || FAILED_STATUSES.has(transactionStatus)) outcome = 'failed'
+  else if (PAID_STATUSES.has(status)) outcome = 'paid'
+
+  const value = Number(payment.amount?.value)
+  const offset = Number(payment.amount?.offset) || 100
+  return {
+    referenceId,
+    outcome,
+    transactionId: String(transaction.id || transaction.pg_transaction_id || payment.transaction_id || raw.transaction_id || '').trim() || null,
+    amount: Number.isFinite(value) && value > 0 ? value / offset : 0,
+    currency: payment.currency ? String(payment.currency).toUpperCase() : null,
+  }
+}
 
 const EXPRESS_DELIVERY_SURCHARGE = 50 // e.g. ₹50 express surcharge
+
+type Database = any
+
+interface CheckoutContext {
+  supabase: Database
+  organization: any
+  conversation: any
+  customerPhone: string
+}
 
 /**
  * Send a message through the WhatsApp Cloud API.
@@ -46,6 +95,10 @@ const EXPRESS_DELIVERY_SURCHARGE = 50 // e.g. ₹50 express surcharge
  * "[Sent ...]" line in the conversation for a message the customer never received.
  */
 async function sendWhatsAppMessage(organization: any, payload: unknown): Promise<boolean> {
+  if (!organization.whatsapp_api_token || !organization.whatsapp_phone_number_id) {
+    console.warn('[Commerce Webhook] Missing WhatsApp credentials; cannot message the customer')
+    return false
+  }
   const graphVersion = organization.whatsapp_graph_api_version || 'v25.0'
   try {
     const res = await fetch(
@@ -71,6 +124,122 @@ async function sendWhatsAppMessage(organization: any, payload: unknown): Promise
   }
 }
 
+/** Send a message and, when it was delivered, note it in the CRM conversation. */
+async function sendAndLog(context: CheckoutContext, payload: unknown, logLine: string): Promise<boolean> {
+  const sent = await sendWhatsAppMessage(context.organization, payload)
+  if (sent) {
+    await context.supabase.from('messages').insert({
+      organization_id: context.organization.id,
+      conversation_id: context.conversation.id,
+      sender_type: 'user',
+      body: logLine,
+      status: 'sent',
+    })
+  }
+  return sent
+}
+
+function textMessage(phone: string, body: string) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: cleanWhatsAppRecipient(phone),
+    type: 'text',
+    text: { body },
+  }
+}
+
+export type CheckoutStep = 'address' | 'payment' | 'cod' | 'acknowledged' | 'not_sent'
+
+/**
+ * Tell the customer what happens next with their order. Exactly one step is sent, in this
+ * order of preference, so an order never ends in silence:
+ *   1. the delivery address form (when one is configured and no address is on file),
+ *   2. an in-chat payment request (when a payment gateway is configured),
+ *   3. a Cash on Delivery confirmation button (when COD is enabled),
+ *   4. a plain acknowledgement that the team will follow up.
+ */
+async function sendNextCheckoutStep(
+  context: CheckoutContext,
+  order: any,
+  items: OrderDetailsItem[],
+  intro: string
+): Promise<CheckoutStep> {
+  const { organization, customerPhone } = context
+  const currency = order.currency || organization.currency || 'INR'
+  const total = formatMoney(order.total_amount, currency)
+  const hasAddress = Boolean(order.shipping_address?.address_line_1)
+
+  if (organization.commerce_address_flow_id && !hasAddress) {
+    const sent = await sendAndLog(context, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanWhatsAppRecipient(customerPhone),
+      type: 'interactive',
+      interactive: {
+        type: 'flow',
+        body: { text: `${intro}\n\nPlease enter your delivery address below:` },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            mode: 'published',
+            flow_id: organization.commerce_address_flow_id,
+            flow_token: `order_${order.id}`,
+            flow_cta: 'Add Delivery Address',
+            flow_action: 'navigate',
+            flow_action_payload: { screen: 'SHIPPING_DETAILS' },
+          },
+        },
+      },
+    }, `[Sent Address Flow for Order #${order.order_number}]`)
+    if (sent) return 'address'
+    // Fall through: if the form could not be sent, still give the customer a way forward
+  }
+
+  const gateway = getPaymentGateway(organization)
+  if (gateway && items.length) {
+    const sent = await sendAndLog(context, buildOrderDetailsMessage({
+      phone: customerPhone,
+      referenceId: order.id,
+      currency,
+      totalAmount: Number(order.total_amount),
+      subtotal: Number(order.subtotal),
+      shippingFee: Number(order.shipping_fee) || 0,
+      taxAmount: Number(order.tax_amount) || 0,
+      items,
+      paymentGatewayType: gateway.type,
+      paymentGatewayConfigName: gateway.configName,
+      bodyText: `${intro}\n\nPlease review your order and complete the payment below:`,
+    }), `[Sent WhatsApp Payment Request for Order #${order.order_number} (${total})]`)
+    if (sent) return 'payment'
+  }
+
+  if (organization.commerce_enable_cod !== false) {
+    const sent = await sendAndLog(context, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: cleanWhatsAppRecipient(customerPhone),
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: `${intro}\n\nWould you like to confirm this order as Cash on Delivery?` },
+        action: {
+          buttons: [{ type: 'reply', reply: { id: `cod_confirm_${order.id}`, title: 'Confirm COD Order' } }],
+        },
+      },
+    }, `[Sent Cash on Delivery confirmation for Order #${order.order_number} (${total})]`)
+    if (sent) return 'cod'
+  }
+
+  const sent = await sendAndLog(
+    context,
+    textMessage(customerPhone, `${intro}\n\nOur team will contact you shortly to confirm payment and delivery.`),
+    `[Sent order acknowledgement for Order #${order.order_number} (${total})]`
+  )
+  return sent ? 'acknowledged' : 'not_sent'
+}
+
 /**
  * Handle incoming native cart order (`type: "order"`) from WhatsApp
  */
@@ -80,53 +249,72 @@ export async function handleInboundCommerceOrder({
   conversation,
   orderPayload,
   customerPhone,
+  messageId,
+  database,
 }: {
   organization: any
   contact: any
   conversation: any
   orderPayload: any
   customerPhone: string
+  /** WhatsApp message id of the cart. Meta redelivers webhooks, so it is the idempotency key. */
+  messageId?: string
+  /** Test seam; production uses the service-role client. */
+  database?: Database
 }) {
-  const supabase = getSupabase()
-  const rawItems = orderPayload.product_items || []
-  const catalogId = orderPayload.catalog_id
-  const customerNote = orderPayload.text || null
-
-  const orderNumber = generateOrderNumber()
-
-  // 1. Resolve product titles and details from database if available
-  const items: OrderDetailsItem[] = []
-  for (const item of rawItems) {
-    const retailerId = item.product_retailer_id
-    const qty = parseInt(item.quantity, 10) || 1
-    const price = parseFloat(item.item_price) || 0
-
-    // Try to get product info from DB
-    const { data: dbProduct } = await supabase
-      .from('commerce_products')
-      .select('title, price, image_url')
-      .eq('organization_id', organization.id)
-      .eq('retailer_id', retailerId)
-      .maybeSingle()
-
-    const title = dbProduct?.title || `Item #${retailerId}`
-    const unitPrice = price > 0 ? price : dbProduct?.price || 0
-
-    items.push({
-      retailer_id: retailerId,
-      name: title,
-      unit_price: unitPrice,
-      quantity: qty,
-    })
+  const supabase = database || getSupabase()
+  const rawItems: any[] = Array.isArray(orderPayload?.product_items) ? orderPayload.product_items : []
+  if (!rawItems.length) {
+    console.warn('[Commerce Webhook] Ignoring cart with no items')
+    return null
   }
+
+  // A redelivered webhook must not create a second order or message the customer again
+  if (messageId) {
+    const { data: existing } = await supabase
+      .from('commerce_orders')
+      .select('*')
+      .eq('organization_id', organization.id)
+      .eq('meta_order_id', messageId)
+      .maybeSingle()
+    if (existing) {
+      console.log(`[Commerce Webhook] Cart ${messageId} already recorded as Order ${existing.order_number}`)
+      return { order: existing, items: [], duplicate: true }
+    }
+  }
+
+  // 1. Resolve product titles and fallback prices from the local catalog in one query
+  const retailerIds = [...new Set(rawItems.map((item) => String(item.product_retailer_id || '')).filter(Boolean))]
+  const { data: dbProducts } = retailerIds.length
+    ? await supabase
+        .from('commerce_products')
+        .select('id, retailer_id, title, price, image_url')
+        .eq('organization_id', organization.id)
+        .in('retailer_id', retailerIds)
+    : { data: [] }
+  const productsBySku = new Map<string, any>((dbProducts || []).map((product: any) => [product.retailer_id, product]))
+
+  const items: OrderDetailsItem[] = rawItems.map((item) => {
+    const retailerId = String(item.product_retailer_id || '')
+    const product = productsBySku.get(retailerId)
+    const cartPrice = parseFloat(item.item_price) || 0
+    return {
+      retailer_id: retailerId,
+      name: product?.title || `Item #${retailerId}`,
+      unit_price: cartPrice > 0 ? cartPrice : Number(product?.price) || 0,
+      quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
+    }
+  })
 
   // 2. Calculate totals
   const totals = calculateOrderTotals(items, {
     shippingFee: parseFloat(organization.commerce_default_shipping_fee) || 0,
-    freeShippingThreshold: parseFloat(organization.free_shipping_threshold) || 0,
+    freeShippingThreshold: parseFloat(organization.commerce_free_shipping_threshold) || 0,
   })
+  const currency = String(rawItems[0]?.currency || organization.currency || 'INR').toUpperCase()
 
   // 3. Create Commerce Order in DB
+  const orderNumber = generateOrderNumber()
   const { data: newOrder, error: orderErr } = await supabase
     .from('commerce_orders')
     .insert([
@@ -137,14 +325,15 @@ export async function handleInboundCommerceOrder({
         order_number: orderNumber,
         status: organization.commerce_address_flow_id ? 'awaiting_address' : 'payment_pending',
         checkout_type: 'in_chat',
-        catalog_id: catalogId,
+        catalog_id: orderPayload.catalog_id || null,
         subtotal: totals.subtotal,
         shipping_fee: totals.shippingFee,
         tax_amount: totals.taxAmount,
         total_amount: totals.grandTotal,
-        currency: organization.currency || 'INR',
+        currency,
         payment_status: 'pending',
-        customer_note: customerNote,
+        customer_note: orderPayload.text || null,
+        meta_order_id: messageId || null,
       },
     ])
     .select()
@@ -156,92 +345,32 @@ export async function handleInboundCommerceOrder({
   }
 
   // 4. Create Order Items
-  if (items.length) {
-    const itemRows = items.map((it) => ({
+  const { error: itemsErr } = await supabase.from('commerce_order_items').insert(
+    items.map((item) => ({
       order_id: newOrder.id,
-      retailer_id: it.retailer_id,
-      title: it.name,
-      quantity: it.quantity,
-      unit_price: it.unit_price,
-      total_price: Math.round(it.unit_price * it.quantity * 100) / 100,
+      product_id: productsBySku.get(item.retailer_id)?.id || null,
+      retailer_id: item.retailer_id,
+      title: item.name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total_price: Math.round(item.unit_price * item.quantity * 100) / 100,
+      image_url: productsBySku.get(item.retailer_id)?.image_url || null,
     }))
-    await supabase.from('commerce_order_items').insert(itemRows)
-  }
+  )
+  if (itemsErr) console.error('[Commerce Webhook] Error saving order items:', itemsErr)
 
   console.log(`[Commerce Webhook] Created Order ${newOrder.order_number} for Contact ${contact.id}`)
 
-  // 5. Send automated reply to customer
-  if (!organization.whatsapp_api_token || !organization.whatsapp_phone_number_id) {
-    console.warn('[Commerce Webhook] Missing WhatsApp credentials; cannot send automated response')
-    return { order: newOrder, items }
-  }
+  // 5. Tell the customer what happens next
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
+  const step = await sendNextCheckoutStep(
+    { supabase, organization, conversation, customerPhone },
+    newOrder,
+    items,
+    `Thank you! We received your order #${newOrder.order_number} for ${itemCount} item${itemCount === 1 ? '' : 's'} (Total: ${formatMoney(totals.grandTotal, currency)}).`
+  )
 
-  // If organization has configured an address collection Flow:
-  if (organization.commerce_address_flow_id) {
-    const addressFlowMsg = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: customerPhone.replace('+', '').trim(),
-      type: 'interactive',
-      interactive: {
-        type: 'flow',
-        body: {
-          text: `Thank you for choosing us! We received your order for ${items.length} item(s) (Total: ${organization.currency || 'INR'} ${totals.grandTotal}).\n\nPlease enter your delivery address below:`,
-        },
-        action: {
-          name: 'flow',
-          parameters: {
-            flow_message_version: '3',
-            mode: 'published',
-            flow_id: organization.commerce_address_flow_id,
-            flow_token: `order_${newOrder.id}`,
-            flow_cta: 'Add Delivery Address',
-            flow_action_payload: {
-              screen: 'SHIPPING_DETAILS',
-              data: {
-                full_name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '',
-                phone_number: customerPhone,
-              },
-            },
-          },
-        },
-      },
-    }
-
-    if (await sendWhatsAppMessage(organization, addressFlowMsg)) {
-      await supabase.from('messages').insert({
-        organization_id: organization.id,
-        conversation_id: conversation.id,
-        sender_type: 'user',
-        body: `[Sent Address Flow for Order #${orderNumber}]`,
-      })
-    }
-  } else if (organization.commerce_gateway_config_name) {
-    // If no address flow is needed, send native order_details (Review & Pay) right away!
-    const orderDetailsMsg = buildOrderDetailsMessage({
-      phone: customerPhone,
-      referenceId: newOrder.id,
-      currency: organization.currency || 'INR',
-      totalAmount: totals.grandTotal,
-      subtotal: totals.subtotal,
-      shippingFee: totals.shippingFee,
-      taxAmount: totals.taxAmount,
-      items,
-      paymentGatewayType: organization.commerce_payment_gateway || 'razorpay',
-      paymentGatewayConfigName: organization.commerce_gateway_config_name,
-    })
-
-    if (await sendWhatsAppMessage(organization, orderDetailsMsg)) {
-      await supabase.from('messages').insert({
-        organization_id: organization.id,
-        conversation_id: conversation.id,
-        sender_type: 'user',
-        body: `[Sent WhatsApp Payment Request for Order #${orderNumber} (${organization.currency || 'INR'} ${totals.grandTotal})]`,
-      })
-    }
-  }
-
-  return { order: newOrder, items }
+  return { order: newOrder, items, step }
 }
 
 /**
@@ -254,6 +383,7 @@ export async function handleInboundAddressSubmission({
   submissionData,
   flowToken,
   customerPhone,
+  database,
 }: {
   organization: any
   contact: any
@@ -261,8 +391,9 @@ export async function handleInboundAddressSubmission({
   submissionData: Record<string, any>
   flowToken?: string
   customerPhone: string
+  database?: Database
 }) {
-  const supabase = getSupabase()
+  const supabase = database || getSupabase()
 
   // 1. Locate the order
   let orderQuery = supabase
@@ -290,7 +421,7 @@ export async function handleInboundAddressSubmission({
 
   // A customer can reopen an old address form. Never pull a paid or fulfilled order
   // back to "payment pending" or send a second payment request for it.
-  if (order.payment_status === 'paid' || !ADDRESS_EDITABLE_STATUSES.has(order.status)) {
+  if (order.payment_status === 'paid' || !OPEN_CHECKOUT_STATUSES.includes(order.status)) {
     console.log(`[Commerce Webhook] Ignoring address submission for Order #${order.order_number} in status ${order.status}`)
     return order
   }
@@ -318,7 +449,7 @@ export async function handleInboundAddressSubmission({
   const updatedTotal =
     Math.round((Number(order.subtotal) + updatedShippingFee + Number(order.tax_amount)) * 100) / 100
 
-  await supabase
+  const { error: updateErr } = await supabase
     .from('commerce_orders')
     .update({
       shipping_address: shippingAddress,
@@ -328,70 +459,26 @@ export async function handleInboundAddressSubmission({
       updated_at: new Date().toISOString(),
     })
     .eq('id', order.id)
+  if (updateErr) throw updateErr
 
   console.log(`[Commerce Webhook] Updated Order #${order.order_number} with shipping address`)
 
-  // 3. Send WhatsApp Native In-Chat Payment (`order_details` / `review_and_pay`)
-  if (organization.whatsapp_api_token && organization.whatsapp_phone_number_id) {
-    if (organization.commerce_gateway_config_name) {
-      const orderDetailsMsg = buildOrderDetailsMessage({
-        phone: customerPhone,
-        referenceId: order.id,
-        currency: order.currency || 'INR',
-        totalAmount: updatedTotal,
-        subtotal: Number(order.subtotal),
-        shippingFee: updatedShippingFee,
-        taxAmount: Number(order.tax_amount),
-        items: (order.items || []).map((i: any) => ({
-          retailer_id: i.retailer_id,
-          name: i.title,
-          unit_price: Number(i.unit_price),
-          quantity: i.quantity,
-        })),
-        paymentGatewayType: organization.commerce_payment_gateway || 'razorpay',
-        paymentGatewayConfigName: organization.commerce_gateway_config_name,
-        bodyText: `Address saved! Your total with ${shippingAddress.delivery_speed} shipping is ${order.currency || 'INR'} ${updatedTotal}. Please complete your payment below:`,
-      })
+  // 3. Ask for payment (or COD confirmation) now that the address is on file
+  const updatedOrder = { ...order, shipping_address: shippingAddress, shipping_fee: updatedShippingFee, total_amount: updatedTotal, status: 'payment_pending' }
+  const currency = order.currency || organization.currency || 'INR'
+  await sendNextCheckoutStep(
+    { supabase, organization, conversation, customerPhone },
+    updatedOrder,
+    (order.items || []).map((item: any) => ({
+      retailer_id: item.retailer_id,
+      name: item.title,
+      unit_price: Number(item.unit_price),
+      quantity: item.quantity,
+    })),
+    `Address saved! Your total with ${shippingAddress.delivery_speed} delivery is ${formatMoney(updatedTotal, currency)}.`
+  )
 
-      if (await sendWhatsAppMessage(organization, orderDetailsMsg)) {
-        await supabase.from('messages').insert({
-          organization_id: organization.id,
-          conversation_id: conversation.id,
-          sender_type: 'user',
-          body: `[Sent WhatsApp In-Chat Payment Request for Order #${order.order_number}]`,
-        })
-      }
-    } else if (organization.commerce_enable_cod) {
-      // Send interactive COD confirmation button
-      const codMsg = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: customerPhone.replace('+', '').trim(),
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: {
-            text: `Address saved! Your order total is ${order.currency || 'INR'} ${updatedTotal}.\n\nWould you like to confirm this order as Cash on Delivery?`,
-          },
-          action: {
-            buttons: [
-              {
-                type: 'reply',
-                reply: {
-                  id: `cod_confirm_${order.id}`,
-                  title: 'Confirm COD Order',
-                },
-              },
-            ],
-          },
-        },
-      }
-
-      await sendWhatsAppMessage(organization, codMsg)
-    }
-  }
-
-  return order
+  return updatedOrder
 }
 
 /**
@@ -399,31 +486,29 @@ export async function handleInboundAddressSubmission({
  */
 export async function handleInboundPaymentConfirmation({
   organization,
-  contact,
   conversation,
   paymentPayload,
   customerPhone,
+  database,
 }: {
   organization: any
-  contact: any
-  conversation: any
+  contact?: any
+  /** Optional: a payment status webhook carries no conversation, so the order's own is used. */
+  conversation?: any
   paymentPayload: any
-  customerPhone: string
+  customerPhone?: string
+  database?: Database
 }) {
-  const supabase = getSupabase()
-  const referenceId = paymentPayload.reference_id
-  const transactionId = paymentPayload.transaction_id || paymentPayload.id || `TXN_${Date.now()}`
-  const amount = paymentPayload.amount?.value ? paymentPayload.amount.value / (paymentPayload.amount.offset || 100) : 0
-  const currency = paymentPayload.currency || organization.currency || 'INR'
-
-  if (!referenceId) return null
+  const supabase = database || getSupabase()
+  const update = normalizePaymentUpdate(paymentPayload)
+  if (!update) return null
 
   // 1. Find the order. It must belong to the organization that received the webhook;
   //    the reference id alone must never reach another tenant's order.
   const { data: order } = await supabase
     .from('commerce_orders')
     .select('*')
-    .eq('id', referenceId)
+    .eq('id', update.referenceId)
     .eq('organization_id', organization.id)
     .maybeSingle()
 
@@ -436,29 +521,32 @@ export async function handleInboundPaymentConfirmation({
     return order
   }
 
-  // Only a successful payment marks the order as paid
-  const paymentStatus = String(paymentPayload.status || '').toLowerCase()
-  if (UNSUCCESSFUL_PAYMENT_STATUSES.has(paymentStatus)) {
-    console.log(`[Commerce Webhook] Payment for Order #${order.order_number} reported "${paymentStatus}"; order left unpaid`)
-    if (paymentStatus !== 'pending') {
+  if (update.outcome !== 'paid') {
+    console.log(`[Commerce Webhook] Payment for Order #${order.order_number} is ${update.outcome}; order left unpaid`)
+    if (update.outcome === 'failed') {
       await supabase
         .from('commerce_orders')
         .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', order.id)
+      return { ...order, payment_status: 'failed' }
     }
     return order
   }
 
-  await supabase
+  const currency = update.currency || order.currency || organization.currency || 'INR'
+  const transactionId = update.transactionId || `TXN_${Date.now()}`
+  const { error: updateErr } = await supabase
     .from('commerce_orders')
     .update({
-      status: 'paid',
+      // A canceled or already-fulfilled order keeps its status; only the payment is recorded
+      ...(OPEN_CHECKOUT_STATUSES.includes(order.status) ? { status: 'paid' } : {}),
       payment_status: 'paid',
       payment_method: 'whatsapp_pay',
       meta_payment_reference: transactionId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', order.id)
+  if (updateErr) throw updateErr
 
   // 2. Record transaction
   await supabase.from('commerce_transactions').insert({
@@ -466,30 +554,42 @@ export async function handleInboundPaymentConfirmation({
     organization_id: organization.id,
     gateway: organization.commerce_payment_gateway || 'razorpay',
     transaction_id: transactionId,
-    amount: amount || order.total_amount,
+    amount: update.amount || order.total_amount,
     currency,
     status: 'captured',
     raw_payload: paymentPayload,
   })
 
-  // 3. Send Order Status Receipt message
-  if (organization.whatsapp_api_token && organization.whatsapp_phone_number_id) {
-    const statusMsg = buildOrderStatusMessage({
-      phone: customerPhone,
+  // 3. Send the customer a receipt, in the conversation the order came from
+  const receiptConversationId = conversation?.id || order.conversation_id
+  let receiptPhone = customerPhone || ''
+  if (!receiptPhone && order.contact_id) {
+    const { data: orderContact } = await supabase
+      .from('contacts')
+      .select('phone_number')
+      .eq('id', order.contact_id)
+      .eq('organization_id', organization.id)
+      .maybeSingle()
+    receiptPhone = orderContact?.phone_number || ''
+  }
+
+  if (receiptPhone) {
+    const receipt = buildOrderStatusMessage({
+      phone: receiptPhone,
       referenceId: order.id,
       status: 'processing',
-      description: `Payment of ${currency} ${amount || order.total_amount} received successfully! Order #${order.order_number} is being processed.`,
+      description: `Payment of ${formatMoney(update.amount || order.total_amount, currency)} received successfully! Order #${order.order_number} is being processed.`,
     })
-
-    if (await sendWhatsAppMessage(organization, statusMsg)) {
-      await supabase.from('messages').insert({
-        organization_id: organization.id,
-        conversation_id: conversation.id,
-        sender_type: 'user',
-        body: `[Sent WhatsApp Payment Receipt for Order #${order.order_number}]`,
-      })
+    if (receiptConversationId) {
+      await sendAndLog(
+        { supabase, organization, conversation: { id: receiptConversationId }, customerPhone: receiptPhone },
+        receipt,
+        `[Sent WhatsApp Payment Receipt for Order #${order.order_number}]`
+      )
+    } else {
+      await sendWhatsAppMessage(organization, receipt)
     }
   }
 
-  return order
+  return { ...order, status: OPEN_CHECKOUT_STATUSES.includes(order.status) ? 'paid' : order.status, payment_status: 'paid' }
 }

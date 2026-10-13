@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
-import { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
+import { validateWorkflow } from '@/lib/flows/flow-graph'
+import { createStarterWorkflow, sanitizeWorkflowGraph, getTriggerSummary } from '@/lib/flows/flow-templates'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { organizationId, name, description, trigger_type, trigger_config, canvas_nodes, canvas_edges, template_id } = body
+    const { organizationId, name, description, trigger_config, canvas_nodes, canvas_edges } = body
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
@@ -85,71 +86,20 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
-    // Default starter canvas nodes & edges if not provided
-    let nodes: WorkflowNode[] = canvas_nodes
-    let edges: WorkflowEdge[] = canvas_edges
-
-    if (!nodes || nodes.length === 0) {
-      nodes = [
-        {
-          id: 'node-trigger-1',
-          type: 'trigger',
-          position: { x: 100, y: 180 },
-          data: {
-            title: 'Customer Message Trigger',
-            trigger_type: trigger_type || 'keyword',
-            keywords: trigger_config?.keywords || ['hi', 'hello', 'start', 'pricing'],
-            match_mode: 'fuzzy',
-          },
-        },
-        {
-          id: 'node-msg-welcome',
-          type: 'message',
-          position: { x: 420, y: 180 },
-          data: {
-            title: 'Welcome Message',
-            body: 'Hello {{contact.name}}! 👋 Welcome to our interactive assistant. How can we help you today?',
-          },
-        },
-        {
-          id: 'node-btn-menu',
-          type: 'interactive_buttons',
-          position: { x: 740, y: 180 },
-          data: {
-            title: 'Action Menu',
-            body: 'Please choose an option below to proceed immediately:',
-            buttons: [
-              { id: 'btn_qualify', title: '📋 Get Quote' },
-              { id: 'btn_support', title: '🛠️ Talk to Support' },
-              { id: 'btn_faq', title: '❓ Ask a Question' },
-            ],
-          },
-        },
-      ]
-
-      edges = [
-        {
-          id: 'edge-1-2',
-          source: 'node-trigger-1',
-          target: 'node-msg-welcome',
-        },
-        {
-          id: 'edge-2-3',
-          source: 'node-msg-welcome',
-          target: 'node-btn-menu',
-        },
-      ]
-    }
+    // A blank flow starts from a complete, valid starter; a supplied graph is cleaned up first
+    const supplied = Array.isArray(canvas_nodes) && canvas_nodes.length > 0
+    const graph = supplied
+      ? sanitizeWorkflowGraph(canvas_nodes, canvas_edges)
+      : createStarterWorkflow(Array.isArray(trigger_config?.keywords) && trigger_config.keywords.length ? trigger_config.keywords : undefined)
 
     const insertPayload: Record<string, any> = {
       organization_id: organizationId,
-      name: name.trim(),
-      description: description?.trim() || null,
+      name: String(name).trim().slice(0, 120),
+      description: typeof description === 'string' && description.trim() ? description.trim().slice(0, 500) : null,
       is_active: false,
-      trigger_type: trigger_type || 'keyword',
-      trigger_config: trigger_config || { keywords: ['hi', 'hello', 'start'] },
-      canvas_nodes: nodes,
-      canvas_edges: edges,
+      ...getTriggerSummary(graph.canvas_nodes),
+      canvas_nodes: graph.canvas_nodes,
+      canvas_edges: graph.canvas_edges,
       execution_count: 0,
       fallback_settings: {
         rag_enabled: true,
@@ -178,7 +128,11 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ workflow: newWorkflow }, { status: 201 })
+    return NextResponse.json({
+      workflow: newWorkflow,
+      // What still has to be fixed in the builder before this flow can go live
+      validationErrors: validateWorkflow(graph.canvas_nodes, graph.canvas_edges),
+    }, { status: 201 })
   } catch (error: any) {
     console.error('[Flows POST] Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

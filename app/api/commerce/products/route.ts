@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { syncMetaCatalogToDatabase } from '@/lib/commerce/meta-commerce'
+import { parseProductInput, type ProductInput } from '@/lib/commerce/commerce-utils'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -97,12 +98,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...syncResult })
     }
 
-    // Action 2: Create / Add product manually
-    if (!product || !product.title || !product.retailer_id || product.price === undefined) {
-      return NextResponse.json(
-        { error: 'Product requires title, retailer_id (SKU), and price' },
-        { status: 400 }
-      )
+    // Action 2: Create or update a product (matched on SKU)
+    let input: ProductInput
+    try {
+      input = parseProductInput(product)
+    } catch (validationErr: any) {
+      return NextResponse.json({ error: validationErr.message }, { status: 400 })
     }
 
     const { data: newProduct, error } = await supabase
@@ -110,16 +111,7 @@ export async function POST(request: NextRequest) {
       .upsert(
         {
           organization_id: organizationId,
-          retailer_id: product.retailer_id,
-          title: product.title,
-          description: product.description || '',
-          price: Number(product.price),
-          currency: product.currency || 'INR',
-          image_url: product.image_url || null,
-          website_url: product.website_url || null,
-          category: product.category || 'General',
-          is_available: product.is_available !== false,
-          inventory_count: Number(product.inventory_count) || 100,
+          ...input,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'organization_id,retailer_id' }

@@ -154,34 +154,53 @@ export async function POST(request: NextRequest) {
         throw new Error('SHIPPING_ADDRESS template not found')
       }
 
+      const saveFlowId = async (flowId: string) => {
+        const { error } = await supabase
+          .from('organizations')
+          .update({ commerce_address_flow_id: flowId, updated_at: new Date().toISOString() })
+          .eq('id', organizationId)
+        if (error) throw error
+      }
+
+      // Deploying twice must not create a second flow: Meta rejects duplicate flow names,
+      // which used to leave a half-created draft that could never be published.
+      let existingId: string | null = org.commerce_address_flow_id || null
+      if (existingId) {
+        try {
+          const remote = await metaRequest(credentials, `${existingId}?fields=id,status`)
+          if (remote.status === 'PUBLISHED') {
+            return NextResponse.json({
+              success: true,
+              flowId: existingId,
+              message: 'The WhatsApp Delivery Address Flow is already published on Meta.',
+            })
+          }
+          if (remote.status !== 'DRAFT') existingId = null // deprecated or blocked: start a new one
+        } catch {
+          existingId = null // the saved ID no longer exists on this WhatsApp account
+        }
+      }
+
       console.log('[Meta Deploy Flow] Compiling SHIPPING_ADDRESS template...')
       const compiledJson = compileMetaFlowJSON(template.screens)
 
-      let remoteId: string | null = null
       const uploadId = await uploadNativeFlow(
         credentials,
         {
           name: 'WhatsApp Store Delivery Address',
-          categories: ['ORDER_MANAGEMENT'],
+          categories: [template.category],
+          flow_id_meta: existingId,
         },
         compiledJson,
-        async (id) => {
-          remoteId = id
-        }
+        // Save the draft ID as soon as Meta returns it, so a failed publish can be retried
+        saveFlowId
       )
 
-      // Publish the flow on Meta
       console.log(`[Meta Deploy Flow] Publishing flow ID: ${uploadId}...`)
-      await metaRequest(credentials, `${uploadId}/publish`, { method: 'POST' })
+      const published = await metaRequest(credentials, `${uploadId}/publish`, { method: 'POST' })
+      if (published.success !== true) throw new Error('Meta did not confirm that the flow was published')
 
-      // Save flow ID into organization record
-      await supabase
-        .from('organizations')
-        .update({
-          commerce_address_flow_id: uploadId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', organizationId)
+      await saveFlowId(uploadId)
 
       return NextResponse.json({
         success: true,

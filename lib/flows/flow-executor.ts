@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import type { WhatsAppWorkflow, WorkflowNode, FlowSession } from './flow-types'
-import { getStartNode, getNextNode, resolveReply, matchesTrigger, readNodeField, interpolateVariables, validateWorkflow } from './flow-graph'
+import { getStartNode, getNextNode, resolveReply, matchesTrigger, readNodeField, interpolateVariables, validateWorkflow, normalizeTags } from './flow-graph'
 import { runFlow, type FlowReply } from './flow-runner'
 export { getStartNode, getNextNode, getOutgoingEdges, interpolateVariables } from './flow-graph'
 
@@ -185,6 +185,17 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
             subject: text(node.data.subject || 'WhatsApp support request'), status: 'open' }).select().single())
           return { ticket_id: ticket.id, _actions: { ...data._actions, [node.id]: ticket.id } }
         }
+        if (node.type === 'tag_action') {
+          const requested = normalizeTags((node.data.tags || []).map((tag: string) => text(String(tag))))
+          const current = await checked(supabase.from('contacts').select('tags').eq('id', contact.id).eq('organization_id', organizationId).maybeSingle())
+          const existing: string[] = Array.isArray(current?.tags) ? current.tags : []
+          const remove = readNodeField(node.data, 'action', 'tag_action_type') === 'remove'
+          const tags = remove ? existing.filter(tag => !requested.includes(tag)) : [...new Set([...existing, ...requested])]
+          await checked(supabase.from('contacts').update({ tags }).eq('id', contact.id).eq('organization_id', organizationId))
+          return { contact_tags: tags }
+        }
+        // Every action type is handled explicitly: an unknown one must never fall through to a handoff.
+        if (node.type !== 'assign_agent_action') throw new Error(`Unsupported workflow action: ${node.type}`)
         const userId = readNodeField(node.data, 'assignedUserId', 'assigned_user_id')
         if (userId) {
           const user = await checked(supabase.from('users').select('id').eq('id', userId).eq('organization_id', organizationId).maybeSingle())

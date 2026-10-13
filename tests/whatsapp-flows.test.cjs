@@ -262,3 +262,70 @@ test('superseded legacy sessions cannot revive after the newest flow completes',
   assert.equal(db.tables.flow_sessions[1].status, 'EXPIRED')
   assert.equal(db.tables.flow_sessions[0].status, 'IN_PROGRESS')
 })
+
+// ── Builder templates, generated graphs and the variable / tag blocks ──────────
+const { createStarterWorkflow, createFormWorkflow, sanitizeWorkflowGraph, getTriggerSummary } = require('../lib/flows/flow-templates.ts')
+const { setStateValue, getVariableNameError, SUPPORTED_NODE_TYPES } = require('../lib/flows/flow-graph.ts')
+
+test('a new workflow starts from a canvas that can be activated as-is', () => {
+  const starter = createStarterWorkflow()
+  assert.deepEqual(validateWorkflow(starter.canvas_nodes, starter.canvas_edges), [])
+  const withForm = createFormWorkflow({ id: 'native', name: 'Lead form' })
+  assert.deepEqual(validateWorkflow(withForm.canvas_nodes, withForm.canvas_edges), [])
+  for (const item of [...starter.canvas_nodes, ...withForm.canvas_nodes]) assert.ok(SUPPORTED_NODE_TYPES.includes(item.type), item.type)
+})
+test('generated graphs lose unsupported blocks and dangling connections, and keep one trigger', () => {
+  const graph = sanitizeWorkflowGraph(
+    [node('a', 'message', { body: 'Hello' }), node('wait', 'delay_action'), node('t1', 'trigger', { keywords: ['x'] }), node('t2', 'trigger'), { id: 'a', type: 'message' }, null, { type: 'message' }],
+    [edge('t1', 'a'), edge('a', 'wait'), edge('a', 'missing'), edge('t1', 'a'), { source: 'a', target: 'a' }],
+  )
+  assert.deepEqual(graph.canvas_nodes.map(item => item.id), ['a', 't1'])
+  assert.deepEqual(graph.canvas_edges.map(item => [item.source, item.target]), [['t1', 'a']])
+  assert.deepEqual(validateWorkflow(graph.canvas_nodes, graph.canvas_edges), [])
+})
+test('a generated graph without a trigger gets one wired to its first step', () => {
+  const graph = sanitizeWorkflowGraph([node('a', 'message', { body: 'Hello' })], [])
+  assert.equal(graph.canvas_nodes[0].type, 'trigger')
+  assert.deepEqual(validateWorkflow(graph.canvas_nodes, graph.canvas_edges), [])
+})
+test('the trigger summary mirrors the trigger node', () => {
+  assert.deepEqual(getTriggerSummary([node('t', 'trigger', { trigger_type: 'keyword', keywords: [' Hi ', ''], match_mode: 'fuzzy' })]), { trigger_type: 'keyword', trigger_config: { keywords: ['Hi'], match_mode: 'contains' } })
+  assert.deepEqual(getTriggerSummary([node('t', 'trigger', { trigger_type: 'first_message', keywords: ['old'] })]).trigger_config.keywords, [])
+})
+test('set variable stores typed, nested values without touching prototypes or engine state', async () => {
+  const nodes = [node('score', 'set_variable', { variable_name: 'lead.score', value_expression: '42', value_type: 'number' }), node('tier', 'set_variable', { variable_name: 'tier', value_expression: '{{contact.name}}-vip' }), node('say', 'message', { body: 'Score {{lead.score}} for {{tier}}' })]
+  const initial = { contact: { name: 'Asha' }, lead: { source: 'ad' } }
+  const result = await runFlow(nodes, [edge('score', 'tier'), edge('tier', 'say')], nodes[0], initial, { send: async () => {}, nativeFlow: async () => {}, action: async () => ({}) })
+  assert.equal(result.replies[0].body, 'Score 42 for Asha-vip')
+  assert.deepEqual(result.state.lead, { source: 'ad', score: 42 })
+  assert.deepEqual(initial.lead, { source: 'ad' }) // the caller's object is not mutated
+
+  assert.throws(() => setStateValue({}, '__proto__.polluted', true), /Unsafe/)
+  assert.equal({}.polluted, undefined)
+  assert.match(getVariableNameError('contact.id'), /automatically/)
+  assert.match(getVariableNameError('a.__proto__'), /letters|different/)
+  assert.equal(getVariableNameError('lead.score'), null)
+  assert.match(validateWorkflow([baseNodes[0], node('v', 'set_variable', { variable_name: 'contact.id' })], [edge('trigger', 'v')]).join(), /automatically/)
+  await assert.rejects(runFlow([node('n', 'set_variable', { variable_name: 'count', value_expression: 'abc', value_type: 'number' })], [], node('n', 'set_variable', { variable_name: 'count', value_expression: 'abc', value_type: 'number' }), {}, { send: async () => {}, nativeFlow: async () => {}, action: async () => ({}) }), /not a number/)
+})
+test('tag blocks add and remove contact tags inside the organization only', async () => {
+  const tagFlow = action => workflow([baseNodes[0], node('tag', 'tag_action', { action, tags: [' vip ', 'vip', 'lead-{{contact.name}}'] })], [edge('trigger', 'tag')])
+  const contacts = [{ id: 'contact', organization_id: 'org', tags: ['existing'] }, { id: 'contact', organization_id: 'other-org', tags: ['untouched'] }]
+  const db = database({ whatsapp_workflows: [tagFlow('add')], contacts })
+  await executeFlowRuntime(input, db)
+  assert.deepEqual(db.tables.contacts[0].tags, ['existing', 'vip', 'lead-Asha'])
+  assert.deepEqual(db.tables.contacts[1].tags, ['untouched'])
+  // A tag block is not a handoff: automation stays on
+  assert.equal(db.tables.conversations[0].auto_reply_enabled, undefined)
+
+  const removal = database({ whatsapp_workflows: [tagFlow('remove')], contacts: [{ id: 'contact', organization_id: 'org', tags: ['existing', 'vip'] }] })
+  await executeFlowRuntime(input, removal)
+  assert.deepEqual(removal.tables.contacts[0].tags, ['existing'])
+  assert.match(validateWorkflow([baseNodes[0], node('tag', 'tag_action', { tags: [] })], [edge('trigger', 'tag')]).join(), /at least one tag/)
+})
+test('blocks without a runtime are rejected instead of silently handing the chat to an agent', async () => {
+  for (const type of ['delay_action', 'webhook_action', 'notification_action']) {
+    assert.match(validateWorkflow([baseNodes[0], node('x', type)], [edge('trigger', 'x')]).join(), /not supported/)
+    await assert.rejects(runFlow([node('x', type)], [], node('x', type), {}, { send: async () => {}, nativeFlow: async () => {}, action: async () => ({}) }), /Unsupported workflow action/)
+  }
+})

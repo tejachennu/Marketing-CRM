@@ -1,5 +1,5 @@
 import type { WorkflowNode, WorkflowEdge } from './flow-types'
-import { readNodeField, interpolateVariables, evaluateCondition, getNextNode, getChoices } from './flow-graph'
+import { readNodeField, interpolateVariables, evaluateCondition, getNextNode, getChoices, getVariableNameError, setStateValue } from './flow-graph'
 
 export interface FlowReply {
   type: 'text' | 'interactive_buttons' | 'list_menu' | 'native_flow'
@@ -8,11 +8,6 @@ export interface FlowReply {
   sections?: any[]
   buttonText?: string
   flowPayload?: Record<string, any>
-}
-export interface DelayMarker {
-  nodeId: string
-  resumeAt: string // ISO timestamp
-  resumeMessage?: string
 }
 export interface RunResult {
   currentNodeId: string
@@ -26,7 +21,6 @@ export interface RunAdapter {
   nativeFlow: (node: WorkflowNode, state: Record<string, any>) => Promise<FlowReply>
   action: (node: WorkflowNode, state: Record<string, any>) => Promise<Record<string, any>>
   checkpoint?: (nodeId: string, state: Record<string, any>, status: RunResult['status']) => Promise<void>
-  webhook?: (node: WorkflowNode, state: Record<string, any>) => Promise<Record<string, any>>
 }
 /** Both the simulator and live delivery use this bounded transition loop. */
 export async function runFlow(nodes: WorkflowNode[], edges: WorkflowEdge[], first: WorkflowNode, initialState: Record<string, any>, adapter: RunAdapter): Promise<RunResult> {
@@ -71,50 +65,29 @@ export async function runFlow(nodes: WorkflowNode[], edges: WorkflowEdge[], firs
         await adapter.checkpoint?.(node.id, state, 'COMPLETED')
         return { currentNodeId, state, status: 'COMPLETED', replies }
       }
-    } else if (node.type === 'delay_action') {
-      // In live execution, delay is handled by the scheduler. In simulation, skip through.
-      const amount = Number(readNodeField(data, 'delayAmount', 'delay_amount') || 1)
-      const unit = readNodeField(data, 'delayUnit', 'delay_unit') || 'hours'
-      const multiplier = unit === 'minutes' ? 60000 : unit === 'days' ? 86400000 : 3600000
-      state._delay_resume_at = new Date(Date.now() + amount * multiplier).toISOString()
-      state._delay_label = `${amount} ${unit}`
-      const resumeMsg = readNodeField(data, 'resumeMessage', 'resume_message')
-      if (resumeMsg) {
-        reply = { type: 'text', body: text(resumeMsg) }
-      }
-      // In a real environment this would pause and resume via a scheduled job.
-      // For now we log the delay and continue to the next node.
-      await adapter.checkpoint?.(node.id, state, 'IN_PROGRESS')
-    } else if (node.type === 'webhook_action') {
-      if (adapter.webhook) {
-        state = { ...state, ...await adapter.webhook(node, state) }
-      } else {
-        // Fallback: log the webhook call in state
-        const url = text(readNodeField(data, 'url', 'webhook_url') || '')
-        const method = readNodeField(data, 'method', 'http_method') || 'POST'
-        state._last_webhook = { url, method, timestamp: new Date().toISOString() }
-      }
-      await adapter.checkpoint?.(node.id, state, 'IN_PROGRESS')
     } else if (node.type === 'set_variable') {
-      const varName = readNodeField(data, 'variableName', 'variable_name') || ''
-      const expr = text(readNodeField(data, 'valueExpression', 'value_expression') || '')
-      const valType = readNodeField(data, 'valueType', 'value_type') || 'text'
-      if (varName) {
-        let resolved: any = expr
-        if (valType === 'number') resolved = Number(expr) || 0
-        else if (valType === 'boolean') resolved = expr === 'true' || expr === '1'
-        else if (valType === 'json') try { resolved = JSON.parse(expr) } catch { resolved = expr }
-        // Support dot-notation variable paths
-        const parts = varName.split('.')
-        if (parts.length === 1) state[varName] = resolved
-        else { let obj = state; for (let i = 0; i < parts.length - 1; i++) { if (!obj[parts[i]] || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {}; obj = obj[parts[i]] } obj[parts[parts.length - 1]] = resolved }
+      const name = String(readNodeField(data, 'variableName', 'variable_name') || '').trim()
+      const problem = getVariableNameError(name)
+      if (problem) throw new Error(`Set Variable: ${problem}`)
+      const raw = text(String(readNodeField(data, 'valueExpression', 'value_expression') ?? ''))
+      const type = readNodeField(data, 'valueType', 'value_type') || 'text'
+      let value: any = raw
+      if (type === 'number') {
+        value = Number(raw)
+        if (raw.trim() === '' || Number.isNaN(value)) throw new Error(`Set Variable: "${raw}" is not a number`)
+      } else if (type === 'boolean') value = ['true', '1', 'yes'].includes(raw.trim().toLowerCase())
+      else if (type === 'json') {
+        try { value = JSON.parse(raw) } catch { throw new Error('Set Variable: the value is not valid JSON') }
       }
+      state = setStateValue(state, name, value)
       await adapter.checkpoint?.(node.id, state, 'IN_PROGRESS')
-    } else if (node.type === 'tag_action' || node.type === 'notification_action') {
-      // These are CRM-level actions handled by the adapter.action callback
+    } else if (node.type === 'tag_action') {
       state = { ...state, ...await adapter.action(node, state) }
       await adapter.checkpoint?.(node.id, state, 'IN_PROGRESS')
-    } else if (node.type !== 'trigger') throw new Error(`Unsupported workflow action: ${node.type}`)
+    } else if (node.type !== 'trigger') {
+      // Delays, webhooks and notifications have no runtime yet: fail loudly rather than pretend they ran.
+      throw new Error(`Unsupported workflow action: ${node.type}`)
+    }
     if (reply) {
       await adapter.send(reply) // A failed send must stop the graph before any later action.
       replies.push(reply)

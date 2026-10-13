@@ -44,7 +44,7 @@ export interface OrderDetailsMessageParams {
   shippingFee?: number
   taxAmount?: number
   items: OrderDetailsItem[]
-  paymentGatewayType?: 'razorpay' | 'payu' | 'cashfree' | 'billdesk' | 'zaakpay'
+  paymentGatewayType?: 'razorpay' | 'payu' | 'billdesk' | 'zaakpay'
   paymentGatewayConfigName?: string
   bodyText?: string
   footerText?: string
@@ -53,7 +53,7 @@ export interface OrderDetailsMessageParams {
 export interface OrderStatusMessageParams {
   phone: string
   referenceId: string
-  status: 'processing' | 'completed' | 'canceled'
+  status: 'processing' | 'shipped' | 'completed' | 'canceled'
   description: string
 }
 

@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getWorkflowReadiness } from '@/lib/flows/flow-readiness'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { getTriggerSummary } from '@/lib/flows/flow-templates'
+import { validateWorkflow } from '@/lib/flows/flow-graph'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -10,6 +12,15 @@ function getSupabaseClient() {
     throw new Error('Missing Supabase environment variables')
   }
   return createClient(supabaseUrl, supabaseKey)
+}
+
+/**
+ * Readiness problems the builder cannot work out for itself: WhatsApp credentials, forms not
+ * yet published, missing pipeline stages. Problems with the graph are validated live in the browser.
+ */
+function withoutGraphErrors(readinessErrors: string[], workflow: { canvas_nodes: any; canvas_edges: any }): string[] {
+  const graphErrors = new Set(validateWorkflow(workflow.canvas_nodes, workflow.canvas_edges))
+  return readinessErrors.filter(error => !graphErrors.has(error))
 }
 
 export async function GET(
@@ -46,9 +57,11 @@ export async function GET(
     if (sessionsRes.error) throw sessionsRes.error
     if (submissionsRes.error) throw submissionsRes.error
     if (stagesRes.error) throw stagesRes.error
+    const readinessErrors = await getWorkflowReadiness(supabase, workflow)
     return NextResponse.json({
       workflow,
-      readinessErrors: await getWorkflowReadiness(supabase, workflow),
+      readinessErrors,
+      environmentErrors: withoutGraphErrors(readinessErrors, workflow),
       pipelineStages: stagesRes.data || [],
       recentSessions: sessionsRes.data || [],
       recentSubmissions: submissionsRes.data || [],
@@ -79,14 +92,18 @@ export async function PUT(
       updated_at: new Date().toISOString(),
     }
 
-    if (body.name !== undefined) updatePayload.name = body.name.trim()
+    if (body.name !== undefined) {
+      const name = String(body.name).trim()
+      if (!name) return NextResponse.json({ error: 'Flow name is required' }, { status: 400 })
+      updatePayload.name = name.slice(0, 120)
+    }
     if (body.description !== undefined) updatePayload.description = body.description
     if (body.is_active !== undefined) updatePayload.is_active = Boolean(body.is_active)
-    if (body.trigger_type !== undefined) updatePayload.trigger_type = body.trigger_type
-    if (body.trigger_config !== undefined) updatePayload.trigger_config = body.trigger_config
     if (body.canvas_nodes !== undefined) updatePayload.canvas_nodes = body.canvas_nodes
     if (body.canvas_edges !== undefined) updatePayload.canvas_edges = body.canvas_edges
     if (body.fallback_settings !== undefined) updatePayload.fallback_settings = body.fallback_settings
+    // The trigger node is the source of truth; the summary columns only mirror it for list views
+    if (Array.isArray(body.canvas_nodes)) Object.assign(updatePayload, getTriggerSummary(body.canvas_nodes))
 
     const supabase = getSupabaseClient()
     const { data: existing, error: loadError } = await supabase.from('whatsapp_workflows').select('*').eq('id', id).single()
@@ -94,7 +111,7 @@ export async function PUT(
     const candidate = { ...existing, ...updatePayload }
     if (!Array.isArray(candidate.canvas_nodes) || !Array.isArray(candidate.canvas_edges)) return NextResponse.json({ error: 'Nodes and connections must be arrays' }, { status: 400 })
     const readinessErrors = await getWorkflowReadiness(supabase, candidate)
-    if (candidate.is_active && readinessErrors.length) return NextResponse.json({ error: 'Fix the following issues before activating this flow', validationErrors: readinessErrors }, { status: 422 })
+    if (candidate.is_active && readinessErrors.length) return NextResponse.json({ error: 'Fix the following issues before activating this flow', validationErrors: readinessErrors, environmentErrors: withoutGraphErrors(readinessErrors, candidate) }, { status: 422 })
     const { data: updated, error } = await supabase
       .from('whatsapp_workflows')
       .update(updatePayload)
@@ -104,7 +121,7 @@ export async function PUT(
 
     if (error) throw error
 
-    return NextResponse.json({ workflow: updated, readinessErrors })
+    return NextResponse.json({ workflow: updated, readinessErrors, environmentErrors: withoutGraphErrors(readinessErrors, candidate) })
   } catch (error: any) {
     console.error('[Flows PUT ID] Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

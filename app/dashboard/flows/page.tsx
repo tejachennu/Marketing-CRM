@@ -7,6 +7,8 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { validateWorkflow } from '@/lib/flows/flow-graph'
+import { createFormWorkflow, getTriggerSummary } from '@/lib/flows/flow-templates'
 import {
   Workflow,
   Plus,
@@ -14,25 +16,18 @@ import {
   Play,
   Pause,
   Trash2,
-  ExternalLink,
   ChevronRight,
   Layers,
-  FileText,
   Activity,
   Zap,
-  HelpCircle,
-  Copy,
   CheckCircle2,
   AlertCircle,
   Bot,
-  Settings2,
-  ArrowRight,
-  FileCode2,
   Smartphone,
   Search,
-  ClipboardList,
   FileSpreadsheet,
   Loader2,
+  X,
 } from 'lucide-react'
 
 interface WorkflowItem {
@@ -82,6 +77,7 @@ export default function FlowsHubPage() {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [isCreatingNativeFlow, setIsCreatingNativeFlow] = useState(false)
+  const [loadError, setLoadError] = useState('')
 
   // Initialize Org
   useEffect(() => {
@@ -107,9 +103,12 @@ export default function FlowsHubPage() {
 
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
+        } else {
+          setLoading(false)
         }
       } catch (err) {
         console.error('Failed to init user in flows page:', err)
+        setLoading(false)
       }
     }
     initUser()
@@ -133,8 +132,11 @@ export default function FlowsHubPage() {
         const nfData = await nfRes.json()
         setNativeFlows(nfData.flows || [])
       }
+
+      setLoadError(wfRes.ok && nfRes.ok ? '' : 'Some of your flows could not be loaded. Refresh the page to try again.')
     } catch (err) {
       console.error('Failed to load flows data:', err)
+      setLoadError('Your flows could not be loaded. Check your connection and refresh the page.')
     } finally {
       setLoading(false)
     }
@@ -161,32 +163,32 @@ export default function FlowsHubPage() {
         alert({ title: 'Flow needs attention', message: [data.error, ...(data.validationErrors || [])].filter(Boolean).join('\n') })
         return
       }
-      if (res.ok) {
-        setWorkflows((prev) =>
-          prev.map((w) => (w.id === workflow.id ? { ...w, is_active: nextActive } : w))
-        )
-      }
-    } catch (err) {
-      console.error('Failed to toggle workflow status:', err)
+      setWorkflows((prev) =>
+        prev.map((w) => (w.id === workflow.id ? { ...w, is_active: nextActive } : w))
+      )
+    } catch (err: any) {
+      alert({ title: 'Flow not updated', message: err.message || 'Please try again.' })
     }
   }
 
   // Delete workflow
   const deleteWorkflow = async (id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete this workflow?', message: `"${name}" will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
+    if (!(await confirm({ title: 'Delete this flow?', message: `"${name}" and its conversations in progress will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
     try {
       const res = await fetch(`/api/flows/workflows/${id}`, { method: 'DELETE' })
-      if (res.ok) {
-        setWorkflows((prev) => prev.filter((w) => w.id !== id))
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Please try again.')
       }
-    } catch (err) {
-      console.error('Failed to delete workflow:', err)
+      setWorkflows((prev) => prev.filter((w) => w.id !== id))
+    } catch (err: any) {
+      alert({ title: 'Flow not deleted', message: err.message || 'Please try again.' })
     }
   }
 
   // Delete native flow
   const deleteNativeFlow = async (id: string, name: string) => {
-    if (!(await confirm({ title: 'Delete this native flow?', message: `"${name}" will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
+    if (!(await confirm({ title: 'Delete this form?', message: `"${name}" will be removed permanently.`, confirmLabel: 'Delete', destructive: true }))) return
     try {
       const res = await fetch(`/api/flows/native/${id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -194,11 +196,9 @@ export default function FlowsHubPage() {
         alert({ title: 'Unable to delete form', message: data.error || 'Please try again' })
         return
       }
-      if (res.ok) {
-        setNativeFlows((prev) => prev.filter((f) => f.id !== id))
-      }
-    } catch (err) {
-      console.error('Failed to delete native flow:', err)
+      setNativeFlows((prev) => prev.filter((f) => f.id !== id))
+    } catch (err: any) {
+      alert({ title: 'Unable to delete form', message: err.message || 'Please try again.' })
     }
   }
 
@@ -207,84 +207,8 @@ export default function FlowsHubPage() {
     router.push(`/dashboard/flows/native/${flow.id}`)
   }
 
-  // Create an automated conversational workflow that triggers this native form
+  // Create a workflow that sends this form and saves the answers as a lead
   const createWorkflowForNativeFlow = async (flow: NativeFlowItem) => {
-    if (!orgId) return
-    try {
-      const nodes = [
-        {
-          id: 'node-trigger-1',
-          type: 'trigger',
-          position: { x: 100, y: 180 },
-          data: {
-            title: 'Customer Trigger',
-            trigger_type: 'keyword',
-            keywords: ['hi', 'hello', 'start', 'form', 'apply'],
-            match_mode: 'fuzzy',
-          },
-        },
-        {
-          id: 'node-msg-intro',
-          type: 'message',
-          position: { x: 420, y: 180 },
-          data: {
-            title: 'Welcome Message',
-            body: `Hello! 👋 Please complete our quick form below:`,
-          },
-        },
-        {
-          id: 'node-native-form',
-          type: 'native_flow_trigger',
-          position: { x: 740, y: 180 },
-          data: {
-            title: flow.name,
-            cta_text: 'Open WhatsApp Form',
-            native_flow_id: flow.id,
-            flow_token: 'token_' + Date.now(),
-          },
-        },
-        {
-          id: 'node-deal-create',
-          type: 'crm_deal_action',
-          position: { x: 1060, y: 180 },
-          data: {
-            title: 'Capture Lead in Pipeline',
-            pipeline_stage: 'lead_in',
-            deal_name: `Lead: ${flow.name}`,
-            monetary_value: 500,
-          },
-        },
-      ]
-
-      const edges = [
-        { id: 'e1', source: 'node-trigger-1', target: 'node-msg-intro' },
-        { id: 'e2', source: 'node-msg-intro', target: 'node-native-form' },
-        { id: 'e3', source: 'node-native-form', target: 'node-deal-create' },
-      ]
-
-      const res = await fetch('/api/flows/workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organizationId: orgId,
-          name: `${flow.name} (Automation)`,
-          description: `Conversational workflow delivering the native WhatsApp form "${flow.name}"`,
-          canvas_nodes: nodes,
-          canvas_edges: edges,
-        }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        router.push(`/dashboard/flows/${data.workflow.id}`)
-      }
-    } catch (err: any) {
-      alert({ title: 'Error', message: err.message })
-    }
-  }
-
-  // Create workflow manually
-  const handleCreateWorkflow = async (templateId?: string) => {
     if (!orgId) return
     setIsCreating(true)
     try {
@@ -293,9 +217,32 @@ export default function FlowsHubPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organizationId: orgId,
-          name: newFlowName.trim() || 'Untitled WhatsApp Flow',
+          name: `${flow.name} flow`,
+          description: `Sends the "${flow.name}" form and saves the answers as a lead`,
+          ...createFormWorkflow(flow),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to create the flow')
+      router.push(`/dashboard/flows/${data.workflow.id}`)
+    } catch (err: any) {
+      setIsCreating(false)
+      alert({ title: 'Flow not created', message: err.message })
+    }
+  }
+
+  // Create workflow manually
+  const handleCreateWorkflow = async () => {
+    if (!orgId) return
+    setIsCreating(true)
+    try {
+      const res = await fetch('/api/flows/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: orgId,
+          name: newFlowName.trim() || 'Untitled flow',
           description: newFlowDescription.trim() || undefined,
-          template_id: templateId,
         }),
       })
 
@@ -329,36 +276,32 @@ export default function FlowsHubPage() {
           prompt: aiPrompt.trim(),
         }),
       })
+      const generated = await genRes.json().catch(() => ({}))
+      if (!genRes.ok || !generated.flow) throw new Error(generated.error || 'The flow could not be generated')
 
-      if (!genRes.ok) {
-        throw new Error('AI failed to generate flow')
-      }
-
-      const { flow } = await genRes.json()
-
-      // Save as new workflow
       const saveRes = await fetch('/api/flows/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organizationId: orgId,
-          name: flow.name || 'AI Generated Flow',
-          description: flow.description,
-          canvas_nodes: flow.canvas_nodes,
-          canvas_edges: flow.canvas_edges,
+          name: generated.flow.name || 'AI generated flow',
+          description: generated.flow.description,
+          canvas_nodes: generated.flow.canvas_nodes,
+          canvas_edges: generated.flow.canvas_edges,
         }),
       })
+      const saved = await saveRes.json().catch(() => ({}))
+      if (!saveRes.ok || !saved.workflow) throw new Error(saved.error || 'The generated flow could not be saved')
 
-      if (saveRes.ok) {
-        const { workflow } = await saveRes.json()
-        setShowAiModal(false)
-        setAiPrompt('')
-        router.push(`/dashboard/flows/${workflow.id}`)
-      }
+      setShowAiModal(false)
+      setAiPrompt('')
+      setIsGeneratingAi(false) // the busy overlay would otherwise cover the notice below
+      // Without an AI key the server returns the starter flow; say so rather than pass it off as generated
+      if (generated.notice) await alert({ title: 'Starter flow created', message: generated.notice })
+      router.push(`/dashboard/flows/${saved.workflow.id}`)
     } catch (err: any) {
-      alert({ title: 'Generation Failed', message: err.message || 'Could not generate workflow graph' })
-    } finally {
       setIsGeneratingAi(false)
+      alert({ title: 'Flow not generated', message: err.message || 'Could not generate the flow' })
     }
   }
 
@@ -413,7 +356,7 @@ export default function FlowsHubPage() {
               <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
                 <Workflow className="w-6 h-6" />
               </span>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">WhatsApp Flows & Automation</h1>
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight">Flows</h1>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Build conversations, collect form responses, and route qualified leads to your team.
@@ -454,7 +397,7 @@ export default function FlowsHubPage() {
 
           <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
-              <span>Fired Executions</span>
+              <span>Total Runs</span>
               <Zap className="w-4 h-4 text-amber-500" />
             </div>
             <p className="text-2xl font-bold mt-2">{totalExecutions.toLocaleString()}</p>
@@ -462,7 +405,7 @@ export default function FlowsHubPage() {
 
           <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
-              <span>Active Live Sessions</span>
+              <span>Conversations In Progress</span>
               <Bot className="w-4 h-4 text-cyan-500" />
             </div>
             <p className="text-2xl font-bold mt-2">{activeSessions}</p>
@@ -470,12 +413,19 @@ export default function FlowsHubPage() {
 
           <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
-              <span>Meta Native Forms</span>
+              <span>WhatsApp Forms</span>
               <Smartphone className="w-4 h-4 text-indigo-500" />
             </div>
             <p className="text-2xl font-bold mt-2">{nativeFlows.length}</p>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs font-medium text-rose-700 dark:text-rose-200 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {loadError}
+          </div>
+        )}
 
         {/* Tab Navigation & Search */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
@@ -489,7 +439,7 @@ export default function FlowsHubPage() {
               }`}
             >
               <Workflow className="w-4 h-4" />
-              <span>Workflows ({workflows.length})</span>
+              <span>Flows ({workflows.length})</span>
             </button>
 
             <button
@@ -501,7 +451,7 @@ export default function FlowsHubPage() {
               }`}
             >
               <Smartphone className="w-4 h-4" />
-              <span>Meta Native Forms ({nativeFlows.length})</span>
+              <span>WhatsApp Forms ({nativeFlows.length})</span>
             </button>
 
             <button
@@ -513,7 +463,7 @@ export default function FlowsHubPage() {
               }`}
             >
               <Sparkles className="w-4 h-4" />
-              <span>Templates</span>
+              <span>Form Templates</span>
             </button>
           </div>
 
@@ -537,28 +487,31 @@ export default function FlowsHubPage() {
             ) : filteredWorkflows.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-[#111b21] rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
                 <Workflow className="w-10 h-10 text-slate-400 mx-auto" />
-                <h3 className="font-semibold text-lg">No Workflows Found</h3>
+                <h3 className="font-semibold text-lg">{searchQuery ? 'No flows match your search' : 'No flows yet'}</h3>
                 <p className="text-sm text-slate-500 max-w-md mx-auto">
-                  Create your first drag & drop WhatsApp flow or let AI generate an end-to-end qualification graph in seconds.
+                  A flow replies to customers automatically: it can ask questions, collect a form, create leads and tickets, and hand over to your team.
                 </p>
                 <div className="flex items-center justify-center gap-3 pt-2">
                   <button
                     onClick={() => setShowAiModal(true)}
                     className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium text-xs shadow-sm hover:opacity-95"
                   >
-                    ✨ Generate with AI
+                    Generate with AI
                   </button>
                   <button
                     onClick={() => setShowCreateModal(true)}
                     className="px-4 py-2 rounded-xl bg-[#008069] text-white font-medium text-xs hover:bg-[#00705c]"
                   >
-                    + Create Blank Flow
+                    Create a flow
                   </button>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredWorkflows.map((workflow) => (
+                {filteredWorkflows.map((workflow) => {
+                  const trigger = getTriggerSummary(workflow.canvas_nodes || [])
+                  const problems = validateWorkflow(workflow.canvas_nodes || [], workflow.canvas_edges || []).length
+                  return (
                   <div
                     key={workflow.id}
                     className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
@@ -567,8 +520,8 @@ export default function FlowsHubPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-2.5 h-2.5 rounded-full ${
-                              workflow.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                            className={`w-2.5 h-2.5 shrink-0 rounded-full ${
+                              workflow.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
                             }`}
                           />
                           <h3 className="font-semibold text-base line-clamp-1 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
@@ -576,13 +529,16 @@ export default function FlowsHubPage() {
                           </h3>
                         </div>
                         <span
-                          className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
+                          title={!workflow.is_active && problems ? `${problems} problem${problems === 1 ? '' : 's'} to fix before this flow can go live` : undefined}
+                          className={`shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
                             workflow.is_active
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : problems
+                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
                               : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
                           }`}
                         >
-                          {workflow.is_active ? 'Live' : 'Paused'}
+                          {workflow.is_active ? 'Live' : problems ? 'Needs fixes' : 'Paused'}
                         </span>
                       </div>
 
@@ -592,22 +548,24 @@ export default function FlowsHubPage() {
 
                       {/* Keywords / Triggers */}
                       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] text-slate-400 font-medium mr-1">Triggers:</span>
-                        {workflow.trigger_config?.keywords && workflow.trigger_config.keywords.length > 0 ? (
-                          workflow.trigger_config.keywords.slice(0, 3).map((kw, i) => (
+                        <span className="text-[11px] text-slate-400 font-medium mr-1">Starts on:</span>
+                        {trigger.trigger_type === 'first_message' ? (
+                          <span className="text-[11px] text-slate-600 dark:text-slate-300">First message from a customer</span>
+                        ) : trigger.trigger_config.keywords.length > 0 ? (
+                          trigger.trigger_config.keywords.slice(0, 3).map((kw, i) => (
                             <span
                               key={i}
-                              className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                              className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                             >
-                              "{kw}"
+                              {kw}
                             </span>
                           ))
                         ) : (
-                          <span className="text-[10px] text-slate-400">All inbound messages</span>
+                          <span className="text-[11px] text-amber-600 dark:text-amber-400">No keywords yet</span>
                         )}
-                        {(workflow.trigger_config?.keywords?.length || 0) > 3 && (
-                          <span className="text-[10px] text-slate-400">
-                            +{workflow.trigger_config.keywords!.length - 3} more
+                        {trigger.trigger_type !== 'first_message' && trigger.trigger_config.keywords.length > 3 && (
+                          <span className="text-[11px] text-slate-400">
+                            +{trigger.trigger_config.keywords.length - 3} more
                           </span>
                         )}
                       </div>
@@ -617,7 +575,7 @@ export default function FlowsHubPage() {
                         <div className="flex items-center gap-3">
                           <span className="flex items-center gap-1">
                             <Layers className="w-3.5 h-3.5 text-slate-400" />
-                            {workflow.canvas_nodes?.length || 0} nodes
+                            {workflow.canvas_nodes?.length || 0} blocks
                           </span>
                           <span className="flex items-center gap-1">
                             <Zap className="w-3.5 h-3.5 text-amber-500" />
@@ -637,8 +595,9 @@ export default function FlowsHubPage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => toggleWorkflowActive(workflow)}
-                          title={workflow.is_active ? 'Pause Flow' : 'Activate Flow'}
-                          className={`p-1.5 rounded-lg transition-colors ${
+                          title={workflow.is_active ? 'Pause flow' : 'Go live'}
+                          aria-label={workflow.is_active ? `Pause ${workflow.name}` : `Go live with ${workflow.name}`}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                             workflow.is_active
                               ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
                               : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
@@ -652,8 +611,9 @@ export default function FlowsHubPage() {
                         </button>
                         <button
                           onClick={() => deleteWorkflow(workflow.id, workflow.name)}
-                          title="Delete Flow"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                          title="Delete flow"
+                          aria-label={`Delete ${workflow.name}`}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -672,13 +632,14 @@ export default function FlowsHubPage() {
                           href={`/dashboard/flows/${workflow.id}`}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
                         >
-                          <span>Open Canvas</span>
+                          <span>Edit</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       </div>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -691,9 +652,9 @@ export default function FlowsHubPage() {
               <div className="flex items-center gap-3">
                 <Smartphone className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                 <div>
-                  <h4 className="font-semibold text-sm">Native WhatsApp Forms</h4>
+                  <h4 className="font-semibold text-sm">WhatsApp forms</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Interactive native forms render inside WhatsApp with zero external webview or URL redirects.
+                    Forms open inside WhatsApp, so customers never leave the chat. Publish a form, then send it from a flow.
                   </p>
                 </div>
               </div>
@@ -702,7 +663,7 @@ export default function FlowsHubPage() {
                 className="px-3.5 py-1.5 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#00705c] transition-all flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
-                <span>New Native Form</span>
+                <span>New form</span>
               </button>
             </div>
 
@@ -711,15 +672,15 @@ export default function FlowsHubPage() {
             ) : filteredNativeFlows.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-[#111b21] rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
                 <Smartphone className="w-10 h-10 text-slate-400 mx-auto" />
-                <h3 className="font-semibold text-lg">No Native WhatsApp Forms Yet</h3>
+                <h3 className="font-semibold text-lg">{searchQuery ? 'No forms match your search' : 'No forms yet'}</h3>
                 <p className="text-sm text-slate-500 max-w-md mx-auto">
-                  Design rich multi-screen WhatsApp forms with text inputs, dropdowns, date pickers, and radio chips.
+                  Design multi-screen forms with text fields, dropdowns, date pickers and single-choice options.
                 </p>
                 <button
                   onClick={() => handleCreateNativeFlow()}
                   className="px-4 py-2 rounded-xl bg-[#008069] text-white font-medium text-xs hover:bg-[#00705c]"
                 >
-                  Create Your First Native Form
+                  Create your first form
                 </button>
               </div>
             ) : (
@@ -748,12 +709,12 @@ export default function FlowsHubPage() {
                           {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
                             <>
                               <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span>Approved & Live</span>
+                              <span>Published</span>
                             </>
                           ) : flow.flow_id_meta ? (
                             <>
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              <span>Draft (Synced)</span>
+                              <span>Draft on Meta</span>
                             </>
                           ) : (
                             <>
@@ -778,7 +739,7 @@ export default function FlowsHubPage() {
                           <>
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                              <span>Meta Approved</span>
+                              <span>Live on WhatsApp</span>
                             </span>
                             <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate" title={`Meta Flow ID: ${flow.flow_id_meta}`}>
                               ID: {flow.flow_id_meta}
@@ -787,7 +748,7 @@ export default function FlowsHubPage() {
                         ) : flow.flow_id_meta ? (
                           <>
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
-                              <span>Meta Draft Synced</span>
+                              <span>Validated by Meta, not published</span>
                             </span>
                             <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate">
                               ID: {flow.flow_id_meta}
@@ -795,7 +756,7 @@ export default function FlowsHubPage() {
                           </>
                         ) : (
                           <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                            Unpublished Draft (Not submitted to Meta)
+                            Draft: not yet sent to Meta
                           </span>
                         )}
                       </div>
@@ -813,10 +774,10 @@ export default function FlowsHubPage() {
                         <button
                           onClick={() => createWorkflowForNativeFlow(flow)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-medium transition-colors"
-                          title="Create an automated conversational trigger for this form"
+                          title="Create a flow that sends this form and saves the answers as a lead"
                         >
                           <Zap className="w-3.5 h-3.5 text-amber-500" />
-                          <span className="hidden sm:inline">Automate</span>
+                          <span className="hidden sm:inline">Use in a flow</span>
                         </button>
                       </div>
 
@@ -853,15 +814,15 @@ export default function FlowsHubPage() {
               <span className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg">
                 📋
               </span>
-              <h3 className="font-bold text-base">VIP Lead Qualification</h3>
+              <h3 className="font-bold text-base">Lead qualification form</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Asks customer requirements, opens native WhatsApp form for company & budget, and auto-creates a deal in your Sales Pipeline.
+                Collects name, company, budget range and marketing consent. After publishing, choose “Use in a flow” to save answers as leads.
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('LEAD_QUALIFICATION')}
                 className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#00705c] transition-colors"
               >
-                Instantiate Template
+                Use this template
               </button>
             </div>
 
@@ -869,15 +830,15 @@ export default function FlowsHubPage() {
               <span className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold text-lg">
                 📅
               </span>
-              <h3 className="font-bold text-base">Appointment & Demo Booking</h3>
+              <h3 className="font-bold text-base">Appointment booking form</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                In-chat service picker, date & time selector, and automated confirmation message with calendar sync.
+                Collects a topic, preferred date and time, and notes. Bookings arrive as form responses; calendars are not updated automatically.
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('APPOINTMENT_BOOKING')}
                 className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#00705c] transition-colors"
               >
-                Instantiate Template
+                Use this template
               </button>
             </div>
 
@@ -885,15 +846,15 @@ export default function FlowsHubPage() {
               <span className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg">
                 ⭐
               </span>
-              <h3 className="font-bold text-base">NPS & Customer Feedback</h3>
+              <h3 className="font-bold text-base">Customer feedback form</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Capture 1-5 star ratings, feedback comments, and automatically escalate dissatisfied responses into urgent support tickets.
+                Collects a satisfaction rating and a comment. Add a Condition block in a flow to open a ticket for low ratings.
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('CUSTOMER_FEEDBACK')}
                 className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#00705c] transition-colors"
               >
-                Instantiate Template
+                Use this template
               </button>
             </div>
           </div>
@@ -902,25 +863,27 @@ export default function FlowsHubPage() {
 
       {/* AI Generate Flow Modal */}
       {showAiModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Generate a flow with AI">
           <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="p-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
                   <Sparkles className="w-5 h-5" />
                 </span>
-                <h3 className="font-bold text-lg">Prompt-to-Flow AI Architect</h3>
+                <h3 className="font-bold text-lg">Generate a flow with AI</h3>
               </div>
               <button
+                type="button"
+                aria-label="Close"
                 onClick={() => setShowAiModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Describe your desired WhatsApp campaign or workflow in plain English. Our AI will lay out the triggers, interactive buttons, Meta forms, CRM deals, and knowledge RAG interceptors.
+Describe the conversation you want in plain English. The AI drafts the trigger, messages, buttons and CRM actions; you then review and adjust it in the builder before it goes live.
             </p>
 
             <textarea
@@ -935,9 +898,9 @@ export default function FlowsHubPage() {
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Example Prompts</span>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  'VIP Real Estate consultation with budget picker',
-                  'E-commerce order tracking with customer support fallback',
-                  'Dental clinic teeth cleaning booking with SMS reminder',
+                  'Real estate enquiry: ask buy or rent, then create a lead',
+                  'Order help: ask what went wrong, open a ticket, hand off to support',
+                  'Dental clinic: offer cleaning, whitening or check-up and create a lead',
                 ].map((sample, i) => (
                   <button
                     key={i}
@@ -965,12 +928,12 @@ export default function FlowsHubPage() {
                 {isGeneratingAi ? (
                   <>
                     <Sparkles className="w-4 h-4 animate-spin" />
-                    <span>Synthesizing Graph...</span>
+                    <span>Generating…</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate Workflow</span>
+                    <span>Generate flow</span>
                   </>
                 )}
               </button>
@@ -981,11 +944,11 @@ export default function FlowsHubPage() {
 
       {/* Manual Create Flow Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Create a flow">
           <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <h3 className="font-bold text-lg">Create New Workflow</h3>
+            <h3 className="font-bold text-lg">Create a flow</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Start with a blank canvas and drag blocks to build your conversational WhatsApp journey.
+              You start with a working example: a welcome message and a menu that creates a lead, opens a ticket, or lets the AI answer. Change anything you like.
             </p>
 
             <div className="space-y-3">
@@ -1024,33 +987,26 @@ export default function FlowsHubPage() {
                 disabled={isCreating}
                 className="px-5 py-2 rounded-xl bg-[#008069] text-white font-medium text-sm hover:bg-[#00705c] disabled:opacity-50"
               >
-                {isCreating ? 'Creating...' : 'Open Canvas Builder'}
+                {isCreating ? 'Creating…' : 'Create and open'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Full-Screen Loader for Flow Creation */}
+      {/* Busy overlay while something is being created */}
       {(isCreating || isGeneratingAi || isCreatingNativeFlow) && (
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex flex-col items-center justify-center">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-emerald-400 animate-pulse" />
+        <div className="fixed inset-0 z-[60] bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center p-4" role="status" aria-live="polite">
+          <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl px-6 py-5 flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-emerald-500 animate-spin shrink-0" />
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {isGeneratingAi ? 'Generating your flow…' : isCreatingNativeFlow ? 'Creating the form…' : 'Creating the flow…'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {isGeneratingAi ? 'This usually takes a few seconds.' : 'Opening the editor when it is ready.'}
+              </p>
             </div>
-          </div>
-          <div className="mt-6 text-center">
-            <h3 className="text-lg font-bold text-white">
-              {isGeneratingAi ? 'Generating with AI...' : isCreatingNativeFlow ? 'Creating Native Form...' : 'Creating Your Flow...'}
-            </h3>
-            <p className="text-sm text-slate-400 mt-1 max-w-xs">
-              {isGeneratingAi
-                ? 'Our AI is designing your workflow graph with triggers, messages, and CRM actions.'
-                : isCreatingNativeFlow
-                ? 'Setting up your native WhatsApp form with interactive screens and input fields.'
-                : 'Setting up your workflow canvas with default nodes and connections.'}
-            </p>
           </div>
         </div>
       )}

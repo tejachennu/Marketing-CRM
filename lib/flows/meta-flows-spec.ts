@@ -265,7 +265,7 @@ export const NATIVE_FLOW_TEMPLATES: Record<
 
   SHIPPING_ADDRESS: {
     name: 'E-commerce Delivery Address Flow',
-    category: 'ORDER_MANAGEMENT',
+    category: 'OTHER',
     description: 'Collect delivery address, postal code, and delivery speed directly inside WhatsApp with zero redirects.',
     screens: [
       {
