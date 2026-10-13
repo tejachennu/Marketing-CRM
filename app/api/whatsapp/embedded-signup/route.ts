@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { inspectToken } from '@/lib/commerce/meta-catalog'
-import { LEGACY_REGISTRATION_PIN, PIN_MISMATCH_ERROR_CODE, getRegistrationPin, parseSignupSession } from '@/lib/whatsapp-onboarding'
+import { LEGACY_REGISTRATION_PIN, PIN_MISMATCH_ERROR_CODE, getPublicBaseUrl, getRegistrationPin, getWebhookOverride, parseSignupSession, type WebhookOverride } from '@/lib/whatsapp-onboarding'
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -158,22 +158,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Subscribe the WABA to this app's webhooks so incoming messages, flow responses & statuses are received
+    // 4. Subscribe this app to the customer's WhatsApp Business account, and have Meta deliver its
+    // events to this organization's own webhook address. A Meta app has one callback address, so
+    // without this the customer could send but would never receive anything.
+    const webhook: { routed: boolean; reason?: string } = { routed: false }
     if (wabaId) {
-      try {
-        console.log(`[Meta Embedded Signup] Subscribing app to WABA ${wabaId}...`)
+      const subscribe = async (body?: WebhookOverride) => {
         const subRes = await fetch(`https://graph.facebook.com/${graphVersion}/${wabaId}/subscribed_apps`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${finalAccessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bearer ${finalAccessToken}`, 'Content-Type': 'application/json' },
+          ...(body ? { body: JSON.stringify(body) } : {}),
         })
-        const subData = await subRes.json()
-        console.log(`[Meta Embedded Signup] Subscribed apps response:`, subData)
+        return subRes.json()
+      }
+      try {
+        console.log(`[Meta Embedded Signup] Subscribing app to WABA ${wabaId}...`)
+        const override = getWebhookOverride(targetOrgId, getPublicBaseUrl(request))
+        if (!override) {
+          webhook.reason = 'This server has no public https address to give Meta. Set NEXT_PUBLIC_APP_URL to your live site address and reconnect.'
+          await subscribe()
+        } else {
+          const subData = await subscribe(override)
+          if (subData?.success === true) {
+            webhook.routed = true
+          } else {
+            webhook.reason = subData?.error?.message || 'Meta did not accept this workspace’s webhook address.'
+            // Stay subscribed on the app's default address rather than not at all
+            await subscribe()
+          }
+        }
+        console.log('[Meta Embedded Signup] Webhook subscription:', webhook)
       } catch (err) {
+        webhook.reason = 'Meta could not be reached to set up incoming messages.'
         console.warn('[Meta Embedded Signup] Failed to subscribe app to WABA (non-fatal):', err)
       }
+    } else {
+      webhook.reason = 'Meta did not say which WhatsApp Business account was connected.'
     }
 
     // 4b. Register the phone number with Meta Cloud API for messaging.
@@ -250,6 +270,8 @@ export async function POST(request: NextRequest) {
         verifiedName,
         graphVersion,
         catalogId: linkedCatalogId || undefined,
+        // Whether Meta now delivers this account's incoming messages to this organization
+        webhook,
       },
     })
   } catch (error: any) {

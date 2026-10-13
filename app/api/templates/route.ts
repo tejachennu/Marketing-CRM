@@ -294,11 +294,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
 
-    if (orgId) {
-      const authResult = await verifyOrgAccess(request, orgId)
-      if (!authResult.authorized) {
-        return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-      }
+    // Templates belong to an organization; without one the platform's own account would answer
+    const authResult = await verifyOrgAccess(request, orgId)
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     // Determine which provider this org uses

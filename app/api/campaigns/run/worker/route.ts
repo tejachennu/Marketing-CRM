@@ -185,7 +185,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       smtpPassword = process.env.HOSTINGER_SMTP_PASS || ''
       if (!sendgridKey) emailProvider = 'smtp'
     }
-    if (!whatsappApiToken && process.env.META_SYSTEM_USER_TOKEN) {
+    // A customer's messages are only ever sent with that customer's own token
+    if (isMasterOrg && !whatsappApiToken && process.env.META_SYSTEM_USER_TOKEN) {
       whatsappApiToken = process.env.META_SYSTEM_USER_TOKEN
     }
 

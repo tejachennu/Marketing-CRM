@@ -41,6 +41,8 @@ export function WhatsAppEmbeddedSignup({
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  // Something the owner still has to sort out after a successful connection
+  const [notice, setNotice] = useState<string | null>(null)
 
   const capturedDataRef = useRef<{ wabaId?: string; phoneNumberId?: string; businessId?: string; catalogIds?: string[] }>({})
 
@@ -136,6 +138,7 @@ export function WhatsAppEmbeddedSignup({
 
     setError(null)
     setSuccessMessage(null)
+    setNotice(null)
     setIsLaunching(true)
     capturedDataRef.current = {}
 
@@ -171,8 +174,11 @@ export function WhatsAppEmbeddedSignup({
                 }
 
                 setSuccessMessage(
-                  result.message || 'WhatsApp Business Account successfully connected!'
+                  'WhatsApp is connected. Before this number can message customers, add a payment method in WhatsApp Manager (Overview → Add payment method).'
                 )
+                if (result.data?.webhook && result.data.webhook.routed === false) {
+                  setNotice(`Messages customers send to this number will not arrive here yet. ${result.data.webhook.reason || ''}`.trim())
+                }
 
                 onSuccess({
                   wabaId: result.data.wabaId,
@@ -219,6 +225,7 @@ export function WhatsAppEmbeddedSignup({
 
     setError(null)
     setSuccessMessage(null)
+    setNotice(null)
     setIsDisconnecting(true)
 
     try {
@@ -316,6 +323,13 @@ export function WhatsAppEmbeddedSignup({
         <div className="mt-3.5 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
           <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div role="alert" className="mt-3.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-xs flex items-start gap-2">
+          <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <span>{notice}</span>
         </div>
       )}
 
