@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyRecordAccess, getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { verifyConversationAccess } from '@/lib/record-visibility'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
 
@@ -122,12 +123,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 })
     }
 
-    const authResult = await verifyRecordAccess(request, 'conversations', conversationId)
+    const supabase = getSupabaseClient()
+
+    const authResult = await verifyConversationAccess(request, supabase, conversationId)
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
-
-    const supabase = getSupabaseClient()
 
     // 1. Fetch conversation details to get organization_id
     const { data: conv, error: convErr } = await supabase

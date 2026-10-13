@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { isSuperAdmin } from '@/lib/rbac'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 
 function getSupabaseClient() {
@@ -116,9 +117,10 @@ export async function POST(request: NextRequest) {
 
     // Support superadmins testing different organizations or fallback to user.organization_id
     const requestedOrgId = body.organizationId
-    const orgId = (user.role === 'superadmin' && requestedOrgId) 
-      ? requestedOrgId 
-      : (user.organization_id || requestedOrgId)
+    // Only a super admin may name another organization; everyone else always gets their own
+    const orgId = (isSuperAdmin(user) && requestedOrgId)
+      ? requestedOrgId
+      : user.organization_id
 
     if (!orgId) {
       return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
         .order('updated_at', { ascending: false })
         .limit(50)
 
-      if (user.role !== 'superadmin') {
+      if (!isSuperAdmin(user)) {
         query = query.eq('user_id', user.id)
       }
 
@@ -154,7 +156,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
         .eq('organization_id', orgId)
 
-      if (user.role !== 'superadmin') {
+      if (!isSuperAdmin(user)) {
         query = query.eq('user_id', user.id)
       }
 
@@ -190,7 +192,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
         .eq('organization_id', orgId)
 
-      if (user.role !== 'superadmin') {
+      if (!isSuperAdmin(user)) {
         query = query.eq('user_id', user.id)
       }
 
@@ -209,7 +211,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
         .eq('organization_id', orgId)
 
-      if (user.role !== 'superadmin') {
+      if (!isSuperAdmin(user)) {
         query = query.eq('user_id', user.id)
       }
 
@@ -228,7 +230,7 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
         .eq('organization_id', orgId)
 
-      if (user.role !== 'superadmin') {
+      if (!isSuperAdmin(user)) {
         query = query.eq('user_id', user.id)
       }
 

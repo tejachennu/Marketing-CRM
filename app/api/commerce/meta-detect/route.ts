@@ -3,6 +3,27 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getMetaCredentials, metaRequest, uploadNativeFlow } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
+import { formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
+
+/**
+ * The address form with this store's delivery options: the express choice shows what it costs,
+ * so the customer knows before choosing it rather than after.
+ */
+function addressFormScreens(org: any) {
+  const screens = structuredClone(NATIVE_FLOW_TEMPLATES.SHIPPING_ADDRESS.screens) as any[]
+  const fee = getExpressFee(org)
+  const expressTitle = (fee > 0 ? `Express delivery (+${formatMoney(fee, org.currency)})` : 'Express delivery').slice(0, 30)
+  for (const screen of screens) {
+    for (const field of screen.layout?.children || []) {
+      if (field.name !== 'delivery_speed') continue
+      field.options = [
+        { id: 'standard', title: 'Standard delivery' },
+        { id: 'express', title: expressTitle },
+      ]
+    }
+  }
+  return screens
+}
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -23,7 +44,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, orgId)
+    const authResult = await verifyOrgAccess(request, orgId, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -129,7 +150,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -182,7 +203,7 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('[Meta Deploy Flow] Compiling SHIPPING_ADDRESS template...')
-      const compiledJson = compileMetaFlowJSON(template.screens)
+      const compiledJson = compileMetaFlowJSON(addressFormScreens(org))
 
       const uploadId = await uploadNativeFlow(
         credentials,

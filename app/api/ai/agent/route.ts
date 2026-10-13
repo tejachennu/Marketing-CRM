@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { can, describeDenied } from '@/lib/rbac'
+
+// Tools that change data; refused for read-only accounts
+const WRITE_TOOLS = new Set(['create_contact', 'update_lead', 'create_ticket'])
 import { sanitizeSearchTerm } from '@/lib/utils'
 
 function getSupabaseClient() {
@@ -446,6 +450,10 @@ export async function POST(request: NextRequest) {
     if (!orgId) {
       return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
     }
+    // The assistant answers from the whole organization's data, so it is for people who may see all of it
+    if (!can(user, 'records.view_all')) {
+      return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
+    }
 
     const body = await request.json()
     const { message, conversationHistory = [], context = {} } = body
@@ -730,6 +738,9 @@ Rules:
         let result: any
 
         try {
+          if (WRITE_TOOLS.has(toolName) && !can(user, 'records.write')) {
+            throw new Error(describeDenied('records.write'))
+          }
           switch (toolName) {
             case 'query_leads':
               result = await executeQueryLeads(toolArgs, orgId, supabase)

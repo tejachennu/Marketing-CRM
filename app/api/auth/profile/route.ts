@@ -91,7 +91,9 @@ export async function POST(request: NextRequest) {
     console.log('[Profile] Creating new user profile for:', authUserId)
     const email = authEmail || 'user'
     const orgName = `${email.split('@')[0]}'s Company`
-    const orgSlug = `${email.split('@')[0]}-org-${Date.now()}`
+    // The slug is used in webhook URLs: keep it to lowercase letters, numbers and hyphens
+    const slugBase = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'
+    const orgSlug = `${slugBase}-org-${Date.now()}`
 
     const { data: newOrg, error: newOrgError } = await adminClient
       .from('organizations')

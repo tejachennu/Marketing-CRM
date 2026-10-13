@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
+import { canSeeAll } from '@/lib/rbac'
+import { getAssignedConversationScope, isUuid } from '@/lib/record-visibility'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,14 +21,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId')
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = parseInt(searchParams.get('limit') || '20', 10)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10) || 20))
     const unreadOnly = searchParams.get('unread') === 'true'
     const search = sanitizeSearchTerm(searchParams.get('search'))
     const specificId = searchParams.get('id')
-    // assignedTo: when set, restrict conversations to ones assigned to this userId
-    // Used for sales_employee role — they only see their own conversations unless see_all is granted
-    const assignedTo = searchParams.get('assignedTo') || null
+    const requestedAssignee = searchParams.get('assignedTo') || null
     const offset = (page - 1) * limit
 
     if (!orgId) {
@@ -37,6 +37,14 @@ export async function GET(request: NextRequest) {
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
+
+    if (requestedAssignee && !isUuid(requestedAssignee)) {
+      return NextResponse.json({ error: 'Invalid assignedTo' }, { status: 400 })
+    }
+
+    // Who the list is limited to is decided here, from the caller's role, never from the request alone:
+    // someone who only sees their own work is always limited to themselves; anyone else may filter by a teammate.
+    const assignedTo: string | null = canSeeAll(authResult.user) ? requestedAssignee : authResult.user.id
 
     const supabase = getSupabaseClient()
 
@@ -73,35 +81,11 @@ export async function GET(request: NextRequest) {
       query = query.eq('id', specificId)
     }
 
-    // ── Role-based filtering: only show assigned conversations, active leads, and open tickets for restricted users ──
-    let contactIds: string[] = []
-    let ticketConvIds: string[] = []
-
-    if (assignedTo && !specificId) {
-      // 1. Fetch active leads assigned to the user (map by contact_id!)
-      const { data: activeLeads } = await supabase
-        .from('leads')
-        .select('contact_id')
-        .eq('assigned_to', assignedTo)
-        .eq('status', 'active')
-      contactIds = (activeLeads || []).map((l: any) => l.contact_id).filter(Boolean)
-
-      // 2. Fetch open tickets assigned to the user
-      const { data: openTickets } = await supabase
-        .from('tickets')
-        .select('conversation_id')
-        .eq('assigned_to', assignedTo)
-        .eq('status', 'open')
-      ticketConvIds = (openTickets || []).map((t: any) => t.conversation_id).filter(Boolean)
-
-      let orConditions = `assigned_to.eq.${assignedTo}`
-      if (contactIds.length > 0) {
-        orConditions += `,contact_id.in.(${contactIds.join(',')})`
-      }
-      if (ticketConvIds.length > 0) {
-        orConditions += `,id.in.(${ticketConvIds.join(',')})`
-      }
-      query = query.or(orConditions)
+    // ── Role-based filtering: assigned conversations plus those of the user's active leads and open tickets ──
+    // Applied to a single-conversation lookup too, so an id cannot be used to open someone else's chat.
+    const scope = assignedTo ? await getAssignedConversationScope(supabase, assignedTo, orgId) : null
+    if (scope) {
+      query = query.or(scope.orFilter)
     }
 
     // ── Calculate unread messages count (total unread messages for matching conversations) ──
@@ -112,15 +96,8 @@ export async function GET(request: NextRequest) {
       .eq('organization_id', orgId)
       .gt('unread_count', 0)
 
-    if (assignedTo && !specificId) {
-      let orConditions = `assigned_to.eq.${assignedTo}`
-      if (contactIds.length > 0) {
-        orConditions += `,contact_id.in.(${contactIds.map((id: string) => `"${id}"`).join(',')})`
-      }
-      if (ticketConvIds.length > 0) {
-        orConditions += `,id.in.(${ticketConvIds.map((id: string) => `"${id}"`).join(',')})`
-      }
-      sumQuery = sumQuery.or(orConditions)
+    if (scope) {
+      sumQuery = sumQuery.or(scope.orFilter)
     }
 
     const { data: sumData } = await sumQuery
@@ -165,26 +142,20 @@ export async function GET(request: NextRequest) {
       contact: Array.isArray(conv.contact) ? conv.contact[0] : conv.contact,
     }))
 
-    // Fetch latest message for each conversation
-    const conversationIds = formatted.map((c: any) => c.id)
+    // Fetch the latest message of each conversation. One small query per conversation: a single
+    // query over all of them returns every message and is cut off at the row limit on busy chats.
     const lastMessagesMap: Record<string, any> = {}
-
-    if (conversationIds.length > 0) {
-      const { data: latestMessages, error: msgError } = await supabase
-        .from('messages')
-        .select('id, conversation_id, body, media_url, sender_type, created_at, read_at')
-        .in('conversation_id', conversationIds)
-        .order('created_at', { ascending: false })
-
-      if (!msgError && latestMessages) {
-        // Since messages are ordered by created_at DESC, the first occurrence is the latest
-        latestMessages.forEach((msg: any) => {
-          if (!lastMessagesMap[msg.conversation_id]) {
-            lastMessagesMap[msg.conversation_id] = msg
-          }
-        })
-      }
-    }
+    await Promise.all(
+      formatted.map(async (conv: any) => {
+        const { data: latest } = await supabase
+          .from('messages')
+          .select('id, conversation_id, body, media_url, sender_type, created_at, read_at')
+          .eq('conversation_id', conv.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+        if (latest && latest.length > 0) lastMessagesMap[conv.id] = latest[0]
+      })
+    )
 
     const conversationsWithLastMsg = formatted.map((conv: any) => ({
       ...conv,
@@ -202,9 +173,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('[API] List conversations error:', error)
-    try {
-      require('fs').appendFileSync('d:/new-chat/scratch/api-error.log', new Date().toISOString() + ': ' + (error.message || error) + '\n' + (error.stack || '') + '\n\n')
-    } catch(e) {}
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to list conversations',

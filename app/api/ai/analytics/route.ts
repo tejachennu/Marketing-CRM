@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { can, describeDenied } from '@/lib/rbac'
 import { getChatbotAnalytics } from '@/lib/ai-analytics'
 
 /**
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
     const orgId = user.organization_id
     if (!orgId) {
       return NextResponse.json({ error: 'Forbidden: No organization assigned' }, { status: 403 })
+    }
+    // Organization-wide figures
+    if (!can(user, 'records.view_all')) {
+      return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)

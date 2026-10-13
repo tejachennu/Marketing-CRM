@@ -515,7 +515,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'campaigns.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -557,7 +557,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing template ID' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'message_templates', id)
+    const recordResult = await verifyRecordAccess(request, 'message_templates', id, { permission: 'campaigns.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }

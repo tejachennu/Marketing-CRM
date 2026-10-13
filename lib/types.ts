@@ -197,7 +197,8 @@ export interface CommerceOrder {
   tax_amount: number
   total_amount: number
   currency: string
-  payment_method?: 'whatsapp_pay' | 'razorpay_link' | 'cod' | null
+  /** whatsapp_pay: paid in the chat · cod: Cash on Delivery · manual: marked as paid by the team */
+  payment_method?: 'whatsapp_pay' | 'razorpay_link' | 'cod' | 'manual' | null
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded'
   shipping_address?: {
     full_name?: string
@@ -208,7 +209,14 @@ export interface CommerceOrder {
     state?: string
     pincode?: string
     delivery_speed?: string
+    /** Express surcharge included in the order's shipping fee. */
+    express_fee?: number
     notes?: string
+    // Fulfilment details are kept with the address
+    tracking_number?: string
+    carrier?: string
+    shipped_at?: string
+    delivered_at?: string
   } | null
   customer_note?: string | null
   meta_order_id?: string | null

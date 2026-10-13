@@ -655,8 +655,11 @@ export default function CampaignFullTabPage() {
   }, [showRephraseDropdown])
 
   // Real-time message subscription for incoming replies
+  const campaignOrgId = campaign?.organization_id
   useEffect(() => {
-    if (!campaignId) return
+    // Wait for the campaign so the subscription can be limited to its organization;
+    // without the filter the browser is sent every tenant's new messages.
+    if (!campaignId || !campaignOrgId) return
 
     const channel = supabase
       .channel(`campaign-tab-messages-${campaignId}`)
@@ -666,6 +669,7 @@ export default function CampaignFullTabPage() {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
+          filter: `organization_id=eq.${campaignOrgId}`,
         },
         (payload) => {
           const newMsg = payload.new as MessageItem
@@ -724,7 +728,7 @@ export default function CampaignFullTabPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [campaignId])
+  }, [campaignId, campaignOrgId])
 
   // Handle Sending Message
   const handleSendMessage = async () => {

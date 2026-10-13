@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
@@ -94,7 +95,7 @@ export default function FlowsHubPage() {
           .maybeSingle()
 
         const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || profile?.role === 'superadmin'
+        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
 
         if (!isAllowed) {
           router.replace('/dashboard')

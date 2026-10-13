@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser, verifyRecordAccess } from '@/lib/api-auth-helper'
+import { isSuperAdmin } from '@/lib/rbac'
 import { runCampaignWorker } from '../run/worker/route'
 
 function getSupabaseClient() {
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     const nowIso = new Date().toISOString()
     const viewer = await getAuthenticatedUser(request)
     const canSee = (organizationId: string | null) =>
-      !!viewer && (viewer.role === 'superadmin' || viewer.organization_id === organizationId)
+      !!viewer && (isSuperAdmin(viewer) || viewer.organization_id === organizationId)
 
     // 1. Fetch campaigns that are scheduled and due for execution
     const { data: dueCampaigns, error: fetchErr } = await supabase
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest) {
         .order('scheduled_at', { ascending: true })
         .limit(10)
 
-      if (viewer.role !== 'superadmin') {
+      if (!isSuperAdmin(viewer)) {
         upcomingQuery = upcomingQuery.eq('organization_id', viewer.organization_id)
       }
 
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unknown action. Supported: send_now, cancel_schedule' }, { status: 400 })
     }
 
-    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId, { permission: 'campaigns.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

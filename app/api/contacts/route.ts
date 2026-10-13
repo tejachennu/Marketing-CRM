@@ -26,6 +26,10 @@ export async function GET(request: NextRequest) {
     const search = sanitizeSearchTerm(searchParams.get('search'))
     const tagFilter = searchParams.get('tag') || ''
     const offset = isAll ? 0 : (page - 1) * limit
+    // `fields=basic` returns only what a contact picker shows; a large CRM is several times smaller that way
+    const columns = searchParams.get('fields') === 'basic'
+      ? 'id, first_name, last_name, phone_number, email, company, tags'
+      : '*'
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
@@ -42,7 +46,7 @@ export async function GET(request: NextRequest) {
       // Fetch all contacts across batches of 1,000 to bypass PostgREST 1000 row cap
       let initialQuery = supabase
         .from('contacts')
-        .select('*', { count: 'exact' })
+        .select(columns, { count: 'exact' })
         .eq('organization_id', orgId)
 
       if (tagFilter) {
@@ -53,13 +57,16 @@ export async function GET(request: NextRequest) {
         initialQuery = initialQuery.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%,company.ilike.%${search}%`)
       }
 
+      // Two sort keys: contacts imported together share a timestamp, and without a tie-breaker
+      // the batches below could skip some of them and repeat others
       const { data: firstBatch, count: totalCount, error: firstError } = await initialQuery
         .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(0, 999)
 
       if (firstError) throw firstError
 
-      let allContacts = firstBatch || []
+      let allContacts: any[] = firstBatch || []
       const total = totalCount || allContacts.length
 
       if (total > 1000) {
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
         for (let batchOffset = 1000; batchOffset < total; batchOffset += batchSize) {
           let batchQuery = supabase
             .from('contacts')
-            .select('*')
+            .select(columns)
             .eq('organization_id', orgId)
 
           if (tagFilter) {
@@ -82,6 +89,7 @@ export async function GET(request: NextRequest) {
           promises.push(
             batchQuery
               .order('created_at', { ascending: false })
+              .order('id', { ascending: true })
               .range(batchOffset, Math.min(batchOffset + batchSize - 1, total - 1))
           )
         }
@@ -163,7 +171,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'records.write' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -285,12 +293,12 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'records.write' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    const recordResult = await verifyRecordAccess(request, 'contacts', id, { permission: 'records.write' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
@@ -386,7 +394,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Contact ID is required' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    const recordResult = await verifyRecordAccess(request, 'contacts', id, { permission: 'records.write' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
@@ -460,7 +468,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const recordResult = await verifyRecordAccess(request, 'contacts', id)
+    const recordResult = await verifyRecordAccess(request, 'contacts', id, { permission: 'contacts.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
@@ -157,7 +158,7 @@ export default function SubmittedResponsesPage() {
           .maybeSingle()
 
         const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || profile?.role === 'superadmin'
+        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
 
         if (!isAllowed) {
           router.replace('/dashboard')

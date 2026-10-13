@@ -5,7 +5,7 @@ import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { canSeeAll } from '@/lib/rbac'
+import { canAssign, canSeeAll, isReadOnly } from '@/lib/rbac'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { Lead, PipelineStage, Contact, User as SupabaseUser } from '@/lib/types'
@@ -108,9 +108,17 @@ export default function LeadsPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [analyticsChartView, setAnalyticsChartView] = useState<'month' | 'week' | 'pipeline' | 'source'>('month')
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [adminSeeAll, setAdminSeeAll] = useState(true)
+  // Set from the signed-in user's profile (lib/rbac.ts); restricted until it has loaded
+  const [canAssignLeads, setCanAssignLeads] = useState(false)
+  const [adminSeeAll, setAdminSeeAll] = useState(false)
   const [readOnlyMode, setReadOnlyMode] = useState(false)
+
+  /** Stops an edit on a read-only account and says why. Returns true when the action must not continue. */
+  function blockedByReadOnly(): boolean {
+    if (!readOnlyMode) return false
+    alert({ title: 'Read-only account', message: 'Your account can view leads but not change them. Ask an admin or manager to enable editing.' })
+    return true
+  }
 
   // ─── Date Range Filter ───
   const [fromDate, setFromDate] = useState('')
@@ -192,6 +200,7 @@ export default function LeadsPage() {
 
   async function handleAddNote() {
     if (!activityNote.trim() || !selectedLeadId || !user) return
+    if (blockedByReadOnly()) return
     setIsSaving(true)
     try {
       await supabase.from('lead_activities').insert([{
@@ -262,10 +271,9 @@ export default function LeadsPage() {
       // ── Role-based access ──────────────────────────────────────────────────
       // Admin/Manager roles: full pipeline + analytics visibility
       // sales_employee: only sees assigned leads unless see_all is true
-      const isAdminRole = ['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userData.role || '')
-      setIsAdmin(isAdminRole)
+      setCanAssignLeads(canAssign(userData))
       setAdminSeeAll(canSeeAll(userData))
-      setReadOnlyMode(userData.read_only === true)
+      setReadOnlyMode(isReadOnly(userData))
 
       // Fetch stages
       const { data: stagesData } = await supabase
@@ -698,7 +706,8 @@ export default function LeadsPage() {
     if (!user || !newLead.title) return
     if (!isOfflineLead && !newLead.contact_id) return
     if (isOfflineLead && !offlineContact.first_name) return // require at least a name
-    
+    if (blockedByReadOnly()) return
+
     setActionLoading(true)
     try {
       let finalContactId = newLead.contact_id
@@ -730,7 +739,7 @@ export default function LeadsPage() {
         expected_close_date: newLead.expected_close_date || null,
         notes: newLead.notes,
         product_service: newLead.product_service,
-        assigned_to: newLead.assigned_to || null,
+        assigned_to: canAssignLeads ? (newLead.assigned_to || null) : user.id,
         pipeline_stage_id: stages[0]?.id,
         created_by: user.id,
         last_activity_at: new Date().toISOString(),
@@ -761,6 +770,7 @@ export default function LeadsPage() {
 
   async function handleSaveChanges() {
     if (!selectedLeadId || !user) return
+    if (blockedByReadOnly()) return
     setIsSaving(true)
     try {
       const currentLead = leads.find(l => l.id === selectedLeadId)
@@ -774,7 +784,8 @@ export default function LeadsPage() {
         expected_close_date: editExpectedClose || null,
         notes: editNotes,
         product_service: editProductService,
-        assigned_to: editAssignedTo || null,
+        // Left untouched unless the editor may assign work
+        ...(canAssignLeads ? { assigned_to: editAssignedTo || null } : {}),
         last_activity_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', selectedLeadId)
@@ -803,6 +814,7 @@ export default function LeadsPage() {
 
   async function handleDeleteLead() {
     if (!selectedLeadId) return
+    if (blockedByReadOnly()) return
     if (!(await confirm({ title: 'Delete this lead?', message: 'This permanently removes the lead and cannot be undone.', confirmLabel: 'Delete', destructive: true }))) return
     setIsSaving(true)
     try {
@@ -847,6 +859,7 @@ export default function LeadsPage() {
   }
 
   async function handleStatusChange(leadId: string, newStatus: 'won' | 'lost' | 'on_hold' | 'active') {
+    if (blockedByReadOnly()) return
     if (newStatus === 'won' || newStatus === 'lost') {
       setShowWonLostModal({ leadId, action: newStatus })
       return
@@ -879,6 +892,7 @@ export default function LeadsPage() {
 
   async function confirmWonLost() {
     if (!showWonLostModal) return
+    if (blockedByReadOnly()) return
     setActionLoading(true)
     const { leadId, action } = showWonLostModal
     try {
@@ -913,6 +927,7 @@ export default function LeadsPage() {
   }
 
   async function handleMoveStage(leadId: string, stageId: string) {
+    if (blockedByReadOnly()) return
     try {
       await supabase.from('leads').update({
         pipeline_stage_id: stageId,
@@ -2533,8 +2548,9 @@ export default function LeadsPage() {
 
               {/* Assigned To */}
               <FormField label="Assigned To">
-                <select value={newLead.assigned_to} onChange={e => setNewLead({ ...newLead, assigned_to: e.target.value })}
-                  className="form-input">
+                <select value={canAssignLeads ? newLead.assigned_to : (user?.id || '')} onChange={e => setNewLead({ ...newLead, assigned_to: e.target.value })}
+                  disabled={!canAssignLeads} title={canAssignLeads ? undefined : 'Leads you create are assigned to you. Admins and managers can reassign them.'}
+                  className="form-input disabled:opacity-60 disabled:cursor-not-allowed">
                   <option value="">Unassigned</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
                 </select>
@@ -2776,7 +2792,9 @@ export default function LeadsPage() {
 
               {/* Assigned To */}
               <FormField label="Assigned To">
-                <select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} className="form-input">
+                <select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} disabled={!canAssignLeads}
+                  title={canAssignLeads ? undefined : 'Only admins and managers can reassign a lead.'}
+                  className="form-input disabled:opacity-60 disabled:cursor-not-allowed">
                   <option value="">Unassigned</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
                 </select>

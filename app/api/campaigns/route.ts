@@ -13,7 +13,19 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-import { getCampaignsReplyStats, getCampaignDetailedRecipients, getCampaignsLogStats } from '@/lib/campaign-stats'
+import { getCampaignsReplyStats, getCampaignDetailedRecipients, getCampaignsLogStats, getOrganizationCampaignTotals } from '@/lib/campaign-stats'
+import { sanitizeSearchTerm } from '@/lib/utils'
+import { buildRecipientList, type CampaignChannel } from '@/lib/campaigns/audience'
+
+// The list's status filter, in the words the dashboard uses
+const STATUS_FILTERS: Record<string, string[]> = {
+  scheduled: ['SCHEDULED'],
+  sending: ['PROCESSING', 'PENDING'],
+  completed: ['COMPLETED'],
+  failed: ['FAILED'],
+  stopped: ['STOPPED', 'CANCELLED'],
+}
+const CHANNEL_FILTERS = ['whatsapp', 'sms', 'email']
 
 // GET: List all campaigns or get details of a single campaign (including logs and interactive recipient chats)
 export async function GET(request: NextRequest) {
@@ -23,7 +35,7 @@ export async function GET(request: NextRequest) {
     const orgId = searchParams.get('organizationId')
 
     if (id) {
-      const authResult = await verifyRecordAccess(request, 'campaigns', id)
+      const authResult = await verifyRecordAccess(request, 'campaigns', id, { permission: 'records.view_all' })
       if (!authResult.authorized) {
         return NextResponse.json({ error: authResult.error }, { status: authResult.status })
       }
@@ -90,38 +102,60 @@ export async function GET(request: NextRequest) {
 
     // List all campaigns with server-side pagination (or all=true for selection filters)
     const isAll = searchParams.get('all') === 'true'
-    const page = isAll ? 1 : parseInt(searchParams.get('page') || '1')
-    const limit = isAll ? 500 : parseInt(searchParams.get('limit') || '10')
+    const page = isAll ? 1 : Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
+    const limit = isAll ? 500 : Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '10') || 10))
     const offset = (page - 1) * limit
+    const search = sanitizeSearchTerm(searchParams.get('search'))
+    const channelFilter = searchParams.get('channel') || ''
+    const statusFilter = searchParams.get('status') || ''
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, orgId)
+    const authResult = await verifyOrgAccess(request, orgId, { permission: 'records.view_all' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()
 
-    // Count total matching campaigns
-    const { count: total, error: countError } = await supabase
+    // Search and filters run here, over every campaign, so a match on another page is still found.
+    // The count and the page come from one query, so the pager always agrees with the rows.
+    let query = supabase
       .from('campaigns')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-    if (countError) throw countError
-
-    const query = supabase
-      .from('campaigns')
-      .select('*')
+      .select(isAll ? 'id, name, channel, status, total_contacts, sent_count, created_at' : '*', { count: 'exact' })
       .eq('organization_id', orgId)
 
-    const { data: campaigns, error: listError } = await query
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,template_name.ilike.%${search}%`)
+    }
+    if (CHANNEL_FILTERS.includes(channelFilter)) {
+      // Campaigns created before channels existed have no channel and are WhatsApp
+      query = channelFilter === 'whatsapp' ? query.or('channel.eq.whatsapp,channel.is.null') : query.eq('channel', channelFilter)
+    }
+    if (STATUS_FILTERS[statusFilter]) {
+      query = query.in('status', STATUS_FILTERS[statusFilter])
+    }
+
+    const { data, count: total, error: listError } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
     if (listError) throw listError
+    const campaigns = (data || []) as any[]
+
+    // The picker in the wizard only needs names; skip the per-campaign statistics for it
+    if (isAll) {
+      return NextResponse.json({
+        success: true,
+        campaigns,
+        pagination: { total: total || 0, page: 1, limit, pages: 1 },
+      })
+    }
+
+    // Totals across the whole organization, independent of the page and the filters
+    const summary = searchParams.get('summary') === 'false' ? undefined : await getOrganizationCampaignTotals(orgId)
 
     if (campaigns && campaigns.length > 0) {
       const campIds = campaigns.map(c => c.id)
@@ -147,11 +181,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       campaigns: campaigns || [],
+      summary: summary ?? null,
       pagination: {
         total: total || 0,
         page,
         limit,
-        pages: Math.ceil((total || 0) / limit)
+        pages: Math.max(1, Math.ceil((total || 0) / limit))
       }
     })
   } catch (error) {
@@ -201,13 +236,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const authResult = await verifyOrgAccess(request, resolvedOrgId)
+    const authResult = await verifyOrgAccess(request, resolvedOrgId, { permission: 'campaigns.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    const campaignChannel = channel || 'whatsapp'
+    const campaignChannel: CampaignChannel = CHANNEL_FILTERS.includes(channel) ? channel : 'whatsapp'
     const lang = templateLanguage || 'en'
+
+    // The same rules the wizard shows: one message per valid, distinct number or address.
+    // Applied here too so a repeated or malformed row can never be sent, whatever the client sends.
+    const recipientList = buildRecipientList(
+      audience.map((recipient: any) => ({
+        address: campaignChannel === 'email' ? recipient?.email : recipient?.phone,
+        variables: recipient?.variables && typeof recipient.variables === 'object' ? recipient.variables : {},
+      })),
+      campaignChannel
+    )
+    if (recipientList.recipients.length === 0) {
+      return NextResponse.json(
+        { error: campaignChannel === 'email' ? 'None of the recipients has a valid email address.' : 'None of the recipients has a valid phone number.' },
+        { status: 400 }
+      )
+    }
     const isScheduled = !!scheduledAt && new Date(scheduledAt).getTime() > Date.now()
     const initialStatus = isScheduled ? 'SCHEDULED' : 'PENDING'
 
@@ -220,7 +271,7 @@ export async function POST(request: NextRequest) {
       template_sid: templateSid || null,
       template_language: lang,
       status: initialStatus,
-      total_contacts: audience.length,
+      total_contacts: recipientList.recipients.length,
       sent_count: 0,
       failed_count: 0,
       created_by: createdBy || null,
@@ -256,31 +307,13 @@ export async function POST(request: NextRequest) {
     if (campaignError) throw campaignError
 
     // Insert Pending Logs
-    const pendingLogs = audience.map(recipient => {
-      if (campaignChannel === 'email') {
-        const emailVal = recipient.email || ''
-        return {
-          campaign_id: campaign.id,
-          phone_number: null,
-          email_address: emailVal.trim(),
-          status: 'PENDING',
-          variables_mapped: recipient.variables || {}
-        }
-      } else {
-        let cleanPhone = (recipient.phone || '').replace(/[^\d+]/g, '')
-        if (cleanPhone.startsWith('+')) cleanPhone = cleanPhone.slice(1)
-        if (cleanPhone.length === 10 && /^[6-9]/.test(cleanPhone)) {
-          cleanPhone = `91${cleanPhone}`
-        }
-        return {
-          campaign_id: campaign.id,
-          phone_number: `+${cleanPhone}`,
-          email_address: null,
-          status: 'PENDING',
-          variables_mapped: recipient.variables || {}
-        }
-      }
-    })
+    const pendingLogs = recipientList.recipients.map(recipient => ({
+      campaign_id: campaign.id,
+      phone_number: recipient.phone || null,
+      email_address: recipient.email || null,
+      status: 'PENDING',
+      variables_mapped: recipient.variables || {}
+    }))
 
     // Insert Pending Logs in batches of 500 to handle 5k+ audiences safely
     const chunkSize = 500
@@ -290,7 +323,13 @@ export async function POST(request: NextRequest) {
         .from('campaign_logs')
         .insert(chunk)
 
-      if (logsError) throw logsError
+      if (logsError) {
+        // Do not leave a campaign behind with only part of its audience: it could later be sent
+        // to that part, and the retry would then message those people a second time
+        await supabase.from('campaign_logs').delete().eq('campaign_id', campaign.id)
+        await supabase.from('campaigns').delete().eq('id', campaign.id)
+        throw logsError
+      }
     }
 
     return NextResponse.json({

@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, orgId)
+    const authResult = await verifyOrgAccess(request, orgId, { permission: 'records.view_all' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'records.view_all' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

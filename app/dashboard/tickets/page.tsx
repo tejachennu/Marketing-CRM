@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { canSeeAll } from '@/lib/rbac'
+import { canAssign, canSeeAll, isReadOnly } from '@/lib/rbac'
 import { useAlert } from '@/lib/dialog-context'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { Ticket, Clock, CheckCircle2, MessageSquare, TrendingUp, Search, Calendar, X, ChevronLeft, ChevronRight, Loader2, User, Users } from 'lucide-react'
@@ -45,20 +45,10 @@ export default function TicketsPage() {
   const [orgId, setOrgId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string>('')
-  const [adminSeeAll, setAdminSeeAll] = useState<boolean>(true)
+  // Both come from the signed-in user's profile; start restricted until it has loaded
+  const [adminSeeAll, setAdminSeeAll] = useState<boolean>(false)
   const [readOnlyMode, setReadOnlyMode] = useState<boolean>(false)
-
-  const toggleSeeAll = () => {
-    const newVal = !adminSeeAll
-    setAdminSeeAll(newVal)
-    localStorage.setItem('admin_see_all', String(newVal))
-  }
-
-  const toggleReadOnly = () => {
-    const newVal = !readOnlyMode
-    setReadOnlyMode(newVal)
-    localStorage.setItem('admin_read_only', String(newVal))
-  }
+  const canAssignTickets = canAssign({ role: userRole }) && !readOnlyMode
   
   // UI states
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active')
@@ -116,10 +106,10 @@ export default function TicketsPage() {
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
         }
-        if (profile?.role) {
-          setUserRole(profile.role)
-          setAdminSeeAll(canSeeAll({ role: profile.role, see_all: profile.see_all } as any))
-          setReadOnlyMode(profile.read_only === true)
+        if (profile) {
+          setUserRole(profile.role || '')
+          setAdminSeeAll(canSeeAll(profile))
+          setReadOnlyMode(isReadOnly(profile))
         }
       } catch (err) {
         console.error('Error initializing user in tickets page:', err)
@@ -332,12 +322,12 @@ export default function TicketsPage() {
         body: JSON.stringify({ ticketId, status: 'resolved' })
       })
       const data = await res.json()
-      if (data.success) {
-        setTickets(prev => prev.filter(t => t.id !== ticketId))
-        fetchStats()
-      }
-    } catch (err) {
+      if (!res.ok || !data.success) throw new Error(data.error || 'The ticket could not be resolved.')
+      setTickets(prev => prev.filter(t => t.id !== ticketId))
+      fetchStats()
+    } catch (err: any) {
       console.error('Error resolving ticket:', err)
+      alert({ title: 'Ticket not resolved', message: err.message || 'The ticket could not be resolved.' })
     } finally {
       setActionLoading(null)
     }
@@ -353,18 +343,20 @@ export default function TicketsPage() {
     }
     setAssignLoading(ticketId)
     try {
-      const { error } = await supabase
-        .from('tickets')
-        .update({ assigned_to: assignedToId || null })
-        .eq('id', ticketId)
-      
-      if (error) throw error
-      
+      // Through the API so the server checks that the caller may assign work
+      const res = await fetch('/api/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId, assignedTo: assignedToId || null })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to assign ticket.')
+
       setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, assigned_to: assignedToId } : t))
       fetchStats()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to assign ticket:', err)
-      alert({ title: 'Error', message: 'Failed to assign ticket.' })
+      alert({ title: 'Ticket not assigned', message: err.message || 'Failed to assign ticket.' })
     } finally {
       setAssignLoading(null)
     }
@@ -666,7 +658,7 @@ export default function TicketsPage() {
 
                       {/* Assigned To */}
                       <td className="px-6 py-4">
-                        {['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userRole) && !readOnlyMode ? (
+                        {canAssignTickets ? (
                           <select
                             value={ticket.assigned_to || ''}
                             onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}
@@ -787,7 +779,7 @@ export default function TicketsPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-slate-400 dark:text-slate-500 font-bold">Assignee:</span>
-                      {['super_admin', 'org_admin', 'org_manager', 'owner', 'admin', 'superadmin', 'OrgAdmin', 'Manager', 'saleslead'].includes(userRole) && !readOnlyMode ? (
+                      {canAssignTickets ? (
                         <select
                           value={ticket.assigned_to || ''}
                           onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}

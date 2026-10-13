@@ -2,6 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import { canSeeAll, describeDenied } from '@/lib/rbac'
+import { canAccessConversation } from '@/lib/record-visibility'
+import { MASTER_ORG_ID } from '@/lib/constants'
+import { isPublicHttpUrl } from '@/lib/utils'
+import { parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
+import { isUuid } from '@/lib/record-visibility'
 import fs from 'fs'
 import path from 'path'
 import { cleanWhatsAppRecipient, isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
@@ -33,8 +39,14 @@ async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer
     }
 
     if (mediaUrl.startsWith('/uploads/')) {
-      const filename = mediaUrl.replace('/uploads/', '');
-      const filePath = path.join(process.cwd(), 'public', 'uploads', filename);
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+      const filePath = path.resolve(uploadsDir, mediaUrl.slice('/uploads/'.length));
+      // Refuse "../" paths: only files inside the uploads folder may be read and sent
+      if (!filePath.startsWith(uploadsDir + path.sep)) {
+        console.warn('[Messages Send] Rejected media path outside the uploads folder');
+        return null;
+      }
+      const filename = path.basename(filePath);
       if (fs.existsSync(filePath)) {
         const buffer = fs.readFileSync(filePath);
         // Determine mimeType from filename extension
@@ -52,9 +64,14 @@ async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer
 
     // Fallback to fetch for external URLs or other paths
     let fullUrl = mediaUrl;
-    if (!mediaUrl.startsWith('http')) {
+    if (mediaUrl.startsWith('/')) {
+      // A path on this app
       const runtimeUrl = process.env.V0_RUNTIME_URL || 'http://localhost:3000';
       fullUrl = `${runtimeUrl}${mediaUrl}`;
+    } else if (!isPublicHttpUrl(mediaUrl)) {
+      // The server downloads this address, so it must not point at this machine or the private network
+      console.warn('[Messages Send] Rejected media URL that is not a public http(s) address');
+      return null;
     }
 
     console.log(`[Messages Send] Fetching external media URL: ${fullUrl}`);
@@ -114,7 +131,12 @@ export async function POST(request: NextRequest) {
     const { conversationId, messageBody, contactId, organizationId, message, phoneNumber, mediaUrl, media_url, templateSid, templateName, templateLanguage, templateComponents, templateVariables, templateMetaComponents } = body
 
     // Support both old and new parameter formats
-    const msgBody = messageBody || message || ''
+    // "[reply:<id>]" is how the CRM remembers which message a reply quotes. It is bookkeeping for our
+    // own screens and is never sent to the customer; WhatsApp gets a proper quote (see `context` below).
+    const parsedBody = parseReplyMarker(messageBody || message || '')
+    const msgBody = parsedBody.text
+    const requestedReplyTo = body.replyToMessageId || parsedBody.replyToId || null
+    let replyToId: string | null = isUuid(requestedReplyTo) ? requestedReplyTo : null
     const contactPhone = phoneNumber
     const convId = conversationId
     let orgId = organizationId
@@ -148,12 +170,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organization context' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, orgId)
+    // Read-only accounts can view chats but not send
+    const authResult = await verifyOrgAccess(request, orgId, { permission: 'records.write' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
+    const sender = authResult.user
 
-    const isMasterOrg = !orgId || orgId === '303b7a2d-281c-403c-b794-54d1e195ca69'
+    const isMasterOrg = !orgId || orgId === MASTER_ORG_ID
 
     // Resolve tenant credentials
     let twilioAccountSid = isMasterOrg ? (process.env.TWILIO_ACCOUNT_SID || '') : ''
@@ -219,14 +243,28 @@ export async function POST(request: NextRequest) {
         .eq('id', convId)
         .single()
 
-      if (convError || !conv) {
+      // The conversation must belong to the organization the caller was authorized for
+      if (convError || !conv || conv.organization_id !== orgId) {
         return NextResponse.json(
           { error: 'Conversation not found' },
           { status: 404 }
         )
       }
+      if (!(await canAccessConversation(supabase, sender, conv))) {
+        return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
+      }
       conversation = conv
     } else if (contactId && orgId) {
+      const { data: contactRow } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('id', contactId)
+        .eq('organization_id', orgId)
+        .maybeSingle()
+      if (!contactRow) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
+      }
+
       // Create or get conversation for this contact
       const { data: existingConvs } = await supabase
         .from('conversations')
@@ -239,6 +277,14 @@ export async function POST(request: NextRequest) {
       const existingConv = existingConvs?.[0] || null
 
       if (existingConv) {
+        // Someone limited to their own work may message a contact nobody is handling yet, and then owns that chat
+        if (!canSeeAll(sender) && !(await canAccessConversation(supabase, sender, existingConv))) {
+          if (existingConv.assigned_to) {
+            return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
+          }
+          await supabase.from('conversations').update({ assigned_to: sender.id }).eq('id', existingConv.id)
+          existingConv.assigned_to = sender.id
+        }
         conversation = existingConv
       } else {
         const { data: newConv, error: createError } = await supabase
@@ -248,6 +294,8 @@ export async function POST(request: NextRequest) {
               organization_id: orgId,
               contact_id: contactId,
               is_active: true,
+              // Keeps a chat started by an assigned-only user in their own list
+              ...(canSeeAll(sender) ? {} : { assigned_to: sender.id }),
             },
           ])
           .select()
@@ -263,6 +311,24 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
+    }
+
+    // The message being replied to must be in this conversation. If WhatsApp gave it an id,
+    // the customer sees it quoted above the reply.
+    let quotedWhatsAppId: string | null = null
+    if (replyToId) {
+      const { data: quoted } = await supabase
+        .from('messages')
+        .select('id, twilio_message_sid')
+        .eq('id', replyToId)
+        .eq('conversation_id', conversation.id)
+        .maybeSingle()
+      if (!quoted) {
+        replyToId = null
+      } else {
+        const providerId = String(quoted.twilio_message_sid || '').replace(/^FB_/, '')
+        if (providerId.startsWith('wamid.')) quotedWhatsAppId = providerId
+      }
     }
 
     // Determine channel (WhatsApp vs SMS) dynamically
@@ -559,7 +625,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log(`[Messages Send] Sending message via Meta Cloud API (${whatsappPhoneNumberId}):`, JSON.stringify(payload))
+        // Quote the original message for the customer (not available on template messages)
+        if (quotedWhatsAppId && payload.type !== 'template') {
+          payload.context = { message_id: quotedWhatsAppId }
+        }
+
+        console.log(`[Messages Send] Sending ${payload.type} message via Meta Cloud API (${whatsappPhoneNumberId})`)
 
         const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
           method: 'POST',
@@ -712,7 +783,7 @@ export async function POST(request: NextRequest) {
           organization_id: conversation.organization_id,
           conversation_id: conversation.id,
           sender_type: 'user',
-          body: effectiveMsgBody || '[Message]',
+          body: withReplyMarker(replyToId, effectiveMsgBody || '[Message]'),
           media_url: msgMediaUrl,
           twilio_message_sid: twilioMessageSid,
           status: sendStatus,

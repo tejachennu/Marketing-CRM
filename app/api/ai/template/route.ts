@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import { requireUser, verifyOrgAccess } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,11 +19,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 })
     }
 
-    if (orgId) {
-      const authResult = await verifyOrgAccess(request, orgId)
-      if (!authResult.authorized) {
-        return NextResponse.json({ error: authResult.error }, { status: authResult.status })
-      }
+    // Always signed in, with or without an organization id: this spends the organization's (or the platform's) AI credit
+    const authResult = orgId
+      ? await verifyOrgAccess(request, orgId, { permission: 'campaigns.manage' })
+      : await requireUser(request, { permission: 'campaigns.manage' })
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
+import { MASTER_ORG_ID } from '@/lib/constants'
+import { isUuid } from '@/lib/record-visibility'
+
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/
 
 export async function PUT(
   request: NextRequest,
@@ -60,6 +64,23 @@ export async function PUT(
       return NextResponse.json({ error: 'No valid update fields provided' }, { status: 400 })
     }
 
+    if (updateData.name !== undefined && !String(updateData.name).trim()) {
+      return NextResponse.json({ error: 'Organization name cannot be empty' }, { status: 400 })
+    }
+    // Only a slug that is actually changing is checked, so organizations created with an older slug format still save
+    if (updateData.slug !== undefined) {
+      const { data: current } = await supabase.from('organizations').select('slug').eq('id', id).maybeSingle()
+      if (updateData.slug === current?.slug) {
+        delete updateData.slug
+      } else if (!updateData.slug || !SLUG_PATTERN.test(String(updateData.slug))) {
+        return NextResponse.json({ error: 'Slug may only contain lowercase letters, numbers and hyphens' }, { status: 400 })
+      }
+    }
+    if (Object.keys(updateData).length === 0) {
+      const { data: unchanged } = await supabase.from('organizations').select('*').eq('id', id).maybeSingle()
+      return NextResponse.json({ success: true, organization: unchanged })
+    }
+
     // Verify slug uniqueness if it is changing
     if (updateData.slug) {
       const { data: existingOrg } = await supabase
@@ -100,9 +121,22 @@ export async function DELETE(
   }
 
   const { id } = await params
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'Invalid organization id' }, { status: 400 })
+  }
+  // Deleting either of these would remove the platform's own accounts, including the caller's
+  if (id === MASTER_ORG_ID) {
+    return NextResponse.json({ error: 'The platform organization cannot be deleted.' }, { status: 400 })
+  }
+  if (id === isSuperAdmin.organization_id) {
+    return NextResponse.json({ error: 'You cannot delete the organization your own account belongs to.' }, { status: 400 })
+  }
 
   try {
     const supabase = getSupabaseAdminClient()
+
+    // The members' logins live outside the organization's tables, so collect them before the cascade removes the profiles
+    const { data: members } = await supabase.from('users').select('id').eq('organization_id', id)
 
     // Delete organization record (related records cascade delete)
     const { error } = await supabase
@@ -112,7 +146,17 @@ export async function DELETE(
 
     if (error) throw error
 
-    return NextResponse.json({ success: true, message: 'Organization deleted successfully' })
+    // Remove the logins too. Left behind, each one could sign in again and would be given a fresh workspace.
+    let loginsNotRemoved = 0
+    for (const member of members || []) {
+      const { error: authError } = await supabase.auth.admin.deleteUser(member.id)
+      if (authError) {
+        loginsNotRemoved += 1
+        console.warn('[SuperAdmin Org Delete API] Could not delete login for user', member.id, authError.message)
+      }
+    }
+
+    return NextResponse.json({ success: true, message: 'Organization deleted successfully', loginsNotRemoved })
   } catch (error: any) {
     console.error('[SuperAdmin Org Delete API] Error:', error)
     return NextResponse.json({ error: error.message || 'Server error' }, { status: 500 })

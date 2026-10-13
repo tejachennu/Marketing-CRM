@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WAMACRM store marketing creatives</title>
+<!--
+  Every <section> is one image. Open this file with #<id> at the end of the address to see one
+  (for example creatives.html#hero), or run `node marketing/ecommerce/source/render.mjs` to
+  write them all as PNG files next to this folder.
+  The shop, products and people shown are made-up examples.
+-->
+<style>
+  :root {
+    --navy: #0b1f3a;
+    --ink: #10243f;
+    --muted: #5b6b82;
+    --green: #22c076;
+    --teal: #12a8a0;
+    --blue: #2a62d6;
+    --mint: #e9fbf3;
+    --wa-header: #0b6b5d;
+    --wa-wall: #efe9df;
+    --wa-out: #d9fdd3;
+    --line: #e4e9f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #ffffff; }
+  body { font-family: -apple-system, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  section { display: none; position: relative; overflow: hidden; }
+  section:target { display: block; }
+
+  /* ── Canvases ── */
+  .sq { width: 1080px; height: 1080px; }
+  .story { width: 1080px; height: 1920px; }
+  .wide { width: 1200px; height: 628px; }
+
+  .bg-brand { background: linear-gradient(135deg, #16b877 0%, #12a39f 46%, #2a62d6 100%); color: #fff; }
+  .bg-navy { background: radial-gradient(1200px 800px at 85% 0%, #17406f 0%, #0b1f3a 55%, #081629 100%); color: #fff; }
+  .bg-light { background: linear-gradient(180deg, #f3fbf7 0%, #eef4ff 100%); }
+  .bg-mint { background: linear-gradient(160deg, #e9fbf3 0%, #dff6ff 100%); }
+
+  .glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; pointer-events: none; }
+
+  /* ── Brand lockup ── */
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .brand .tile { width: 76px; height: 76px; border-radius: 20px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(8, 22, 41, .18); }
+  .brand .tile img { width: 58px; height: auto; display: block; }
+  .brand .name { font-size: 34px; font-weight: 800; letter-spacing: .5px; line-height: 1; }
+  .brand .tag { font-size: 16px; font-weight: 600; letter-spacing: 2.6px; text-transform: uppercase; opacity: .78; margin-top: 7px; }
+  .on-light .brand .name { color: var(--navy); }
+  .on-light .brand .tag { color: var(--muted); }
+
+  .pad { position: absolute; inset: 0; padding: 72px; display: flex; flex-direction: column; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; font-size: 22px; font-weight: 700; letter-spacing: .4px; padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .16); border: 1.5px solid rgba(255, 255, 255, .32); }
+  .on-light .eyebrow { background: #fff; border-color: #cdebdc; color: #0f8a5a; }
+  h1 { font-size: 84px; line-height: 1.02; font-weight: 800; letter-spacing: -2px; }
+  h2 { font-size: 68px; line-height: 1.05; font-weight: 800; letter-spacing: -1.6px; }
+  .lead { font-size: 31px; line-height: 1.38; font-weight: 500; opacity: .92; }
+  .on-light h1, .on-light h2 { color: var(--navy); }
+  .on-light .lead { color: #3b4c66; opacity: 1; }
+  .accent { color: #b9ffd9; }
+  .on-light .accent { color: #0f9d63; }
+  .foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+  .cta { font-size: 26px; font-weight: 700; padding: 18px 30px; border-radius: 999px; background: #fff; color: #0c7a55; box-shadow: 0 10px 30px rgba(8, 22, 41, .22); white-space: nowrap; }
+  .on-light .cta { background: var(--navy); color: #fff; }
+  .small { font-size: 19px; line-height: 1.4; opacity: .78; }
+  .on-light .small { color: var(--muted); opacity: 1; }
+
+  /* ── Phone and chat ── */
+  .phone { position: absolute; width: 452px; border-radius: 54px; background: #0d1826; padding: 14px; box-shadow: 0 40px 90px rgba(4, 14, 30, .45), 0 0 0 2px rgba(255, 255, 255, .08) inset; }
+  .phone .screen { border-radius: 42px; overflow: hidden; background: var(--wa-wall); display: flex; flex-direction: column; height: 100%; }
+  .chat-head { background: var(--wa-header); color: #fff; padding: 46px 20px 16px; display: flex; align-items: center; gap: 12px; }
+  .chat-head .av { width: 44px; height: 44px; border-radius: 50%; background: #fff; color: var(--wa-header); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; flex-shrink: 0; }
+  .chat-head .who { font-size: 20px; font-weight: 700; line-height: 1.1; }
+  .chat-head .sub { font-size: 14px; opacity: .82; margin-top: 3px; }
+  .chat { flex: 1; padding: 16px 14px; display: flex; flex-direction: column; gap: 9px; background-image: radial-gradient(rgba(11, 107, 93, .07) 1.6px, transparent 1.6px); background-size: 22px 22px; }
+  .b { max-width: 84%; padding: 10px 13px 8px; border-radius: 14px; font-size: 17px; line-height: 1.34; color: #111b21; box-shadow: 0 1px 1px rgba(11, 20, 26, .13); }
+  .b.in { background: #fff; align-self: flex-start; border-top-left-radius: 3px; }
+  .b.out { background: var(--wa-out); align-self: flex-end; border-top-right-radius: 3px; }
+  .b .t { display: block; text-align: right; font-size: 11.5px; color: #667781; margin-top: 3px; }
+  .b b { font-weight: 700; }
+  .b.card { padding: 6px; width: 84%; }
+  .thumb { height: 128px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 62px; }
+  .thumb.a { background: linear-gradient(135deg, #ffe7c2, #ffd0b0); }
+  .thumb.b2 { background: linear-gradient(135deg, #d9f3ff, #c9e2ff); }
+  .thumb.c { background: linear-gradient(135deg, #e3f9e5, #c9f0d6); }
+  .card .meta { padding: 8px 8px 4px; }
+  .card .ttl { font-weight: 700; font-size: 17px; }
+  .card .price { color: #54656f; font-size: 15px; margin-top: 2px; }
+  .btn { margin-top: 6px; border-top: 1px solid #e9edef; text-align: center; color: #027eb5; font-weight: 600; font-size: 16.5px; padding: 10px 6px 4px; }
+  .btns { align-self: flex-start; width: 84%; display: flex; flex-direction: column; gap: 5px; margin-top: -4px; }
+  .btns .btn { margin: 0; border: 0; background: #fff; border-radius: 12px; padding: 11px 8px; box-shadow: 0 1px 1px rgba(11, 20, 26, .13); }
+  .cartline { display: flex; justify-content: space-between; gap: 12px; font-size: 15.5px; padding: 3px 0; }
+  .cartline.total { border-top: 1px dashed #b9c6bf; margin-top: 5px; padding-top: 7px; font-weight: 700; font-size: 16.5px; }
+  .tick { color: #53bdeb; font-weight: 700; margin-left: 4px; }
+
+  /* ── Feature chips / steps ── */
+  .chips { display: flex; flex-wrap: wrap; gap: 12px; }
+  .chip { font-size: 23px; font-weight: 600; padding: 12px 20px; border-radius: 16px; background: rgba(255, 255, 255, .14); border: 1.5px solid rgba(255, 255, 255, .26); display: inline-flex; align-items: center; gap: 10px; }
+  .on-light .chip { background: #fff; border-color: var(--line); color: var(--ink); box-shadow: 0 4px 14px rgba(11, 31, 58, .06); }
+  .dot { width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #0c7a55; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; flex-shrink: 0; }
+  .on-light .dot { background: #12b877; color: #fff; }
+
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .step { background: #fff; border-radius: 30px; padding: 30px; box-shadow: 0 14px 40px rgba(11, 31, 58, .09); border: 1.5px solid #e6eef6; position: relative; }
+  .step .n { width: 54px; height: 54px; border-radius: 17px; background: linear-gradient(135deg, #16b877, #2a62d6); color: #fff; font-weight: 800; font-size: 27px; display: flex; align-items: center; justify-content: center; }
+  .step .ico { position: absolute; right: 26px; top: 22px; font-size: 54px; }
+  .step h3 { font-size: 32px; font-weight: 800; color: var(--navy); margin-top: 20px; letter-spacing: -.5px; }
+  .step p { font-size: 22.5px; line-height: 1.38; color: #4a5b74; margin-top: 8px; }
+
+  /* ── Dashboard mock ── */
+  .dash { position: absolute; background: #fff; border-radius: 30px; box-shadow: 0 40px 90px rgba(4, 14, 30, .38); overflow: hidden; color: var(--ink); }
+  .dash .bar { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1.5px solid var(--line); }
+  .dash .bar .ttl { font-size: 26px; font-weight: 800; color: var(--navy); display: flex; align-items: center; gap: 12px; }
+  .dash .tabs { display: flex; gap: 8px; }
+  .dash .tab { font-size: 17px; font-weight: 700; padding: 9px 16px; border-radius: 12px; color: #5b6b82; background: #f2f5f9; }
+  .dash .tab.on { background: #0f8a63; color: #fff; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 22px 28px 8px; }
+  .kpi { border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 18px; }
+  .kpi .l { font-size: 15.5px; font-weight: 600; color: #6b7a90; }
+  .kpi .v { font-size: 31px; font-weight: 800; color: var(--navy); margin-top: 6px; letter-spacing: -.6px; }
+  .rows { padding: 12px 28px 26px; }
+  .row { display: grid; grid-template-columns: 1.25fr 1.2fr 1.5fr 1fr .8fr; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1.5px solid #eef2f6; font-size: 18.5px; }
+  .row.head { font-size: 15px; font-weight: 700; color: #7a889c; text-transform: uppercase; letter-spacing: .8px; padding: 10px 0; }
+  .row:last-child { border-bottom: 0; }
+  .row .o { font-weight: 800; color: var(--navy); }
+  .row .m { color: #5b6b82; }
+  .row .amt { font-weight: 800; text-align: right; color: var(--navy); }
+  .pill { display: inline-block; font-size: 15px; font-weight: 800; padding: 6px 13px; border-radius: 999px; white-space: nowrap; }
+  .pill.wait { background: #fff1d6; color: #9a5b00; }
+  .pill.paid { background: #d9f7e7; color: #0b7a4f; }
+  .pill.cod { background: #d6f5f2; color: #0b6f68; }
+  .pill.ship { background: #dbe8ff; color: #1d4fbf; }
+  .pill.done { background: #ebe3ff; color: #5b34c2; }
+
+  .note { position: absolute; background: #fff; color: var(--ink); border-radius: 22px; padding: 16px 20px; box-shadow: 0 18px 44px rgba(4, 14, 30, .3); font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+  .note .e { font-size: 30px; }
+  .note small { display: block; font-size: 15.5px; font-weight: 600; color: #6b7a90; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<!-- 1 ── Hero ─────────────────────────────────────────────────────────── -->
+<section id="hero" class="sq bg-brand">
+  <div class="glow" style="width:520px;height:520px;background:#7dffc4;left:-160px;bottom:-200px"></div>
+  <div class="pad" style="padding-right:548px">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">AI Agent CRM</div></div>
+    </div>
+    <div class="eyebrow" style="margin-top:74px">🛍️ WhatsApp Store</div>
+    <h1 style="margin-top:26px">Turn WhatsApp into your <span class="accent">storefront.</span></h1>
+    <p class="lead" style="margin-top:28px">Customers browse, order and pay without ever leaving the chat.</p>
+    <div class="foot"><div class="cta">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="right:54px;top:150px;height:900px;transform:rotate(3deg)">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b in card">
+          <div class="thumb a">🛋️</div>
+          <div class="meta"><div class="ttl">Linen Cushion Cover</div><div class="price">₹499 · In stock</div></div>
+          <div class="btn">View item</div>
+        </div>
+        <div class="b out">
+          <b>🛒 Cart · 3 items</b>
+          <div class="cartline" style="margin-top:5px"><span>2 × Cushion Cover</span><span>₹998</span></div>
+          <div class="cartline"><span>1 × Soy Candle</span><span>₹349</span></div>
+          <div class="cartline total"><span>Total</span><span>₹1,347</span></div>
+          <span class="t">10:42 <span class="tick">✓✓</span></span>
+        </div>
+        <div class="b in">Thank you! We received your order <b>#ORD-2610-K7M2</b>. How would you like to pay ₹1,347?<span class="t">10:42</span></div>
+        <div class="btns"><div class="btn">Pay online</div><div class="btn">Cash on Delivery</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 ── How it works ─────────────────────────────────────────────────── -->
+<section id="steps" class="sq bg-light on-light">
+  <div class="pad">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <h2 style="margin-top:44px">From “hi” to paid order,<br><span class="accent">in one chat.</span></h2>
+    <div class="steps" style="margin-top:42px">
+      <div class="step"><div class="n">1</div><div class="ico">🛍️</div><h3>Browse</h3><p>Your catalog opens inside WhatsApp. Customers add items to a cart.</p></div>
+      <div class="step"><div class="n">2</div><div class="ico">🛒</div><h3>Order</h3><p>They send the cart. The order appears in your dashboard instantly.</p></div>
+      <div class="step"><div class="n">3</div><div class="ico">📍</div><h3>Address</h3><p>A short form in the chat collects the delivery address.</p></div>
+      <div class="step"><div class="n">4</div><div class="ico">✅</div><h3>Pay</h3><p>Pay online in the chat, or confirm Cash on Delivery with one tap.</p></div>
+    </div>
+    <div class="foot" style="margin-top:auto">
+      <div class="small">No app to install. No website needed.</div>
+      <div class="cta">Start selling on WhatsApp →</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ── Payment choice ───────────────────────────────────────────────── -->
+<section id="pay" class="sq bg-navy">
+  <div class="glow" style="width:560px;height:560px;background:#16b877;right:-200px;top:-220px;opacity:.4"></div>
+  <div class="pad" style="padding-right:548px">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <div class="eyebrow" style="margin-top:70px">💳 Checkout in chat</div>
+    <h2 style="margin-top:26px">Let customers choose <span class="accent">how to pay.</span></h2>
+    <p class="lead" style="margin-top:26px">Online payment inside WhatsApp, or Cash on Delivery. One tap either way.</p>
+    <div class="chips" style="margin-top:34px">
+      <div class="chip"><span class="dot">✓</span>Pay online</div>
+      <div class="chip"><span class="dot">✓</span>Cash on Delivery</div>
+      <div class="chip"><span class="dot">✓</span>Instant receipt</div>
+    </div>
+    <div class="foot"><div class="small">Online payments run through WhatsApp with Razorpay, PayU, BillDesk or Zaakpay (India).</div></div>
+  </div>
+
+  <div class="phone" style="right:56px;top:118px;height:920px">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b in">Thanks, your delivery address is saved. Order <b>#ORD-2610-K7M2</b> total: <b>₹1,347</b>.<br><br>How would you like to pay ₹1,347?<span class="t">10:44</span></div>
+        <div class="btns"><div class="btn">Pay online</div><div class="btn">Cash on Delivery</div></div>
+        <div class="b out">Pay online<span class="t">10:44 <span class="tick">✓✓</span></span></div>
+        <div class="b in card">
+          <div class="meta" style="padding-top:8px">
+            <div class="ttl">Order #ORD-2610-K7M2</div>
+            <div class="cartline" style="margin-top:6px"><span>3 items</span><span>₹1,347</span></div>
+            <div class="cartline total"><span>Total</span><span>₹1,347</span></div>
+          </div>
+          <div class="btn">Review and pay</div>
+        </div>
+        <div class="b in">✅ Payment of <b>₹1,347</b> received. Order #ORD-2610-K7M2 is confirmed and we are preparing it.<span class="t">10:46</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ── Orders dashboard ─────────────────────────────────────────────── -->
+<section id="orders" class="sq bg-brand">
+  <div class="glow" style="width:520px;height:520px;background:#9fd0ff;right:-180px;top:-200px;opacity:.5"></div>
+  <div class="pad">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <h2 style="margin-top:34px">Every WhatsApp order,<br><span class="accent">in one place.</span></h2>
+    <p class="lead" style="margin-top:14px;max-width:880px;font-size:29px">See what is waiting on the customer, what to ship today, and what has been delivered.</p>
+  </div>
+
+  <div class="dash" style="left:72px;right:72px;top:462px;height:720px">
+    <div class="bar">
+      <div class="ttl">🛍️ Commerce</div>
+      <div class="tabs"><div class="tab on">Orders 128</div><div class="tab">Products 64</div><div class="tab">Store settings</div></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Revenue received</div><div class="v">₹1,84,250</div></div>
+      <div class="kpi"><div class="l">Orders</div><div class="v">128</div></div>
+      <div class="kpi"><div class="l">Awaiting customer</div><div class="v">9</div></div>
+      <div class="kpi"><div class="l">To ship</div><div class="v">14</div></div>
+    </div>
+    <div class="rows">
+      <div class="row head"><div>Order</div><div>Customer</div><div>Items</div><div>Status</div><div style="text-align:right">Total</div></div>
+      <div class="row"><div class="o">#ORD-2610-K7M2</div><div>Priya Nair</div><div class="m">2 × Cushion Cover, 1 × …</div><div><span class="pill paid">Paid</span></div><div class="amt">₹1,347</div></div>
+      <div class="row"><div class="o">#ORD-2610-H4RX</div><div>Rahul Mehta</div><div class="m">1 × Table Lamp</div><div><span class="pill cod">COD confirmed</span></div><div class="amt">₹2,199</div></div>
+      <div class="row"><div class="o">#ORD-2610-B9TQ</div><div>Sana Khan</div><div class="m">4 × Soy Candle</div><div><span class="pill wait">Payment pending</span></div><div class="amt">₹1,396</div></div>
+      <div class="row"><div class="o">#ORD-2609-W2LD</div><div>Arjun Rao</div><div class="m">1 × Throw Blanket</div><div><span class="pill ship">Shipped</span></div><div class="amt">₹1,799</div></div>
+      <div class="row"><div class="o">#ORD-2609-N5PC</div><div>Meera Iyer</div><div class="m">2 × Ceramic Mug Pair</div><div><span class="pill done">Delivered</span></div><div class="amt">₹1,298</div></div>
+      <div class="row"><div class="o">#ORD-2609-J8VA</div><div>Kabir Shah</div><div class="m">1 × Cushion Cover</div><div><span class="pill wait">Awaiting address</span></div><div class="amt">₹499</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ── Automatic updates ────────────────────────────────────────────── -->
+<section id="updates" class="sq bg-mint on-light">
+  <div class="pad" style="padding-right:548px">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <div class="eyebrow" style="margin-top:70px">🚚 Order updates</div>
+    <h2 style="margin-top:26px">Customers always know <span class="accent">where their order is.</span></h2>
+    <p class="lead" style="margin-top:26px">Mark an order as shipped or delivered and the update lands in their WhatsApp, tracking number included.</p>
+    <div class="foot"><div class="cta">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="right:58px;top:128px;height:900px">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b in">✅ Payment of <b>₹1,347</b> received. Order #ORD-2610-K7M2 is confirmed and we are preparing it.<span class="t">Mon 10:46</span></div>
+        <div class="b in">🚚 Good news! Order <b>#ORD-2610-K7M2</b> has shipped.<br>Tracking number: <b>TRK48201937</b><span class="t">Tue 09:15</span></div>
+        <div class="b out">Great, thank you! 🙏<span class="t">Tue 09:20 <span class="tick">✓✓</span></span></div>
+        <div class="b in">📦 Order <b>#ORD-2610-K7M2</b> has been delivered. Thank you for shopping with us!<span class="t">Thu 14:02</span></div>
+        <div class="b out">Received. Love the cushions! 😍<span class="t">Thu 14:30 <span class="tick">✓✓</span></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ── Reminders ────────────────────────────────────────────────────── -->
+<section id="remind" class="sq bg-navy">
+  <div class="glow" style="width:560px;height:560px;background:#2a62d6;left:-220px;bottom:-240px;opacity:.55"></div>
+  <div class="pad" style="padding-right:548px">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <div class="eyebrow" style="margin-top:70px">🔔 Recover unfinished orders</div>
+    <h2 style="margin-top:26px">Cart sent, but not paid? <span class="accent">Nudge in one click.</span></h2>
+    <p class="lead" style="margin-top:26px">Send the customer the exact step they stopped at: the address form or the payment request.</p>
+    <div class="foot"><div class="cta">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="right:56px;top:196px;height:850px">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b out"><b>🛒 Cart · 4 items</b><div class="cartline total"><span>Total</span><span>₹1,396</span></div><span class="t">Mon 18:20 <span class="tick">✓✓</span></span></div>
+        <div class="b in">Thank you! We received your order <b>#ORD-2610-B9TQ</b>. How would you like to pay ₹1,396?<span class="t">Mon 18:20</span></div>
+        <div style="align-self:center;background:#fff;border-radius:9px;padding:5px 12px;font-size:13px;color:#54656f;box-shadow:0 1px 1px rgba(11,20,26,.13)">2 days later</div>
+        <div class="b in">A reminder about your order <b>#ORD-2610-B9TQ</b> (₹1,396).<br><br>Review your order and pay securely below.<span class="t">Wed 17:05</span></div>
+        <div class="b in card">
+          <div class="meta" style="padding-top:8px">
+            <div class="ttl">Order #ORD-2610-B9TQ</div>
+            <div class="cartline" style="margin-top:6px"><span>4 × Soy Candle</span><span>₹1,396</span></div>
+            <div class="cartline total"><span>Total</span><span>₹1,396</span></div>
+          </div>
+          <div class="btn">Review and pay</div>
+        </div>
+        <div class="b in">✅ Payment of <b>₹1,396</b> received. Order #ORD-2610-B9TQ is confirmed.<span class="t">Wed 17:12</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="right:318px;top:98px"><span class="e">🔔</span><span>Send reminder<small>Order waiting 2 days</small></span></div>
+</section>
+
+<!-- 7 ── Share products ───────────────────────────────────────────────── -->
+<section id="share" class="sq bg-brand">
+  <div class="glow" style="width:520px;height:520px;background:#7dffc4;right:-180px;bottom:-220px;opacity:.5"></div>
+  <div class="pad" style="padding-right:548px">
+    <div class="brand">
+      <div class="tile"><img src="logo-mark.png" alt=""></div>
+      <div><div class="name">WAMACRM</div><div class="tag">WhatsApp Store</div></div>
+    </div>
+    <div class="eyebrow" style="margin-top:70px">📣 Sell while you chat</div>
+    <h2 style="margin-top:24px;font-size:62px">Drop a product <span class="accent">into any conversation.</span></h2>
+    <p class="lead" style="margin-top:24px">Send one item, a collection, or your whole catalog. Customers add to cart right there.</p>
+    <div class="chips" style="margin-top:28px">
+      <div class="chip"><span class="dot">1</span>One product</div>
+      <div class="chip"><span class="dot">30</span>A collection</div>
+      <div class="chip"><span class="dot">∞</span>Full catalog</div>
+    </div>
+    <div class="foot"><div class="cta">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="right:56px;top:128px;height:900px;transform:rotate(-2.5deg)">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b out">Do you have something for a housewarming gift?<span class="t">11:02 <span class="tick">✓✓</span></span></div>
+        <div class="b in">Of course! Here are our favourites 👇<span class="t">11:03</span></div>
+        <div class="b in card">
+          <div class="thumb c">🕯️</div>
+          <div class="meta"><div class="ttl">Soy Candle Gift Set</div><div class="price">₹899 · In stock</div></div>
+          <div class="btn">View item</div>
+        </div>
+        <div class="b in card">
+          <div class="thumb b2">☕</div>
+          <div class="meta"><div class="ttl">Ceramic Mug Pair</div><div class="price">₹649 · In stock</div></div>
+          <div class="btn">View item</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 ── Story (9:16) ─────────────────────────────────────────────────── -->
+<section id="story" class="story bg-brand">
+  <div class="glow" style="width:700px;height:700px;background:#7dffc4;left:-260px;top:-240px;opacity:.5"></div>
+  <div class="glow" style="width:700px;height:700px;background:#9fc3ff;right:-280px;bottom:-200px;opacity:.5"></div>
+  <div class="pad" style="padding:110px 84px 120px">
+    <div class="brand">
+      <div class="tile" style="width:92px;height:92px;border-radius:24px"><img src="logo-mark.png" alt="" style="width:70px"></div>
+      <div><div class="name" style="font-size:42px">WAMACRM</div><div class="tag" style="font-size:19px">WhatsApp Store</div></div>
+    </div>
+    <h1 style="margin-top:70px;font-size:104px">Turn WhatsApp into your <span class="accent">storefront.</span></h1>
+    <p class="lead" style="margin-top:30px;font-size:38px">Browse. Order. Pay. All inside the chat.</p>
+    <div class="foot" style="justify-content:center"><div class="cta" style="font-size:34px;padding:24px 44px">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="left:50%;margin-left:-226px;top:748px;width:452px;height:736px;transform:scale(1.25);transform-origin:top center">
+    <div class="screen">
+      <div class="chat-head"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat" style="gap:11px">
+        <div class="b in card">
+          <div class="thumb a" style="height:118px">🛋️</div>
+          <div class="meta"><div class="ttl">Linen Cushion Cover</div><div class="price">₹499 · In stock</div></div>
+          <div class="btn">View item</div>
+        </div>
+        <div class="b out">
+          <b>🛒 Cart · 3 items</b>
+          <div class="cartline total"><span>Total</span><span>₹1,347</span></div>
+          <span class="t">10:42 <span class="tick">✓✓</span></span>
+        </div>
+        <div class="b in">Thank you! We received your order <b>#ORD-2610-K7M2</b>. How would you like to pay ₹1,347?<span class="t">10:42</span></div>
+        <div class="btns"><div class="btn">Pay online</div><div class="btn">Cash on Delivery</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ── Landscape banner (1200 x 628) ────────────────────────────────── -->
+<section id="banner" class="wide bg-brand">
+  <div class="glow" style="width:520px;height:520px;background:#7dffc4;left:-200px;bottom:-260px;opacity:.5"></div>
+  <div class="pad" style="padding:56px 64px;padding-right:520px">
+    <div class="brand">
+      <div class="tile" style="width:64px;height:64px;border-radius:17px"><img src="logo-mark.png" alt="" style="width:49px"></div>
+      <div><div class="name" style="font-size:29px">WAMACRM</div><div class="tag" style="font-size:13.5px">WhatsApp Store</div></div>
+    </div>
+    <h1 style="margin-top:38px;font-size:66px;letter-spacing:-1.6px">Turn WhatsApp into your <span class="accent">storefront.</span></h1>
+    <p class="lead" style="margin-top:18px;font-size:26px">Customers browse, order and pay without leaving the chat.</p>
+    <div class="foot"><div class="cta" style="font-size:22px;padding:15px 26px">Start selling on WhatsApp →</div></div>
+  </div>
+
+  <div class="phone" style="right:70px;top:54px;width:390px;height:760px;border-radius:48px;transform:rotate(3deg)">
+    <div class="screen" style="border-radius:36px">
+      <div class="chat-head" style="padding-top:34px"><div class="av">A</div><div><div class="who">Aarna Home</div><div class="sub">Business account</div></div></div>
+      <div class="chat">
+        <div class="b out">
+          <b>🛒 Cart · 3 items</b>
+          <div class="cartline total"><span>Total</span><span>₹1,347</span></div>
+          <span class="t">10:42 <span class="tick">✓✓</span></span>
+        </div>
+        <div class="b in">Thank you! We received your order <b>#ORD-2610-K7M2</b>. How would you like to pay ₹1,347?<span class="t">10:42</span></div>
+        <div class="btns"><div class="btn">Pay online</div><div class="btn">Cash on Delivery</div></div>
+        <div class="b out">Pay online<span class="t">10:43 <span class="tick">✓✓</span></span></div>
+        <div class="b in">✅ Payment of <b>₹1,347</b> received. Your order is confirmed.<span class="t">10:45</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

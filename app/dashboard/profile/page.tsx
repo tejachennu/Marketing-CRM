@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { getRoleDisplay } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import {
@@ -50,15 +51,10 @@ function getInitials(name: string | null, email: string): string {
   return (email?.[0] || 'U').toUpperCase()
 }
 
+// Same label and colours as the Team and Super Admin screens (lib/rbac.ts)
 function getRoleBadge(role: string) {
-  const map: Record<string, { bg: string; text: string; darkBg: string; darkText: string }> = {
-    owner: { bg: 'bg-emerald-100', text: 'text-emerald-700', darkBg: 'dark:bg-emerald-900/40', darkText: 'dark:text-emerald-300' },
-    admin: { bg: 'bg-blue-100', text: 'text-blue-700', darkBg: 'dark:bg-blue-900/40', darkText: 'dark:text-blue-300' },
-    agent: { bg: 'bg-slate-100', text: 'text-slate-700', darkBg: 'dark:bg-slate-800/60', darkText: 'dark:text-slate-300' },
-    viewer: { bg: 'bg-amber-100', text: 'text-amber-700', darkBg: 'dark:bg-amber-900/40', darkText: 'dark:text-amber-300' },
-  }
-  const style = map[role] || map.agent
-  return style
+  const display = getRoleDisplay(role)
+  return { label: display.label, className: `${display.bg} ${display.color} border ${display.border}` }
 }
 
 function getPasswordStrength(password: string): { label: string; color: string; barColor: string; percent: number } {
@@ -137,7 +133,7 @@ export default function ProfilePage() {
           id: userId,
           email: userEmail,
           full_name: profileData.full_name,
-          role: profileData.role || 'agent',
+          role: profileData.role || 'sales_employee',
           organization_id: profileData.organization_id,
           created_at: profileData.created_at,
         }
@@ -330,9 +326,9 @@ export default function ProfilePage() {
               </div>
 
               <div className="flex items-center gap-3 pt-2 flex-wrap">
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${roleBadge.bg} ${roleBadge.text} ${roleBadge.darkBg} ${roleBadge.darkText}`}>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${roleBadge.className}`}>
                   <Shield size={11} />
-                  {profile.role}
+                  {roleBadge.label}
                 </span>
 
                 <span className="inline-flex items-center gap-1 text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold">
@@ -567,9 +563,9 @@ export default function ProfilePage() {
               {/* Your Role */}
               <div className="flex items-center justify-between py-2.5 border-b border-[#e9edef] dark:border-[#202d36] last:border-b-0">
                 <span className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">Your Role</span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold capitalize ${roleBadge.bg} ${roleBadge.text} ${roleBadge.darkBg} ${roleBadge.darkText}`}>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${roleBadge.className}`}>
                   <Shield size={10} />
-                  {profile.role}
+                  {roleBadge.label}
                 </span>
               </div>
 

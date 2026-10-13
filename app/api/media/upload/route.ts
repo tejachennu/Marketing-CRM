@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { requireUser } from '@/lib/api-auth-helper'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -16,9 +16,9 @@ function getSupabaseClient() {
 export async function POST(request: NextRequest) {
   try {
     // Uploads land in a public bucket via the service role, so require a signed-in user
-    const user = await getAuthenticatedUser(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized: No active session found' }, { status: 401 })
+    const authResult = await requireUser(request, { permission: 'records.write' })
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const formData = await request.formData()

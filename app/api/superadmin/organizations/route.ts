@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
 
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/
+
 export async function GET(request: NextRequest) {
   const isSuperAdmin = await checkSuperAdmin(request)
   if (!isSuperAdmin) {
@@ -32,10 +34,15 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseAdminClient()
     const body = await request.json()
-    const { name, slug } = body
+    const name = String(body?.name || '').trim()
+    const slug = String(body?.slug || '').trim().toLowerCase()
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Name and Slug are required' }, { status: 400 })
+    }
+    // The slug is part of the organization's webhook URLs
+    if (!SLUG_PATTERN.test(slug)) {
+      return NextResponse.json({ error: 'Slug may only contain lowercase letters, numbers and hyphens' }, { status: 400 })
     }
 
     // Verify slug uniqueness

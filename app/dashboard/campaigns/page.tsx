@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { 
   Megaphone, 
@@ -57,6 +57,8 @@ import { useRouter } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { authSessionManager } from '@/lib/auth-context'
+import { AudiencePicker, type PastCampaign } from '@/components/campaigns/audience-picker'
+import { buildRecipientList, summarizeSelection, type RecipientList } from '@/lib/campaigns/audience'
 
 interface Campaign {
   id: string
@@ -67,6 +69,8 @@ interface Campaign {
   total_contacts: number
   sent_count: number
   failed_count: number
+  delivered_count?: number
+  read_count?: number
   active_chats_count?: number
   unread_chats_count?: number
   reply_rate?: number
@@ -75,6 +79,19 @@ interface Campaign {
   channel?: string
   sender?: string
   subject?: string
+}
+
+/** Totals for every campaign of the organization, whatever page or filter the list is on. */
+interface CampaignSummary {
+  total: number
+  scheduled: number
+  sending: number
+  completed: number
+  failed: number
+  stopped: number
+  recipients: number
+  sent: number
+  failedMessages: number
 }
 
 interface CampaignLog {
@@ -129,11 +146,12 @@ export default function CampaignsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
+  // Escape closes the wizard, after asking when there is work to lose (see requestCloseWizard)
+  const requestCloseWizardRef = useRef<() => void>(() => {})
   useEffect(() => {
+    if (!isCreateOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isCreateOpen) {
-        setIsCreateOpen(false)
-      }
+      if (e.key === 'Escape') requestCloseWizardRef.current()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -169,8 +187,8 @@ export default function CampaignsPage() {
   const [excelFile, setExcelFile] = useState<File | null>(null)
   const [excelData, setExcelData] = useState<any[]>([])
   const [excelHeaders, setExcelHeaders] = useState<string[]>([])
+  // Nobody is selected until the user ticks contacts: a bulk message should never default to "everyone"
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([])
-  const [contactSearchTerm, setContactSearchTerm] = useState('')
   
   // Mapping state: maps template placeholders "1", "2" to column names / attributes
   const [phoneColumn, setPhoneColumn] = useState('')
@@ -189,28 +207,24 @@ export default function CampaignsPage() {
   const [scheduledDateIST, setScheduledDateIST] = useState<string>('')
   const [scheduledTimeIST, setScheduledTimeIST] = useState<string>('')
 
-  // Tag filter & selection in Step 2 (supporting multi-tag and backwards compatibility)
-  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null)
-  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
-  const [tagFilterMode, setTagFilterMode] = useState<'any' | 'all'>('any')
-
-  // Multi-Filter states: Name, Phone/Contact, Past Campaigns
-  const [nameSearchQuery, setNameSearchQuery] = useState('')
-  const [phoneSearchQuery, setPhoneSearchQuery] = useState('')
-  const [selectedCampaignFilters, setSelectedCampaignFilters] = useState<string[]>([])
-  const [allCampaignsList, setAllCampaignsList] = useState<Campaign[]>([])
+  // Step 2, CRM audience: the past campaigns offered as a filter and who each of them was sent to.
+  // The filters themselves live in <AudiencePicker>.
+  const [allCampaignsList, setAllCampaignsList] = useState<PastCampaign[]>([])
   const [isLoadingAllCampaigns, setIsLoadingAllCampaigns] = useState(false)
-  const [campaignParticipantsMap, setCampaignParticipantsMap] = useState<Record<string, string[]>>({})
-  const [isLoadingParticipants, setIsLoadingParticipants] = useState(false)
+  const [campaignParticipantsMap, setCampaignParticipantsMap] = useState<Record<string, string[] | undefined>>({})
+  const [participantsError, setParticipantsError] = useState<string | null>(null)
+  const participantsInFlightRef = useRef<Set<string>>(new Set())
+  const [contactsError, setContactsError] = useState<string | null>(null)
 
-  // Popover / Dropdown toggles & searches
-  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false)
-  const [tagSearchQuery, setTagSearchQuery] = useState('')
-  const [isCampaignDropdownOpen, setIsCampaignDropdownOpen] = useState(false)
-  const [campaignSearchQuery, setCampaignSearchQuery] = useState('')
-  const tagDropdownRef = useRef<HTMLDivElement>(null)
-  const campaignDropdownRef = useRef<HTMLDivElement>(null)
-  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null)
+  // Campaign list: totals for the whole organization, and the search as last sent to the server
+  const [summary, setSummary] = useState<CampaignSummary | null>(null)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [listError, setListError] = useState<string | null>(null)
+  const listRequestRef = useRef(0)
+
+  // A campaign that was created but whose sending could not be started. Pressing Launch again
+  // starts that one instead of creating a second copy.
+  const createdCampaignIdRef = useRef<string | null>(null)
 
   // New multi-channel states
   const [features, setFeatures] = useState({
@@ -234,6 +248,27 @@ export default function CampaignsPage() {
   const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual')
   const [detailsPreviewMode, setDetailsPreviewMode] = useState<'preview' | 'raw'>('preview')
   const visualEditorRef = useRef<HTMLDivElement>(null)
+
+  // Remounting the picker clears its filters when a new campaign is started
+  const [audiencePickerKey, setAudiencePickerKey] = useState(0)
+
+  // How many messages the ticked CRM contacts turn into (missing and repeated numbers removed)
+  const crmSelection = useMemo(
+    () => summarizeSelection(contacts, new Set(selectedContactIds), new Set<string>(), channel),
+    [contacts, selectedContactIds, channel]
+  )
+
+  // The first ticked contact, used to preview the message with real values
+  const crmSampleContact = useMemo(() => {
+    const ticked = new Set(selectedContactIds)
+    return contacts.find((c) => ticked.has(c.id)) || null
+  }, [contacts, selectedContactIds])
+
+  // The uploaded sheet checked against the chosen phone / email column
+  const sheetCheck = useMemo<RecipientList | null>(() => {
+    if (excelData.length === 0 || !phoneColumn) return null
+    return buildRecipientList(excelData.map((row) => ({ address: row[phoneColumn], variables: {} })), channel)
+  }, [excelData, phoneColumn, channel])
 
   // Sync state to visual editor element
   useEffect(() => {
@@ -315,7 +350,6 @@ export default function CampaignsPage() {
             const orgId = userData.organization_id
             fetchCampaigns(1, true, orgId)
             fetchTemplates(orgId)
-            fetchContacts(orgId)
             fetchSenders(orgId)
           }
         }
@@ -404,25 +438,69 @@ export default function CampaignsPage() {
     return () => clearInterval(interval)
   }, [campaigns, selectedCampaign, currentPage])
 
+  // The search and filters are applied by the server across every campaign, not to the ten on screen.
+  // They are read from a ref so the poller and the action handlers always ask for the current view.
+  const listQueryRef = useRef({ search: '', channel: 'all', status: 'all' })
+  listQueryRef.current = { search: debouncedSearch, channel: filterChannel, status: filterStatus }
+
   const fetchCampaigns = async (pageVal: number = 1, showLoader = true, orgIdOverride?: string) => {
     const orgId = orgIdOverride || user?.organization_id
     if (!orgId) return
     if (showLoader) setIsLoading(true)
+
+    const requestId = ++listRequestRef.current
+    const { search, channel: channelFilter, status: statusFilter } = listQueryRef.current
+    const params = new URLSearchParams({ page: String(pageVal), limit: '10', organizationId: orgId })
+    if (search.trim()) params.set('search', search.trim())
+    if (channelFilter !== 'all') params.set('channel', channelFilter)
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+
     try {
-      const res = await fetch(`/api/campaigns?page=${pageVal}&limit=10&organizationId=${orgId}`)
+      const res = await fetch(`/api/campaigns?${params.toString()}`)
       const data = await res.json()
-      if (data.success) {
-        setCampaigns(data.campaigns)
-        setCurrentPage(data.pagination.page)
-        setTotalPages(data.pagination.pages)
-        setTotalCampaignsCount(data.pagination.total)
+      // A newer request (a later keystroke, another page) has been sent: this answer is out of date
+      if (requestId !== listRequestRef.current) return
+      if (!res.ok || !data.success) throw new Error(data.error || 'Campaigns could not be loaded.')
+
+      setCampaigns(data.campaigns)
+      setCurrentPage(data.pagination.page)
+      setTotalPages(data.pagination.pages)
+      setTotalCampaignsCount(data.pagination.total)
+      if (data.summary) setSummary(data.summary)
+      setListError(null)
+
+      // The last campaign of the last page was removed or no longer matches: step back a page
+      if (data.campaigns.length === 0 && data.pagination.total > 0 && pageVal > 1) {
+        fetchCampaigns(Math.min(pageVal - 1, data.pagination.pages), showLoader, orgId)
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (requestId !== listRequestRef.current) return
       console.error('Error fetching campaigns:', err)
+      // A background refresh that fails keeps the list on screen; only a visible load reports it
+      if (showLoader) setListError(err.message || 'Campaigns could not be loaded.')
     } finally {
-      setIsLoading(false)
+      if (requestId === listRequestRef.current) setIsLoading(false)
     }
   }
+
+  // Search as you type, without a request per keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
+  // A changed search or filter starts again from the first page
+  const listFiltersInitialised = useRef(false)
+  useEffect(() => {
+    if (!user?.organization_id) return
+    // The first run is the initial load, which loadFeaturesAndData has already started
+    if (!listFiltersInitialised.current) {
+      listFiltersInitialised.current = true
+      return
+    }
+    fetchCampaigns(1, true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, filterChannel, filterStatus, user?.organization_id])
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
@@ -470,49 +548,7 @@ export default function CampaignsPage() {
     return { dateStr, timeStr }
   }
 
-  // Extract unique tags and their frequencies from CRM contacts
-  const uniqueContactTags = useMemo(() => {
-    const tagCountMap: Record<string, number> = {}
-    contacts.forEach(c => {
-      if (Array.isArray(c.tags)) {
-        c.tags.forEach(t => {
-          if (t && typeof t === 'string' && t.trim()) {
-            const tag = t.trim()
-            tagCountMap[tag] = (tagCountMap[tag] || 0) + 1
-          }
-        })
-      }
-    })
-    return Object.entries(tagCountMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([tag, count]) => ({ tag, count }))
-  }, [contacts])
-
-  // Tag selection helpers
-  const handleSelectByTag = (tag: string) => {
-    const matchingContactIds = contacts
-      .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
-      .map(c => c.id)
-    setSelectedContactIds(prev => Array.from(new Set([...prev, ...matchingContactIds])))
-  }
-
-  const handleDeselectByTag = (tag: string) => {
-    const matchingSet = new Set(
-      contacts
-        .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
-        .map(c => c.id)
-    )
-    setSelectedContactIds(prev => prev.filter(id => !matchingSet.has(id)))
-  }
-
-  const handleSelectOnlyTag = (tag: string) => {
-    const matchingContactIds = contacts
-      .filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
-      .map(c => c.id)
-    setSelectedContactIds(matchingContactIds)
-  }
-
-  // Fetch all past campaigns for the filter selector
+  // Past campaigns offered as an audience filter (names only; their recipients load when one is chosen)
   const fetchAllCampaigns = async () => {
     const orgId = user?.organization_id
     if (!orgId) return
@@ -530,153 +566,34 @@ export default function CampaignsPage() {
     }
   }
 
-  // Fetch campaign participants when selectedCampaignFilters changes
-  useEffect(() => {
-    if (selectedCampaignFilters.length === 0) return
-    const missing = selectedCampaignFilters.filter(id => !campaignParticipantsMap[id])
-    if (missing.length === 0) return
+  // Load who the given past campaigns were sent to. Each campaign is requested once.
+  const organizationIdForAudience = user?.organization_id
+  const requestParticipants = useCallback((campaignIds: string[]) => {
+    if (!organizationIdForAudience) return
+    const wanted = campaignIds.filter((id) => !participantsInFlightRef.current.has(id))
+    if (wanted.length === 0) return
+    wanted.forEach((id) => participantsInFlightRef.current.add(id))
+    setParticipantsError(null)
 
-    const orgId = user?.organization_id
-    if (!orgId) return
-
-    setIsLoadingParticipants(true)
-    fetch(`/api/campaigns/participants?campaignIds=${missing.join(',')}&organizationId=${orgId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.participantsByCampaign) {
-          setCampaignParticipantsMap(prev => ({
-            ...prev,
-            ...data.participantsByCampaign
-          }))
-        }
+    fetch(`/api/campaigns/participants?campaignIds=${wanted.join(',')}&organizationId=${organizationIdForAudience}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.success) throw new Error(data.error || 'The recipients of the chosen campaigns could not be loaded.')
+        const loaded: Record<string, string[]> = data.participantsByCampaign || {}
+        setCampaignParticipantsMap((prev) => {
+          const next = { ...prev }
+          // Every requested campaign is marked as loaded, including one with no recipients
+          for (const id of wanted) next[id] = loaded[id] || []
+          return next
+        })
       })
-      .catch(err => console.error('Error fetching campaign participants:', err))
-      .finally(() => setIsLoadingParticipants(false))
-  }, [selectedCampaignFilters, user?.organization_id])
-
-  // Close filter dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
-        setIsTagDropdownOpen(false)
-      }
-      if (campaignDropdownRef.current && !campaignDropdownRef.current.contains(e.target as Node)) {
-        setIsCampaignDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  // Filter toggles
-  const toggleTagFilter = (tag: string) => {
-    setSelectedTagFilters(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    )
-  }
-
-  const toggleCampaignFilter = (campaignId: string) => {
-    setSelectedCampaignFilters(prev =>
-      prev.includes(campaignId) ? prev.filter(id => id !== campaignId) : [...prev, campaignId]
-    )
-  }
-
-  // Normalized participants Set for all selected past campaigns
-  const selectedCampaignParticipants = useMemo(() => {
-    const set = new Set<string>()
-    for (const campId of selectedCampaignFilters) {
-      const list = campaignParticipantsMap[campId]
-      if (list) {
-        for (const val of list) {
-          if (!val) continue
-          const digits = val.replace(/[^\d]/g, '')
-          if (digits) set.add(digits)
-          set.add(val.toLowerCase().trim())
-        }
-      }
-    }
-    return set
-  }, [selectedCampaignFilters, campaignParticipantsMap])
-
-  // Combined Multi-Filter: Name, Phone/Conta
-  // ct, Multiple Tags, Multiple Past Campaigns
-  const filteredContacts = useMemo(() => {
-    return contacts.filter(c => {
-      // 1. Dedicated Name search
-      if (nameSearchQuery.trim()) {
-        const q = nameSearchQuery.toLowerCase().trim()
-        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase()
-        if (!fullName.includes(q)) return false
-      }
-
-      // 2. Dedicated Phone / Contact search
-      if (phoneSearchQuery.trim()) {
-        const q = phoneSearchQuery.toLowerCase().trim()
-        const qDigits = q.replace(/[^\d]/g, '')
-        const phoneDigits = (c.phone_number || '').replace(/[^\d]/g, '')
-        const email = (c.email || '').toLowerCase()
-        const matchesPhone = qDigits ? phoneDigits.includes(qDigits) : (c.phone_number || '').toLowerCase().includes(q)
-        const matchesEmail = email.includes(q)
-        if (!matchesPhone && !matchesEmail) return false
-      }
-
-      // 3. Multi-tag selection with ANY / ALL toggle
-      if (selectedTagFilters.length > 0) {
-        const cTags = Array.isArray(c.tags) ? c.tags : []
-        if (tagFilterMode === 'all') {
-          const hasAll = selectedTagFilters.every(t => cTags.includes(t))
-          if (!hasAll) return false
-        } else {
-          const hasAny = selectedTagFilters.some(t => cTags.includes(t))
-          if (!hasAny) return false
-        }
-      }
-
-      // Backwards compatibility for single tag filter if set
-      if (selectedTagFilter) {
-        const cTags = Array.isArray(c.tags) ? c.tags : []
-        if (!cTags.includes(selectedTagFilter)) return false
-      }
-
-      // 4. Past campaigns multi-selection
-      if (selectedCampaignFilters.length > 0) {
-        const phoneDigits = (c.phone_number || '').replace(/[^\d]/g, '')
-        const email = (c.email || '').toLowerCase().trim()
-        const matched = selectedCampaignParticipants.has(phoneDigits) || (email && selectedCampaignParticipants.has(email))
-        if (!matched) return false
-      }
-
-      return true
-    })
-  }, [contacts, nameSearchQuery, phoneSearchQuery, selectedTagFilters, selectedTagFilter, tagFilterMode, selectedCampaignFilters, selectedCampaignParticipants])
-
-  // Batch selection actions for audience
-  const handleSelectAllFiltered = () => {
-    const filteredIds = filteredContacts.map(c => c.id)
-    setSelectedContactIds(prev => Array.from(new Set([...prev, ...filteredIds])))
-  }
-
-  const handleDeselectFiltered = () => {
-    const filteredIdSet = new Set(filteredContacts.map(c => c.id))
-    setSelectedContactIds(prev => prev.filter(id => !filteredIdSet.has(id)))
-  }
-
-  const handleClearAllFilters = () => {
-    setNameSearchQuery('')
-    setPhoneSearchQuery('')
-    setSelectedTagFilters([])
-    setSelectedTagFilter(null)
-    setSelectedCampaignFilters([])
-    setTagSearchQuery('')
-    setCampaignSearchQuery('')
-  }
-
-  const handleCopyPhone = (id: string, phone: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    navigator.clipboard.writeText(phone)
-    setCopiedPhoneId(id)
-    setTimeout(() => setCopiedPhoneId(null), 1500)
-  }
+      .catch((err) => {
+        console.error('Error fetching campaign participants:', err)
+        // Left unloaded on purpose: a filter must not quietly behave as if nobody received the campaign
+        setParticipantsError(err.message || 'The recipients of the chosen campaigns could not be loaded.')
+      })
+      .finally(() => wanted.forEach((id) => participantsInFlightRef.current.delete(id)))
+  }, [organizationIdForAudience])
 
   // Scheduled Campaign Actions
   const handleSendNowScheduled = async (campaignId: string) => {
@@ -746,6 +663,13 @@ export default function CampaignsPage() {
   }, [currentPage])
 
   const handleStopCampaign = async (campaignId: string) => {
+    if (!(await confirm({
+      title: 'Stop this campaign?',
+      message: 'Messages already sent stay sent. The contacts not reached yet will not get it; you can send to them later with Rerun.',
+      confirmLabel: 'Stop sending',
+      cancelLabel: 'Keep sending',
+      destructive: true,
+    }))) return
     setActionLoadingId(campaignId)
     try {
       const res = await fetch('/api/campaigns/stop', {
@@ -762,14 +686,32 @@ export default function CampaignsPage() {
       } else {
         alert({ title: 'Campaign not stopped', message: data.error || 'Failed to stop campaign' })
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error stopping campaign:', err)
+      alert({ title: 'Campaign not stopped', message: err.message || 'The campaign could not be stopped. Check your connection and try again.' })
     } finally {
       setActionLoadingId(null)
     }
   }
 
   const handleRerunCampaign = async (campaignId: string, rerunType: 'failed_only' | 'all' = 'failed_only') => {
+    const target = campaigns.find((c) => c.id === campaignId) || (selectedCampaign?.id === campaignId ? selectedCampaign : null)
+    const pending = target ? Math.max(0, target.total_contacts - target.sent_count) : 0
+    if (!(await confirm(rerunType === 'all'
+      ? {
+          title: 'Send this campaign to everyone again?',
+          message: `All ${target?.total_contacts ?? ''} recipients get the message again, including those who already received it.`.replace('  ', ' '),
+          confirmLabel: 'Send to everyone again',
+          destructive: true,
+        }
+      : {
+          title: 'Send to the contacts who did not get it?',
+          message: pending > 0
+            ? `${pending} ${pending === 1 ? 'contact' : 'contacts'} failed or were not reached. They will be sent the message now. Contacts who already received it are not messaged again.`
+            : 'Contacts whose message failed or was not sent will be tried again. Contacts who already received it are not messaged again.',
+          confirmLabel: 'Send now',
+        }
+    ))) return
     setActionLoadingId(campaignId)
     try {
       const res = await fetch('/api/campaigns/rerun', {
@@ -786,8 +728,9 @@ export default function CampaignsPage() {
       } else {
         alert({ title: 'Campaign not restarted', message: data.error || 'Failed to rerun campaign' })
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error rerunning campaign:', err)
+      alert({ title: 'Campaign not restarted', message: err.message || 'The campaign could not be restarted. Check your connection and try again.' })
     } finally {
       setActionLoadingId(null)
     }
@@ -848,20 +791,24 @@ export default function CampaignsPage() {
     }
   }
 
+  // The CRM contacts for the audience step. Only the columns the picker shows are downloaded.
   const fetchContacts = async (orgIdOverride?: string) => {
     const orgId = orgIdOverride || user?.organization_id
     if (!orgId) return
     setIsLoadingContacts(true)
+    setContactsError(null)
     try {
-      const res = await fetch(`/api/contacts?all=true&organizationId=${orgId}`)
+      const res = await fetch(`/api/contacts?all=true&fields=basic&organizationId=${orgId}`)
       const data = await res.json()
-      if (data.success) {
-        const loadedContacts = data.contacts || []
-        setContacts(loadedContacts)
-        setSelectedContactIds(loadedContacts.map((c: any) => c.id))
-      }
-    } catch (err) {
+      if (!res.ok || !data.success) throw new Error(data.error || 'Contacts could not be loaded.')
+      const loadedContacts: Contact[] = data.contacts || []
+      setContacts(loadedContacts)
+      // Keep whatever was ticked; only drop ids of contacts that no longer exist
+      const known = new Set(loadedContacts.map((c) => c.id))
+      setSelectedContactIds((prev) => prev.filter((id) => known.has(id)))
+    } catch (err: any) {
       console.error('Error fetching contacts:', err)
+      setContactsError(err.message || 'Contacts could not be loaded.')
     } finally {
       setIsLoadingContacts(false)
     }
@@ -1093,17 +1040,12 @@ export default function CampaignsPage() {
     setContactLastNameColumn('')
     setContactTagColumn('')
     setCustomCampaignTag('')
-    setSelectedContactIds(contacts.map(c => c.id))
-    setContactSearchTerm('')
-    setNameSearchQuery('')
-    setPhoneSearchQuery('')
-    setSelectedTagFilters([])
-    setTagFilterMode('any')
-    setSelectedCampaignFilters([])
-    setTagSearchQuery('')
-    setCampaignSearchQuery('')
+    setSelectedContactIds([])
     setVariableMappings({})
+    setVariableMappingTypes({})
+    setStaticVariableValues({})
     setErrorMsg('')
+    createdCampaignIdRef.current = null
     setChannel('whatsapp')
     setSender('')
     setSubject('')
@@ -1113,7 +1055,7 @@ export default function CampaignsPage() {
     setDispatchTiming('immediate')
     setScheduledDateIST('')
     setScheduledTimeIST('')
-    setSelectedTagFilter(null)
+    setAudiencePickerKey((key) => key + 1)
   }
 
   const startNewCampaign = () => {
@@ -1122,6 +1064,21 @@ export default function CampaignsPage() {
     fetchAllCampaigns()
     fetchContacts()
   }
+
+  /** Close the wizard. Asks first when the user has already put work into it. */
+  const requestCloseWizard = async () => {
+    if (isSubmitting) return
+    const hasWork = Boolean(newCampaignName.trim() || selectedTemplate || customMessageBody.trim() || excelData.length > 0 || selectedContactIds.length > 0)
+    if (hasWork && !(await confirm({
+      title: 'Discard this campaign?',
+      message: 'The name, message and audience you have set up will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      destructive: true,
+    }))) return
+    setIsCreateOpen(false)
+  }
+  requestCloseWizardRef.current = requestCloseWizard
 
   const handleNextStep = () => {
     if (wizardStep === 1) {
@@ -1157,13 +1114,29 @@ export default function CampaignsPage() {
           setErrorMsg(channel === 'email' ? 'Please select the column mapping to the recipient email address.' : 'Please select the column mapping to the recipient phone number.')
           return
         }
+        if (sheetCheck && sheetCheck.recipients.length === 0) {
+          setErrorMsg(channel === 'email'
+            ? `No valid email addresses were found in the "${phoneColumn}" column. Choose a different column.`
+            : `No valid phone numbers were found in the "${phoneColumn}" column. Choose a different column.`)
+          return
+        }
       } else {
+        if (isLoadingContacts) {
+          setErrorMsg('Your contacts are still loading. Try again in a moment.')
+          return
+        }
         if (contacts.length === 0) {
           setErrorMsg('No contacts found in database. Create contacts first or upload Excel.')
           return
         }
         if (selectedContactIds.length === 0) {
-          setErrorMsg('Please select at least one contact to message.')
+          setErrorMsg('Tick at least one contact to send this campaign to.')
+          return
+        }
+        if (crmSelection.recipients === 0) {
+          setErrorMsg(channel === 'email'
+            ? 'None of the ticked contacts has a valid email address.'
+            : 'None of the ticked contacts has a valid phone number.')
           return
         }
       }
@@ -1227,14 +1200,15 @@ export default function CampaignsPage() {
     setWizardStep(prev => prev - 1)
   }
 
-  // Prepares audience array using mapping choices
-  const compileAudience = () => {
+  // The list that is sent: one entry per valid, distinct phone number or email.
+  // `invalid` and `duplicates` say how many rows were left out and why.
+  const compileAudience = (): RecipientList => {
     const variablesToMap = channel === 'whatsapp'
       ? (selectedTemplate?.variables || [])
       : customVariables;
 
     if (audienceSource === 'excel') {
-      return excelData.map(row => {
+      const rows = excelData.map(row => {
         const variables: Record<string, string> = {}
         variablesToMap.forEach(tplVar => {
           const type = variableMappingTypes[tplVar] || 'dynamic'
@@ -1242,7 +1216,7 @@ export default function CampaignsPage() {
             variables[tplVar] = staticVariableValues[tplVar] || ''
           } else {
             const colName = variableMappings[tplVar]
-            variables[tplVar] = String(row[colName] || '')
+            variables[tplVar] = String(row[colName] ?? '')
           }
         })
         // Attach contact name, last name, and tags so CRM contacts save accurately
@@ -1262,79 +1236,57 @@ export default function CampaignsPage() {
           variables['tags'] = customCampaignTag.trim()
         }
 
-        if (channel === 'email') {
-          return {
-            email: String(row[phoneColumn] || '').trim(),
-            variables
-          }
-        } else {
-          let rawPhone = String(row[phoneColumn] || '').replace(/[^\d+]/g, '')
-          if (rawPhone.startsWith('+')) rawPhone = rawPhone.slice(1)
-          if (rawPhone.length === 10 && /^[6-9]/.test(rawPhone)) {
-            rawPhone = `91${rawPhone}`
-          }
-          return {
-            phone: `+${rawPhone}`,
-            variables
-          }
-        }
-      }).filter(item => channel === 'email' ? (item.email && item.email.includes('@')) : (item.phone && item.phone.length > 5))
-    } else {
-      // Database contacts mapping
-      const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id))
-      return selectedContacts.map(c => {
-        const variables: Record<string, string> = {}
-        variablesToMap.forEach(tplVar => {
-          const type = variableMappingTypes[tplVar] || 'dynamic'
-          if (type === 'static') {
-            variables[tplVar] = staticVariableValues[tplVar] || ''
-          } else {
-            const attr = variableMappings[tplVar]
-            const key = attr as keyof Contact
-            variables[tplVar] = String(c[key] || '')
-          }
-        })
-
-        // Ensure default variables are always populated from contact fields if not explicitly mapped
-        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.first_name || 'Valued Customer'
-        if (variablesToMap.includes('1') && !variables['1']) variables['1'] = c.first_name || fullName
-        if (!variables['name']) variables['name'] = c.first_name || fullName
-        if (!variables['first_name']) variables['first_name'] = c.first_name || fullName
-        if (!variables['contact_name']) variables['contact_name'] = fullName
-        if (!variables['2'] && c.last_name) variables['2'] = c.last_name
-        if (!variables['last_name'] && c.last_name) variables['last_name'] = c.last_name
-        if (c.company && !variables['company']) variables['company'] = c.company
-        if (Array.isArray(c.tags) && c.tags.length > 0 && !variables['tag']) variables['tag'] = c.tags.join(', ')
-
-        if (channel === 'email') {
-          return {
-            email: c.email || '',
-            variables
-          }
-        } else {
-          let rawPhone = String(c.phone_number || '').replace(/[^\d+]/g, '')
-          if (rawPhone.startsWith('+')) rawPhone = rawPhone.slice(1)
-          if (rawPhone.length === 10 && /^[6-9]/.test(rawPhone)) {
-            rawPhone = `91${rawPhone}`
-          }
-          return {
-            phone: `+${rawPhone}`,
-            variables
-          }
-        }
-      }).filter(item => channel === 'email' ? (item.email && item.email.includes('@')) : (item.phone && item.phone.length > 5))
+        return { address: row[phoneColumn], variables }
+      })
+      return buildRecipientList(rows, channel)
     }
+
+    // Database contacts mapping
+    const selectedIdSet = new Set(selectedContactIds)
+    const rows = contacts.filter(c => selectedIdSet.has(c.id)).map(c => {
+      const variables: Record<string, string> = {}
+      variablesToMap.forEach(tplVar => {
+        const type = variableMappingTypes[tplVar] || 'dynamic'
+        if (type === 'static') {
+          variables[tplVar] = staticVariableValues[tplVar] || ''
+        } else {
+          const attr = variableMappings[tplVar]
+          const key = attr as keyof Contact
+          variables[tplVar] = String(c[key] || '')
+        }
+      })
+
+      // Ensure default variables are always populated from contact fields if not explicitly mapped
+      const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.first_name || 'Valued Customer'
+      if (variablesToMap.includes('1') && !variables['1']) variables['1'] = c.first_name || fullName
+      if (!variables['name']) variables['name'] = c.first_name || fullName
+      if (!variables['first_name']) variables['first_name'] = c.first_name || fullName
+      if (!variables['contact_name']) variables['contact_name'] = fullName
+      if (!variables['2'] && c.last_name) variables['2'] = c.last_name
+      if (!variables['last_name'] && c.last_name) variables['last_name'] = c.last_name
+      if (c.company && !variables['company']) variables['company'] = c.company
+      if (Array.isArray(c.tags) && c.tags.length > 0 && !variables['tag']) variables['tag'] = c.tags.join(', ')
+
+      return { address: channel === 'email' ? c.email : c.phone_number, variables }
+    })
+    return buildRecipientList(rows, channel)
   }
+
+  // What the review step shows: the real number of messages, not the number of rows or ticks
+  const reviewAudience = wizardStep === 4 ? compileAudience() : null
+  const reviewRecipientCount = reviewAudience ? reviewAudience.recipients.length : 0
 
   const handleLaunchCampaign = async () => {
     setIsSubmitting(true)
     setErrorMsg('')
     
     try {
-      const audienceList = compileAudience()
-      
+      const audienceList = compileAudience().recipients
+
       if (audienceList.length === 0) {
-        setErrorMsg('The derived audience list is empty. Verify recipient mappings.')
+        setErrorMsg(channel === 'email'
+          ? 'There is nobody to send to: no selected recipient has a valid email address.'
+          : 'There is nobody to send to: no selected recipient has a valid phone number.')
         setIsSubmitting(false)
         return
       }
@@ -1356,7 +1308,7 @@ export default function CampaignsPage() {
         }
 
         const now = Date.now()
-        if (parsedScheduledIST.getTime() <= now + 60 * 1000) {
+        if (parsedScheduledIST.getTime() <= now + 2 * 60 * 1000) {
           setErrorMsg('Scheduled time in IST must be in the future (at least 2 minutes from now).')
           setIsSubmitting(false)
           return
@@ -1365,7 +1317,9 @@ export default function CampaignsPage() {
         scheduledIso = parsedScheduledIST.toISOString()
       }
 
-      // 1. Create campaign in DB
+      // 1. Create the campaign, unless an earlier attempt already did and only failed to start it
+      let campaignId = createdCampaignIdRef.current
+      if (!campaignId) {
       const effectiveTemplateBody = customMessageBody || selectedTemplate?.body || (channel === 'whatsapp' ? (selectedTemplate?.whatsapp_template_name || selectedTemplate?.name || 'custom_message') : 'Campaign Message')
       const createRes = await fetch('/api/campaigns', {
         method: 'POST',
@@ -1391,7 +1345,9 @@ export default function CampaignsPage() {
         throw new Error(createData.error || 'Failed to create campaign record.')
       }
 
-      const campaignId = createData.campaign.id
+      campaignId = createData.campaign.id as string
+      createdCampaignIdRef.current = campaignId
+      }
 
       // 2. Trigger asynchronous background run API ONLY if immediate dispatch
       if (dispatchTiming === 'immediate') {
@@ -1404,10 +1360,11 @@ export default function CampaignsPage() {
         const runData = await runRes.json()
         if (!runRes.ok || !runData.success) {
           console.error('Trigger running error, but campaign record was created:', runData)
-          throw new Error(runData.error || 'Campaign was created, but failed to start worker. Retry from the campaigns table.')
+          throw new Error(`${runData.error || 'The campaign was saved but sending could not be started.'} Press Launch again to start it; a second campaign will not be created.`)
         }
       }
 
+      createdCampaignIdRef.current = null
       setIsCreateOpen(false)
       fetchCampaigns(1, true)
     } catch (err: any) {
@@ -1439,8 +1396,9 @@ export default function CampaignsPage() {
         }
         preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(val))
       })
-    } else if (audienceSource === 'db' && selectedContactIds.length > 0) {
-      const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id))
+    } else if (audienceSource === 'db' && crmSampleContact) {
+      // The first ticked contact is the sample
+      const sampleContact = crmSampleContact
       Object.keys(variableMappingTypes).forEach(tplVar => {
         const type = variableMappingTypes[tplVar]
         let val = ''
@@ -1448,7 +1406,7 @@ export default function CampaignsPage() {
           val = staticVariableValues[tplVar] || ''
         } else {
           const attr = variableMappings[tplVar]
-          const rawVal = selectedContacts[0][attr as keyof Contact]
+          const rawVal = sampleContact[attr as keyof Contact]
           val = Array.isArray(rawVal) ? rawVal.join(', ') : (String(rawVal || '') || `[${attr}]`)
         }
         preview = preview.replace(new RegExp(`\\{\\{${tplVar}\\}\\}`, 'g'), String(val))
@@ -1464,149 +1422,155 @@ export default function CampaignsPage() {
     return preview
   }
 
-  // Stats
-  const totalCampaigns = campaigns.length
-  const totalSent = campaigns.reduce((acc, c) => acc + c.sent_count, 0)
-  const totalFailed = campaigns.reduce((acc, c) => acc + c.failed_count, 0)
-  const totalContacts = campaigns.reduce((acc, c) => acc + c.total_contacts, 0)
+  // Totals cover every campaign of the organization (from the server), not just the page on screen
+  const totalSent = summary?.sent ?? 0
+  const totalFailed = summary?.failedMessages ?? 0
+  const totalRecipients = summary?.recipients ?? 0
   const successRate = totalSent + totalFailed > 0 ? Math.round((totalSent / (totalSent + totalFailed)) * 100) : 0
-
-  // Filter campaigns locally based on search query, channel selection, and status selection
-  const filteredCampaigns = campaigns.filter(c => {
-    const nameMatch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      c.template_name.toLowerCase().includes(searchTerm.toLowerCase())
-    const chan = c.channel || 'whatsapp'
-    const channelMatch = filterChannel === 'all' || chan === filterChannel
-    const statusMatch = filterStatus === 'all' || 
-                        (filterStatus === 'sending' && (c.status === 'PROCESSING' || c.status === 'PENDING')) ||
-                        (filterStatus === 'scheduled' && c.status === 'SCHEDULED') ||
-                        (filterStatus === 'completed' && c.status === 'COMPLETED') ||
-                        (filterStatus === 'failed' && c.status === 'FAILED')
-    return nameMatch && channelMatch && statusMatch
-  })
+  const listIsFiltered = Boolean(debouncedSearch.trim()) || filterChannel !== 'all' || filterStatus !== 'all'
+  const clearListFilters = () => {
+    setSearchTerm('')
+    setFilterChannel('all')
+    setFilterStatus('all')
+  }
 
   // Sub-renderers for clean structure and to avoid truncation errors
   const renderHeader = () => (
-    <div className="bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#2a3942] p-4 md:py-5 md:px-6 relative flex-shrink-0">
-      <div className="max-w-6xl mx-auto flex flex-row items-center justify-between gap-3 relative z-10">
-        <div className="flex flex-col min-w-0">
-          <div className="flex items-center gap-2">
-            <Megaphone size={18} className="text-[#008069] dark:text-emerald-400 stroke-[2.5] shrink-0" />
-            <h1 className="text-base md:text-xl font-bold text-[#111b21] dark:text-white tracking-tight">
-              Bulk Campaigns
-            </h1>
+    <div className="bg-white dark:bg-[#111b21] border-b border-[#e9edef] dark:border-[#2a3942] px-4 py-4 md:px-6 flex-shrink-0">
+      <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-10 w-10 shrink-0 rounded-xl bg-[#00a884]/10 text-[#008069] dark:text-emerald-400 flex items-center justify-center">
+            <Megaphone size={19} />
           </div>
-          <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-            {totalCampaigns} total campaigns · {campaigns.filter(c => c.status === 'SCHEDULED').length} scheduled · {campaigns.filter(c => c.status === 'COMPLETED').length} completed · {campaigns.filter(c => c.status === 'PROCESSING' || c.status === 'PENDING').length} active
-          </p>
+          <div className="min-w-0">
+            <h1 className="text-lg md:text-xl font-bold text-[#111b21] dark:text-white tracking-tight">Campaigns</h1>
+            <p className="text-xs text-[#667781] dark:text-[#8696a0] truncate">
+              {summary
+                ? `${summary.total} ${summary.total === 1 ? 'campaign' : 'campaigns'} · ${summary.sending} sending · ${summary.scheduled} scheduled · ${summary.completed} completed`
+                : 'Send one message to many contacts on WhatsApp'}
+            </p>
+          </div>
         </div>
-        
+
         <div className="flex items-center gap-2 shrink-0">
-          <button 
+          <button
+            type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="h-9 px-3 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[#008069] dark:text-emerald-400 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer disabled:opacity-40"
-            title="Refresh campaigns"
+            title="Refresh the list"
+            aria-label="Refresh the list"
+            className="h-9 w-9 sm:w-auto sm:px-3 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[#54656f] dark:text-slate-300 flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw size={12} className={`${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Sync</span>
+            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">Refresh</span>
           </button>
-          <button 
+          <button
+            type="button"
             onClick={startNewCampaign}
-            className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white flex items-center gap-1.5 text-xs font-bold shadow-sm transition-all cursor-pointer hover:scale-[1.01]"
+            className="h-9 px-3.5 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white flex items-center gap-1.5 text-xs font-bold shadow-sm transition-colors cursor-pointer"
           >
-            <Plus size={14} strokeWidth={2.5} />
-            <span>Launch Campaign</span>
+            <Plus size={15} strokeWidth={2.5} />
+            <span>New campaign</span>
           </button>
         </div>
       </div>
     </div>
   )
 
-  const renderStatsGrid = () => (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
-        <div className="h-10 w-10 rounded-lg bg-emerald-500 flex items-center justify-center text-white shrink-0">
-          <Send size={15} />
-        </div>
-        <div className="min-w-0">
-          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Delivered</span>
-          <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalSent}</p>
-        </div>
+  const renderStatsGrid = () => {
+    // Without the totals query (no direct database connection) there is nothing honest to show
+    if (!summary) return null
+    const stats = [
+      { label: 'Recipients', value: totalRecipients.toLocaleString(), note: 'Across all campaigns', icon: Target, tone: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' },
+      { label: 'Messages sent', value: totalSent.toLocaleString(), note: 'Accepted by the provider', icon: Send, tone: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400' },
+      { label: 'Failed', value: totalFailed.toLocaleString(), note: totalFailed > 0 ? 'Use Rerun on a campaign to retry' : 'Nothing to retry', icon: AlertCircle, tone: 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400' },
+      { label: 'Success rate', value: totalSent + totalFailed > 0 ? `${successRate}%` : '—', note: 'Sent out of sent + failed', icon: TrendingUp, tone: 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400' },
+    ]
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {stats.map(({ label, value, note, icon: Icon, tone }) => (
+          <div key={label} className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] flex items-center gap-3">
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${tone}`}>
+              <Icon size={17} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-[#667781] dark:text-[#8696a0] truncate">{label}</p>
+              <p className="text-xl font-bold tabular-nums text-[#111b21] dark:text-white leading-tight">{value}</p>
+              <p className="text-[11px] text-[#8696a0] truncate">{note}</p>
+            </div>
+          </div>
+        ))}
       </div>
-      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
-        <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
-          <TrendingUp size={15} />
-        </div>
-        <div className="min-w-0">
-          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Avg Success</span>
-          <p className="text-lg font-black text-blue-600 dark:text-blue-400 leading-none mt-1">{successRate}%</p>
-        </div>
-      </div>
-      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
-        <div className="h-10 w-10 rounded-lg bg-red-500 flex items-center justify-center text-white shrink-0">
-          <AlertCircle size={15} />
-        </div>
-        <div className="min-w-0">
-          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Failed</span>
-          <p className="text-lg font-black text-red-500 dark:text-red-400 leading-none mt-1">{totalFailed}</p>
-        </div>
-      </div>
-      <div className="bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex items-center gap-3.5 hover:shadow-sm transition-all">
-        <div className="h-10 w-10 rounded-lg bg-slate-600 flex items-center justify-center text-white shrink-0">
-          <Target size={15} />
-        </div>
-        <div className="min-w-0">
-          <span className="text-[10px] uppercase font-black tracking-widest text-[#8696a0] block truncate">Total Dispatched</span>
-          <p className="text-lg font-black text-[#111b21] dark:text-white leading-none mt-1">{totalContacts}</p>
-        </div>
-      </div>
-    </div>
-  )
+    )
+  }
 
   const renderFiltersBar = () => (
-    <div className="bg-white dark:bg-[#1f2c34] p-3 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div className="flex-1 max-w-sm">
-        <input 
-          type="text" 
-          placeholder="Search campaigns..."
+    <div className="bg-white dark:bg-[#1f2c34] p-2.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+      <div className="relative flex-1 md:max-w-sm">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8696a0] pointer-events-none" />
+        <input
+          type="text"
+          inputMode="search"
+          aria-label="Search campaigns"
+          placeholder="Search by campaign or template name"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-3 py-2 bg-slate-50 dark:bg-[#202d36]/40 border border-[#e9edef] dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#00a884] text-[#111b21] dark:text-white"
+          className="w-full h-9 pl-9 pr-9 bg-slate-50 dark:bg-[#202d36]/40 border border-[#e9edef] dark:border-slate-700 rounded-lg text-[13px] focus:outline-none focus:border-[#00a884] focus:ring-2 focus:ring-[#00a884]/20 text-[#111b21] dark:text-white placeholder-[#8696a0]"
         />
+        {searchTerm && (
+          <button type="button" aria-label="Clear search" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8696a0] hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer">
+            <X size={14} />
+          </button>
+        )}
       </div>
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex bg-slate-100 dark:bg-[#202d36] p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
-          {[
-            { value: 'all', label: 'All' },
-            { value: 'whatsapp', label: 'WhatsApp' },
-            ...(isMasterOrg && features.enable_sms ? [{ value: 'sms', label: 'SMS' }] : []),
-            ...(isMasterOrg && features.enable_email ? [{ value: 'email', label: 'Email' }] : [])
-          ].map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setFilterChannel(opt.value as any)}
-              className={`px-3 py-1 text-[11px] font-bold rounded transition-all cursor-pointer ${
-                filterChannel === opt.value
-                  ? 'bg-white dark:bg-[#2a3942] text-[#008069] dark:text-emerald-400 shadow-xs'
-                  : 'text-[#667781] dark:text-[#8696a0]'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Channel only matters when more than WhatsApp is switched on */}
+        {isMasterOrg && (features.enable_sms || features.enable_email) && (
+          <div role="group" aria-label="Filter by channel" className="flex bg-slate-100 dark:bg-[#202d36] p-0.5 rounded-lg">
+            {[
+              { value: 'all', label: 'All channels' },
+              { value: 'whatsapp', label: 'WhatsApp' },
+              ...(features.enable_sms ? [{ value: 'sms', label: 'SMS' }] : []),
+              ...(features.enable_email ? [{ value: 'email', label: 'Email' }] : [])
+            ].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={filterChannel === opt.value}
+                onClick={() => setFilterChannel(opt.value as any)}
+                className={`h-8 px-3 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  filterChannel === opt.value
+                    ? 'bg-white dark:bg-[#2a3942] text-[#008069] dark:text-emerald-400 shadow-sm'
+                    : 'text-[#667781] dark:text-[#8696a0]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
         <select
+          aria-label="Filter by status"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-2 py-1.5 bg-slate-50 dark:bg-[#202d36] border border-[#e9edef] dark:border-slate-700 rounded-lg text-xs text-[#111b21] dark:text-white font-semibold cursor-pointer"
+          className={`h-9 px-2.5 border rounded-lg text-xs font-semibold cursor-pointer focus:outline-none focus:border-[#00a884] ${
+            filterStatus !== 'all'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-[#00a884] text-[#008069] dark:text-emerald-300'
+              : 'bg-slate-50 dark:bg-[#202d36] border-[#e9edef] dark:border-slate-700 text-[#111b21] dark:text-white'
+          }`}
         >
-          <option value="all">All Statuses</option>
-          <option value="scheduled">Scheduled (IST)</option>
-          <option value="completed">Completed</option>
-          <option value="sending">Sending</option>
-          <option value="failed">Failed</option>
+          <option value="all">All statuses</option>
+          <option value="sending">Sending{summary ? ` (${summary.sending})` : ''}</option>
+          <option value="scheduled">Scheduled{summary ? ` (${summary.scheduled})` : ''}</option>
+          <option value="completed">Completed{summary ? ` (${summary.completed})` : ''}</option>
+          <option value="failed">Failed{summary ? ` (${summary.failed})` : ''}</option>
+          <option value="stopped">Stopped or cancelled{summary ? ` (${summary.stopped})` : ''}</option>
         </select>
+        {listIsFiltered && (
+          <button type="button" onClick={clearListFilters} className="h-9 px-2.5 text-xs font-semibold text-[#667781] dark:text-[#8696a0] hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer">
+            Clear
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1618,15 +1582,39 @@ export default function CampaignsPage() {
           <Loader2 className="animate-spin text-[#00a884] mb-2" size={24} />
           <span className="text-xs text-[#8696a0]">Loading campaign records...</span>
         </div>
-      ) : filteredCampaigns.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center p-12 py-16 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl shadow-xs">
-          <Megaphone className="text-[#8696a0] mb-3 opacity-60" size={24} />
-          <p className="font-bold text-xs text-[#111b21] dark:text-white">No campaigns match search filters</p>
-          <p className="text-[10px] mt-1 text-[#667781] dark:text-[#8696a0]">Launch a new campaign using the top right button.</p>
+      ) : listError ? (
+        <div role="alert" className="flex flex-col items-center justify-center text-center p-10 bg-white dark:bg-[#1f2c34] border border-rose-200 dark:border-rose-900/50 rounded-xl">
+          <AlertCircle className="text-rose-500 mb-2" size={24} />
+          <p className="font-semibold text-sm text-[#111b21] dark:text-white">The campaign list could not be loaded</p>
+          <p className="text-xs mt-1 text-[#667781] dark:text-[#8696a0] max-w-md break-words">{listError}</p>
+          <button type="button" onClick={() => fetchCampaigns(currentPage, true)} className="mt-3 h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw size={13} /> Try again
+          </button>
+        </div>
+      ) : campaigns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center p-12 py-16 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl">
+          <div className="h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 text-[#8696a0] flex items-center justify-center mb-3">
+            {listIsFiltered ? <Search size={22} /> : <Megaphone size={22} />}
+          </div>
+          {listIsFiltered ? (
+            <>
+              <p className="font-semibold text-sm text-[#111b21] dark:text-white">No campaigns match</p>
+              <p className="text-xs mt-1 text-[#667781] dark:text-[#8696a0]">Nothing fits this search and these filters, across all {summary?.total ?? ''} campaigns.</p>
+              <button type="button" onClick={clearListFilters} className="mt-3 text-xs font-bold text-[#008069] dark:text-emerald-400 hover:underline cursor-pointer">Clear search and filters</button>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-sm text-[#111b21] dark:text-white">No campaigns yet</p>
+              <p className="text-xs mt-1 text-[#667781] dark:text-[#8696a0] max-w-sm">Pick an approved template, choose who gets it, and send now or schedule it.</p>
+              <button type="button" onClick={startNewCampaign} className="mt-4 h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                <Plus size={15} strokeWidth={2.5} /> Create your first campaign
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4.5 sm:gap-5">
-          {filteredCampaigns.map((c) => {
+          {campaigns.map((c) => {
             const isProcessing = c.status === 'PROCESSING' || c.status === 'PENDING'
             const progressPct = c.total_contacts > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_contacts) * 100) : 0
             
@@ -1648,13 +1636,13 @@ export default function CampaignsPage() {
               <div 
                 key={c.id}
                 onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
-                className="group relative bg-white dark:bg-[#1c282f] p-5 sm:p-6 rounded-2xl border border-slate-200/90 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4.5 overflow-hidden"
+                className="group relative bg-white dark:bg-[#1c282f] p-4 sm:p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 overflow-hidden"
               >
                 {/* Left Status Accent Indicator Strip */}
                 <div 
                   className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${
                     c.status === 'COMPLETED' ? 'bg-emerald-500' :
-                    c.status === 'PROCESSING' || c.status === 'PENDING' ? 'bg-amber-400 animate-pulse' :
+                    c.status === 'PROCESSING' || c.status === 'PENDING' ? 'bg-amber-400' :
                     c.status === 'SCHEDULED' ? 'bg-indigo-500' :
                     c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-500' :
                     c.status === 'FAILED' ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-700'
@@ -1675,16 +1663,16 @@ export default function CampaignsPage() {
                           {c.name}
                         </h3>
 
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 uppercase tracking-wider shrink-0 ${
+                        <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 shrink-0 ${
                           c.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/60' :
-                          c.status === 'PROCESSING' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60 animate-pulse' :
+                          isProcessing ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60' :
                           c.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60' :
                           c.status === 'STOPPED' || c.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/60' :
                           c.status === 'FAILED' ? 'bg-red-50 dark:bg-red-950/40 text-red-700 border-red-200' :
                           'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200'
                         }`}>
                           {c.status === 'SCHEDULED' && <Calendar size={11} />}
-                          <span>{c.status}</span>
+                          <span>{c.status === 'PROCESSING' || c.status === 'PENDING' ? 'Sending' : c.status.charAt(0) + c.status.slice(1).toLowerCase()}</span>
                         </span>
                       </div>
 
@@ -1722,7 +1710,7 @@ export default function CampaignsPage() {
                         <MessageSquare size={13} className="fill-current text-[#008069] dark:text-emerald-400 shrink-0" />
                         <span>{c.active_chats_count} Active {c.active_chats_count === 1 ? 'Reply' : 'Replies'}</span>
                         {(c.unread_chats_count ?? 0) > 0 && (
-                          <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ml-0.5 animate-bounce">
+                          <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-0.5">
                             {c.unread_chats_count} new
                           </span>
                         )}
@@ -1742,7 +1730,7 @@ export default function CampaignsPage() {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <span className="font-bold uppercase tracking-wider text-[10px] text-[#8696a0]">
-                        {isProcessing ? 'Dispatching in Progress' : 'Dispatch Progress'}
+                        {isProcessing ? 'Sending now' : c.status === 'SCHEDULED' ? 'Not started' : 'Progress'}
                       </span>
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
                         progressPct === 100 
@@ -1751,12 +1739,12 @@ export default function CampaignsPage() {
                           ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 animate-pulse'
                           : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                       }`}>
-                        {progressPct}% Completed
+                        {progressPct}%
                       </span>
                     </div>
 
                     <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {c.sent_count + c.failed_count} <span className="text-slate-400 font-normal">/ {c.total_contacts} Contacts</span>
+                      {c.sent_count + c.failed_count} <span className="text-slate-400 font-normal">of {c.total_contacts} processed</span>
                     </span>
                   </div>
 
@@ -1776,22 +1764,29 @@ export default function CampaignsPage() {
                   {/* 4 Metric Chips Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
                     <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
-                      <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Total Targets</span>
+                      <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Recipients</span>
                       <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{c.total_contacts}</span>
                     </div>
 
                     <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
                       <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        <span>Delivered</span>
+                        <span>Sent</span>
                       </span>
-                      <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{c.sent_count}</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                        {c.sent_count}
+                        {(c.read_count ?? 0) + (c.delivered_count ?? 0) > 0 && (
+                          <span className="text-[11px] font-normal text-[#8696a0] ml-1">
+                            ({(c.delivered_count ?? 0) + (c.read_count ?? 0)} delivered{(c.read_count ?? 0) > 0 ? `, ${c.read_count} read` : ''})
+                          </span>
+                        )}
+                      </span>
                     </div>
 
                     <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
                       <span className={`text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${c.failed_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-[#8696a0]'}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${c.failed_count > 0 ? 'bg-rose-500' : 'bg-slate-400'}`}></span>
-                        <span>Failures</span>
+                        <span>Failed</span>
                       </span>
                       <span className={`text-sm font-bold mt-0.5 ${c.failed_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{c.failed_count}</span>
                     </div>
@@ -1799,7 +1794,7 @@ export default function CampaignsPage() {
                     <div className="bg-white dark:bg-[#1f2c34] px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 shadow-2xs flex flex-col">
                       <span className="text-[10px] uppercase font-bold text-[#008069] dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
                         <MessageSquare size={11} className="fill-current" />
-                        <span>Active Replies</span>
+                        <span>Replies</span>
                       </span>
                       <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
                         {c.active_chats_count || 0}
@@ -1820,7 +1815,7 @@ export default function CampaignsPage() {
                         (c.channel || 'whatsapp') === 'whatsapp' ? 'bg-[#008069]' :
                         c.channel === 'sms' ? 'bg-amber-500' : 'bg-blue-500'
                       }`}></span>
-                      <span className="capitalize">{c.channel || 'whatsapp'} Broadcast</span>
+                      <span className="capitalize">{(c.channel || 'whatsapp') === 'whatsapp' ? 'WhatsApp' : c.channel}{c.sender ? ` · from ${c.sender}` : ''}</span>
                     </span>
                   </div>
 
@@ -1879,7 +1874,7 @@ export default function CampaignsPage() {
                         ) : (
                           <RotateCcw size={12} />
                         )}
-                        <span>Rerun Failed</span>
+                        <span>{c.failed_count > 0 ? `Retry ${c.failed_count} failed` : 'Retry unsent'}</span>
                       </button>
                     )}
 
@@ -1931,34 +1926,21 @@ export default function CampaignsPage() {
                       </button>
                     )}
 
-                    {/* View Workspace Full Tab Button */}
+                    {/* Open the campaign: delivery report and the replies it got */}
                     <button
                       type="button"
                       onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
-                      className="h-9 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#202d36] hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-200 hover:text-[#111b21] dark:hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
-                      title="Open full tab campaign workspace"
+                      className="h-9 px-4 rounded-xl bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                      title="Open the delivery report and reply to the people who answered"
                     >
-                      <Eye size={13} className="text-slate-500" />
-                      <span>View Workspace</span>
+                      <MessageSquare size={13} />
+                      <span>{(c.active_chats_count ?? 0) > 0 ? 'View replies' : 'Open'}</span>
+                      {(c.active_chats_count ?? 0) > 0 && (
+                        <span className="bg-white/25 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center tabular-nums">
+                          {c.active_chats_count}
+                        </span>
+                      )}
                     </button>
-
-                    {/* Primary CTA: Open Interactive Chat / Full Tab Workspace */}
-                    {c.status === 'COMPLETED' && (
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/dashboard/campaigns/${c.id}`)}
-                        className="h-9 px-4 rounded-xl bg-gradient-to-r from-[#008069] to-[#00a884] hover:from-[#00705b] hover:to-[#009475] text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-xs hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
-                        title="Open Full Tab Workspace with Interactive Live Chat"
-                      >
-                        <MessageSquare size={13} className="fill-current" />
-                        <span>Open Chat Workspace</span>
-                        {(c.active_chats_count ?? 0) > 0 && (
-                          <span className="bg-white/25 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                            {c.active_chats_count}
-                          </span>
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1989,8 +1971,8 @@ export default function CampaignsPage() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
         <div className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0]">
           Showing <span className="text-[#111b21] dark:text-white">{(currentPage - 1) * 10 + 1}</span> to{' '}
-          <span className="text-[#111b21] dark:text-white">{Math.min(currentPage * 10, totalCampaignsCount)}</span> of{' '}
-          <span className="text-[#111b21] dark:text-white">{totalCampaignsCount}</span> campaigns
+          <span className="text-[#111b21] dark:text-white">{(currentPage - 1) * 10 + campaigns.length}</span> of{' '}
+          <span className="text-[#111b21] dark:text-white">{totalCampaignsCount}</span> {listIsFiltered ? 'matching campaigns' : 'campaigns'}
         </div>
         
         <div className="flex items-center gap-1">
@@ -2427,7 +2409,7 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] overflow-hidden relative select-none">
+    <div className="w-full h-full flex flex-col bg-[#f0f2f5] dark:bg-[#0b141a] overflow-hidden relative">
       {renderHeader()}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0 bg-slate-50/50 dark:bg-[#0c1317]">
         <div className="max-w-6xl mx-auto space-y-6">
@@ -2440,14 +2422,14 @@ export default function CampaignsPage() {
 
       {/* Creation Wizard - Full Screen Workspace */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 w-full h-full bg-[#f8f9fa] dark:bg-[#0b141a] flex flex-col animate-in fade-in duration-200 overflow-hidden select-none">
+        <div role="dialog" aria-modal="true" aria-label="Create a campaign" className="fixed inset-0 z-50 w-full h-full bg-[#f8f9fa] dark:bg-[#0b141a] flex flex-col animate-in fade-in duration-200 overflow-hidden">
           {/* Full Screen Top App Bar */}
           <header className="bg-white dark:bg-[#1f2c34] border-b border-[#e9edef] dark:border-[#2a3942] px-4 md:px-8 py-3 flex items-center justify-between shadow-2xs z-30 shrink-0">
             {/* Left: Back & Campaign Title */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={requestCloseWizard}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#202d36] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
                 title="Exit wizard"
               >
@@ -2463,15 +2445,12 @@ export default function CampaignsPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-extrabold text-sm md:text-base text-[#111b21] dark:text-white tracking-tight">
-                      Create Bulk Campaign
+                    <h2 className="font-bold text-sm md:text-base text-[#111b21] dark:text-white tracking-tight">
+                      New campaign
                     </h2>
-                    <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-50 dark:bg-emerald-950/50 text-[#008069] dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                      Full Screen Workspace
-                    </span>
                   </div>
                   <p className="text-[10.5px] text-[#667781] dark:text-[#8696a0] truncate max-w-[200px] sm:max-w-xs md:max-w-md">
-                    {newCampaignName.trim() ? `Draft: "${newCampaignName}"` : 'Omnichannel broadcast setup'}
+                    {newCampaignName.trim() ? newCampaignName : 'Message, audience, then send or schedule'}
                   </p>
                 </div>
               </div>
@@ -2480,10 +2459,10 @@ export default function CampaignsPage() {
             {/* Center: Stepper Pills */}
             <div className="hidden lg:flex items-center gap-1 bg-[#f0f2f5] dark:bg-[#121b22] p-1 rounded-2xl border border-[#e9edef] dark:border-[#2a3942]">
               {[
-                { step: 1, label: 'Details & Template' },
-                { step: 2, label: 'Target Audience' },
-                { step: 3, label: 'Map Variables' },
-                { step: 4, label: 'Review & Launch' },
+                { step: 1, label: 'Message' },
+                { step: 2, label: 'Audience' },
+                { step: 3, label: 'Personalise' },
+                { step: 4, label: 'Review & send' },
               ].map((s) => {
                 const isCurrent = wizardStep === s.step
                 const isCompleted = wizardStep > s.step
@@ -2527,7 +2506,7 @@ export default function CampaignsPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={requestCloseWizard}
                 className="p-2 hover:bg-slate-100 dark:hover:bg-[#2a3942] rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
                 title="Exit (Esc)"
               >
@@ -2544,12 +2523,12 @@ export default function CampaignsPage() {
                 <span className="text-xs font-bold text-slate-800 dark:text-white">
                   Step {wizardStep} of 4:{' '}
                   {wizardStep === 1
-                    ? 'Details & Template'
+                    ? 'Message'
                     : wizardStep === 2
-                    ? 'Select Target Audience'
+                    ? 'Audience'
                     : wizardStep === 3
-                    ? 'Map Variables'
-                    : 'Launch Confirmation'}
+                    ? 'Personalise'
+                    : 'Review & send'}
                 </span>
                 <div className="flex items-center gap-1">
                   {[1, 2, 3, 4].map((s) => (
@@ -3064,155 +3043,174 @@ export default function CampaignsPage() {
                 </div>
               )}
 
-              {/* STEP 2: Select Target Audience */}
+              {/* STEP 2: Audience */}
               {wizardStep === 2 && (
-                <div className="space-y-5">
-                  {/* Source Mode Switcher */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAudienceSource('db')
-                        setErrorMsg('')
-                        if (!allCampaignsList.length) fetchAllCampaigns()
-                      }}
-                      className={`relative p-4 sm:p-5 rounded-2xl border-2 text-left flex items-start gap-3.5 cursor-pointer transition-all duration-200 group ${
-                        audienceSource === 'db'
-                          ? 'border-[#00a884] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00a884]/20'
-                          : 'border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#152026] hover:border-slate-300 dark:hover:border-slate-600'
-                      }`}
-                    >
-                      <div className={`p-3 rounded-xl shrink-0 transition-colors ${
-                        audienceSource === 'db'
-                          ? 'bg-[#00a884] text-white shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-[#00a884]/10 group-hover:text-[#008069]'
-                      }`}>
-                        <Database size={22} />
-                      </div>
-                      <div className="flex-1 min-w-0 pr-6">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">CRM Database Contacts</span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#00a884]/15 text-[#008069] dark:text-emerald-300 border border-[#00a884]/30">
-                            {contacts.length} Records
+                <div className="space-y-4">
+                  {/* Where the audience comes from */}
+                  <div role="radiogroup" aria-label="Where the audience comes from" className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {([
+                      {
+                        id: 'db' as const,
+                        icon: Database,
+                        title: 'Contacts from your CRM',
+                        detail: 'Search, filter by tag or past campaign, and tick who gets it.',
+                        badge: isLoadingContacts ? 'Loading…' : `${contacts.length.toLocaleString()} contacts`,
+                      },
+                      {
+                        id: 'excel' as const,
+                        icon: FileSpreadsheet,
+                        title: 'Upload a spreadsheet',
+                        detail: 'An .xlsx, .xls or .csv file with one recipient per row.',
+                        badge: excelData.length > 0 ? `${excelData.length.toLocaleString()} rows` : '',
+                      },
+                    ]).map(({ id, icon: Icon, title, detail, badge }) => {
+                      const active = audienceSource === id
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => {
+                            setAudienceSource(id)
+                            setErrorMsg('')
+                          }}
+                          className={`relative p-4 rounded-2xl border-2 text-left flex items-start gap-3 cursor-pointer transition-colors ${
+                            active
+                              ? 'border-[#00a884] bg-emerald-50/50 dark:bg-emerald-950/20'
+                              : 'border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#152026] hover:border-slate-300 dark:hover:border-slate-600'
+                          }`}
+                        >
+                          <div className={`h-10 w-10 rounded-xl shrink-0 flex items-center justify-center ${active ? 'bg-[#00a884] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                            <Icon size={19} />
+                          </div>
+                          <div className="flex-1 min-w-0 pr-6">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">{title}</span>
+                              {badge && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tabular-nums">{badge}</span>}
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{detail}</p>
+                          </div>
+                          <span className={`absolute top-4 right-4 h-5 w-5 rounded-full border-2 flex items-center justify-center ${active ? 'border-[#00a884] bg-[#00a884] text-white' : 'border-slate-300 dark:border-slate-600'}`}>
+                            {active && <Check size={12} strokeWidth={3} />}
                           </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                          Multi-filter by past campaigns, multiple tags, contact phone &amp; name search.
-                        </p>
-                      </div>
-                      {audienceSource === 'db' && (
-                        <div className="absolute top-4 right-4 text-[#00a884]">
-                          <CheckCircle size={18} className="fill-[#00a884] text-white" />
-                        </div>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAudienceSource('excel')
-                        setErrorMsg('')
-                      }}
-                      className={`relative p-4 sm:p-5 rounded-2xl border-2 text-left flex items-start gap-3.5 cursor-pointer transition-all duration-200 group ${
-                        audienceSource === 'excel'
-                          ? 'border-[#00a884] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00a884]/20'
-                          : 'border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#152026] hover:border-slate-300 dark:hover:border-slate-600'
-                      }`}
-                    >
-                      <div className={`p-3 rounded-xl shrink-0 transition-colors ${
-                        audienceSource === 'excel'
-                          ? 'bg-[#00a884] text-white shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-[#00a884]/10 group-hover:text-[#008069]'
-                      }`}>
-                        <FileSpreadsheet size={22} />
-                      </div>
-                      <div className="flex-1 min-w-0 pr-6">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">Upload Excel / CSV</span>
-                          <span className="text-[10px] text-slate-400">Custom Sheet</span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                          Drag &amp; drop external spreadsheet (.xlsx, .csv) with dynamic placeholder mapping.
-                        </p>
-                      </div>
-                      {audienceSource === 'excel' && (
-                        <div className="absolute top-4 right-4 text-[#00a884]">
-                          <CheckCircle size={18} className="fill-[#00a884] text-white" />
-                        </div>
-                      )}
-                    </button>
+                        </button>
+                      )
+                    })}
                   </div>
 
                   {audienceSource === 'excel' ? (
-                    <div className="space-y-4">
-                      <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-[#e9edef] hover:border-[#00a884] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#f8f9fa] dark:bg-[#152026] flex flex-col items-center justify-center gap-2"
-                      >
-                        <Upload size={28} className="text-[#8696a0]" />
-                        <span className="text-xs font-bold text-[#111b21] dark:text-white">
-                          {excelFile ? excelFile.name : 'Upload your Excel spreadsheet'}
-                        </span>
-                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0]">
-                          Supports .xlsx, .xls, .csv formats
-                        </span>
-                        <input 
-                          type="file" 
-                          ref={fileInputRef}
-                          onChange={handleFileUpload}
-                          accept=".xlsx,.xls,.csv"
-                          className="hidden"
-                        />
-                      </div>
-
-                      {excelData.length > 0 && (
+                    <div className="space-y-3">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".xlsx,.xls,.csv"
+                        className="hidden"
+                      />
+                      {excelData.length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full border-2 border-dashed border-slate-300 dark:border-[#2a3942] hover:border-[#00a884] hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-white dark:bg-[#152026] flex flex-col items-center justify-center gap-2"
+                        >
+                          <Upload size={26} className="text-[#8696a0]" />
+                          <span className="text-sm font-semibold text-[#111b21] dark:text-white">Choose a spreadsheet</span>
+                          <span className="text-xs text-[#667781] dark:text-[#8696a0]">.xlsx, .xls or .csv · the first row must hold the column names</span>
+                        </button>
+                      ) : (
                         <div className="space-y-3">
-                          <div className="p-3 bg-[#e7f7f4] dark:bg-emerald-950/40 border border-[#00a884]/20 rounded-xl flex items-center justify-between text-xs text-[#008069] dark:text-emerald-300">
-                            <span className="font-bold">Loaded {excelData.length} records successfully!</span>
-                            <button 
-                              onClick={() => {
-                                setExcelFile(null)
-                                setExcelData([])
-                                setExcelHeaders([])
-                              }}
-                              className="p-1 hover:bg-[#008069]/10 rounded-full"
-                            >
-                              <X size={14} />
-                            </button>
+                          <div className="p-3 bg-white dark:bg-[#152026] border border-slate-200 dark:border-[#2a3942] rounded-xl flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="h-9 w-9 shrink-0 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-[#008069] dark:text-emerald-400 flex items-center justify-center">
+                                <FileSpreadsheet size={17} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">{excelFile?.name || 'Spreadsheet'}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{excelData.length.toLocaleString()} rows · {excelHeaders.length} columns</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button type="button" onClick={() => fileInputRef.current?.click()} className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                                Replace
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Remove the spreadsheet"
+                                onClick={() => {
+                                  setExcelFile(null)
+                                  setExcelData([])
+                                  setExcelHeaders([])
+                                  setPhoneColumn('')
+                                  if (fileInputRef.current) fileInputRef.current.value = ''
+                                }}
+                                className="h-8 w-8 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-center cursor-pointer"
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50 dark:bg-[#111b21] p-3.5 rounded-xl border border-slate-200 dark:border-[#2a3942]">
                             {/* Phone / Email Column */}
                             <div className="flex flex-col gap-1 sm:col-span-2">
-                              <label className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
-                                <span>{channel === 'email' ? 'Map Email Address Column *' : 'Map Phone Number Column *'}</span>
-                                <span className="text-[10px] text-slate-400 font-normal">(Required)</span>
+                              <label htmlFor="sheet-address-column" className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                {channel === 'email' ? 'Column with the email address' : 'Column with the phone number'} <span className="text-rose-500">*</span>
                               </label>
                               <select
+                                id="sheet-address-column"
                                 value={phoneColumn}
                                 onChange={(e) => setPhoneColumn(e.target.value)}
-                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-emerald-300 dark:border-emerald-700/60 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                className={`w-full h-10 px-3 bg-white dark:bg-[#1f2c34] border rounded-xl text-[13px] font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00a884]/20 focus:border-[#00a884] ${phoneColumn ? 'border-slate-200 dark:border-[#3b4a54]' : 'border-amber-400'}`}
                               >
-                                <option value="">
-                                  {channel === 'email' ? '-- Choose recipient email header --' : '-- Choose recipient phone header --'}
-                                </option>
+                                <option value="">Choose a column…</option>
                                 {excelHeaders.map(h => (
                                   <option key={h} value={h}>{h}</option>
                                 ))}
                               </select>
+
+                              {/* What that column actually contains */}
+                              {sheetCheck && (
+                                <div
+                                  role="status"
+                                  className={`mt-1 px-3 py-2 rounded-lg text-xs flex items-start gap-2 ${
+                                    sheetCheck.recipients.length === 0
+                                      ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-900/60'
+                                      : sheetCheck.invalid + sheetCheck.duplicates > 0
+                                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900/60'
+                                        : 'bg-emerald-50 dark:bg-emerald-950/30 text-[#008069] dark:text-emerald-300 border border-[#00a884]/30'
+                                  }`}
+                                >
+                                  {sheetCheck.recipients.length > 0 && sheetCheck.invalid + sheetCheck.duplicates === 0
+                                    ? <CheckCircle size={14} className="shrink-0 mt-px" />
+                                    : <AlertCircle size={14} className="shrink-0 mt-px" />}
+                                  <span className="tabular-nums">
+                                    <strong className="font-semibold">{sheetCheck.recipients.length.toLocaleString()} {sheetCheck.recipients.length === 1 ? 'recipient' : 'recipients'}</strong> will be sent this campaign
+                                    {sheetCheck.invalid > 0 && ` · ${sheetCheck.invalid.toLocaleString()} ${sheetCheck.invalid === 1 ? 'row has' : 'rows have'} no valid ${channel === 'email' ? 'email address' : 'phone number'} and will be skipped`}
+                                    {sheetCheck.duplicates > 0 && ` · ${sheetCheck.duplicates.toLocaleString()} repeated ${channel === 'email' ? (sheetCheck.duplicates === 1 ? 'address is' : 'addresses are') : (sheetCheck.duplicates === 1 ? 'number is' : 'numbers are')} sent once`}
+                                    {sheetCheck.recipients.length === 0 && '. Check that the right column is chosen.'}
+                                  </span>
+                                </div>
+                              )}
+                              {channel !== 'email' && phoneColumn && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  Numbers should include the country code. A 10-digit Indian mobile number is sent with +91.
+                                </p>
+                              )}
                             </div>
 
                             {/* Contact Name / First Name Column */}
                             <div className="flex flex-col gap-1">
-                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
-                                Contact / First Name Column
+                              <label htmlFor="sheet-name-column" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                Name column <span className="font-normal text-slate-400">(optional)</span>
                               </label>
                               <select
+                                id="sheet-name-column"
                                 value={contactNameColumn}
                                 onChange={(e) => setContactNameColumn(e.target.value)}
-                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                className="w-full h-10 px-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-xl text-[13px] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00a884]/20 focus:border-[#00a884]"
                               >
-                                <option value="">-- Do not map / Extract from variables --</option>
+                                <option value="">Not in this sheet</option>
                                 {excelHeaders.map(h => (
                                   <option key={h} value={h}>{h}</option>
                                 ))}
@@ -3221,15 +3219,16 @@ export default function CampaignsPage() {
 
                             {/* Last Name Column */}
                             <div className="flex flex-col gap-1">
-                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0]">
-                                Last Name Column (Optional)
+                              <label htmlFor="sheet-lastname-column" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                Last name column <span className="font-normal text-slate-400">(optional)</span>
                               </label>
                               <select
+                                id="sheet-lastname-column"
                                 value={contactLastNameColumn}
                                 onChange={(e) => setContactLastNameColumn(e.target.value)}
-                                className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                className="w-full h-10 px-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-xl text-[13px] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00a884]/20 focus:border-[#00a884]"
                               >
-                                <option value="">-- None / Split from full name --</option>
+                                <option value="">Not in this sheet</option>
                                 {excelHeaders.map(h => (
                                   <option key={h} value={h}>{h}</option>
                                 ))}
@@ -3238,723 +3237,63 @@ export default function CampaignsPage() {
 
                             {/* Tag Column & Custom Tag */}
                             <div className="flex flex-col gap-1 sm:col-span-2">
-                              <label className="text-xs font-bold text-[#54656f] dark:text-[#8696a0] flex items-center justify-between">
-                                <span>Save Contact Tags</span>
-                                <span className="text-[10px] text-slate-400 font-normal">Saves tag to CRM contacts</span>
-                              </label>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                Tag these contacts in the CRM <span className="font-normal text-slate-400">(optional)</span>
+                              </span>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <select
+                                  aria-label="Column holding each contact's tag"
                                   value={contactTagColumn}
                                   onChange={(e) => setContactTagColumn(e.target.value)}
-                                  className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                  className="w-full h-10 px-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-xl text-[13px] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00a884]/20 focus:border-[#00a884]"
                                 >
-                                  <option value="">-- From Excel Column (None) --</option>
+                                  <option value="">No tag column</option>
                                   {excelHeaders.map(h => (
-                                    <option key={h} value={h}>Excel: {h}</option>
+                                    <option key={h} value={h}>Use column: {h}</option>
                                   ))}
                                 </select>
                                 <input
                                   type="text"
-                                  placeholder="Or enter custom tag (e.g. HPV Camp, Lot 1)"
+                                  aria-label="One tag for every contact in this sheet"
+                                  placeholder="Or one tag for everyone, e.g. Diwali 2026"
                                   value={customCampaignTag}
+                                  disabled={Boolean(contactTagColumn)}
                                   onChange={(e) => setCustomCampaignTag(e.target.value)}
-                                  className="w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#3b4a54] rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                                  className="w-full h-10 px-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-xl text-[13px] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00a884]/20 focus:border-[#00a884] disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                               </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">New recipients are saved as contacts with this tag, so you can find them again later.</p>
                             </div>
                           </div>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Audience KPI & Selection Action Bar */}
-                      <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#152026] border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
-                        {/* Metric Indicators */}
-                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-[#00a884] rounded-xl shrink-0">
-                              <Users size={18} />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                <span>Target Audience:</span>
-                                <span className="bg-[#00a884] text-white px-2 py-0.5 rounded-full text-xs font-black font-mono">
-                                  {selectedContactIds.length} / {contacts.length}
-                                </span>
-                                <span className="text-slate-500 font-normal">contacts</span>
-                              </div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                {selectedContactIds.length === contacts.length
-                                  ? '✓ All contacts across entire tenant selected'
-                                  : `${contacts.length - selectedContactIds.length} contacts currently excluded`}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="h-7 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
-
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="text-slate-500 dark:text-slate-400">Matching filters:</span>
-                            <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                              {filteredContacts.length}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Batch Action Buttons */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={handleSelectAllFiltered}
-                            disabled={filteredContacts.length === 0}
-                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#00a884] hover:bg-[#00876d] text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Select all contacts that match current filters"
-                          >
-                            <Check size={14} />
-                            <span>Select Matching ({filteredContacts.length})</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={handleDeselectFiltered}
-                            disabled={filteredContacts.length === 0}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer disabled:opacity-50"
-                          >
-                            Deselect Matching
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedContactIds(contacts.map(c => c.id))}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
-                          >
-                            Select Entire CRM ({contacts.length})
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedContactIds([])}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
-                          >
-                            Deselect All
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Multi-Filter Command Center */}
-                      <div className="p-4 rounded-2xl bg-[#f8f9fa] dark:bg-[#121c22] border border-[#e9edef] dark:border-[#2a3942] space-y-3.5">
-                        {/* Filter Header */}
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-[#00a884]/10 text-[#008069] dark:text-emerald-400 rounded-lg">
-                              <SlidersHorizontal size={15} />
-                            </div>
-                            <div>
-                              <span className="text-xs font-bold text-slate-900 dark:text-white">Audience Multi-Filter Engine</span>
-                              <span className="text-[10px] text-slate-400 hidden sm:inline ml-2">
-                                (All filters combine concurrently: Name + Phone + Tags + Past Campaigns)
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Clear All Filters */}
-                          {(nameSearchQuery || phoneSearchQuery || selectedTagFilters.length > 0 || selectedCampaignFilters.length > 0 || selectedTagFilter) && (
-                            <button
-                              type="button"
-                              onClick={handleClearAllFilters}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:underline cursor-pointer"
-                            >
-                              <RotateCcw size={12} />
-                              <span>Reset All Filters</span>
-                            </button>
-                          )}
-                        </div>
-
-                        {/* 4-Column Concurrent Filter Controls */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {/* Filter 1: Name Search */}
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <User size={12} className="text-[#00a884]" />
-                                Contact Name
-                              </span>
-                              {nameSearchQuery && (
-                                <span className="text-[10px] text-[#00a884] font-semibold">Active</span>
-                              )}
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                placeholder="Search by name..."
-                                value={nameSearchQuery}
-                                onChange={(e) => setNameSearchQuery(e.target.value)}
-                                className="w-full pl-3 pr-7 py-2 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white shadow-2xs"
-                              />
-                              {nameSearchQuery && (
-                                <button
-                                  type="button"
-                                  onClick={() => setNameSearchQuery('')}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Filter 2: Phone / Contact Search */}
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <Phone size={12} className="text-[#00a884]" />
-                                Phone / Email
-                              </span>
-                              {phoneSearchQuery && (
-                                <span className="text-[10px] text-[#00a884] font-semibold">Active</span>
-                              )}
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                placeholder={channel === 'email' ? "Search email address..." : "Search digits e.g. 91630..."}
-                                value={phoneSearchQuery}
-                                onChange={(e) => setPhoneSearchQuery(e.target.value)}
-                                className="w-full pl-3 pr-7 py-2 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white shadow-2xs"
-                              />
-                              {phoneSearchQuery && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPhoneSearchQuery('')}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Filter 3: Multi-Select Tag Dropdown */}
-                          <div className="flex flex-col gap-1 relative" ref={tagDropdownRef}>
-                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <Tag size={12} className="text-[#00a884]" />
-                                Filter by Tags
-                              </span>
-                              {selectedTagFilters.length > 0 && (
-                                <span className="text-[10px] font-extrabold text-[#008069] bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded-full">
-                                  {selectedTagFilters.length} selected
-                                </span>
-                              )}
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => setIsTagDropdownOpen(prev => !prev)}
-                              className={`w-full px-3 py-2 bg-white dark:bg-[#1a252c] border rounded-xl text-xs font-medium flex items-center justify-between transition-all cursor-pointer shadow-2xs ${
-                                selectedTagFilters.length > 0
-                                  ? 'border-[#00a884] text-emerald-800 dark:text-emerald-300 font-bold bg-emerald-50/40'
-                                  : 'border-slate-200 dark:border-[#2a3942] text-slate-700 dark:text-slate-300'
-                              }`}
-                            >
-                              <span className="truncate">
-                                {selectedTagFilters.length === 0
-                                  ? 'Select Tags...'
-                                  : `${selectedTagFilters.length} tags: ${selectedTagFilters.slice(0, 2).join(', ')}${selectedTagFilters.length > 2 ? ` (+${selectedTagFilters.length - 2})` : ''}`}
-                              </span>
-                              <ChevronDown size={14} className={`transition-transform shrink-0 ml-1 ${isTagDropdownOpen ? 'rotate-180 text-[#00a884]' : 'text-slate-400'}`} />
-                            </button>
-
-                            {/* Tags Popover Menu */}
-                            {isTagDropdownOpen && (
-                              <div className="absolute top-full left-0 mt-1.5 z-40 w-72 sm:w-80 bg-white dark:bg-[#1c282f] border border-slate-200 dark:border-[#2a3942] rounded-2xl shadow-2xl p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
-                                {/* Search Tags */}
-                                <div className="relative">
-                                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                                  <input
-                                    type="text"
-                                    placeholder="Search tags..."
-                                    value={tagSearchQuery}
-                                    onChange={e => setTagSearchQuery(e.target.value)}
-                                    className="w-full pl-7 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white"
-                                  />
-                                </div>
-
-                                {/* Match Mode Toggle */}
-                                <div className="flex items-center justify-between p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-[10px]">
-                                  <span className="font-semibold text-slate-600 dark:text-slate-300">Match:</span>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setTagFilterMode('any')}
-                                      className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                                        tagFilterMode === 'any' ? 'bg-[#00a884] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400'
-                                      }`}
-                                      title="Contact matches if it has ANY of the selected tags"
-                                    >
-                                      ANY (OR)
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setTagFilterMode('all')}
-                                      className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                                        tagFilterMode === 'all' ? 'bg-[#00a884] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400'
-                                      }`}
-                                      title="Contact matches only if it has ALL selected tags"
-                                    >
-                                      ALL (AND)
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Quick Buttons */}
-                                <div className="flex items-center justify-between text-[11px] pt-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const allTags = uniqueContactTags.map(t => t.tag)
-                                      setSelectedTagFilters(allTags)
-                                    }}
-                                    className="text-[#008069] dark:text-emerald-400 hover:underline font-bold cursor-pointer"
-                                  >
-                                    Select All ({uniqueContactTags.length})
-                                  </button>
-                                  {selectedTagFilters.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedTagFilters([])}
-                                      className="text-rose-600 hover:underline font-bold cursor-pointer"
-                                    >
-                                      Clear ({selectedTagFilters.length})
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Tags List */}
-                                <div className="max-h-56 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                                  {uniqueContactTags
-                                    .filter(({ tag }) => !tagSearchQuery.trim() || tag.toLowerCase().includes(tagSearchQuery.toLowerCase().trim()))
-                                    .map(({ tag, count }) => {
-                                      const isChecked = selectedTagFilters.includes(tag)
-                                      return (
-                                        <label
-                                          key={tag}
-                                          className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer select-none transition-colors border ${
-                                            isChecked
-                                              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-[#008069] dark:text-emerald-300 font-bold'
-                                              : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2 truncate">
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              onChange={() => toggleTagFilter(tag)}
-                                              className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
-                                            />
-                                            <span className="truncate">{tag}</span>
-                                          </div>
-                                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                            {count}
-                                          </span>
-                                        </label>
-                                      )
-                                    })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Filter 4: Multi-Select Past Campaigns */}
-                          <div className="flex flex-col gap-1 relative" ref={campaignDropdownRef}>
-                            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <History size={12} className="text-[#00a884]" />
-                                Past Campaigns
-                              </span>
-                              {selectedCampaignFilters.length > 0 && (
-                                <span className="text-[10px] font-extrabold text-[#008069] bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded-full">
-                                  {selectedCampaignFilters.length} selected
-                                </span>
-                              )}
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsCampaignDropdownOpen(prev => !prev)
-                                if (!allCampaignsList.length) fetchAllCampaigns()
-                              }}
-                              className={`w-full px-3 py-2 bg-white dark:bg-[#1a252c] border rounded-xl text-xs font-medium flex items-center justify-between transition-all cursor-pointer shadow-2xs ${
-                                selectedCampaignFilters.length > 0
-                                  ? 'border-[#00a884] text-emerald-800 dark:text-emerald-300 font-bold bg-emerald-50/40'
-                                  : 'border-slate-200 dark:border-[#2a3942] text-slate-700 dark:text-slate-300'
-                              }`}
-                            >
-                              <span className="truncate">
-                                {selectedCampaignFilters.length === 0
-                                  ? 'Past Campaigns...'
-                                  : `${selectedCampaignFilters.length} campaigns selected`}
-                              </span>
-                              <ChevronDown size={14} className={`transition-transform shrink-0 ml-1 ${isCampaignDropdownOpen ? 'rotate-180 text-[#00a884]' : 'text-slate-400'}`} />
-                            </button>
-
-                            {/* Campaigns Popover Menu */}
-                            {isCampaignDropdownOpen && (
-                              <div className="absolute top-full right-0 mt-1.5 z-40 w-80 sm:w-96 bg-white dark:bg-[#1c282f] border border-slate-200 dark:border-[#2a3942] rounded-2xl shadow-2xl p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
-                                {/* Search Campaigns */}
-                                <div className="relative">
-                                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                                  <input
-                                    type="text"
-                                    placeholder="Search previous campaigns..."
-                                    value={campaignSearchQuery}
-                                    onChange={e => setCampaignSearchQuery(e.target.value)}
-                                    className="w-full pl-7 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884] text-slate-900 dark:text-white"
-                                  />
-                                </div>
-
-                                {/* Quick Buttons */}
-                                <div className="flex items-center justify-between text-[11px] pt-0.5">
-                                  <span className="text-slate-400">
-                                    {isLoadingAllCampaigns ? 'Loading campaigns...' : `${(allCampaignsList.length || campaigns.length)} campaigns`}
-                                  </span>
-                                  {selectedCampaignFilters.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedCampaignFilters([])}
-                                      className="text-rose-600 hover:underline font-bold cursor-pointer"
-                                    >
-                                      Clear ({selectedCampaignFilters.length})
-                                    </button>
-                                  )}
-                                </div>
-
-                                {/* Campaign List */}
-                                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
-                                  {isLoadingAllCampaigns ? (
-                                    <div className="flex items-center justify-center py-6 text-xs text-slate-400 gap-2">
-                                      <Loader2 size={16} className="animate-spin text-[#00a884]" />
-                                      <span>Loading previous campaigns...</span>
-                                    </div>
-                                  ) : (allCampaignsList.length > 0 ? allCampaignsList : campaigns)
-                                    .filter(c => !campaignSearchQuery.trim() || c.name.toLowerCase().includes(campaignSearchQuery.toLowerCase().trim()))
-                                    .map(c => {
-                                      const isChecked = selectedCampaignFilters.includes(c.id)
-                                      return (
-                                        <label
-                                          key={c.id}
-                                          className={`flex items-start gap-2.5 p-2 rounded-xl text-xs cursor-pointer select-none transition-colors border ${
-                                            isChecked
-                                              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-[#00a884] text-slate-900 dark:text-white'
-                                              : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent text-slate-700 dark:text-slate-300'
-                                          }`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={isChecked}
-                                            onChange={() => toggleCampaignFilter(c.id)}
-                                            className="mt-0.5 rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="font-bold truncate text-slate-900 dark:text-white">{c.name}</div>
-                                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
-                                              <span className="capitalize font-semibold text-[#008069]">{c.channel || 'whatsapp'}</span>
-                                              <span>•</span>
-                                              <span>{c.total_contacts || c.sent_count || 0} recipients</span>
-                                              {c.created_at && (
-                                                <>
-                                                  <span>•</span>
-                                                  <span>{formatISTDateTime(c.created_at).split(',')[0]}</span>
-                                                </>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </label>
-                                      )
-                                    })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Active Filter Pills Bar */}
-                        {(nameSearchQuery || phoneSearchQuery || selectedTagFilters.length > 0 || selectedCampaignFilters.length > 0) && (
-                          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Filters:</span>
-                            {nameSearchQuery && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                <User size={11} />
-                                <span>Name: &quot;{nameSearchQuery}&quot;</span>
-                                <button type="button" onClick={() => setNameSearchQuery('')} className="hover:text-blue-900 dark:hover:text-white cursor-pointer ml-0.5">
-                                  <X size={12} />
-                                </button>
-                              </span>
-                            )}
-                            {phoneSearchQuery && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                                <Phone size={11} />
-                                <span>Phone: &quot;{phoneSearchQuery}&quot;</span>
-                                <button type="button" onClick={() => setPhoneSearchQuery('')} className="hover:text-purple-900 dark:hover:text-white cursor-pointer ml-0.5">
-                                  <X size={12} />
-                                </button>
-                              </span>
-                            )}
-                            {selectedTagFilters.map(t => (
-                              <span key={t} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-300 border border-[#00a884]/40">
-                                <Tag size={11} />
-                                <span>Tag: {t}</span>
-                                <button type="button" onClick={() => toggleTagFilter(t)} className="hover:text-emerald-950 dark:hover:text-white cursor-pointer ml-0.5">
-                                  <X size={12} />
-                                </button>
-                              </span>
-                            ))}
-                            {selectedCampaignFilters.map(campId => {
-                              const camp = (allCampaignsList.length > 0 ? allCampaignsList : campaigns).find(c => c.id === campId)
-                              return (
-                                <span key={campId} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                                  <History size={11} />
-                                  <span className="max-w-[120px] truncate">Camp: {camp?.name || campId.slice(0, 8)}</span>
-                                  <button type="button" onClick={() => toggleCampaignFilter(campId)} className="hover:text-amber-950 dark:hover:text-white cursor-pointer ml-0.5">
-                                    <X size={12} />
-                                  </button>
-                                </span>
-                              )
-                            })}
-                            <button
-                              type="button"
-                              onClick={handleClearAllFilters}
-                              className="text-[11px] text-rose-600 hover:underline font-bold px-1.5 py-0.5 cursor-pointer ml-auto"
-                            >
-                              Clear All
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Quick Tag Pills Strip (Top 10 most common tags) */}
-                        {uniqueContactTags.length > 0 && (
-                          <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Quick Tags:</span>
-                            {uniqueContactTags.slice(0, 10).map(({ tag, count }) => {
-                              const isChecked = selectedTagFilters.includes(tag)
-                              const tagContacts = contacts.filter(c => Array.isArray(c.tags) && c.tags.includes(tag))
-                              const allTagSelected = tagContacts.length > 0 && tagContacts.every(c => selectedContactIds.includes(c.id))
-                              return (
-                                <div
-                                  key={tag}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs border transition-all ${
-                                    isChecked
-                                      ? 'bg-[#00a884] text-white border-[#00a884] font-bold shadow-2xs'
-                                      : 'bg-white dark:bg-[#1a252c] border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleTagFilter(tag)}
-                                    className="flex items-center gap-1 cursor-pointer"
-                                    title={`Toggle filter by tag: ${tag}`}
-                                  >
-                                    <span>{tag}</span>
-                                    <span className={`text-[10px] px-1 py-0.1 rounded-full font-mono ${
-                                      isChecked ? 'bg-black/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                    }`}>
-                                      {count}
-                                    </span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (allTagSelected) handleDeselectByTag(tag)
-                                      else handleSelectByTag(tag)
-                                    }}
-                                    className={`ml-0.5 text-[10px] px-1 py-0.2 rounded font-bold transition-all cursor-pointer ${
-                                      isChecked
-                                        ? (allTagSelected ? 'bg-white text-emerald-800' : 'bg-white/20 text-white hover:bg-white/30')
-                                        : (allTagSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-100 dark:hover:bg-emerald-950')
-                                    }`}
-                                    title={allTagSelected ? `Deselect ${count} contacts with this tag` : `Select all ${count} contacts with this tag`}
-                                  >
-                                    {allTagSelected ? '✓ Added' : '+ Add'}
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* High-Density Contact Table View */}
-                      <div className="border border-slate-200 dark:border-[#2a3942] rounded-2xl overflow-hidden bg-white dark:bg-[#111b21] shadow-xs">
-                        {/* Table Header Bar */}
-                        <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-slate-50 dark:bg-[#152026] border-b border-slate-200 dark:border-[#2a3942] text-xs font-bold text-slate-600 dark:text-slate-400 select-none">
-                          <div className="col-span-12 sm:col-span-5 flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={filteredContacts.length > 0 && filteredContacts.every(c => selectedContactIds.includes(c.id))}
-                              onChange={(e) => {
-                                if (e.target.checked) handleSelectAllFiltered()
-                                else handleDeselectFiltered()
-                              }}
-                              className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer"
-                              title="Select or deselect all contacts currently shown"
-                            />
-                            <span>Contact Name &amp; Company</span>
-                          </div>
-                          <div className="hidden sm:block sm:col-span-3">Phone &amp; Channel</div>
-                          <div className="hidden sm:block sm:col-span-3">Tags &amp; Campaign History</div>
-                          <div className="hidden sm:block sm:col-span-1 text-right">Status</div>
-                        </div>
-
-                        {/* Scrollable Rows */}
-                        <div className="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 scrollbar-thin">
-                          {isLoadingContacts ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-500">
-                              <Loader2 className="animate-spin text-[#00a884]" size={24} />
-                              <span className="text-xs font-bold">Loading CRM contacts...</span>
-                            </div>
-                          ) : filteredContacts.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                              <div className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full mb-3">
-                                <Search size={24} />
-                              </div>
-                              <p className="text-sm font-bold text-slate-800 dark:text-white">No contacts match your active filters</p>
-                              <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                                Try clearing some of your search queries, tag filters, or past campaigns to view more contacts.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={handleClearAllFilters}
-                                className="mt-4 px-4 py-2 rounded-xl text-xs font-bold bg-[#00a884] text-white shadow-xs hover:bg-[#00876d] transition-all cursor-pointer"
-                              >
-                                Reset All Filters
-                              </button>
-                            </div>
-                          ) : (
-                            filteredContacts.map(c => {
-                              const isChecked = selectedContactIds.includes(c.id)
-                              const phoneDisplay = channel === 'email' ? (c.email || 'No email registered') : c.phone_number
-                              const phoneClean = (c.phone_number || '').replace(/[^\d]/g, '')
-                              const isPastCampMatch = selectedCampaignFilters.length > 0 && selectedCampaignParticipants.has(phoneClean)
-
-                              return (
-                                <div
-                                  key={c.id}
-                                  onClick={() => {
-                                    setSelectedContactIds(prev =>
-                                      prev.includes(c.id)
-                                        ? prev.filter(id => id !== c.id)
-                                        : [...prev, c.id]
-                                    )
-                                  }}
-                                  className={`grid grid-cols-12 gap-2 px-4 py-3 items-center transition-colors cursor-pointer select-none text-xs ${
-                                    isChecked
-                                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
-                                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                                  }`}
-                                >
-                                  {/* Contact & Avatar */}
-                                  <div className="col-span-12 sm:col-span-5 flex items-center gap-3 min-w-0">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {}} // Handled by row click
-                                      className="rounded border-slate-300 text-[#00a884] focus:ring-[#00a884] cursor-pointer shrink-0"
-                                    />
-                                    <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-[#008069] dark:text-emerald-300 border border-[#00a884]/20 flex items-center justify-center font-bold text-xs shrink-0">
-                                      {`${c.first_name || 'C'}`.substring(0, 1).toUpperCase()}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="font-bold text-slate-900 dark:text-white truncate">
-                                        {c.first_name} {c.last_name || ''}
-                                      </div>
-                                      {c.company && (
-                                        <div className="text-[10px] text-slate-400 truncate">
-                                          {c.company}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Phone / Email */}
-                                  <div className="col-span-6 sm:col-span-3 flex items-center gap-1.5 min-w-0">
-                                    <span className="font-mono text-slate-700 dark:text-slate-300 text-xs truncate">
-                                      {phoneDisplay}
-                                    </span>
-                                    {c.phone_number && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => handleCopyPhone(c.id, c.phone_number, e)}
-                                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-700 transition-colors shrink-0 cursor-pointer"
-                                        title="Copy phone number"
-                                      >
-                                        {copiedPhoneId === c.id ? (
-                                          <Check size={12} className="text-[#00a884]" />
-                                        ) : (
-                                          <Copy size={12} />
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {/* Tags & Campaign Match */}
-                                  <div className="col-span-6 sm:col-span-3 flex items-center gap-1.5 flex-wrap min-w-0">
-                                    {isPastCampMatch && (
-                                      <span className="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800 shrink-0">
-                                        ✓ Past Campaign Match
-                                      </span>
-                                    )}
-                                    {Array.isArray(c.tags) && c.tags.length > 0 ? (
-                                      c.tags.slice(0, 3).map((t: string) => (
-                                        <span
-                                          key={t}
-                                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0 ${
-                                            selectedTagFilters.includes(t)
-                                              ? 'bg-[#00a884]/15 text-[#008069] dark:text-emerald-300 border-[#00a884]/30 font-bold'
-                                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                          }`}
-                                        >
-                                          {t}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <span className="text-[10px] text-slate-400 italic">No tags</span>
-                                    )}
-                                    {Array.isArray(c.tags) && c.tags.length > 3 && (
-                                      <span className="text-[10px] text-slate-400 font-semibold">
-                                        +{c.tags.length - 3}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* Status / Selected Check */}
-                                  <div className="hidden sm:flex sm:col-span-1 justify-end">
-                                    {isChecked ? (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#00a884]">
-                                        <CheckCircle size={14} className="fill-[#00a884] text-white" />
-                                      </span>
-                                    ) : (
-                                      <span className="text-[11px] text-slate-300 dark:text-slate-600">—</span>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })
-                          )}
-                        </div>
-
-                        {/* Table Bottom Bar */}
-                        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#152026] border-t border-slate-200 dark:border-[#2a3942] flex items-center justify-between text-xs text-slate-500">
-                          <span>
-                            Showing <strong className="text-slate-800 dark:text-white">{filteredContacts.length}</strong> matching contacts
-                          </span>
-                          <span>
-                            <strong className="text-[#008069] dark:text-emerald-400">
-                              {selectedContactIds.filter(id => filteredContacts.some(c => c.id === id)).length}
-                            </strong> of {filteredContacts.length} matching currently selected
-                          </span>
-                        </div>
-                      </div>
+                  ) : contactsError ? (
+                    <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 p-5 text-center">
+                      <AlertCircle size={22} className="mx-auto text-rose-500" />
+                      <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">Your contacts could not be loaded</p>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 break-words">{contactsError}</p>
+                      <button type="button" onClick={() => fetchContacts()} className="mt-3 h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                        <RefreshCw size={13} /> Try again
+                      </button>
                     </div>
+                  ) : (
+                    <>
+                      <AudiencePicker
+                        key={audiencePickerKey}
+                        contacts={contacts}
+                        loading={isLoadingContacts}
+                        onReload={() => fetchContacts()}
+                        channel={channel}
+                        selectedIds={selectedContactIds}
+                        onChange={setSelectedContactIds}
+                        campaigns={allCampaignsList}
+                        loadingCampaigns={isLoadingAllCampaigns}
+                        participantsByCampaign={campaignParticipantsMap}
+                        participantsError={participantsError}
+                        onNeedParticipants={requestParticipants}
+                      />
+                    </>
                   )}
                 </div>
               )}
@@ -4064,17 +3403,31 @@ export default function CampaignsPage() {
               {/* STEP 4: Preview & Launch Confirmation */}
               {wizardStep === 4 && (
                 <div className="space-y-5">
-                  <div className="p-4 bg-[#e7f7f4] border border-[#00a884]/20 rounded-xl flex items-start gap-3">
-                    <CheckCircle size={18} className="text-[#008069] mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-bold text-xs text-[#008069]">Ready to Launch!</h4>
-                      <p className="text-[10px] text-[#008069] mt-0.5 leading-relaxed">
-                        Your campaign will send templates to <span className="font-bold">{
-                          audienceSource === 'excel' ? excelData.length : selectedContactIds.length
-                        } recipients</span> in the background. Operator console updates in real-time.
-                      </p>
+                  {reviewRecipientCount > 0 ? (
+                    <div className="p-4 bg-[#e7f7f4] dark:bg-emerald-950/30 border border-[#00a884]/20 rounded-xl flex items-start gap-3">
+                      <CheckCircle size={18} className="text-[#008069] dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-bold text-sm text-[#008069] dark:text-emerald-300 tabular-nums">
+                          {reviewRecipientCount.toLocaleString()} {reviewRecipientCount === 1 ? 'person' : 'people'} will receive this {channel === 'email' ? 'email' : 'message'}
+                        </h4>
+                        <p className="text-xs text-[#008069] dark:text-emerald-300/90 mt-0.5 leading-relaxed">
+                          {dispatchTiming === 'scheduled' ? 'It is sent at the time you set below.' : 'Sending starts as soon as you launch and continues in the background.'}
+                          {reviewAudience && reviewAudience.invalid > 0 && ` ${reviewAudience.invalid.toLocaleString()} without a valid ${channel === 'email' ? 'email address' : 'phone number'} ${reviewAudience.invalid === 1 ? 'is' : 'are'} skipped.`}
+                          {reviewAudience && reviewAudience.duplicates > 0 && ` ${reviewAudience.duplicates.toLocaleString()} repeated ${channel === 'email' ? 'addresses' : 'numbers'} are sent only once.`}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div role="alert" className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-xl flex items-start gap-3">
+                      <AlertCircle size={18} className="text-rose-600 dark:text-rose-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-bold text-sm text-rose-800 dark:text-rose-200">Nobody to send to</h4>
+                        <p className="text-xs text-rose-700 dark:text-rose-300 mt-0.5">
+                          None of the selected recipients has a valid {channel === 'email' ? 'email address' : 'phone number'}. Go back to the audience step.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">First Message Preview</span>
@@ -4414,10 +3767,11 @@ export default function CampaignsPage() {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#667781] dark:text-[#8696a0]">Target Count:</span>
-                      <span className="font-bold text-[#008069]">{
-                        audienceSource === 'excel' ? excelData.length : selectedContactIds.length
-                      } contacts</span>
+                      <span className="text-[#667781] dark:text-[#8696a0]">Recipients:</span>
+                      <span className="font-bold text-[#008069] tabular-nums">
+                        {reviewRecipientCount.toLocaleString()}
+                        <span className="font-normal text-[#667781] dark:text-[#8696a0]"> · from {audienceSource === 'excel' ? (excelFile?.name || 'spreadsheet') : 'CRM contacts'}</span>
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#667781] dark:text-[#8696a0]">Dispatch Schedule:</span>
@@ -4451,7 +3805,7 @@ export default function CampaignsPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsCreateOpen(false)}
+                  onClick={requestCloseWizard}
                   className="h-10 px-4.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#202d36] text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                 >
                   <span>Cancel</span>
@@ -4463,14 +3817,23 @@ export default function CampaignsPage() {
                   Step {wizardStep} of 4:{' '}
                   <strong className="text-slate-800 dark:text-white">
                     {wizardStep === 1
-                      ? 'Details & Template'
+                      ? 'Message'
                       : wizardStep === 2
-                      ? 'Select Target Audience'
+                      ? 'Audience'
                       : wizardStep === 3
-                      ? 'Map Variables'
-                      : 'Launch Confirmation'}
+                      ? 'Personalise'
+                      : 'Review & send'}
                   </strong>
                 </span>
+                {/* On the audience step, keep the number that matters in view while scrolling the list */}
+                {wizardStep === 2 && (() => {
+                  const count = audienceSource === 'db' ? crmSelection.recipients : (sheetCheck?.recipients.length ?? 0)
+                  return (
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums ${count > 0 ? 'bg-emerald-100 dark:bg-emerald-950/60 text-[#008069] dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                      {count.toLocaleString()} {count === 1 ? 'recipient' : 'recipients'}
+                    </span>
+                  )
+                })()}
               </div>
 
               {wizardStep < 4 ? (
@@ -4486,7 +3849,7 @@ export default function CampaignsPage() {
                 <button
                   type="button"
                   onClick={handleLaunchCampaign}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || reviewRecipientCount === 0}
                   className={`h-10 px-6 rounded-xl text-xs font-bold text-white flex items-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50 hover:shadow-lg active:scale-98 ${
                     dispatchTiming === 'scheduled'
                       ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 dark:shadow-none'
@@ -4501,12 +3864,12 @@ export default function CampaignsPage() {
                   ) : dispatchTiming === 'scheduled' ? (
                     <>
                       <Calendar size={15} />
-                      <span>Schedule Campaign (IST)</span>
+                      <span>Schedule for {reviewRecipientCount.toLocaleString()}</span>
                     </>
                   ) : (
                     <>
                       <Megaphone size={15} />
-                      <span>Launch Campaign</span>
+                      <span>Send to {reviewRecipientCount.toLocaleString()} now</span>
                     </>
                   )}
                 </button>

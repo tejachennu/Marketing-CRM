@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No contacts provided for import' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'contacts.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

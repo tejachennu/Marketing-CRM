@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { verifyConversationAccess } from '@/lib/record-visibility'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,12 +26,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const authResult = await verifyRecordAccess(request, 'conversations', conversationId)
+    const supabase = getSupabaseClient()
+
+    const authResult = await verifyConversationAccess(request, supabase, conversationId)
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
-
-    const supabase = getSupabaseClient()
 
     const limitVal = searchParams.get('limit')
     const beforeVal = searchParams.get('before')

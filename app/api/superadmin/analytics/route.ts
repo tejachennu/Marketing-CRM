@@ -23,19 +23,25 @@ export async function GET(request: NextRequest) {
       .select('id, name, slug, created_at')
       .order('created_at', { ascending: false })
 
-    // Fetch items for counts mapping
-    const { data: userMapping } = await supabase.from('users').select('organization_id')
-    const { data: contactMapping } = await supabase.from('contacts').select('organization_id')
-    const { data: campaignMapping } = await supabase.from('campaigns').select('organization_id')
-    const { data: messageMapping } = await supabase.from('messages').select('organization_id')
+    // Count each organization's rows with exact count queries. Downloading the rows to count them
+    // stops at the 1,000-row request limit and under-reports every organization past it.
+    const countFor = async (table: string, organizationId: string) => {
+      const { count } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+      return count || 0
+    }
 
-    const mappedOrgs = (orgs || []).map((org) => {
-      const users = (userMapping || []).filter(u => u.organization_id === org.id).length
-      const contacts = (contactMapping || []).filter(c => c.organization_id === org.id).length
-      const campaigns = (campaignMapping || []).filter(c => c.organization_id === org.id).length
-      const messages = (messageMapping || []).filter(m => m.organization_id === org.id).length
+    const mappedOrgs = await Promise.all((orgs || []).map(async (org) => {
+      const [users, contacts, campaigns, messages] = await Promise.all([
+        countFor('users', org.id),
+        countFor('contacts', org.id),
+        countFor('campaigns', org.id),
+        countFor('messages', org.id),
+      ])
 
-      // Mock AI Usage for the admin panel demonstration
+      // AI usage is not metered yet. This is an estimate from activity, shown as such in the console.
       const aiTokens = messages * 250 + campaigns * 1000 // roughly 250 tokens per message
       const aiCost = aiTokens * 0.000002 // gpt-4o-mini approx cost
 
@@ -48,7 +54,7 @@ export async function GET(request: NextRequest) {
         aiTokens,
         aiCost
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -60,6 +66,7 @@ export async function GET(request: NextRequest) {
         campaigns: campaignCount || 0,
         totalAiTokens: mappedOrgs.reduce((acc, org) => acc + org.aiTokens, 0),
         totalAiCost: mappedOrgs.reduce((acc, org) => acc + org.aiCost, 0),
+        aiUsageEstimated: true,
       },
       organizationsList: mappedOrgs
     })

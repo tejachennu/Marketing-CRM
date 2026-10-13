@@ -36,6 +36,25 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 /** Statuses in which the customer has not yet paid or confirmed the order. */
 export const OPEN_CHECKOUT_STATUSES: OrderStatus[] = ['cart_submitted', 'awaiting_address', 'payment_pending']
 
+/** Paid or confirmed for Cash on Delivery: the team has to pack and ship these. */
+export const TO_SHIP_STATUSES: OrderStatus[] = ['paid', 'cod_confirmed']
+
+/** The groups the dashboard filters orders by. */
+export const ORDER_VIEWS = {
+  all: null,
+  awaiting: OPEN_CHECKOUT_STATUSES,
+  to_ship: TO_SHIP_STATUSES,
+  shipped: ['shipped'],
+  delivered: ['delivered'],
+  canceled: ['canceled'],
+} as const satisfies Record<string, readonly OrderStatus[] | null>
+export type OrderView = keyof typeof ORDER_VIEWS
+
+/** Paid, then canceled: the money has to go back to the customer. */
+export function needsRefund(order: { status: string; payment_status: string }): boolean {
+  return order.status === 'canceled' && order.payment_status === 'paid'
+}
+
 /** What a team member may move an order to from each status. */
 const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   cart_submitted: ['paid', 'cod_confirmed', 'canceled'],
@@ -152,7 +171,10 @@ export function parseProductInput(raw: Record<string, any> | null | undefined): 
 
 /** The steps a store has to complete, in the order they are usually done. */
 export function getCommerceSetup(organization: Record<string, any> | null | undefined) {
-  const connected = Boolean(organization?.whatsapp_api_token && organization?.whatsapp_phone_number_id)
+  // The dashboard gets the organization without its token; /api/organization sends `whatsapp_connected` instead
+  const connected = typeof organization?.whatsapp_connected === 'boolean'
+    ? organization.whatsapp_connected
+    : Boolean(organization?.whatsapp_api_token && organization?.whatsapp_phone_number_id)
   const gateway = getPaymentGateway(organization)
   const cod = organization?.commerce_enable_cod !== false
   return {
@@ -164,4 +186,109 @@ export function getCommerceSetup(organization: Record<string, any> | null | unde
     /** A customer can complete an order when at least one way to pay is available. */
     canCheckout: connected && (Boolean(gateway) || cod),
   }
+}
+
+// ── Money ───────────────────────────────────────────────────────────────────
+
+/** An amount in the currency's minor unit (paise, cents). WhatsApp payments are sent this way. */
+export function toMinorUnits(amount: number | string | null | undefined): number {
+  const value = Number(amount)
+  return Number.isFinite(value) ? Math.round(value * 100) : 0
+}
+
+/** Express delivery surcharge. 50 until the store sets its own; 0 means express costs nothing extra. */
+export const DEFAULT_EXPRESS_FEE = 50
+export function getExpressFee(organization: Record<string, any> | null | undefined): number {
+  const raw = organization?.commerce_express_fee
+  if (raw === null || raw === undefined || raw === '') return DEFAULT_EXPRESS_FEE
+  const fee = Number(raw)
+  return Number.isFinite(fee) && fee >= 0 ? Math.round(fee * 100) / 100 : DEFAULT_EXPRESS_FEE
+}
+
+// ── Payment references ──────────────────────────────────────────────────────
+// WhatsApp identifies a payment request by its reference_id: at most 35 characters, only letters,
+// digits, "_", "-" and ".", and never reused. The order number is used so the customer sees the
+// same number the team does; asking again for the same order adds ".2", ".3", ...
+
+export const MAX_PAYMENT_REFERENCE_LENGTH = 35
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function buildPaymentReference(orderNumber: string, attempt: number = 1): string {
+  const suffix = attempt > 1 ? `.${Math.floor(attempt)}` : ''
+  const base = String(orderNumber || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, MAX_PAYMENT_REFERENCE_LENGTH - suffix.length)
+  if (!base) throw new Error('An order number is required to request payment')
+  return `${base}${suffix}`
+}
+
+export type ParsedPaymentReference =
+  | { kind: 'order_number'; orderNumber: string; attempt: number }
+  /** Requests sent before order numbers were used carried the order's database id. */
+  | { kind: 'order_id'; orderId: string }
+
+export function parsePaymentReference(reference: unknown): ParsedPaymentReference | null {
+  const value = String(reference ?? '').trim()
+  if (!value) return null
+  if (UUID_PATTERN.test(value)) return { kind: 'order_id', orderId: value.toLowerCase() }
+  if (!/^[A-Za-z0-9_.-]+$/.test(value)) return null
+
+  const match = value.match(/^(.+)\.(\d{1,3})$/)
+  if (match) return { kind: 'order_number', orderNumber: match[1], attempt: Number(match[2]) }
+  return { kind: 'order_number', orderNumber: value, attempt: 1 }
+}
+
+/** The reference to use for the next payment request of an order. */
+export function nextPaymentReference(order: { order_number: string; meta_payment_reference?: string | null }): string {
+  const last = parsePaymentReference(order.meta_payment_reference)
+  const lastAttempt = last?.kind === 'order_number' && last.orderNumber === buildPaymentReference(order.order_number) ? last.attempt : 0
+  return buildPaymentReference(order.order_number, lastAttempt + 1)
+}
+
+/** True when a payment request has been sent for the order (so WhatsApp knows its reference). */
+export function hasPaymentRequest(order: { order_number: string; meta_payment_reference?: string | null }): boolean {
+  const parsed = parsePaymentReference(order.meta_payment_reference)
+  if (!parsed) return false
+  if (parsed.kind === 'order_id') return true
+  return parsed.orderNumber === buildPaymentReference(order.order_number)
+}
+
+// ── Delivery details ────────────────────────────────────────────────────────
+
+export interface Fulfillment {
+  trackingNumber: string
+  carrier: string
+  shippedAt: string | null
+}
+
+/** Tracking details are kept with the delivery address. */
+export function getFulfillment(order: { shipping_address?: Record<string, any> | null }): Fulfillment {
+  const address = order.shipping_address || {}
+  return {
+    trackingNumber: String(address.tracking_number || '').trim(),
+    carrier: String(address.carrier || '').trim(),
+    shippedAt: address.shipped_at ? String(address.shipped_at) : null,
+  }
+}
+
+/** One line for an address, e.g. for copying or the order table. */
+export function formatAddress(address: Record<string, any> | null | undefined): string {
+  if (!address?.address_line_1) return ''
+  return [address.address_line_1, address.address_line_2, address.city, [address.state, address.pincode].filter(Boolean).join(' ')]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ')
+}
+
+// ── WhatsApp errors, in words a store owner can act on ───────────────────────
+
+export function describeWhatsAppError(error: any, fallback = 'WhatsApp did not accept the message.'): string {
+  const code = Number(error?.code)
+  const detail = String(error?.error_data?.details || error?.error_user_msg || error?.message || '').trim()
+
+  if (code === 131047) return 'This customer has not messaged you in the last 24 hours, so WhatsApp only allows an approved template. Ask them to message you first, or send a template from the chat.'
+  if (code === 131026) return 'This number cannot receive the message. It may not be on WhatsApp, or it uses an old version of the app.'
+  if (code === 131030) return 'This number is not on the allowed list of your test WhatsApp number.'
+  if (code === 190 || error?.type === 'OAuthException' && /access token|session/i.test(detail)) return 'The WhatsApp access token has expired or is not valid. Reconnect WhatsApp in Settings.'
+  if (code === 131056 || code === 130429 || code === 80007) return 'WhatsApp is limiting how fast you can message right now. Try again in a minute.'
+  if (code === 131031) return 'Your WhatsApp Business account is locked or restricted. Check WhatsApp Manager.'
+  return detail || fallback
 }

@@ -344,8 +344,9 @@ export const NATIVE_FLOW_TEMPLATES: Record<
               name: 'delivery_speed',
               required: true,
               options: [
-                { id: 'standard', title: 'Standard Delivery (2-4 Days)' },
-                { id: 'express', title: 'Express Delivery (Next Day)' },
+                // The store's express charge is written into this title when the form is published
+                { id: 'standard', title: 'Standard delivery' },
+                { id: 'express', title: 'Express delivery' },
               ],
             },
           ],
@@ -361,7 +362,7 @@ export const NATIVE_FLOW_TEMPLATES: Record<
             {
               id: 'confirm_msg',
               type: 'TextBody',
-              label: 'Tap Submit to finalize your address and receive your in-chat payment link.',
+              label: 'Tap Submit to save your address. We will then confirm how you would like to pay.',
               name: 'confirm_body',
             },
             {

@@ -82,7 +82,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
     }
 
-    const authResult = await verifyRecordAccess(request, 'whatsapp_workflows', id)
+    const authResult = await verifyRecordAccess(request, 'whatsapp_workflows', id, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -138,7 +138,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
     }
 
-    const authResult = await verifyRecordAccess(request, 'whatsapp_workflows', id)
+    const authResult = await verifyRecordAccess(request, 'whatsapp_workflows', id, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

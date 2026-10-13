@@ -2,7 +2,8 @@ import { Pool } from 'pg'
 
 let pool: Pool | null = null
 
-function getPool(): Pool | null {
+/** Direct Postgres connection for aggregate queries; null when no connection string is configured. */
+export function getPool(): Pool | null {
   const connectionString =
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.POSTGRES_URL ||
@@ -268,5 +269,73 @@ export async function getCampaignDetailedRecipients(
   } catch (err) {
     console.error('[CampaignStats] getCampaignDetailedRecipients error:', err)
     return []
+  }
+}
+
+export interface CampaignTotals {
+  /** Campaigns by state. */
+  total: number
+  scheduled: number
+  sending: number
+  completed: number
+  failed: number
+  stopped: number
+  /** Messages across every campaign of the organization. */
+  recipients: number
+  sent: number
+  failedMessages: number
+}
+
+/**
+ * Totals for all of an organization's campaigns, for the summary above the list.
+ * Returns null when no direct database connection is configured.
+ */
+export async function getOrganizationCampaignTotals(organizationId: string): Promise<CampaignTotals | null> {
+  const p = getPool()
+  if (!p) return null
+
+  try {
+    const [campaigns, logs] = await Promise.all([
+      p.query(
+        `SELECT
+           COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE status = 'SCHEDULED') AS scheduled,
+           COUNT(*) FILTER (WHERE status IN ('PROCESSING', 'PENDING')) AS sending,
+           COUNT(*) FILTER (WHERE status = 'COMPLETED') AS completed,
+           COUNT(*) FILTER (WHERE status = 'FAILED') AS failed,
+           COUNT(*) FILTER (WHERE status IN ('STOPPED', 'CANCELLED')) AS stopped
+         FROM campaigns
+         WHERE organization_id = $1`,
+        [organizationId]
+      ),
+      p.query(
+        `SELECT
+           COUNT(*) AS recipients,
+           COUNT(*) FILTER (WHERE l.status IN ('SENT', 'DELIVERED', 'READ')) AS sent,
+           COUNT(*) FILTER (WHERE l.status = 'FAILED') AS failed
+         FROM campaign_logs l
+         JOIN campaigns c ON c.id = l.campaign_id
+         WHERE c.organization_id = $1`,
+        [organizationId]
+      ),
+    ])
+
+    const c = campaigns.rows[0] || {}
+    const l = logs.rows[0] || {}
+    const int = (value: unknown) => parseInt(String(value ?? '0'), 10) || 0
+    return {
+      total: int(c.total),
+      scheduled: int(c.scheduled),
+      sending: int(c.sending),
+      completed: int(c.completed),
+      failed: int(c.failed),
+      stopped: int(c.stopped),
+      recipients: int(l.recipients),
+      sent: int(l.sent),
+      failedMessages: int(l.failed),
+    }
+  } catch (err) {
+    console.error('[CampaignStats] getOrganizationCampaignTotals error:', err)
+    return null
   }
 }

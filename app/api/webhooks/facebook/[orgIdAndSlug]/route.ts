@@ -10,7 +10,9 @@ import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsu
 import { trackChatbotEvent } from '@/lib/ai-analytics'
 import { classifyGreeting } from '@/lib/greeting-classifier'
 import {
+  handleCheckoutButton,
   handleInboundCommerceOrder,
+  orderIdFromFlowToken,
   handleInboundAddressSubmission,
   handleInboundPaymentConfirmation,
 } from '@/lib/commerce/commerce-webhook-handler'
@@ -566,26 +568,37 @@ async function processEvent(
           })
           return NextResponse.json({ success: true, handled_by: 'commerce_order_engine' })
         } catch (commErr: any) {
+          // Ask Meta to redeliver: recording a cart is idempotent, losing a customer's order is not
+          // acceptable. (A cart must never fall through to the chatbot as if it were a text.)
           console.error('[Facebook Webhook Commerce] Failed to handle cart order:', commErr)
+          return NextResponse.json({ error: 'The order could not be recorded' }, { status: 500 })
         }
       }
 
-      // B. Native Address Flow submission
-      const flowToken = message.interactive?.nfm_reply?.flow_token || ''
-      if (flowSubmissionData && (flowToken.startsWith('order_') || flowSubmissionData.address_line_1 || flowSubmissionData.pincode)) {
-        try {
-          console.log('[Facebook Webhook] Processing address flow submission for contact:', contact.id)
-          await handleInboundAddressSubmission({
-            organization: orgData,
-            contact,
-            conversation,
-            submissionData: flowSubmissionData,
-            flowToken,
-            customerPhone: phoneNumber,
-          })
-          return NextResponse.json({ success: true, handled_by: 'commerce_address_engine' })
-        } catch (commErr: any) {
-          console.error('[Facebook Webhook Commerce] Failed to handle address submission:', commErr)
+      // B. Delivery address form. WhatsApp returns the form's token inside the submitted data;
+      //    it names the order ("order_<id>"). A form without it only counts as an address when
+      //    this customer has an order waiting for one, so other forms that happen to ask for an
+      //    address or PIN code are left to the flow engine.
+      if (flowSubmissionData) {
+        const flowToken = String(flowSubmissionData.flow_token || message.interactive?.nfm_reply?.flow_token || '')
+        const looksLikeAddress = Boolean(orderIdFromFlowToken(flowToken)) || (!flowToken.startsWith('order_') && Boolean(flowSubmissionData.address_line_1))
+        if (looksLikeAddress) {
+          try {
+            const addressOrder = await handleInboundAddressSubmission({
+              organization: orgData,
+              contact,
+              conversation,
+              submissionData: flowSubmissionData,
+              flowToken,
+              customerPhone: phoneNumber,
+            })
+            if (addressOrder) {
+              return NextResponse.json({ success: true, handled_by: 'commerce_address_engine' })
+            }
+          } catch (commErr: any) {
+            console.error('[Facebook Webhook Commerce] Failed to handle address submission:', commErr)
+            return NextResponse.json({ error: 'The delivery address could not be saved' }, { status: 500 })
+          }
         }
       }
 
@@ -604,51 +617,27 @@ async function processEvent(
           return NextResponse.json({ success: true, handled_by: 'commerce_payment_engine' })
         } catch (commErr: any) {
           console.error('[Facebook Webhook Commerce] Failed to handle payment update:', commErr)
+          return NextResponse.json({ error: 'Payment update could not be recorded' }, { status: 500 })
         }
       }
 
-      // D. Cash on Delivery confirmation button
-      if (interactiveButtonId && interactiveButtonId.startsWith('cod_confirm_')) {
-        const orderId = interactiveButtonId.replace('cod_confirm_', '')
-        // Only this customer's own unpaid order in this organization can be confirmed.
-        // An old button tapped again must not reopen an order that is already paid or shipped.
-        const { data: confirmedOrders, error: codErr } = await supabase
-          .from('commerce_orders')
-          .update({
-            status: 'cod_confirmed',
-            payment_method: 'cod',
-            payment_status: 'pending',
-            updated_at: new Date().toISOString(),
+      // D. Checkout buttons: "Pay online", "Cash on Delivery", "Confirm order"
+      if (interactiveButtonId) {
+        try {
+          const button = await handleCheckoutButton({
+            organization: orgData,
+            contact,
+            conversation,
+            buttonId: interactiveButtonId,
+            customerPhone: phoneNumber,
           })
-          .eq('id', orderId)
-          .eq('organization_id', orgId)
-          .eq('contact_id', contact.id)
-          .in('status', ['cart_submitted', 'awaiting_address', 'payment_pending'])
-          .select('id')
-
-        if (codErr) {
-          console.error('[Facebook Webhook Commerce] Failed to confirm COD order:', codErr)
+          if (button.handled) {
+            return NextResponse.json({ success: true, handled_by: 'commerce_checkout_engine', outcome: button.outcome })
+          }
+        } catch (commErr: any) {
+          console.error('[Facebook Webhook Commerce] Failed to handle checkout button:', commErr)
+          return NextResponse.json({ error: 'The checkout step could not be completed' }, { status: 500 })
         }
-
-        if (confirmedOrders && confirmedOrders.length > 0 && whatsappPhoneNumberId && whatsappApiToken) {
-          await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${whatsappApiToken}`,
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
-              to: phoneNumber.replace('+', '').trim(),
-              type: 'text',
-              text: {
-                body: '🎉 Order confirmed for Cash on Delivery! We are preparing your shipment.',
-              },
-            }),
-          })
-        }
-        return NextResponse.json({ success: true, handled_by: 'commerce_cod_engine' })
       }
     }
 

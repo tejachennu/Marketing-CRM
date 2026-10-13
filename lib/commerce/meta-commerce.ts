@@ -52,7 +52,7 @@ export async function fetchMetaCatalogProducts(
   graphVersion: string = 'v25.0'
 ) {
   const products: any[] = []
-  let url: string | null = `https://graph.facebook.com/${graphVersion}/${catalogId}/products?fields=id,retailer_id,name,description,price,currency,image_url,url,availability,inventory&limit=100`
+  let url: string | null = `https://graph.facebook.com/${graphVersion}/${catalogId}/products?fields=id,retailer_id,name,description,price,sale_price,currency,image_url,url,availability,inventory&limit=100`
 
   // Follow Graph API paging so catalogs with more than 100 products sync completely
   for (let page = 0; url && page < MAX_CATALOG_PAGES; page++) {
@@ -77,8 +77,84 @@ export async function fetchMetaCatalogProducts(
   return products
 }
 
+const AVAILABLE_STATES = new Set(['in stock', 'available for order', 'preorder'])
+
+/** "₹1,299.00", "INR 500", 500 -> 1299, 500, 500 */
+export function parseMetaPrice(price: unknown): number {
+  if (typeof price === 'number') return Number.isFinite(price) && price > 0 ? price : 0
+  const match = String(price ?? '').match(/[\d.,]+/)
+  if (!match) return 0
+  const value = parseFloat(match[0].replace(/,/g, ''))
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+export interface CatalogProductRow {
+  retailer_id: string
+  title: string
+  description: string
+  price: number
+  currency: string
+  image_url: string | null
+  website_url: string | null
+  is_available: boolean
+  inventory_count: number
+  /** Marks the row as a copy of a Meta catalog item, so a later sync may update or remove it. */
+  metadata: { source: 'meta' }
+}
+
+/** A Meta catalog item as a `commerce_products` row. */
+export function toCatalogProductRow(product: any): CatalogProductRow | null {
+  const retailerId = String(product?.retailer_id || product?.id || '').trim()
+  if (!retailerId) return null
+  return {
+    retailer_id: retailerId,
+    title: String(product.name || 'Untitled product').slice(0, 150),
+    description: String(product.description || '').slice(0, 2000),
+    price: parseMetaPrice(product.sale_price) || parseMetaPrice(product.price),
+    currency: String(product.currency || 'INR').toUpperCase(),
+    image_url: product.image_url || null,
+    website_url: product.url || null,
+    is_available: AVAILABLE_STATES.has(String(product.availability || '').toLowerCase()),
+    inventory_count: typeof product.inventory === 'number' ? product.inventory : 100,
+    metadata: { source: 'meta' },
+  }
+}
+
 /**
- * Sync Meta Catalog products to Supabase `commerce_products` table
+ * Look up a few products by SKU in the Meta catalog. Used when a cart names a product the
+ * dashboard has not synced yet. Never throws: a slow or failing lookup returns what it has.
+ */
+export async function fetchMetaProductsBySku(
+  catalogId: string,
+  accessToken: string,
+  skus: string[],
+  graphVersion: string = 'v25.0'
+): Promise<CatalogProductRow[]> {
+  const rows: CatalogProductRow[] = []
+  await Promise.all(
+    skus.slice(0, 10).map(async (sku) => {
+      try {
+        const filter = encodeURIComponent(JSON.stringify({ retailer_id: { eq: sku } }))
+        const res = await fetch(
+          `https://graph.facebook.com/${graphVersion}/${catalogId}/products?fields=id,retailer_id,name,description,price,sale_price,currency,image_url,url,availability,inventory&filter=${filter}&limit=1`,
+          { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(4000) }
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        const row = toCatalogProductRow(data?.data?.[0])
+        if (row && row.retailer_id === sku) rows.push(row)
+      } catch {
+        // Best effort only
+      }
+    })
+  )
+  return rows
+}
+
+/**
+ * Sync Meta Catalog products to Supabase `commerce_products` table.
+ * Products are written in batches, and items that have left the Meta catalog are removed
+ * from the copy (products added by hand in the dashboard are never touched).
  */
 export async function syncMetaCatalogToDatabase(
   organizationId: string,
@@ -88,39 +164,50 @@ export async function syncMetaCatalogToDatabase(
 ) {
   const products = await fetchMetaCatalogProducts(catalogId, accessToken, graphVersion)
   const supabase = getSupabase()
+  const now = new Date().toISOString()
 
-  let syncedCount = 0
-  for (const p of products) {
-    // Parse price if string like "INR 500" or raw number
-    let rawPrice = 0
-    if (typeof p.price === 'string') {
-      const match = p.price.match(/[\d.,]+/)
-      if (match) rawPrice = parseFloat(match[0].replace(/,/g, ''))
-    } else if (typeof p.price === 'number') {
-      rawPrice = p.price
-    }
-
-    const { error } = await supabase.from('commerce_products').upsert(
-      {
-        organization_id: organizationId,
-        retailer_id: p.retailer_id || p.id,
-        title: p.name || 'Untitled Product',
-        description: p.description || '',
-        price: rawPrice,
-        currency: p.currency || 'INR',
-        image_url: p.image_url || null,
-        website_url: p.url || null,
-        is_available: p.availability === 'in stock',
-        inventory_count: typeof p.inventory === 'number' ? p.inventory : 100,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'organization_id,retailer_id' }
-    )
-
-    if (!error) syncedCount++
+  const rows = new Map<string, CatalogProductRow>()
+  for (const product of products) {
+    const row = toCatalogProductRow(product)
+    if (row) rows.set(row.retailer_id, row)
   }
 
-  return { total: products.length, synced: syncedCount }
+  let syncedCount = 0
+  let firstError: string | null = null
+  const batch = [...rows.values()]
+  for (let i = 0; i < batch.length; i += 200) {
+    const chunk = batch.slice(i, i + 200)
+    const { error } = await supabase
+      .from('commerce_products')
+      .upsert(chunk.map((row) => ({ organization_id: organizationId, ...row, updated_at: now })), { onConflict: 'organization_id,retailer_id' })
+    if (error) firstError = firstError || error.message
+    else syncedCount += chunk.length
+  }
+
+  // Remove copies of items that are no longer in the Meta catalog. Only done after a complete,
+  // error-free read, so a partial sync can never empty the product list.
+  let removed = 0
+  if (!firstError && batch.length > 0) {
+    const stale: string[] = []
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data, error } = await supabase
+        .from('commerce_products')
+        .select('id, retailer_id')
+        .eq('organization_id', organizationId)
+        .eq('metadata->>source', 'meta')
+        .order('id', { ascending: true })
+        .range(from, from + 999)
+      if (error || !data) break
+      for (const product of data) if (!rows.has(product.retailer_id)) stale.push(product.id)
+      if (data.length < 1000) break
+    }
+    for (let i = 0; i < stale.length; i += 100) {
+      const { error } = await supabase.from('commerce_products').delete().eq('organization_id', organizationId).in('id', stale.slice(i, i + 100))
+      if (!error) removed += Math.min(100, stale.length - i)
+    }
+  }
+
+  return { total: batch.length, synced: syncedCount, removed, error: firstError }
 }
 
 /**

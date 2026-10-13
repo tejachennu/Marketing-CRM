@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
+import { can, canSeeAll, describeDenied } from '@/lib/rbac'
+import { isUuid } from '@/lib/record-visibility'
+
+const TICKET_STATUSES = ['open', 'resolved']
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
-    const { data: tickets, error } = await supabase
+    let query = supabase
       .from('tickets')
       .select(`
         id,
@@ -35,6 +39,7 @@ export async function GET(request: NextRequest) {
         created_at,
         conversation_id,
         contact_id,
+        assigned_to,
         contacts (
           first_name,
           last_name,
@@ -44,6 +49,13 @@ export async function GET(request: NextRequest) {
       .eq('organization_id', orgId)
       .eq('status', 'open')
       .order('created_at', { ascending: false })
+
+    // Someone who only sees their own work gets the tickets assigned to them
+    if (!canSeeAll(authResult.user)) {
+      query = query.eq('assigned_to', authResult.user.id)
+    }
+
+    const { data: tickets, error } = await query
 
     if (error) {
       throw error
@@ -61,22 +73,58 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { ticketId, status } = body
+    const body = await request.json().catch(() => null)
+    const ticketId = body?.ticketId
+    const status = body?.status
+    const changesAssignee = body !== null && 'assignedTo' in body
+    const assignedTo = changesAssignee ? (body.assignedTo || null) : undefined
 
-    if (!ticketId || !status) {
+    if (!ticketId || (status === undefined && !changesAssignee)) {
       return NextResponse.json({ error: 'Missing ticketId or status' }, { status: 400 })
     }
+    if (status !== undefined && !TICKET_STATUSES.includes(status)) {
+      return NextResponse.json({ error: `Status must be one of: ${TICKET_STATUSES.join(', ')}` }, { status: 400 })
+    }
+    if (assignedTo && !isUuid(assignedTo)) {
+      return NextResponse.json({ error: 'Invalid assignedTo' }, { status: 400 })
+    }
 
-    const recordResult = await verifyRecordAccess(request, 'tickets', ticketId)
+    // Read-only accounts cannot change tickets; assigned-only accounts can change their own
+    const recordResult = await verifyRecordAccess(request, 'tickets', ticketId, {
+      permission: 'records.write',
+      assignedColumn: 'assigned_to',
+    })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
+    // Handing work to someone is for admins and managers
+    if (changesAssignee && !can(recordResult.user, 'records.assign')) {
+      return NextResponse.json({ error: describeDenied('records.assign') }, { status: 403 })
+    }
 
     const supabase = getSupabaseClient()
+
+    if (assignedTo) {
+      // The assignee has to be a member of the ticket's organization
+      const { data: ticket } = await supabase.from('tickets').select('organization_id').eq('id', ticketId).maybeSingle()
+      const { data: assignee } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', assignedTo)
+        .eq('organization_id', ticket?.organization_id || '')
+        .maybeSingle()
+      if (!assignee) {
+        return NextResponse.json({ error: 'That teammate is not in this organization' }, { status: 400 })
+      }
+    }
+
+    const update: Record<string, any> = { updated_at: new Date().toISOString() }
+    if (status !== undefined) update.status = status
+    if (changesAssignee) update.assigned_to = assignedTo
+
     const { data, error } = await supabase
       .from('tickets')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(update)
       .eq('id', ticketId)
       .select()
       .single()

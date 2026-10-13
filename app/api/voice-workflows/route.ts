@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -114,7 +114,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id)
+    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id, { permission: 'automation.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
@@ -174,7 +174,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workflow ID' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id)
+    const recordResult = await verifyRecordAccess(request, 'voice_workflows', id, { permission: 'automation.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }

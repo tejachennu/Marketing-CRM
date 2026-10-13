@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
+import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
 import {
   Shield,
   Building,
@@ -574,7 +575,7 @@ export default function SuperAdminPage() {
     fullName: '',
     email: '',
     password: '',
-    role: 'Manager',
+    role: 'org_manager',
     organizationId: ''
   })
 
@@ -822,7 +823,7 @@ export default function SuperAdminPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to create user')
 
       triggerAlert('success', `User/Manager "${fullName}" created successfully.`)
-      setUserForm({ fullName: '', email: '', password: '', role: 'Manager', organizationId: '' })
+      setUserForm({ fullName: '', email: '', password: '', role: 'org_manager', organizationId: '' })
       setShowUserModal(false)
       loadUsers()
       loadAnalytics()
@@ -849,7 +850,8 @@ export default function SuperAdminPage() {
         },
         body: JSON.stringify({
           fullName: editingUser.full_name,
-          role: editingUser.role,
+          // Your own role is not sent: the server refuses to let a super admin demote themselves
+          ...(editingUser.id === currentUserId ? {} : { role: editingUser.role }),
           organizationId: editingUser.organization_id,
           email: editingUser.email
         })
@@ -898,8 +900,16 @@ export default function SuperAdminPage() {
     }
   }
 
-  // Helper arrays
-  const rolesList = ['owner', 'admin', 'member', 'salesemployees', 'saleslead', 'superadmin', 'OrgAdmin', 'Manager']
+  // The roles a user can hold. Accounts created before these existed keep working: older role
+  // names are shown under the role they map to (see normalizeRole in lib/rbac.ts).
+  const rolesList = [
+    { value: 'org_admin', label: 'Org Admin — full access to the organization' },
+    { value: 'org_manager', label: 'Org Manager — sees everything, assigns work' },
+    { value: 'sales_employee', label: 'Sales Employee — assigned chats and leads only' },
+    { value: 'owner', label: 'Owner — the admin who created the organization' },
+    { value: 'superadmin', label: 'Super Admin — this console, every organization' },
+  ]
+  const currentUserId = authSessionManager.getUser()?.id || null
 
   // Filters calculation
   const filteredOrgs = organizations.filter(org =>
@@ -978,7 +988,7 @@ export default function SuperAdminPage() {
                 fullName: '',
                 email: '',
                 password: '',
-                role: 'Manager',
+                role: 'org_manager',
                 organizationId: organizations[0]?.id || ''
               })
               setShowUserModal(true)
@@ -1144,7 +1154,7 @@ export default function SuperAdminPage() {
             {/* AI Costing */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-amber-500/30 dark:hover:border-amber-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total AI Costing</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]" title="Estimated from message and campaign volume. AI usage is not metered yet.">Est. AI Costing</span>
                 <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Sparkles size={15} />
                 </div>
@@ -1186,11 +1196,11 @@ export default function SuperAdminPage() {
                     <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
                       <th className="py-3 px-4">Organization Name</th>
                       <th className="py-3 px-4">Slug Identifier</th>
-                      <th className="py-3 px-4 text-center">Managers</th>
+                      <th className="py-3 px-4 text-center">Users</th>
                       <th className="py-3 px-4 text-center">Contacts</th>
                       <th className="py-3 px-4 text-center">Campaigns</th>
                       <th className="py-3 px-4 text-center">Messages</th>
-                      <th className="py-3 px-4 text-center">AI Cost</th>
+                      <th className="py-3 px-4 text-center" title="Estimated from message and campaign volume">Est. AI Cost</th>
                       <th className="py-3 px-4 text-right">Created Date</th>
                     </tr>
                   </thead>
@@ -2309,16 +2319,8 @@ export default function SuperAdminPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          user.role === 'superadmin' 
-                            ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' 
-                            : user.role === 'OrgAdmin'
-                            ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-                            : user.role === 'Manager'
-                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                            : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        }`}>
-                          {user.role}
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${getRoleDisplay(user.role).bg} ${getRoleDisplay(user.role).color} ${getRoleDisplay(user.role).border}`}>
+                          {getRoleDisplay(user.role).label}
                         </span>
                       </td>
                       <td className="py-4 px-4 text-right space-x-1">
@@ -2329,13 +2331,17 @@ export default function SuperAdminPage() {
                         >
                           <Edit2 size={12} />
                         </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id, user.email)}
-                          className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
-                          title="Delete User"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {/* You cannot delete the account you are signed in with */}
+                        {user.id !== currentUserId && (
+                          <button
+                            onClick={() => handleDeleteUser(user.id, user.email)}
+                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
+                            title="Delete User"
+                            aria-label={`Delete ${user.email}`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -2626,7 +2632,7 @@ export default function SuperAdminPage() {
                   className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
                 >
                   {rolesList.map(r => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>
               </div>
@@ -2709,12 +2715,14 @@ export default function SuperAdminPage() {
                 </label>
                 <select
                   required
-                  value={editingUser.role}
+                  value={toStoredRole(editingUser.role)}
+                  disabled={editingUser.id === currentUserId}
+                  title={editingUser.id === currentUserId ? 'You cannot change your own role' : undefined}
                   onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
                   className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
                 >
                   {rolesList.map(r => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>
               </div>

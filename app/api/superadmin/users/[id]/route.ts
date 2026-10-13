@@ -1,31 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
+import { isKnownRole, isSuperAdmin, toStoredRole } from '@/lib/rbac'
+import { isUuid } from '@/lib/record-visibility'
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isSuperAdmin = await checkSuperAdmin(request)
-  if (!isSuperAdmin) {
+  const actor = await checkSuperAdmin(request)
+  if (!actor) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id } = await params
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 })
+  }
 
   try {
     const supabase = getSupabaseAdminClient()
-    const { email, password, fullName, role, organizationId } = await request.json()
+    const body = await request.json().catch(() => null)
+    const email = body?.email === undefined ? undefined : String(body.email).trim().toLowerCase()
+    const password = body?.password ? String(body.password) : ''
+    const fullName = body?.fullName === undefined ? undefined : String(body.fullName).trim()
+    const role = body?.role
+    const organizationId = body?.organizationId
 
-    // Get current email from the database to check if it has changed
     const { data: currentUser } = await supabase
       .from('users')
-      .select('email')
+      .select('id, email, role, organization_id')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
-    // 1. Update Auth user if email or password is provided and email has changed
+    if (!currentUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    if (email !== undefined && !EMAIL_PATTERN.test(email)) {
+      return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 })
+    }
+    if (password && password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+    }
+    if (role !== undefined && !isKnownRole(role)) {
+      return NextResponse.json({ error: 'Choose a valid role' }, { status: 400 })
+    }
+    // Removing your own super admin role would lock you out of this console
+    if (id === actor.id && role !== undefined && !isSuperAdmin({ role })) {
+      return NextResponse.json({ error: 'You cannot remove your own super admin role. Ask another super admin to do it.' }, { status: 400 })
+    }
+    if (organizationId !== undefined && organizationId !== currentUser.organization_id) {
+      if (!isUuid(organizationId)) {
+        return NextResponse.json({ error: 'Choose an organization' }, { status: 400 })
+      }
+      const { data: organization } = await supabase.from('organizations').select('id').eq('id', organizationId).maybeSingle()
+      if (!organization) {
+        return NextResponse.json({ error: 'That organization does not exist' }, { status: 400 })
+      }
+    }
+
+    // 1. Update Auth user if the email changed or a new password was given
     const authUpdate: Record<string, any> = {}
-    if (email && email !== currentUser?.email) authUpdate.email = email
+    if (email && email !== currentUser.email) authUpdate.email = email
     if (password) authUpdate.password = password
 
     if (Object.keys(authUpdate).length > 0) {
@@ -38,9 +76,25 @@ export async function PUT(
     // 2. Update DB Profile
     const dbUpdate: Record<string, any> = {}
     if (fullName !== undefined) dbUpdate.full_name = fullName
-    if (role !== undefined) dbUpdate.role = role
+    if (role !== undefined) dbUpdate.role = toStoredRole(role)
     if (organizationId !== undefined) dbUpdate.organization_id = organizationId
     if (email !== undefined) dbUpdate.email = email
+
+    if (Object.keys(dbUpdate).length === 0) {
+      return NextResponse.json({ success: true, user: currentUser })
+    }
+
+    // Work assigned in the old organization stays there, unassigned, when the user moves to another one
+    if (dbUpdate.organization_id && dbUpdate.organization_id !== currentUser.organization_id && currentUser.organization_id) {
+      for (const table of ['conversations', 'leads', 'tickets']) {
+        const { error: unassignError } = await supabase
+          .from(table)
+          .update({ assigned_to: null })
+          .eq('organization_id', currentUser.organization_id)
+          .eq('assigned_to', id)
+        if (unassignError) console.warn(`[SuperAdmin User Update API] Could not unassign ${table}:`, unassignError.message)
+      }
+    }
 
     const { data: updatedUser, error: dbError } = await supabase
       .from('users')
@@ -62,15 +116,32 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isSuperAdmin = await checkSuperAdmin(request)
-  if (!isSuperAdmin) {
+  const actor = await checkSuperAdmin(request)
+  if (!actor) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id } = await params
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 })
+  }
+  if (id === actor.id) {
+    return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 400 })
+  }
 
   try {
     const supabase = getSupabaseAdminClient()
+
+    const { data: target } = await supabase.from('users').select('id, organization_id').eq('id', id).maybeSingle()
+    if (!target) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Their conversations, leads and tickets go back to the unassigned pool
+    for (const table of ['conversations', 'leads', 'tickets']) {
+      const { error: unassignError } = await supabase.from(table).update({ assigned_to: null }).eq('assigned_to', id)
+      if (unassignError) console.warn(`[SuperAdmin User Delete API] Could not unassign ${table}:`, unassignError.message)
+    }
 
     // Delete profile first
     const { error: profileError } = await supabase

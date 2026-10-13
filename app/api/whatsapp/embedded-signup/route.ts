@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Target organization ID is required' }, { status: 400 })
     }
 
-    const accessCheck = await verifyOrgAccess(request, targetOrgId)
+    const accessCheck = await verifyOrgAccess(request, targetOrgId, { permission: 'settings.manage' })
     if (!accessCheck.authorized) {
       return NextResponse.json({ success: false, error: accessCheck.error }, { status: accessCheck.status })
     }
@@ -250,7 +250,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Target organization ID is required' }, { status: 400 })
     }
 
-    const accessCheck = await verifyOrgAccess(request, targetOrgId)
+    const accessCheck = await verifyOrgAccess(request, targetOrgId, { permission: 'settings.manage' })
     if (!accessCheck.authorized) {
       return NextResponse.json({ success: false, error: accessCheck.error }, { status: accessCheck.status })
     }

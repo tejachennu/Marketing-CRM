@@ -1,4 +1,17 @@
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
+import { MAX_PAYMENT_REFERENCE_LENGTH, toMinorUnits } from './commerce-utils'
+
+// WhatsApp limits. Text longer than these is rejected, so everything is trimmed to fit.
+const MAX_BODY = 1024
+const MAX_FOOTER = 60
+const MAX_BUTTON_TITLE = 20
+const MAX_ITEM_NAME = 60
+const MAX_STATUS_DESCRIPTION = 120
+
+function clip(text: string, max: number): string {
+  const value = String(text ?? '')
+  return value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`
+}
 
 export interface SingleProductMessageParams {
   phone: string
@@ -37,12 +50,15 @@ export interface OrderDetailsItem {
 
 export interface OrderDetailsMessageParams {
   phone: string
-  referenceId: string // e.g. ORD_1001
+  /** Unique per payment request: at most 35 characters of letters, digits, "_", "-" or ".". */
+  referenceId: string
   currency: string // 'INR'
-  totalAmount: number // in major units, e.g. 1050.00
-  subtotal: number
+  /** Informational: the amount sent to WhatsApp is always worked out from the lines below. */
+  totalAmount?: number // in major units, e.g. 1050.00
+  subtotal?: number
   shippingFee?: number
   taxAmount?: number
+  discountAmount?: number
   items: OrderDetailsItem[]
   paymentGatewayType?: 'razorpay' | 'payu' | 'billdesk' | 'zaakpay'
   paymentGatewayConfigName?: string
@@ -73,8 +89,8 @@ export function buildSingleProductMessage(params: SingleProductMessageParams) {
     type: 'interactive',
     interactive: {
       type: 'product',
-      body: { text: bodyText || 'Check out this product:' },
-      ...(footerText ? { footer: { text: footerText } } : {}),
+      body: { text: clip(bodyText || 'Check out this product:', MAX_BODY) },
+      ...(footerText ? { footer: { text: clip(footerText, MAX_FOOTER) } } : {}),
       action: {
         catalog_id: catalogId,
         product_retailer_id: productRetailerId,
@@ -115,7 +131,7 @@ export function buildMultiProductMessage(params: MultiProductMessageParams) {
     interactive: {
       type: 'product_list',
       header: { type: 'text', text: (headerText || 'Featured Collection').slice(0, 60) },
-      body: { text: bodyText || 'Browse our catalog below and add items to your cart:' },
+      body: { text: clip(bodyText || 'Browse our catalog below and add items to your cart:', MAX_BODY) },
       ...(footerText ? { footer: { text: footerText.slice(0, 60) } } : {}),
       action: {
         catalog_id: catalogId,
@@ -139,7 +155,7 @@ export function buildCatalogMessage(params: CatalogMessageParams) {
     type: 'interactive',
     interactive: {
       type: 'catalog_message',
-      body: { text: bodyText || 'Tap below to explore our entire catalog and place your order:' },
+      body: { text: clip(bodyText || 'Tap below to explore our entire catalog and place your order:', MAX_BODY) },
       action: {
         name: 'catalog_message',
         ...(thumbnailProductRetailerId
@@ -159,10 +175,9 @@ export function buildOrderDetailsMessage(params: OrderDetailsMessageParams) {
     phone,
     referenceId,
     currency,
-    totalAmount,
-    subtotal,
     shippingFee = 0,
     taxAmount = 0,
+    discountAmount = 0,
     items,
     paymentGatewayType = 'razorpay',
     paymentGatewayConfigName,
@@ -171,14 +186,28 @@ export function buildOrderDetailsMessage(params: OrderDetailsMessageParams) {
   } = params
 
   if (!referenceId) throw new Error('Reference ID is required for order details')
+  if (referenceId.length > MAX_PAYMENT_REFERENCE_LENGTH || !/^[A-Za-z0-9_.-]+$/.test(referenceId)) {
+    throw new Error(`Payment reference "${referenceId}" is not valid: use at most ${MAX_PAYMENT_REFERENCE_LENGTH} letters, digits, "_", "-" or "."`)
+  }
   if (!items || !items.length) throw new Error('Order items are required')
 
-  // Convert amounts to smallest currency unit (e.g., paise for INR, cents for USD)
+  // WhatsApp checks the arithmetic itself and rejects the message when it does not add up:
+  //   subtotal = sum of (price of one unit x quantity)
+  //   total    = subtotal + tax + shipping - discount
+  // So every amount is derived here, in whole minor units, from the unit prices.
   const offset = 100
-  const totalInCents = Math.round(totalAmount * offset)
-  const subtotalInCents = Math.round(subtotal * offset)
-  const shippingInCents = Math.round(shippingFee * offset)
-  const taxInCents = Math.round(taxAmount * offset)
+  const lines = items.map((item) => ({
+    retailer_id: String(item.retailer_id || 'item'),
+    name: clip(item.name || 'Item', MAX_ITEM_NAME),
+    unit: toMinorUnits(item.unit_price),
+    quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+  }))
+  const subtotalMinor = lines.reduce((sum, line) => sum + line.unit * line.quantity, 0)
+  const shippingMinor = Math.max(0, toMinorUnits(shippingFee))
+  const taxMinor = Math.max(0, toMinorUnits(taxAmount))
+  const discountMinor = Math.min(Math.max(0, toMinorUnits(discountAmount)), subtotalMinor)
+  const totalMinor = subtotalMinor + taxMinor + shippingMinor - discountMinor
+  if (totalMinor <= 0) throw new Error('A payment request needs a total above zero')
 
   const paymentSettings: any[] = []
   if (paymentGatewayConfigName) {
@@ -199,10 +228,10 @@ export function buildOrderDetailsMessage(params: OrderDetailsMessageParams) {
     interactive: {
       type: 'order_details',
       body: {
-        text: bodyText || 'Your order has been prepared! Review your items and complete payment securely below:',
+        text: clip(bodyText || 'Your order is ready. Review it and pay securely below:', MAX_BODY),
       },
       footer: {
-        text: footerText || 'Secure checkout • Powered by WhatsApp Pay',
+        text: clip(footerText || 'Secure payment inside WhatsApp', MAX_FOOTER),
       },
       action: {
         name: 'review_and_pay',
@@ -211,40 +240,20 @@ export function buildOrderDetailsMessage(params: OrderDetailsMessageParams) {
           type: 'physical-goods',
           ...(paymentSettings.length ? { payment_settings: paymentSettings } : {}),
           currency: currency || 'INR',
-          total_amount: {
-            value: totalInCents,
-            offset: offset,
-          },
+          total_amount: { value: totalMinor, offset },
           order: {
             status: 'pending',
-            items: items.map((item) => {
-              const itemTotalCents = Math.round(item.unit_price * item.quantity * offset)
-              return {
-                retailer_id: item.retailer_id,
-                name: item.name.slice(0, 60),
-                amount: {
-                  value: itemTotalCents,
-                  offset: offset,
-                },
-                quantity: item.quantity,
-                sale_amount: {
-                  value: itemTotalCents,
-                  offset: offset,
-                },
-              }
-            }),
-            subtotal: {
-              value: subtotalInCents,
-              offset: offset,
-            },
-            tax: {
-              value: taxInCents,
-              offset: offset,
-            },
-            shipping: {
-              value: shippingInCents,
-              offset: offset,
-            },
+            items: lines.map((line) => ({
+              retailer_id: line.retailer_id,
+              name: line.name,
+              // The price of ONE unit; WhatsApp multiplies it by the quantity
+              amount: { value: line.unit, offset },
+              quantity: line.quantity,
+            })),
+            subtotal: { value: subtotalMinor, offset },
+            tax: { value: taxMinor, offset },
+            ...(shippingMinor > 0 ? { shipping: { value: shippingMinor, offset } } : {}),
+            ...(discountMinor > 0 ? { discount: { value: discountMinor, offset } } : {}),
           },
         },
       },
@@ -268,16 +277,73 @@ export function buildOrderStatusMessage(params: OrderStatusMessageParams) {
     interactive: {
       type: 'order_status',
       body: {
-        text: description || 'Your order update is available.',
+        text: clip(description || 'Your order update is available.', MAX_BODY),
       },
       action: {
         name: 'review_order',
         parameters: {
+          // Must be the reference of the payment request this order was sent with
           reference_id: referenceId,
           order: {
             status: status,
-            description: description,
+            ...(description ? { description: clip(description, MAX_STATUS_DESCRIPTION) } : {}),
           },
+        },
+      },
+    },
+  }
+}
+
+/** A plain text message. */
+export function buildTextMessage(phone: string, body: string) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: cleanWhatsAppRecipient(phone),
+    type: 'text',
+    text: { body: clip(body, 4096) },
+  }
+}
+
+/** Up to three quick-reply buttons under a short text. */
+export function buildButtonsMessage(phone: string, bodyText: string, buttons: Array<{ id: string; title: string }>) {
+  if (!buttons.length || buttons.length > 3) throw new Error('A button message needs one to three buttons')
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: cleanWhatsAppRecipient(phone),
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: clip(bodyText, MAX_BODY) },
+      action: {
+        buttons: buttons.map((button) => ({ type: 'reply', reply: { id: button.id, title: clip(button.title, MAX_BUTTON_TITLE) } })),
+      },
+    },
+  }
+}
+
+/** Opens the delivery address form (a published WhatsApp Flow) for one order. */
+export function buildAddressFlowMessage(params: { phone: string; flowId: string; orderId: string; bodyText: string }) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: cleanWhatsAppRecipient(params.phone),
+    type: 'interactive',
+    interactive: {
+      type: 'flow',
+      body: { text: clip(params.bodyText, MAX_BODY) },
+      action: {
+        name: 'flow',
+        parameters: {
+          flow_message_version: '3',
+          mode: 'published',
+          flow_id: params.flowId,
+          // Comes back with the submitted form, so the address lands on the right order
+          flow_token: `order_${params.orderId}`,
+          flow_cta: 'Add delivery address',
+          flow_action: 'navigate',
+          flow_action_payload: { screen: 'SHIPPING_DETAILS' },
         },
       },
     },

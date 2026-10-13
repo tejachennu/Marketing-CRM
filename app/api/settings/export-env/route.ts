@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
-import { isAdmin } from '@/lib/rbac'
+import { isAdmin, isSuperAdmin } from '@/lib/rbac'
 import { MASTER_ORG_ID } from '@/lib/constants'
 
 // This endpoint returns every server secret, so it is limited to platform owners:
@@ -12,7 +12,7 @@ async function authorizeEnvExport(request: NextRequest): Promise<NextResponse | 
     return NextResponse.json({ error: 'Unauthorized: No active session found' }, { status: 401 })
   }
 
-  const isPlatformOwner = user.role === 'superadmin' || (user.organization_id === MASTER_ORG_ID && isAdmin(user))
+  const isPlatformOwner = isSuperAdmin(user) || (user.organization_id === MASTER_ORG_ID && isAdmin(user))
   if (!isPlatformOwner) {
     return NextResponse.json({ error: 'Forbidden: Only platform administrators can export environment variables' }, { status: 403 })
   }

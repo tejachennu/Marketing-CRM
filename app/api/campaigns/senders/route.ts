@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { isSuperAdmin } from '@/lib/rbac'
 import { MASTER_ORG_ID } from '@/lib/constants'
 
 function getSupabaseClient() {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId') || user.organization_id
 
-    if (user.role !== 'superadmin' && orgId !== user.organization_id) {
+    if (!isSuperAdmin(user) && orgId !== user.organization_id) {
       return NextResponse.json({ error: 'Forbidden: You do not have access to this organization\'s data' }, { status: 403 })
     }
 

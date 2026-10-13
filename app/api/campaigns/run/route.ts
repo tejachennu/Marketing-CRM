@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId)
+    const authResult = await verifyRecordAccess(request, 'campaigns', campaignId, { permission: 'campaigns.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

@@ -2,22 +2,23 @@
 
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 
-import { Fragment, useEffect, useState, useRef, useCallback, Suspense } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { ConversationWithContact, User, Contact, Message } from '@/lib/types'
-import { canSeeAll } from '@/lib/rbac'
+import { canAssign, canSeeAll, describeDenied, isReadOnly } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, FileText, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck
+  Edit2, Download, ArrowLeft, ArrowUpDown, Bot, RefreshCw, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
-import { formatChatListTimestamp, formatChatTime, isSameDay } from '@/lib/chat-dates'
-import { ChatDateSeparator } from '@/components/chat-date-separator'
+import { formatBadgeCount, formatWindowRemaining, getAvatarTone, getMessagePreview, getMessageText, getServiceWindow, parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
+import { MessageList } from '@/components/chat/message-list'
+import { ConversationRow } from '@/components/chat/conversation-row'
 
 function ConversationsPageContent() {
   const router = useRouter()
@@ -79,6 +80,9 @@ function ConversationsPageContent() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest')
   // For sales_employee without see_all, restrict conversations to only their assigned ones
   const [userAssignedToFilter, setUserAssignedToFilter] = useState<string | null>(null)
+  // Read-only accounts can read chats but not reply; the server refuses the send as well
+  const readOnly = isReadOnly(user)
+  const canAssignWork = canAssign(user)
   const [convPage, setConvPage] = useState(1)
   const [hasMoreConvs, setHasMoreConvs] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -103,18 +107,16 @@ function ConversationsPageContent() {
     }
   }, [user])
 
-  const togglePinConversation = (convId: string) => {
-    if (!user?.organization_id) return
-    const current = [...pinnedConvs]
-    const index = current.indexOf(convId)
-    if (index > -1) {
-      current.splice(index, 1)
-    } else {
-      current.push(convId)
-    }
-    setPinnedConvs(current)
-    localStorage.setItem(`pinned_convs_${user.organization_id}`, JSON.stringify(current))
-  }
+  const pinnedRef = useRef<string[]>([])
+  pinnedRef.current = pinnedConvs
+  const organizationIdForPins = user?.organization_id
+  const togglePinConversation = useCallback((convId: string) => {
+    if (!organizationIdForPins) return
+    const current = pinnedRef.current
+    const next = current.includes(convId) ? current.filter((id) => id !== convId) : [...current, convId]
+    setPinnedConvs(next)
+    localStorage.setItem(`pinned_convs_${organizationIdForPins}`, JSON.stringify(next))
+  }, [organizationIdForPins])
   
   // File Upload States
   const [uploading, setUploading] = useState(false)
@@ -292,11 +294,28 @@ function ConversationsPageContent() {
   }
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectedConvRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const conversationsRef = useRef<ConversationWithContact[]>([])
+  const messagesRef = useRef<Message[]>([])
   const hasScrolledForConvRef = useRef(false)
   const lastScrollMsgIdRef = useRef<string | null>(null)
+
+  // Whether the reader is at the newest message. New messages only pull the view down when they are.
+  const nearBottomRef = useRef(true)
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false)
+  const [newWhileAway, setNewWhileAway] = useState(0)
+  const [messagesError, setMessagesError] = useState<string | null>(null)
+
+  // What is typed, attached and quoted belongs to one conversation. It is kept per conversation
+  // so that switching chats never carries a half-written message over to another customer.
+  type ComposerDraft = { text: string; file: { url: string; name: string; type: string } | null; reply: Message | null }
+  const draftsRef = useRef<Map<string, ComposerDraft>>(new Map())
+  const composerRef = useRef<ComposerDraft>({ text: '', file: null, reply: null })
+  composerRef.current = { text: messageText, file: attachedFile, reply: replyingTo }
+  messagesRef.current = messages
 
   // Keep conversations ref in sync
   useEffect(() => {
@@ -319,28 +338,89 @@ function ConversationsPageContent() {
     return () => clearInterval(timer)
   }, [])
 
-  // Keep ref in sync for use in callbacks and reset scroll tracking when switching conversation
+  // Switching conversation: park the draft of the one being left, restore the one being opened,
+  // and reset everything that only made sense for the previous chat.
   useEffect(() => {
+    const previous = selectedConvRef.current
+    if (previous && previous !== selectedConversation) {
+      const draft = composerRef.current
+      if (draft.text.trim() || draft.file || draft.reply) draftsRef.current.set(previous, draft)
+      else draftsRef.current.delete(previous)
+    }
+
     selectedConvRef.current = selectedConversation
     hasScrolledForConvRef.current = false
     lastScrollMsgIdRef.current = null
+    nearBottomRef.current = true
+    setShowJumpToLatest(false)
+    setNewWhileAway(0)
+
+    const restored = selectedConversation ? draftsRef.current.get(selectedConversation) : undefined
+    setMessageText(restored?.text || '')
+    setAttachedFile(restored?.file || null)
+    setReplyingTo(restored?.reply || null)
+    setChatSendError(null)
+    setShowAiPanel(false)
+    setShowRephraseDropdown(false)
   }, [selectedConversation])
 
-  // Auto-scroll to bottom intelligently (instant on load, smooth on new messages, none on pagination)
+  // Keep the composer as tall as its text, up to five lines (also after sending or restoring a draft)
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMsgId = messages[messages.length - 1]?.id || null
-      
-      if (!hasScrolledForConvRef.current) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
-        hasScrolledForConvRef.current = true
-        lastScrollMsgIdRef.current = lastMsgId
-      } else if (lastMsgId !== lastScrollMsgIdRef.current) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-        lastScrollMsgIdRef.current = lastMsgId
-      }
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [messageText, selectedConversation])
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = chatScrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    nearBottomRef.current = true
+    setShowJumpToLatest(false)
+    setNewWhileAway(0)
+  }, [])
+
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140
+    nearBottomRef.current = nearBottom
+    setShowJumpToLatest(!nearBottom)
+    if (nearBottom) setNewWhileAway(0)
+  }, [])
+
+  // Photos and videos get their height after loading; keep the newest message in view while they do
+  const handleMediaLoad = useCallback(() => {
+    const el = chatScrollRef.current
+    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [])
+
+  // Opening a chat jumps to the newest message. After that the view only follows new messages
+  // when the reader is already at the bottom (or sent the message themselves); someone reading
+  // older messages is told how many arrived instead of being pulled away.
+  useEffect(() => {
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    const el = chatScrollRef.current
+
+    if (!hasScrolledForConvRef.current) {
+      if (el) el.scrollTop = el.scrollHeight
+      hasScrolledForConvRef.current = true
+      lastScrollMsgIdRef.current = last.id
+      return
     }
-  }, [messages])
+    // Earlier messages were added at the top, or a delivery status changed
+    if (last.id === lastScrollMsgIdRef.current) return
+    lastScrollMsgIdRef.current = last.id
+
+    if (last.sender_type === 'user' || nearBottomRef.current) {
+      scrollToLatest('smooth')
+    } else {
+      setShowJumpToLatest(true)
+      setNewWhileAway((count) => count + 1)
+    }
+  }, [messages, scrollToLatest])
 
   // ─── Data Fetching ───
 
@@ -367,8 +447,9 @@ function ConversationsPageContent() {
 
   const loadUnreadCount = useCallback(async (orgId: string, force = false) => {
     try {
-      const seeAll = user ? canSeeAll(user) : true
-      const assignedTo = seeAll ? '' : (user?.id || '')
+      // Read from the ref so long-lived callers (the live subscription) never use an outdated profile.
+      // The server limits assigned-only accounts to their own chats whatever is sent here.
+      const assignedTo = userAssignedToFilterRef.current || ''
       const fetchKey = `${orgId}-${assignedTo}`
       if (!force && fetchKey === lastFetchedUnreadKeyRef.current) {
         return
@@ -389,7 +470,7 @@ function ConversationsPageContent() {
     } catch (err) {
       console.error('[Dashboard] Error fetching unread count:', err)
     }
-  }, [user])
+  }, [])
 
   const fetchContacts = useCallback(async (orgId: string): Promise<Contact[]> => {
     const res = await fetch(`/api/contacts?organizationId=${orgId}&limit=100`)
@@ -415,10 +496,12 @@ function ConversationsPageContent() {
 
   const lastFetchedKeyRef = useRef('')
 
+  // `append`: false replaces the list, true adds the next page, 'merge' folds the newest page into
+  // the list already shown (used for live updates, so pages the reader loaded are not thrown away).
   const loadConversations = useCallback(async (
     orgId: string, 
     pageNum = 1, 
-    append = false, 
+    append: boolean | 'merge' = false, 
     searchVal = '', 
     unreadOnly = false,
     assignedTo?: string | null,
@@ -435,12 +518,20 @@ function ConversationsPageContent() {
     try {
       if (pageNum > 1) {
         setLoadingMore(true)
-      } else {
+      } else if (append !== 'merge') {
         setFetchingConvs(true)
       }
       const result = await fetchConversations(orgId, pageNum, searchVal, unreadOnly, assignedTo)
-      
+
+      // The search or filter changed while this request was in flight: its result is out of date
+      if (searchVal !== searchTermRef.current || unreadOnly !== unreadFilterRef.current) return
+
       setConversations((prev) => {
+        if (append === 'merge') {
+          const fresh = new Map(result.conversations.map((c) => [c.id, c]))
+          const kept = prev.filter((c) => !fresh.has(c.id))
+          return [...result.conversations, ...kept]
+        }
         if (append) {
           const combined = [...prev, ...result.conversations]
           const seen = new Set()
@@ -452,7 +543,10 @@ function ConversationsPageContent() {
         }
         return result.conversations
       })
-      setHasMoreConvs(result.hasMore)
+      if (append !== 'merge') {
+        setHasMoreConvs(result.hasMore)
+        setConvPage(pageNum)
+      }
       
       setSelectedConversation((prev) => {
         let contactIdParam = null
@@ -493,55 +587,78 @@ function ConversationsPageContent() {
   }, [fetchContacts])
 
   const loadMessages = useCallback(async (convId: string) => {
+    // Never show the previous chat's messages under the new chat's name while this loads
+    setMessages([])
+    setHasMoreMessages(false)
+    setMessagesError(null)
     setLoadingMessages(true)
     try {
       const { messages: msgs, hasMore } = await fetchMessages(convId)
+      // Another chat was opened while this one was loading: drop the late answer
+      if (selectedConvRef.current !== convId) return
       setMessages(msgs)
       setHasMoreMessages(hasMore)
     } catch (err) {
       console.error('[Dashboard] Error loading messages:', err)
+      if (selectedConvRef.current === convId) {
+        setMessagesError(err instanceof Error ? err.message : 'Messages could not be loaded.')
+      }
     } finally {
-      setLoadingMessages(false)
+      if (selectedConvRef.current === convId) setLoadingMessages(false)
     }
   }, [fetchMessages])
 
-  const loadOlderMessages = async () => {
-    if (!selectedConversation || messages.length === 0 || loadingOlderMessages) return
+  const loadingOlderRef = useRef(false)
+  const loadOlderMessages = useCallback(async () => {
+    const convId = selectedConvRef.current
+    const current = messagesRef.current
+    if (!convId || current.length === 0 || loadingOlderRef.current) return
+    loadingOlderRef.current = true
     setLoadingOlderMessages(true)
     try {
-      const oldestMessage = messages[0]
-      const { messages: olderMsgs, hasMore } = await fetchMessages(selectedConversation, oldestMessage.created_at)
-      
-      const chatContainer = document.getElementById('chat-messages-container')
+      const { messages: olderMsgs, hasMore } = await fetchMessages(convId, current[0].created_at)
+      if (selectedConvRef.current !== convId) return
+
+      const chatContainer = chatScrollRef.current
       const previousScrollHeight = chatContainer?.scrollHeight || 0
-      
-      setMessages((prev) => [...olderMsgs, ...prev])
+
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id))
+        return [...olderMsgs.filter((m) => !known.has(m.id)), ...prev]
+      })
       setHasMoreMessages(hasMore)
-      
-      setTimeout(() => {
-        if (chatContainer) {
-          const currentScrollHeight = chatContainer.scrollHeight
-          chatContainer.scrollTop = currentScrollHeight - previousScrollHeight
-        }
-      }, 0)
+
+      // Keep the message the reader was looking at in the same place
+      requestAnimationFrame(() => {
+        if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight - previousScrollHeight
+      })
     } catch (err) {
       console.error('[Dashboard] Error loading older messages:', err)
     } finally {
+      loadingOlderRef.current = false
       setLoadingOlderMessages(false)
     }
-  }
+  }, [fetchMessages])
+
+  /** Reload the first page of the list with the search and filter currently applied. */
+  const refreshConversationList = useCallback((mode: false | 'merge' = false) => {
+    if (!user) return
+    loadConversations(user.organization_id, 1, mode, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
+  }, [user, loadConversations])
 
   const reloadAll = useCallback(() => {
     if (!user) return
-    setConvPage(1)
-    loadConversations(user.organization_id, 1, false)
+    refreshConversationList()
     loadContacts(user.organization_id)
-  }, [user, loadConversations, loadContacts])
+  }, [user, refreshConversationList, loadContacts])
 
-  const clearUnreadCount = useCallback(async (convId: string) => {
+  // `force` skips the "already zero here" shortcut: for the chat that is open the local count is
+  // always zero, while the stored one goes up with every message the customer sends.
+  const organizationIdForUnread = user?.organization_id
+  const clearUnreadCount = useCallback(async (convId: string, force = false) => {
     try {
       const conv = conversationsRef.current.find((c) => c.id === convId)
-      if (conv && conv.unread_count === 0) {
+      if (!force && conv && conv.unread_count === 0) {
         return
       }
 
@@ -556,15 +673,13 @@ function ConversationsPageContent() {
         .eq('id', convId)
       if (error) {
         console.error('[Dashboard] Error resetting unread count in DB:', error)
-      } else {
-        if (user?.organization_id) {
-          loadUnreadCount(user.organization_id, true)
-        }
+      } else if (organizationIdForUnread) {
+        loadUnreadCount(organizationIdForUnread, true)
       }
     } catch (err) {
       console.error('[Dashboard] Error resetting unread count:', err)
     }
-  }, [user, loadUnreadCount])
+  }, [organizationIdForUnread, loadUnreadCount])
 
   // Dynamically fetch selected conversation if it is not in the active conversations list
   // OR fetch/create conversation if contactId is in the URL
@@ -613,7 +728,8 @@ function ConversationsPageContent() {
             // Create new conversation
             const { data: newConv, error: createError } = await supabase
               .from('conversations')
-              .insert([{ organization_id: user.organization_id, contact_id: currentContactId, is_active: true }])
+              // Someone who only sees their own chats keeps the one they start
+              .insert([{ organization_id: user.organization_id, contact_id: currentContactId, is_active: true, ...(canSeeAll(user) ? {} : { assigned_to: user.id }) }])
               .select(`
                 id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
                 contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
@@ -761,95 +877,103 @@ function ConversationsPageContent() {
   // ─── Realtime Subscriptions ───
 
   useEffect(() => {
-    if (!user) return
+    if (!user?.organization_id) return
 
     const orgId = user.organization_id
+
+    // Only this organization's rows: without the filter the browser is sent every tenant's changes
+    const orgFilter = `organization_id=eq.${orgId}`
+
+    // Several events often arrive together (a campaign, a busy hour); refresh the list once for all of them
+    let listRefreshTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleListRefresh = () => {
+      if (listRefreshTimer) return
+      listRefreshTimer = setTimeout(() => {
+        listRefreshTimer = null
+        loadConversations(orgId, 1, 'merge', searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
+      }, 1200)
+    }
 
     const conversationsChannel = supabase
       .channel(`ws-conversations-${orgId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'conversations' },
-        async (payload) => {
-          console.log('[WS] New conversation:', payload.new)
-          await loadConversations(orgId, 1, false, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
-          await loadContacts(orgId)
+        { event: 'INSERT', schema: 'public', table: 'conversations', filter: orgFilter },
+        () => {
+          scheduleListRefresh()
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'conversations' },
-        async (payload) => {
-          console.log('[WS] Conversation updated:', payload.new)
+        { event: 'UPDATE', schema: 'public', table: 'conversations', filter: orgFilter },
+        (payload) => {
           const updated = payload.new as any
-          setConversations((prev) => {
-            const newList = prev.map((c) =>
+          setConversations((prev) =>
+            prev.map((c) =>
               c.id === updated.id
-                ? { 
-                    ...c, 
-                    unread_count: updated.id === selectedConvRef.current ? 0 : updated.unread_count, 
-                    last_message_at: updated.last_message_at 
+                ? {
+                    ...c,
+                    unread_count: updated.id === selectedConvRef.current ? 0 : updated.unread_count,
+                    last_message_at: updated.last_message_at,
+                    assigned_to: updated.assigned_to,
+                    auto_reply_enabled: updated.auto_reply_enabled,
                   }
                 : c
             )
-            return newList
-          })
+          )
           loadUnreadCount(orgId, true)
         }
       )
       .subscribe((status) => {
-        console.log('[WS] Conversations channel:', status)
         if (status === 'SUBSCRIBED') setRealtimeStatus('connected')
-        if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setRealtimeStatus('disconnected')
+        if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('disconnected')
       })
 
     const messagesChannel = supabase
       .channel(`ws-messages-${orgId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: orgFilter },
         (payload) => {
           const newMsg = payload.new as Message
-          console.log('[WS] New message:', newMsg.id, 'in conv:', newMsg.conversation_id)
+          const isOpenChat = newMsg.conversation_id === selectedConvRef.current
 
-          // Live update the last message and timestamp in the conversation item
-          setConversations((prev) => {
-            const exists = prev.some((c) => c.id === newMsg.conversation_id)
-            if (!exists) {
-              // If conversation doesn't exist in our list yet, reload to fetch it
-              loadConversations(orgId, 1, false, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
-              return prev
-            }
-            return prev.map((c) =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_at: newMsg.created_at,
-                    last_message: newMsg,
-                    unread_count: newMsg.conversation_id === selectedConvRef.current ? 0 : (c.unread_count + 1)
-                  }
-                : c
+          if (!conversationsRef.current.some((c) => c.id === newMsg.conversation_id)) {
+            // A chat that is not in the list yet (new, or on a later page): fetch it
+            scheduleListRefresh()
+          } else {
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === newMsg.conversation_id
+                  ? {
+                      ...c,
+                      last_message_at: newMsg.created_at,
+                      last_message: newMsg,
+                      // Only a message from the customer is unread; our own replies are not
+                      unread_count: isOpenChat ? 0 : c.unread_count + (newMsg.sender_type === 'contact' ? 1 : 0),
+                    }
+                  : c
+              )
             )
-          })
+          }
 
-          if (newMsg.conversation_id === selectedConvRef.current) {
+          if (isOpenChat) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === newMsg.id)) return prev
               return [...prev, newMsg]
             })
-            // Reset unread count for the active conversation
-            clearUnreadCount(selectedConvRef.current)
-          } else {
+            // The customer wrote while this chat is open: it has been read, so keep the stored count at zero
+            if (newMsg.sender_type === 'contact') clearUnreadCount(newMsg.conversation_id, true)
+          } else if (newMsg.sender_type === 'contact') {
             loadUnreadCount(orgId, true)
           }
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: orgFilter },
         (payload) => {
           const updatedMsg = payload.new as Message
-          console.log('[WS] Message updated status:', updatedMsg.id, updatedMsg.status, 'read_at:', updatedMsg.read_at)
 
           // 1. Live update active conversation message status (blue ticks)
           setMessages((prev) =>
@@ -880,30 +1004,38 @@ function ConversationsPageContent() {
           )
         }
       )
-      .subscribe((status) => {
-        console.log('[WS] Messages channel:', status)
-      })
+      .subscribe()
 
     const contactsChannel = supabase
       .channel(`ws-contacts-${orgId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'contacts' },
-        async (payload) => {
-          console.log('[WS] New contact:', payload.new)
-          await loadContacts(orgId)
+        { event: 'INSERT', schema: 'public', table: 'contacts', filter: orgFilter },
+        () => {
+          loadContacts(orgId)
         }
       )
-      .subscribe((status) => {
-        console.log('[WS] Contacts channel:', status)
-      })
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'contacts', filter: orgFilter },
+        (payload) => {
+          // A rename elsewhere (Contacts page, another teammate) shows up here straight away
+          const updated = payload.new as any
+          setConversations((prev) =>
+            prev.map((c) => (c.contact?.id === updated.id ? { ...c, contact: { ...c.contact, ...updated } } : c))
+          )
+        }
+      )
+      .subscribe()
 
     return () => {
+      if (listRefreshTimer) clearTimeout(listRefreshTimer)
       supabase.removeChannel(conversationsChannel)
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(contactsChannel)
     }
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.organization_id])
 
   // ─── Load Messages ───
 
@@ -942,6 +1074,7 @@ function ConversationsPageContent() {
   useEffect(() => {
     if (!selectedConversation) {
       setMessages([])
+      setMessagesError(null)
       setAiSuggestions([])
       setAiSuggestionsError(null)
       setCurrentTicket(null)
@@ -954,32 +1087,37 @@ function ConversationsPageContent() {
     setAiSuggestionsError(null)
     setCurrentTicket(null)
 
+    let stale = false
     const fetchOpenTicket = async () => {
       try {
-        const { data: ticketData, error } = await supabase
+        const { data: tickets, error } = await supabase
           .from('tickets')
           .select('*')
           .eq('conversation_id', selectedConversation)
           .eq('status', 'open')
-          .maybeSingle()
-          
-        if (!error && ticketData) {
-          setCurrentTicket(ticketData)
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        // Ignore the answer if another chat was opened in the meantime
+        if (!stale && !error && tickets && tickets.length > 0) {
+          setCurrentTicket(tickets[0])
         }
       } catch (err) {
         console.error('Error fetching ticket:', err)
       }
     }
     fetchOpenTicket()
+    return () => {
+      stale = true
+    }
   }, [selectedConversation, loadMessages, clearUnreadCount])
 
   // ─── Actions ───
 
   const handleLoadMore = () => {
     if (!user || loadingMore) return
-    const nextPage = convPage + 1
-    setConvPage(nextPage)
-    loadConversations(user.organization_id, nextPage, true)
+    // The next page of the list as it is filtered now, not of the unfiltered inbox
+    loadConversations(user.organization_id, convPage + 1, true, searchTerm, unreadFilter, userAssignedToFilter)
   }
 
   const toggleAutoReply = async (convId: string, currentVal: boolean) => {
@@ -1083,7 +1221,7 @@ function ConversationsPageContent() {
           priority: leadForm.priority,
           status: 'active',
           source: 'whatsapp',
-          assigned_to: leadForm.assignedTo || null,
+          assigned_to: canAssignWork ? (leadForm.assignedTo || null) : user.id,
           created_by: user.id,
           last_activity_at: new Date().toISOString()
         }])
@@ -1148,33 +1286,35 @@ function ConversationsPageContent() {
 
   async function handleSendMessage() {
     if ((!messageText.trim() && !attachedFile) || !selectedConversation || !user) return
+    if (readOnly) {
+      setChatSendError(describeDenied('records.write'))
+      return
+    }
 
-    const selectedConv = conversations.find((c) => c.id === selectedConversation)
+    const convId = selectedConversation
+    const selectedConv = conversations.find((c) => c.id === convId)
     if (!selectedConv?.contact) return
 
     setChatSendError(null)
-    let text = messageText.trim()
+    const text = messageText.trim()
     const media = attachedFile
-    const currentReply = replyingTo
-    
-    if (currentReply) {
-      text = `[reply:${currentReply.id}]${text}`
-      setReplyingTo(null)
-    }
-    
+    const reply = replyingTo
+
     setMessageText('')
     setAttachedFile(null)
+    setReplyingTo(null)
     setAiSuggestions([])
     setShowAiPanel(false)
+    draftsRef.current.delete(convId)
 
     // Optimistic update
     const optimisticMsg: Message = {
       id: `temp-${Date.now()}`,
       organization_id: user.organization_id,
-      conversation_id: selectedConversation,
+      conversation_id: convId,
       sender_type: 'user',
       sender_id: null,
-      body: text,
+      body: withReplyMarker(reply?.id, text),
       media_url: media ? media.url : null,
       twilio_message_sid: null,
       read_at: null,
@@ -1182,13 +1322,18 @@ function ConversationsPageContent() {
     }
     setMessages((prev) => [...prev, optimisticMsg])
 
+    // Only touch what is on screen if this chat is still the one open when the answer arrives
+    const stillOpen = () => selectedConvRef.current === convId
+
     try {
       const response = await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversationId: selectedConversation,
+          conversationId: convId,
           message: text,
+          // The server quotes the original message on WhatsApp; the customer never sees a marker
+          replyToMessageId: reply?.id || null,
           phoneNumber: selectedConv.contact.phone_number,
           mediaUrl: media ? media.url : null,
           channel: 'whatsapp',
@@ -1197,17 +1342,17 @@ function ConversationsPageContent() {
 
       const data = await response.json()
       if (!response.ok || !data.success || data.twilioSent === false) {
-        if (data.message) {
+        if (stillOpen()) {
           setMessages((prev) =>
-            prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+            data.message
+              ? prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+              : prev.filter((m) => m.id !== optimisticMsg.id)
           )
-        } else {
-          setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
         }
         throw new Error(data.error || 'Failed to dispatch message via WhatsApp')
       }
 
-      if (data.message) {
+      if (data.message && stillOpen()) {
         setMessages((prev) => {
           const alreadyHasReal = prev.some((m) => m.id === data.message.id)
           if (alreadyHasReal) {
@@ -1219,20 +1364,33 @@ function ConversationsPageContent() {
     } catch (error: any) {
       console.error('[Dashboard] Send error:', error)
       const errMsg = error instanceof Error ? error.message : String(error)
-      setChatSendError(errMsg)
-      if (text.startsWith('[reply:')) {
-        const match = text.match(/^\[reply:([^\]]+)\](.*)$/)
-        if (match) {
-          setMessageText(match[2])
-          const oldReply = messages.find(m => m.id === match[1])
-          if (oldReply) setReplyingTo(oldReply)
-        }
-      } else if (text) {
+      if (stillOpen()) {
+        // Give the text back so nothing typed is lost
+        setChatSendError(errMsg)
         setMessageText(text)
+        setReplyingTo(reply)
+        if (media) setAttachedFile(media)
+      } else {
+        // The reader moved on: keep it as that chat's draft instead of dropping it into the wrong one
+        draftsRef.current.set(convId, { text, file: media, reply })
       }
-      if (media) setAttachedFile(media)
     }
   }
+
+  const handleReplyTo = useCallback((message: Message) => {
+    setReplyingTo(message)
+    textareaRef.current?.focus()
+  }, [])
+
+  /** Put a message that was not delivered back in the composer to edit and send again. */
+  const handleRetryMessage = useCallback((message: Message) => {
+    setMessageText(getMessageText(message))
+    setChatSendError(null)
+    textareaRef.current?.focus()
+  }, [])
+
+  const handleOpenImage = useCallback((url: string) => setActiveImageModal(url), [])
+  const handleSelectConversation = useCallback((conversationId: string) => setSelectedConversation(conversationId), [])
 
   // ─── Rephrase with AI ───
 
@@ -1253,10 +1411,22 @@ function ConversationsPageContent() {
       }
     } catch (err) {
       console.error('[Rephrase] Error:', err)
+      // Say so instead of leaving the button looking like it did nothing
+      setChatSendError('The message could not be rephrased. Your text is unchanged; try again.')
     } finally {
       setRephrasing(false)
     }
   }
+
+  // Escape closes the photo viewer
+  useEffect(() => {
+    if (!activeImageModal) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveImageModal(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeImageModal])
 
   // Close rephrase dropdown on outside click
   useEffect(() => {
@@ -1326,10 +1496,7 @@ function ConversationsPageContent() {
 
       setShowRenameModal(false)
       
-      if (user) {
-        loadConversations(user.organization_id, 1, false)
-        loadContacts(user.organization_id)
-      }
+      if (user) loadContacts(user.organization_id)
     } catch (err) {
       console.error('[Rename] Error:', err)
       setRenameError(err instanceof Error ? err.message : 'Failed to rename contact')
@@ -1338,110 +1505,44 @@ function ConversationsPageContent() {
     }
   }
 
-  const scrollToMessage = (msgId: string) => {
+  const scrollToMessage = useCallback((msgId: string) => {
     const el = document.getElementById(`msg-${msgId}`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.classList.add('bg-emerald-500/10')
+      el.classList.add('ring-2', 'ring-[#00a884]')
       setTimeout(() => {
-        el.classList.remove('bg-emerald-500/10')
+        el.classList.remove('ring-2', 'ring-[#00a884]')
       }, 1500)
     }
-  }
-
-  const getDisplayUrl = (url: string | null): string => {
-    if (!url) return ''
-    if (url.startsWith('https://api.twilio.com')) {
-      return `/api/media/proxy?url=${encodeURIComponent(url)}`
-    }
-    return url
-  }
-
-  const getDownloadName = (url: string | null): string => {
-    if (!url) return 'attachment'
-    if (url.startsWith('data:')) {
-      const match = url.match(/^data:([^;]+);/)
-      const mime = match ? match[1] : 'application/octet-stream'
-      const ext = mime.split('/')[1] || 'bin'
-      return `attachment.${ext}`
-    }
-    const hashPart = url.includes('#') ? url.split('#')[1] : ''
-    const hashExtMatch = hashPart.match(/media\.([a-zA-Z0-9]+)/i)
-    if (hashExtMatch) {
-      return `attachment.${hashExtMatch[1]}`
-    }
-    const cleanUrl = url.split('?')[0].split('#')[0]
-    const parts = cleanUrl.split('/')
-    const lastPart = parts[parts.length - 1] || 'attachment'
-    try {
-      return decodeURIComponent(lastPart)
-    } catch {
-      return lastPart
-    }
-  }
-
-  const getMediaType = (url: string | null): 'image' | 'video' | 'audio' | 'document' | null => {
-    if (!url) return null
-
-    // 1. Base64 Data URLs (e.g. data:image/png;base64,...)
-    if (url.startsWith('data:image/')) return 'image'
-    if (url.startsWith('data:video/')) return 'video'
-    if (url.startsWith('data:audio/')) return 'audio'
-    if (url.startsWith('data:')) return 'document'
-
-    // 2. Hash extension hint from webhook (e.g. /api/...#media.jpg)
-    const hashPart = url.includes('#') ? url.split('#')[1] : ''
-    const hashExtMatch = hashPart.match(/media\.([a-zA-Z0-9]+)/i)
-    if (hashExtMatch) {
-      const ext = hashExtMatch[1].toLowerCase()
-      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
-      if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
-      if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
-      return 'document'
-    }
-
-    // 3. Query params or URL path
-    try {
-      const parsed = new URL(url, 'https://dummy.com')
-      const mime = parsed.searchParams.get('mime') || parsed.searchParams.get('type')
-      if (mime) {
-        if (mime.startsWith('image/')) return 'image'
-        if (mime.startsWith('video/')) return 'video'
-        if (mime.startsWith('audio/')) return 'audio'
-      }
-      const extParam = parsed.searchParams.get('ext')
-      if (extParam) {
-        const ext = extParam.toLowerCase()
-        if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
-        if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
-        if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
-      }
-    } catch {}
-
-    const cleanUrl = url.split('?')[0].split('#')[0]
-    const ext = cleanUrl.split('.').pop()?.toLowerCase() || ''
-    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
-    if (['mp4', 'webm', 'ogg', 'mov', '3gp', 'm4v'].includes(ext)) return 'video'
-    if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'amr', 'opus'].includes(ext)) return 'audio'
-    return 'document'
-  }
+  }, [])
 
   // ─── Sorting ───
 
-  const sortedConversations = [...conversations].sort((a, b) => {
-    const aPinned = pinnedConvs.includes(a.id)
-    const bPinned = pinnedConvs.includes(b.id)
-    
+  const pinnedSet = useMemo(() => new Set(pinnedConvs), [pinnedConvs])
+  const sortedConversations = useMemo(() => [...conversations].sort((a, b) => {
+    const aPinned = pinnedSet.has(a.id)
+    const bPinned = pinnedSet.has(b.id)
+
     if (aPinned && !bPinned) return -1
     if (!aPinned && bPinned) return 1
-    
+
     const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
     const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
     return sortBy === 'newest' ? bTime - aTime : aTime - bTime
-  })
+  }), [conversations, pinnedSet, sortBy])
 
   const selectedConvData = conversations.find((c) => c.id === selectedConversation)
   const selectedContact = selectedConvData?.contact
+  const selectedContactName = formatContactDisplayName(selectedContact)
+
+  // WhatsApp's 24-hour rule, worked out once and used by the header and the composer alike.
+  // windowTick re-evaluates it every minute so the countdown and the cut-off stay current.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const serviceWindow = useMemo(() => getServiceWindow(messages), [messages, windowTick])
+  // Until the history has loaded there is nothing to judge the window by, so nothing is blocked
+  const windowClosed = !loadingMessages && !messagesError && serviceWindow.state !== 'open'
+  const chatbotActive = selectedConvData?.auto_reply_enabled !== false && features.enable_ai
+  const composerLocked = readOnly || windowClosed || chatbotActive
 
   // ─── Rendering ───
 
@@ -1463,26 +1564,25 @@ function ConversationsPageContent() {
         selectedConversation ? 'hidden md:flex' : 'flex'
       }`}>
         {/* Sidebar Header */}
-        <div className="px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between h-[60px] flex-shrink-0 select-none border-b border-[#e9edef] dark:border-[#2a3942]/60">
-          <div className="flex items-center gap-3">
-            {/* User Profile Avatar */}
-            <div className="h-10 w-10 rounded-full bg-slate-300 dark:bg-[#111b21] flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 text-sm border border-[#e9edef] dark:border-[#2a3942] select-none">
-              {user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'ME'}
-            </div>
-            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Chats</h2>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="px-4 bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-between h-[60px] flex-shrink-0 select-none border-b border-[#e9edef] dark:border-[#2a3942]/60">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h2 className="text-[19px] font-bold tracking-tight text-[#111b21] dark:text-[#e9edef]">Chats</h2>
             {unreadCount > 0 && (
-              <span className="bg-[#ef4444] text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm animate-pulse select-none" title={`${unreadCount} unread messages`}>
-                {unreadCount}
+              <span
+                className="bg-[#25d366] dark:bg-[#00a884] text-white dark:text-[#111b21] text-[11px] font-semibold tabular-nums h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center"
+                title={`${unreadCount} unread ${unreadCount === 1 ? 'message' : 'messages'}`}
+              >
+                {formatBadgeCount(unreadCount, 999)}
               </span>
             )}
-            <span className="flex items-center" title={`Realtime: ${realtimeStatus}`}>
-              {realtimeStatus === 'connected' ? (
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              ) : (
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
-              )}
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span
+              className="flex items-center gap-1.5 text-[11px] font-medium text-[#667781] dark:text-[#8696a0]"
+              title={realtimeStatus === 'connected' ? 'New messages appear as they arrive' : realtimeStatus === 'connecting' ? 'Connecting to live updates…' : 'Live updates are paused'}
+            >
+              <span className={`h-2 w-2 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-500' : realtimeStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'}`} />
+              <span>{realtimeStatus === 'connected' ? 'Live' : realtimeStatus === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
             {user && (
               <AddContactDialog
@@ -1493,226 +1593,159 @@ function ConversationsPageContent() {
           </div>
         </div>
 
-        {/* Search & Filter section */}
-        <div className="p-2 border-b border-[#e9edef] dark:border-[#2a3942]/60 bg-white dark:bg-[#111b21] space-y-2 flex-shrink-0">
-          {/* Search bar */}
-          <div className="relative group">
-            <Search size={15} className="absolute left-3.5 top-2.5 text-[#667781] dark:text-[#8696a0] group-focus-within:text-[#00a884] transition-colors" />
+        {realtimeStatus === 'disconnected' && (
+          <div role="status" className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 text-[12px] text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2 flex-shrink-0">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <WifiOff size={13} className="shrink-0" />
+              <span>Live updates are paused. New messages may not show.</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                refreshConversationList()
+                if (selectedConversation) loadMessages(selectedConversation)
+              }}
+              className="shrink-0 inline-flex items-center gap-1 font-semibold underline underline-offset-2 cursor-pointer"
+            >
+              <RefreshCw size={11} />
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {/* Search & filters */}
+        <div className="px-3 py-2 bg-white dark:bg-[#111b21] space-y-2 flex-shrink-0 border-b border-[#e9edef] dark:border-[#222d34]">
+          <div className="relative">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#667781] dark:text-[#8696a0] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search or start new chat"
+              inputMode="search"
+              aria-label="Search chats"
+              placeholder="Search name or number"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-1.5 bg-[#f0f2f5] dark:bg-[#202c33] border-none rounded-lg focus:outline-none focus:ring-0 text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-slate-800 dark:text-slate-100 transition-all duration-200"
+              className="w-full h-9 pl-10 pr-9 bg-[#f0f2f5] dark:bg-[#202c33] border-none rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00a884]/40 text-[14px] placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-[#e9edef]"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#667781] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
-          {/* Filters */}
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1 pt-1 select-none">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setUnreadFilter(false)}
-                className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold cursor-pointer ${
-                  !unreadFilter 
-                    ? 'bg-[#e7f8f2] dark:bg-[#0b3c2d]/60 text-[#00a884] dark:text-[#00e676] font-bold' 
-                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942]'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setUnreadFilter(true)}
-                className={`px-3 py-1 rounded-full text-[11px] transition-all font-semibold flex items-center gap-1.5 cursor-pointer ${
-                  unreadFilter 
-                    ? 'bg-[#e7f8f2] dark:bg-[#0b3c2d]/60 text-[#00a884] dark:text-[#00e676] font-bold' 
-                    : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#667781] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942]'
-                }`}
-              >
-                <span>Unread</span>
-                {unreadCount > 0 && (
-                  <span className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[9px] font-bold transition-all ${
-                    unreadFilter 
-                      ? 'bg-[#00a884] text-white' 
-                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-400'
-                  }`}>
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
+          <div className="flex items-center justify-between gap-2 select-none">
+            <div className="flex items-center gap-1.5" role="group" aria-label="Filter chats">
+              {[
+                { unread: false, label: 'All' },
+                { unread: true, label: 'Unread' },
+              ].map((option) => {
+                const active = unreadFilter === option.unread
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setUnreadFilter(option.unread)}
+                    className={`h-7 px-3 rounded-full text-[13px] font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                      active
+                        ? 'bg-[#d9fdd3] dark:bg-[#0a332c] text-[#008069] dark:text-[#00a884]'
+                        : 'bg-[#f0f2f5] dark:bg-[#202c33] text-[#54656f] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#2a3942]'
+                    }`}
+                  >
+                    {option.label}
+                    {option.unread && unreadCount > 0 && (
+                      <span className="tabular-nums text-[11px] font-semibold opacity-80">{formatBadgeCount(unreadCount, 999)}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
             <button
+              type="button"
               onClick={() => setSortBy((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
-              className="text-[10px] font-bold text-[#667781] hover:text-[#00a884] dark:text-[#8696a0] dark:hover:text-[#00e676] cursor-pointer tracking-wide uppercase transition-colors"
+              title="Change the order of the list"
+              className="h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[12px] font-medium text-[#54656f] dark:text-[#8696a0] hover:bg-[#f0f2f5] dark:hover:bg-[#202c33] cursor-pointer"
             >
-              Sort: {sortBy}
+              <ArrowUpDown size={12} />
+              {sortBy === 'newest' ? 'Newest first' : 'Oldest first'}
             </button>
           </div>
         </div>
 
         {/* Conversations list area */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-[#111b21]">
-          {fetchingConvs ? (
-            <div className="animate-pulse">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="w-full px-4 py-3 flex items-center gap-3 border-b border-[#e9edef] dark:border-[#2a3942]/60">
-                  <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+        <div className={`flex-1 overflow-y-auto bg-white dark:bg-[#111b21] transition-opacity ${fetchingConvs && sortedConversations.length > 0 ? 'opacity-60' : ''}`} aria-busy={fetchingConvs}>
+          {fetchingConvs && sortedConversations.length === 0 ? (
+            <div className="animate-pulse" aria-hidden="true">
+              {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <div key={i} className="w-full px-3 py-2.5 flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-[#202c33] shrink-0" />
                   <div className="flex-1 space-y-2 py-1">
-                    <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
-                    <div className="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
+                    <div className="h-3 bg-slate-200 dark:bg-[#202c33] rounded w-1/3" />
+                    <div className="h-2.5 bg-slate-200 dark:bg-[#202c33] rounded w-2/3" />
                   </div>
                 </div>
               ))}
             </div>
           ) : sortedConversations.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-xs font-medium space-y-2">
-              <p>No conversations found.</p>
-              <p className="text-[10px] text-slate-400">New WhatsApp contacts appear here.</p>
+            <div className="px-8 py-14 text-center">
+              <div className="mx-auto h-12 w-12 rounded-full bg-[#f0f2f5] dark:bg-[#202c33] flex items-center justify-center text-[#8696a0] mb-3">
+                {searchTerm ? <Search size={20} /> : <MessageCircle size={20} />}
+              </div>
+              {searchTerm ? (
+                <>
+                  <p className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef] break-words">No chats match “{searchTerm}”</p>
+                  <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">Try a different name or part of the phone number.</p>
+                  <button type="button" onClick={() => setSearchTerm('')} className="mt-3 text-[13px] font-semibold text-[#008069] dark:text-[#00a884] hover:underline cursor-pointer">Clear search</button>
+                </>
+              ) : unreadFilter ? (
+                <>
+                  <p className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">You&apos;re all caught up</p>
+                  <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">There are no unread chats.</p>
+                  <button type="button" onClick={() => setUnreadFilter(false)} className="mt-3 text-[13px] font-semibold text-[#008069] dark:text-[#00a884] hover:underline cursor-pointer">Show all chats</button>
+                </>
+              ) : (
+                <>
+                  <p className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">No chats yet</p>
+                  <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">
+                    {userAssignedToFilter ? 'Chats assigned to you appear here.' : 'Messages from customers appear here. Add a contact to start one.'}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
-            sortedConversations.map((conv) => {
-              const contactName = formatContactDisplayName(conv.contact)
-              const avatarInitials = getContactAvatarInitials(conv.contact)
-              const isSelected = selectedConversation === conv.id
-
-              return (
-                <div
+            <>
+              {sortedConversations.map((conv) => (
+                <ConversationRow
                   key={conv.id}
-                  onClick={() => setSelectedConversation(conv.id)}
-                  className={`w-full px-4 py-3 text-left flex items-center gap-3 border-b border-[#e9edef] dark:border-[#2a3942]/30 relative cursor-pointer transition-colors duration-150 group/item ${
-                    isSelected
-                      ? 'bg-[#f0f2f5] dark:bg-[#2a3942] text-[#111b21] dark:text-white'
-                      : 'bg-transparent hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]/70'
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div className="relative flex-shrink-0 select-none">
-                    <div className="h-12 w-12 rounded-full bg-slate-200 dark:bg-[#202c33] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 border border-[#e9edef] dark:border-[#2a3942] text-sm shrink-0">
-                      {avatarInitials}
-                    </div>
-                  </div>
-
-                  {/* Conv metadata */}
-                  <div className="flex-1 min-w-0 pr-2 select-none">
-                    <p className="font-semibold text-[14px] text-[#111b21] dark:text-[#e9edef] truncate">
-                      {contactName}
-                    </p>
-                    <div className="flex items-center gap-1 text-[12.5px] text-[#667781] dark:text-[#8696a0] mt-0.5 font-normal min-w-0">
-                      {conv.last_message ? (
-                        <>
-                          {conv.last_message.sender_type === 'user' && (() => {
-                            const status = conv.last_message.status
-                            if (status === 'failed' || status === 'undelivered') {
-                              return (
-                                <span title={conv.last_message.error_message || 'Failed'} className="flex-shrink-0">
-                                  <AlertCircle size={12} className="text-rose-500" />
-                                </span>
-                              )
-                            }
-                            if (status === 'read' || conv.last_message.read_at) {
-                              return <CheckCheck size={13} className="text-sky-400 flex-shrink-0" />
-                            }
-                            if (status === 'delivered') {
-                              return <CheckCheck size={13} className="text-slate-400 dark:text-slate-500 flex-shrink-0" />
-                            }
-                            return <Check size={13} className="text-slate-400 dark:text-slate-500 flex-shrink-0" />
-                          })()}
-                          <span className="truncate">
-                            {conv.last_message.media_url && (!conv.last_message.body || conv.last_message.body === '[Media Attachment]') ? (
-                              (() => {
-                                const mType = getMediaType(conv.last_message.media_url)
-                                if (mType === 'image') return '📷 Photo'
-                                if (mType === 'video') return '🎥 Video'
-                                if (mType === 'audio') return '🎵 Audio'
-                                return '📄 Document'
-                              })()
-                            ) : conv.last_message.body ? (
-                              conv.last_message.body.startsWith('[reply:') ? (
-                                conv.last_message.body.replace(/^\[reply:[^\]]+\]/, '')
-                              ) : (
-                                conv.last_message.body
-                              )
-                            ) : conv.last_message.media_url ? (
-                              getMediaType(conv.last_message.media_url) === 'image' ? '📷 Photo' : '📄 Document'
-                            ) : ''}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="truncate">{conv.contact?.phone_number}</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Right side column for Time, Pinned, Unread count */}
-                  <div className="flex flex-col items-end justify-between h-10 select-none flex-shrink-0 min-w-[65px] relative">
-                    {conv.last_message_at && (
-                      <p className={`text-[11.5px] font-medium whitespace-nowrap ${conv.unread_count > 0 ? 'text-[#25d366] dark:text-[#00e676]' : 'text-[#667781] dark:text-[#8696a0]'}`}>
-                        {formatChatListTimestamp(conv.last_message_at)}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center gap-1.5 mt-1 justify-end w-full">
-                      {/* Pinned Icon (always visible if pinned) */}
-                      {pinnedConvs.includes(conv.id) && (
-                        <span className="text-[#8696a0]" title="Pinned">
-                          <Pin size={12} className="fill-current rotate-45" />
-                        </span>
-                      )}
-                      
-                      {/* Unread count badge */}
-                      {conv.unread_count > 0 && (
-                        <span className="bg-[#25d366] dark:bg-[#00a884] text-white text-[11px] font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-sm">
-                          {conv.unread_count}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Hover Pin/Unpin Action Button */}
-                    <div className="absolute right-0 bottom-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-slate-900/90 rounded-md shadow-xs flex items-center">
-                      {pinnedConvs.includes(conv.id) ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            togglePinConversation(conv.id)
-                          }}
-                          title="Unpin Chat"
-                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer transition-colors"
-                        >
-                          <Pin size={12} className="fill-current text-rose-500" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            togglePinConversation(conv.id)
-                          }}
-                          title="Pin Chat"
-                          className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 rounded-md cursor-pointer transition-colors"
-                        >
-                          <Pin size={12} className="rotate-45" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  conversation={conv}
+                  selected={selectedConversation === conv.id}
+                  pinned={pinnedSet.has(conv.id)}
+                  onSelect={handleSelectConversation}
+                  onTogglePin={togglePinConversation}
+                />
+              ))}
+              {hasMoreConvs && (
+                <div className="p-3 text-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="h-8 px-4 rounded-full text-[13px] font-medium text-[#008069] dark:text-[#00a884] bg-[#f0f2f5] dark:bg-[#202c33] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:cursor-wait"
+                  >
+                    {loadingMore && <Loader2 size={12} className="animate-spin" />}
+                    <span>{loadingMore ? 'Loading…' : 'Show more chats'}</span>
+                  </button>
                 </div>
-              )
-            })
+              )}
+            </>
           )}
         </div>
-
-          {/* Load More Button */}
-          {hasMoreConvs && (
-            <div className="p-3 text-center">
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-bold px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all inline-flex items-center gap-1.5 border border-slate-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-800 shadow-xs active:scale-[0.98]"
-              >
-                {loadingMore && <Loader2 size={12} className="animate-spin" />}
-                <span>{loadingMore ? 'Loading...' : 'Load More'}</span>
-              </button>
-            </div>
-          )}
-        </div>
+      </div>
 
       {/* Main Chat Panel */}
       {selectedConversation && selectedContact ? (
@@ -1730,7 +1763,7 @@ function ConversationsPageContent() {
               >
                 <ArrowLeft size={18} />
               </button>
-              <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 text-xs shadow-sm select-none">
+              <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center font-semibold text-[13px] select-none ${getAvatarTone(selectedContact.id)}`}>
                 {getContactAvatarInitials(selectedContact)}
               </div>
               <div className="min-w-0 flex-1">
@@ -1770,45 +1803,30 @@ function ConversationsPageContent() {
                     )}
                   </div>
                   
-                  {/* Status Indicator inside header */}
-                  {(() => {
-                    void windowTick
-                    const lastInbound = [...messages]
-                      .reverse()
-                      .find(m => m.sender_type === 'contact')
-
-                    if (!lastInbound) return <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800 px-1.5 rounded-sm">NO ACTIVE WINDOW</span>
-
-                    const lastInboundTime = new Date(lastInbound.created_at).getTime()
-                    const now = Date.now()
-                    const windowMs = 24 * 60 * 60 * 1000
-                    const elapsed = now - lastInboundTime
-                    const remaining = windowMs - elapsed
-                    const isOpen = remaining > 0
-                    const hoursLeft = Math.floor(remaining / (60 * 60 * 1000))
-                    const minutesLeft = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
-                    const isClosingSoon = isOpen && remaining < 4 * 60 * 60 * 1000
-
-                    return (
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wide border shrink-0 ${
-                        !isOpen
-                          ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-200/40'
-                          : isClosingSoon
-                            ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40'
-                            : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/30'
-                      }`}>
-                        <span className={`w-1 h-1 rounded-full ${!isOpen ? 'bg-rose-500' : isClosingSoon ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                        <span>
-                          {!isOpen
-                            ? 'Expired'
-                            : isClosingSoon
-                              ? `${hoursLeft}h ${minutesLeft}m left`
-                              : `${hoursLeft}h ${minutesLeft}m left`
-                          }
-                        </span>
+                  {/* 24-hour reply window */}
+                  {!loadingMessages && !messagesError && (
+                    serviceWindow.state === 'open' ? (
+                      <span
+                        title="WhatsApp lets you reply freely for 24 hours after the customer's last message"
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
+                          serviceWindow.closingSoon
+                            ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/60 dark:border-amber-900/50'
+                            : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-900/50'
+                        }`}
+                      >
+                        <Clock size={10} />
+                        {formatWindowRemaining(serviceWindow.remainingMs)} left to reply
+                      </span>
+                    ) : (
+                      <span
+                        title="More than 24 hours since the customer last wrote. Only an approved template can be sent until they reply."
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/50"
+                      >
+                        <Clock size={10} />
+                        Template only
                       </span>
                     )
-                  })()}
+                  )}
                 </div>
               </div>
             </div>
@@ -1995,233 +2013,106 @@ function ConversationsPageContent() {
             </div>
           )}
 
-          {/* Chat Messages */}
-          <div id="chat-messages-container" className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-4 wa-chat-wallpaper z-0">
-            {loadingMessages ? (
-              <div className="flex flex-col space-y-6 pt-4 relative z-10 w-full max-w-3xl mx-auto opacity-70">
-                <div className="flex justify-start w-full">
-                  <div className="h-16 w-[65%] sm:w-[45%] bg-slate-200 dark:bg-slate-800 rounded-2xl rounded-tl-none animate-pulse"></div>
+          {/* Chat Messages. The wallpaper sits on the frame, which does not scroll, so it stays put behind the bubbles. */}
+          <div className="flex-1 min-h-0 relative wa-chat-wallpaper">
+            <div
+              id="chat-messages-container"
+              ref={chatScrollRef}
+              onScroll={handleChatScroll}
+              className="absolute inset-0 z-10 overflow-y-auto overflow-x-hidden px-3 sm:px-[5%] py-3"
+            >
+              {loadingMessages ? (
+                <div className="flex flex-col space-y-5 pt-4 w-full opacity-70" aria-hidden="true">
+                  <div className="flex justify-start w-full">
+                    <div className="h-14 w-[65%] sm:w-[45%] bg-white/80 dark:bg-[#202c33] rounded-lg rounded-tl-none animate-pulse"></div>
+                  </div>
+                  <div className="flex justify-end w-full">
+                    <div className="h-10 w-[55%] sm:w-[35%] bg-[#d9fdd3]/80 dark:bg-[#005c4b]/60 rounded-lg rounded-tr-none animate-pulse"></div>
+                  </div>
+                  <div className="flex justify-start w-full">
+                    <div className="h-20 w-[70%] sm:w-[50%] bg-white/80 dark:bg-[#202c33] rounded-lg rounded-tl-none animate-pulse"></div>
+                  </div>
+                  <div className="flex justify-end w-full">
+                    <div className="h-10 w-[60%] sm:w-[40%] bg-[#d9fdd3]/80 dark:bg-[#005c4b]/60 rounded-lg rounded-tr-none animate-pulse"></div>
+                  </div>
                 </div>
-                <div className="flex justify-end w-full">
-                  <div className="h-12 w-[55%] sm:w-[35%] bg-emerald-500/20 dark:bg-emerald-900/40 rounded-2xl rounded-tr-none animate-pulse"></div>
-                </div>
-                <div className="flex justify-start w-full">
-                  <div className="h-24 w-[70%] sm:w-[50%] bg-slate-200 dark:bg-slate-800 rounded-2xl rounded-tl-none animate-pulse"></div>
-                </div>
-                <div className="flex justify-end w-full">
-                  <div className="h-12 w-[60%] sm:w-[40%] bg-emerald-500/20 dark:bg-emerald-900/40 rounded-2xl rounded-tr-none animate-pulse"></div>
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 text-xs font-medium space-y-2 select-none relative z-10">
-                <MessageCircle size={32} className="text-slate-400" />
-                <p>No messages yet. Send a message to start!</p>
-              </div>
-            ) : (
-              <>
-                {/* Load Previous Messages Button */}
-                {hasMoreMessages && (
-                  <div className="flex justify-center pb-4 select-none">
+              ) : messagesError ? (
+                <div className="flex flex-col items-center justify-center h-full text-center px-6 select-none">
+                  <div className="bg-white dark:bg-[#182229] rounded-xl shadow-sm px-5 py-4 max-w-xs">
+                    <AlertCircle size={22} className="mx-auto text-rose-500" />
+                    <p className="mt-2 text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">This chat could not be loaded</p>
+                    <p className="mt-1 text-[12.5px] text-[#667781] dark:text-[#8696a0] break-words">{messagesError}</p>
                     <button
-                      onClick={loadOlderMessages}
-                      disabled={loadingOlderMessages}
-                      className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 rounded-full border border-slate-200/50 dark:border-slate-800/80 shadow-xs hover:shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
+                      type="button"
+                      onClick={() => selectedConversation && loadMessages(selectedConversation)}
+                      className="mt-3 h-8 px-4 rounded-full bg-[#00a884] hover:bg-[#008069] text-white text-[13px] font-medium inline-flex items-center gap-1.5 cursor-pointer"
                     >
-                      {loadingOlderMessages ? (
-                        <Loader2 size={11} className="animate-spin text-emerald-500" />
-                      ) : (
-                        <Clock size={11} />
-                      )}
-                      <span>{loadingOlderMessages ? 'Loading older messages...' : 'Load Previous Messages'}</span>
+                      <RefreshCw size={12} />
+                      Try again
                     </button>
                   </div>
-                )}
-                {messages.map((msg, index) => {
-                const isUser = msg.sender_type === 'user'
-                const mediaType = getMediaType(msg.media_url)
-                const startsNewDay = index === 0 || !isSameDay(messages[index - 1].created_at, msg.created_at)
-                
-                let isReply = false
-                let replyId = ''
-                let displayBody = msg.body
-                
-                if (msg.body && msg.body.startsWith('[reply:')) {
-                  const match = msg.body.match(/^\[reply:([^\]]+)\](.*)$/)
-                  if (match) {
-                    isReply = true
-                    replyId = match[1]
-                    displayBody = match[2]
-                  }
-                }
-
-                if (msg.media_url && displayBody === '[Media Attachment]') {
-                  displayBody = ''
-                }
-                
-                const repliedMsg = isReply ? messages.find(m => m.id === replyId) : null
-
-                return (
-                  <Fragment key={msg.id}>
-                  {startsNewDay && <ChatDateSeparator date={msg.created_at} />}
-                  <div
-                    className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-1 duration-200 group relative mb-1.5`}
-                  >
-                    <div
-                      id={`msg-${msg.id}`}
-                      className={`max-w-[70%] sm:max-w-[450px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] transition-all duration-200 relative text-[13.5px] leading-[19px] overflow-hidden ${
-                        (mediaType === 'image' || mediaType === 'video')
-                          ? (displayBody ? 'p-1 pb-2' : 'p-1')
-                          : mediaType === 'document'
-                            ? 'p-1.5 pb-2'
-                            : 'px-3 py-1.5'
-                      } ${
-                        isUser
-                          ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] rounded-tr-none'
-                          : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none'
-                      }`}
-                    >
-                      {/* Media Renderers */}
-                      {msg.media_url && (
-                        <div className={`max-w-full relative group ${displayBody ? 'mb-1' : ''}`}>
-                          {mediaType === 'image' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10 w-full bg-slate-100 dark:bg-slate-900">
-                              <img
-                                src={getDisplayUrl(msg.media_url)}
-                                alt="Attached Image"
-                                className="max-h-80 w-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                                onClick={() => setActiveImageModal(getDisplayUrl(msg.media_url))}
-                              />
-                              <a
-                                href={getDisplayUrl(msg.media_url)}
-                                download={getDownloadName(msg.media_url)}
-                                className={`absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md ${
-                                  isUser
-                                    ? 'bg-black/45 hover:bg-black/60 text-white'
-                                    : 'bg-white/95 hover:bg-slate-100 dark:bg-slate-800/95 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200/50 dark:border-transparent'
-                                }`}
-                                title="Download Image"
-                              >
-                                <Download size={13} />
-                              </a>
-                            </div>
-                          )}
-                          {mediaType === 'video' && (
-                            <div className="relative rounded-xl overflow-hidden border border-slate-200/10 dark:border-slate-800/10 w-full bg-slate-100 dark:bg-slate-900">
-                              <video
-                                src={getDisplayUrl(msg.media_url)}
-                                controls
-                                className="max-h-80 object-cover w-full"
-                              />
-                              <a
-                                href={getDisplayUrl(msg.media_url)}
-                                download={getDownloadName(msg.media_url)}
-                                className={`absolute top-2 right-12 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow-md ${
-                                  isUser
-                                    ? 'bg-black/45 hover:bg-black/60 text-white'
-                                    : 'bg-white/95 hover:bg-slate-100 dark:bg-slate-800/95 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200/50 dark:border-transparent'
-                                }`}
-                                title="Download Video"
-                              >
-                                <Download size={13} />
-                              </a>
-                            </div>
-                          )}
-                          {mediaType === 'audio' && (
-                            <div className="flex items-center gap-2 bg-slate-100/50 dark:bg-slate-900/55 p-1.5 rounded-xl border border-slate-200/15 dark:border-slate-800/15">
-                              <audio
-                                src={getDisplayUrl(msg.media_url)}
-                                controls
-                                className="w-56 h-8 rounded-lg outline-none"
-                              />
-                              <a
-                                href={getDisplayUrl(msg.media_url)}
-                                download={getDownloadName(msg.media_url)}
-                                className={`p-1.5 rounded-lg flex items-center justify-center transition-colors ${
-                                  isUser
-                                    ? 'hover:bg-black/10 text-white/95'
-                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'
-                                }`}
-                                title="Download Audio"
-                              >
-                                <Download size={13} />
-                              </a>
-                            </div>
-                          )}
-                          {mediaType === 'document' && (
-                            <a
-                              href={getDisplayUrl(msg.media_url)}
-                              download={getDownloadName(msg.media_url)}
-                              className={`flex items-center justify-between gap-3 p-2.5 rounded-lg transition-colors duration-150 ${
-                                isUser
-                                  ? 'bg-[#bfe5be] dark:bg-[#025141] hover:bg-[#a9dbb2] dark:hover:bg-[#03614e] text-[#111b21] dark:text-[#e9edef]'
-                                  : 'bg-[#f0f2f5] dark:bg-[#182229] hover:bg-[#e1e3e6] dark:hover:bg-[#1f2c34] text-[#192e38] dark:text-[#e9edef]'
-                              }`}
-                              title="Click to Download"
-                            >
-                              <div className="flex items-center gap-2 truncate">
-                                <File size={18} className="flex-shrink-0 text-[#192e38] dark:text-[#e9edef]/85" />
-                                <span className="truncate text-[13px] font-normal select-all max-w-[170px] sm:max-w-[200px]">
-                                  {getDownloadName(msg.media_url)}
-                                </span>
-                              </div>
-                              <Download size={14} className="opacity-80 hover:opacity-100 transition-opacity flex-shrink-0 text-[#667781] dark:text-[#aebac1]" />
-                            </a>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Text Body */}
-                      {displayBody && (
-                        <p className={`text-[14.2px] leading-[19px] font-normal break-words whitespace-pre-wrap ${
-                          (mediaType === 'image' || mediaType === 'video') ? 'px-3 pt-2 pb-0.5' : ''
-                        }`}>
-                          {displayBody}
-                        </p>
-                      )}
-                      
-                      {/* Message Footer (Time & Status) */}
-                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10.5px] select-none ${
-                        (mediaType === 'image' || mediaType === 'video') ? 'px-3 pb-0.5' : ''
-                      } ${
-                        isUser ? 'text-[#667781] dark:text-[#e9edef]/60' : 'text-[#667781] dark:text-[#8696a0]'
-                      }`}>
-                        <span>{formatChatTime(msg.created_at)}</span>
-                        {isUser && (() => {
-                          if (msg.status === 'failed' || msg.status === 'undelivered') {
-                            return (
-                              <div className="relative group/tooltip flex items-center">
-                                <AlertCircle 
-                                  size={13} 
-                                  className="text-rose-500 ml-0.5 flex-shrink-0 cursor-help"
-                                />
-                                {msg.error_message && (
-                                  <div className="absolute bottom-full right-0 mb-1.5 hidden group-hover/tooltip:block bg-red-600 text-white text-[10px] p-2 rounded shadow-md z-30 whitespace-normal min-w-[200px] max-w-[280px] break-words pointer-events-none text-left">
-                                    {msg.error_message}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          }
-                          if (msg.status === 'read' || msg.read_at) {
-                            return <CheckCheck size={14} className="text-[#53bdeb] ml-0.5 flex-shrink-0" />
-                          }
-                          if (msg.status === 'delivered') {
-                            return <CheckCheck size={14} className="text-[#8696a0] dark:text-[#e9edef]/65 ml-0.5 flex-shrink-0" />
-                          }
-                          return <Check size={14} className="text-[#8696a0] dark:text-[#e9edef]/65 ml-0.5 flex-shrink-0" />
-                        })()}
-                      </div>
-                    </div>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full select-none">
+                  <div className="bg-[#ffeecd] dark:bg-[#182229] text-[#54656f] dark:text-[#8696a0] text-[12.5px] leading-snug text-center rounded-lg px-4 py-2.5 max-w-xs shadow-[0_1px_0.5px_rgba(11,20,26,.13)]">
+                    No messages with {selectedContactName} yet. WhatsApp requires the first message to be an approved template.
                   </div>
-                  </Fragment>
-                )
-              })}
-            </>
+                </div>
+              ) : (
+                <MessageList
+                  messages={messages}
+                  contactName={selectedContactName}
+                  hasMore={hasMoreMessages}
+                  loadingOlder={loadingOlderMessages}
+                  onLoadOlder={loadOlderMessages}
+                  onOpenImage={handleOpenImage}
+                  onReply={composerLocked ? undefined : handleReplyTo}
+                  onRetry={readOnly ? undefined : handleRetryMessage}
+                  onJumpToMessage={scrollToMessage}
+                  onMediaLoad={handleMediaLoad}
+                />
+              )}
+              <div ref={messagesEndRef} className="h-px" />
+            </div>
+
+            {showJumpToLatest && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => scrollToLatest()}
+                aria-label={newWhileAway > 0 ? `${newWhileAway} new ${newWhileAway === 1 ? 'message' : 'messages'}. Jump to latest` : 'Jump to latest message'}
+                className="absolute right-4 bottom-4 z-20 h-10 w-10 rounded-full bg-white dark:bg-[#202c33] text-[#54656f] dark:text-[#aebac1] shadow-[0_1px_3px_rgba(11,20,26,.26)] hover:bg-[#f5f6f6] dark:hover:bg-[#2a3942] flex items-center justify-center cursor-pointer animate-in fade-in zoom-in-95 duration-150"
+              >
+                <ChevronDown size={22} />
+                {newWhileAway > 0 && (
+                  <span className="absolute -top-1.5 -right-1 h-5 min-w-5 px-1 rounded-full bg-[#25d366] dark:bg-[#00a884] text-white dark:text-[#111b21] text-[11px] font-semibold tabular-nums flex items-center justify-center">
+                    {formatBadgeCount(newWhileAway)}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Message being replied to */}
+          {replyingTo && (
+            <div className="px-3 sm:px-4 pt-2 bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
+              <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-[#1f2c34] border-l-[3px] border-[#06cf9c] pl-3 pr-1.5 py-1.5 max-w-5xl mx-auto">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-semibold text-[#008069] dark:text-[#06cf9c]">
+                    Replying to {replyingTo.sender_type === 'user' ? 'your message' : selectedContactName}
+                  </p>
+                  <p className="text-[12.5px] text-[#54656f] dark:text-[#aebac1] truncate">{getMessagePreview(replyingTo) || 'Message'}</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cancel reply"
+                  onClick={() => setReplyingTo(null)}
+                  className="p-1.5 rounded-full text-[#54656f] dark:text-[#aebac1] hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] cursor-pointer shrink-0"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
           )}
-          <div ref={messagesEndRef} />
-        </div>
-
-
 
           {/* Attachment Preview Area */}
           {attachedFile && (
@@ -2256,22 +2147,9 @@ function ConversationsPageContent() {
 
           {/* Chat Input controls */}
           {(() => {
-            const isChatbotActive = selectedConvData?.auto_reply_enabled !== false && features.enable_ai
-            
-            const lastInbound = [...messages]
-              .reverse()
-              .find(m => m.sender_type === 'contact')
-            
-            let isExpired = false
-            if (lastInbound) {
-              const lastInboundTime = new Date(lastInbound.created_at).getTime()
-              const now = Date.now()
-              const windowMs = 24 * 60 * 60 * 1000
-              const elapsed = now - lastInboundTime
-              const remaining = windowMs - elapsed
-              isExpired = remaining <= 0
-            }
-            
+            const isChatbotActive = chatbotActive
+            const isExpired = windowClosed
+
             return (
               <>
                 {chatSendError && (
@@ -2290,45 +2168,64 @@ function ConversationsPageContent() {
                 )}
 
                 {isExpired && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none z-10 animate-in fade-in duration-200">
-                    <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 break-words whitespace-normal leading-normal flex-1">
-                      ⚠️ The 24-hour WhatsApp support window has expired. Free-form text messages will be rejected by Meta until the customer replies.
-                    </span>
-                    <button
-                      onClick={() => {
-                        fetchLiveChatTemplates()
-                        setShowLiveChatTemplateModal(true)
-                      }}
-                      className="px-2.5 py-1.5 sm:py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 flex-shrink-0 shadow-xs w-full sm:w-auto cursor-pointer"
-                    >
-                      <FileText size={12} />
-                      <span>Send Template</span>
-                    </button>
+                  <div className="mx-3 sm:mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 z-10 flex-shrink-0">
+                    <p className="text-[12.5px] leading-snug text-amber-900 dark:text-amber-200 flex-1">
+                      {serviceWindow.state === 'none'
+                        ? 'This customer has not written yet. WhatsApp only delivers an approved template as the first message.'
+                        : 'It is more than 24 hours since this customer last wrote. WhatsApp only delivers an approved template until they reply.'}
+                    </p>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          fetchLiveChatTemplates()
+                          setShowLiveChatTemplateModal(true)
+                        }}
+                        className="h-8 px-3 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-[12.5px] font-semibold transition-colors flex items-center justify-center gap-1.5 flex-shrink-0 w-full sm:w-auto cursor-pointer"
+                      >
+                        <FileText size={13} />
+                        <span>Send a template</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
-                {isChatbotActive && (
-                  <div className="mx-4 mb-2 mt-1 px-3 py-2 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200/50 dark:border-indigo-900/40 flex items-start gap-2 select-none z-10 animate-in fade-in duration-200">
-                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 break-words whitespace-normal leading-normal">
-                      🤖 Chatbot auto-reply is active. Disable "Auto-Reply Chatbot" in the header to chat manually.
-                    </span>
+                {isChatbotActive && !isExpired && (
+                  <div className="mx-3 sm:mx-4 mb-2 mt-1 px-3 py-2.5 rounded-xl border bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 z-10 flex-shrink-0">
+                    <p className="text-[12.5px] leading-snug text-indigo-900 dark:text-indigo-200 flex-1 flex items-start gap-1.5">
+                      <Bot size={14} className="shrink-0 mt-px" />
+                      <span>The chatbot is answering this customer. Take over to reply yourself; the bot stays off for this chat until you switch it back on.</span>
+                    </p>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        disabled={togglingAutoReply}
+                        onClick={() => selectedConversation && toggleAutoReply(selectedConversation, true)}
+                        className="h-8 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-[12.5px] font-semibold transition-colors flex items-center justify-center gap-1.5 flex-shrink-0 w-full sm:w-auto cursor-pointer"
+                      >
+                        {togglingAutoReply && <Loader2 size={12} className="animate-spin" />}
+                        <span>Take over</span>
+                      </button>
+                    )}
                   </div>
                 )}
                 
                 <div className="py-2.5 px-3 sm:px-4 border-t border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#202c33] z-10 flex-shrink-0">
-                  <div className="flex gap-2 items-center max-w-5xl mx-auto w-full">
+                  <div className="flex gap-1.5 items-end max-w-5xl mx-auto w-full">
                     <input 
                       type="file" 
                       ref={fileInputRef} 
                       onChange={handleFileChange} 
                       className="hidden" 
-                      disabled={isExpired || isChatbotActive}
+                      disabled={isExpired || isChatbotActive || readOnly}
                     />
                     <button
+                      type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading || isExpired || isChatbotActive}
-                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
-                      title={isExpired ? "Support window expired" : isChatbotActive ? "Disable Auto-Reply to send media" : "Attach Media"}
+                      disabled={uploading || isExpired || isChatbotActive || readOnly}
+                      aria-label="Attach a file"
+                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#54656f] dark:text-[#8696a0] p-2 rounded-full transition-colors flex items-center justify-center flex-shrink-0 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                      title={readOnly ? describeDenied('records.write') : isExpired ? 'Only a template can be sent right now' : isChatbotActive ? 'Take over from the chatbot to send files' : 'Attach a file'}
                     >
                       {uploading ? (
                         <Loader2 className="animate-spin text-[#667781]" size={18} />
@@ -2342,29 +2239,31 @@ function ConversationsPageContent() {
                         fetchLiveChatTemplates()
                         setShowLiveChatTemplateModal(true)
                       }}
-                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#667781] dark:text-[#8696a0] p-2 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0"
-                      title="Send Meta Approved WhatsApp Template"
+                      disabled={readOnly}
+                      aria-label="Send a template"
+                      className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#54656f] dark:text-[#8696a0] p-2 rounded-full transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={readOnly ? describeDenied('records.write') : 'Send an approved WhatsApp template'}
                     >
                       <FileText size={18} />
                     </button>
                     <textarea
+                      ref={textareaRef}
                       value={messageText}
-                      onChange={(e) => {
-                        setMessageText(e.target.value)
-                        // Auto-resize textarea
-                        e.target.style.height = 'auto'
-                        e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px'
-                      }}
+                      onChange={(e) => setMessageText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.shiftKey) {
-                          e.preventDefault()
-                          handleSendMessage()
-                        }
+                        // Enter sends and Shift+Enter starts a new line, as in WhatsApp. On a phone keyboard
+                        // Enter is the only way to make a new line, so there it never sends.
+                        if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return
+                        if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
+                        e.preventDefault()
+                        handleSendMessage()
                       }}
-                      placeholder={isExpired ? "Support window expired (Use Template button to message)" : isChatbotActive ? "Chatbot auto-reply is active..." : attachedFile ? "Add a caption..." : "Type a WhatsApp message... (Shift+Enter to send)"}
-                      disabled={isExpired || isChatbotActive}
+                      aria-label="Message"
+                      placeholder={readOnly ? 'Your account is read-only' : isExpired ? 'Send a template to continue this chat' : isChatbotActive ? 'The chatbot is replying. Take over to type.' : attachedFile ? 'Add a caption' : 'Type a message'}
+                      disabled={isExpired || isChatbotActive || readOnly}
+                      title={readOnly ? describeDenied('records.write') : undefined}
                       rows={1}
-                      className="flex-1 px-3 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[14px] leading-relaxed placeholder-[#8696a0] text-slate-800 dark:text-slate-100 font-normal transition-all duration-150 resize-none overflow-y-auto max-h-24 shadow-xs"
+                      className="flex-1 min-h-[40px] px-3 py-2 bg-white dark:bg-[#2a3942] border-none rounded-lg focus:outline-none focus:ring-0 text-[15px] leading-6 placeholder-[#8696a0] text-[#111b21] dark:text-[#e9edef] resize-none overflow-y-auto disabled:bg-[#f7f8f8] dark:disabled:bg-[#232e35] disabled:cursor-not-allowed"
                     />
                     
                     {/* Rephrase with AI */}
@@ -2447,13 +2346,21 @@ function ConversationsPageContent() {
                       </div>
                     )}
                     <button
+                      type="button"
                       onClick={handleSendMessage}
-                      disabled={(!messageText.trim() && !attachedFile) || isExpired || isChatbotActive}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white p-2.5 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 disabled:scale-100 disabled:shadow-none cursor-pointer"
+                      disabled={(!messageText.trim() && !attachedFile) || isExpired || isChatbotActive || readOnly || uploading}
+                      aria-label="Send message"
+                      title="Send"
+                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#8696a0]/50 text-white h-10 w-10 rounded-full transition-colors flex items-center justify-center flex-shrink-0 active:scale-95 disabled:scale-100 cursor-pointer disabled:cursor-not-allowed"
                     >
-                      <Send size={16} />
+                      <Send size={17} />
                     </button>
                   </div>
+                  {!isExpired && !isChatbotActive && !readOnly && (
+                    <p className="hidden md:block max-w-5xl mx-auto mt-1 pl-[88px] text-[11px] text-[#8696a0] select-none">
+                      Enter to send · Shift + Enter for a new line · *bold* _italic_ ~strike~
+                    </p>
+                  )}
                 </div>
               </>
             )
@@ -2474,19 +2381,22 @@ function ConversationsPageContent() {
               <MessageCircle size={44} className="text-[#00a884] dark:text-[#00e676]" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-[#111b21] dark:text-[#e9edef] text-[28px] font-light tracking-tight">WhatsApp CRM</h2>
+              <h2 className="text-[#111b21] dark:text-[#e9edef] text-[28px] font-light tracking-tight">Your team inbox</h2>
               <p className="text-[14px] text-[#667781] dark:text-[#8696a0] leading-relaxed max-w-sm mx-auto font-normal">
-                Send and receive messages without keeping your phone online. Use WhatsApp CRM with AI-powered suggestions, leads conversion, and automatic ticket resolution.
+                Choose a chat on the left to read and reply. New WhatsApp messages show up here as they arrive, for everyone on your team.
               </p>
             </div>
-            <div className="pt-2 flex items-center justify-center gap-2 text-[11px] font-semibold text-[#00a884] dark:text-[#00e676] bg-[#e7f8f2] dark:bg-[#0b3c2d]/40 px-3 py-1 rounded-full w-max mx-auto border border-[#00a884]/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00a884] dark:bg-[#00e676] animate-ping" />
-              <span>Realtime Gateway Active</span>
+            <div className={`flex items-center justify-center gap-2 text-[12px] font-medium px-3 py-1 rounded-full w-max mx-auto border ${
+              realtimeStatus === 'connected'
+                ? 'text-[#008069] dark:text-[#00a884] bg-[#e7f8f2] dark:bg-[#0b3c2d]/40 border-[#00a884]/20'
+                : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border-amber-300/40'
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === 'connected' ? 'bg-[#00a884]' : 'bg-amber-500 animate-pulse'}`} />
+              <span>{realtimeStatus === 'connected' ? 'Live updates on' : realtimeStatus === 'connecting' ? 'Connecting to live updates…' : 'Live updates paused'}</span>
             </div>
           </div>
-          <div className="text-xs text-[#8696a0] flex items-center gap-1 opacity-70">
-            <span>🔒</span>
-            <span>End-to-end encrypted</span>
+          <div className="text-[12px] text-[#8696a0]">
+            Sent through the WhatsApp Business Platform
           </div>
         </div>
       )}
@@ -2494,8 +2404,11 @@ function ConversationsPageContent() {
       {/* Image Lightbox Modal */}
       {activeImageModal && (
         <div 
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo"
           onClick={() => setActiveImageModal(null)}
-          className="fixed inset-0 bg-[#070a10]/80 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-[#070a10]/85 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
         >
           <div className="relative max-w-4xl max-h-[90vh]">
             <img 
@@ -2662,7 +2575,9 @@ function ConversationsPageContent() {
               <div>
                 <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">Assign To</label>
                 <select
-                  value={leadForm.assignedTo}
+                  value={canAssignWork ? leadForm.assignedTo : (user?.id || '')}
+                  disabled={!canAssignWork}
+                  title={canAssignWork ? undefined : 'Leads you create are assigned to you. Admins and managers can reassign them.'}
                   onChange={(e) => setLeadForm({ ...leadForm, assignedTo: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-[#f0f2f5] dark:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl outline-none text-xs font-semibold transition-all text-[#111b21] dark:text-white cursor-pointer"
                 >

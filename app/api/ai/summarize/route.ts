@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Auth check
-    const authResult = await verifyRecordAccess(request, 'leads', leadId)
+    const authResult = await verifyRecordAccess(request, 'leads', leadId, { assignedColumn: 'assigned_to' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -284,6 +284,11 @@ export async function GET(request: NextRequest) {
 
     if (!leadId) {
       return NextResponse.json({ error: 'Missing leadId' }, { status: 400 })
+    }
+
+    const authResult = await verifyRecordAccess(request, 'leads', leadId, { assignedColumn: 'assigned_to' })
+    if (!authResult.authorized) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
     const supabase = getSupabaseClient()

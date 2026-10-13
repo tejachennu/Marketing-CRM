@@ -139,7 +139,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id)
+    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id, { permission: 'automation.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId)
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
@@ -273,7 +273,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Missing article id' }, { status: 400 })
     }
 
-    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id)
+    const recordResult = await verifyRecordAccess(request, 'knowledge_base', id, { permission: 'automation.manage' })
     if (!recordResult.authorized) {
       return NextResponse.json({ error: recordResult.error }, { status: recordResult.status })
     }

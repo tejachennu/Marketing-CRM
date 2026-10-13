@@ -1,9 +1,9 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { supabase, restoreSupabaseSession } from '@/lib/supabase'
+import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
-import { canSeeAll } from '@/lib/rbac'
+import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
 import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
@@ -68,7 +68,10 @@ export default function DashboardLayout({
   const [unreadChatsCount, setUnreadChatsCount] = useState(0)
   const [activeLeadsCount, setActiveLeadsCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
-  const [userSeeAll, setUserSeeAll] = useState<boolean>(true)
+  // Start restricted: nothing role-gated is shown until the profile has loaded
+  const [userSeeAll, setUserSeeAll] = useState<boolean>(false)
+  const [userReadOnly, setUserReadOnly] = useState<boolean>(false)
+  const [profileLoaded, setProfileLoaded] = useState<boolean>(false)
   const [ticketToast, setTicketToast] = useState<{ id: string; subject: string; contactName: string; conversationId: string } | null>(null)
   const [hasUnreadAssistantNotif, setHasUnreadAssistantNotif] = useState(false)
   const [showSideDrawer, setShowSideDrawer] = useState(false)
@@ -320,19 +323,29 @@ export default function DashboardLayout({
 
       setUserEmail(email)
 
-      if (id) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role, organization_id, see_all, full_name')
-          .eq('id', id)
-          .maybeSingle()
-        if (profile) {
-          setUserRole(profile.role || '')
-          setOrgId(profile.organization_id || '')
-          setUserId(id)
-          setUserSeeAll(profile.see_all || false)
-          setUserFullName(profile.full_name || '')
+      try {
+        if (id) {
+          const { data: existing } = await supabase
+            .from('users')
+            .select('role, organization_id, see_all, read_only, full_name')
+            .eq('id', id)
+            .maybeSingle()
+          // An account without a profile row yet gets one from the server, the same way the pages do
+          const profile = existing || (await ensureUserProfile(id, email))
+          if (profile) {
+            setUserRole(profile.role || '')
+            setOrgId(profile.organization_id || '')
+            setUserId(id)
+            setUserSeeAll(profile.see_all === true)
+            setUserReadOnly(profile.read_only === true)
+            setUserFullName(profile.full_name || '')
+          }
         }
+      } catch (err) {
+        console.error('Failed to load the signed-in user profile:', err)
+      } finally {
+        // Always leave the loading state; without a role the menu simply stays at its most restricted
+        setProfileLoaded(true)
       }
 
       // Start session health watcher (auto-logout on expiry)
@@ -347,7 +360,7 @@ export default function DashboardLayout({
   }, [])
 
   useEffect(() => {
-    if (userRole === 'superadmin' && pathname === '/dashboard') {
+    if (isSuperAdmin({ role: userRole }) && pathname === '/dashboard') {
       router.push('/dashboard/superadmin')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,11 +371,12 @@ export default function DashboardLayout({
 
     const fetchOrgFeatures = async () => {
       try {
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('name, slug, enable_ai, enable_email, enable_messages, enable_phone_calls, twilio_account_sid, sendgrid_api_key, openai_api_key')
-          .eq('id', orgId)
-          .maybeSingle()
+        // The API answers "is it configured?" without sending the credentials themselves
+        const token = authSessionManager.getSession()?.access_token
+        const res = await fetch(`/api/organization?organizationId=${orgId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+        const org = res.ok ? (await res.json()).organization : null
         if (org) {
           setOrgName(org.name || '')
           setOrgSlug(org.slug || '')
@@ -373,9 +387,9 @@ export default function DashboardLayout({
             enable_phone_calls: org.enable_phone_calls !== false,
           })
 
-          const twilioConfigured = !!org.twilio_account_sid
-          const sendgridConfigured = !!org.sendgrid_api_key
-          const openaiConfigured = !!org.openai_api_key
+          const twilioConfigured = org.credentials?.messaging === true
+          const sendgridConfigured = org.credentials?.email === true
+          const openaiConfigured = org.credentials?.ai === true
 
           setCredentialsStatus({
             twilio: twilioConfigured,
@@ -413,7 +427,7 @@ export default function DashboardLayout({
   useEffect(() => {
     if (!orgId) return
 
-    const seeAll = canSeeAll({ role: userRole, see_all: userSeeAll } as any)
+    const seeAll = canSeeAll({ role: userRole, see_all: userSeeAll })
 
     const fetchActiveTicketsCount = async () => {
       try {
@@ -630,7 +644,10 @@ export default function DashboardLayout({
     window.location.href = '/login'
   }
 
-  const seeAll = canSeeAll({ role: userRole, see_all: userSeeAll } as any)
+  const currentUser = { id: userId, role: userRole, see_all: userSeeAll, read_only: userReadOnly }
+  const seeAll = canSeeAll(currentUser)
+  const isPlatformAdmin = isSuperAdmin(currentUser)
+  const flowsEnabled = isFlowBetaAllowed(orgId, orgSlug, orgName)
 
   // Badges are small pills: cap the label so a busy inbox cannot overflow them
   const formatCount = (count: number) => (count > 99 ? '99+' : String(count))
@@ -648,60 +665,38 @@ export default function DashboardLayout({
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
 
-  const filteredNavItems = navItems.filter((item) => {
-    // If user is superadmin, ONLY show the Super Admin dashboard link
-    if (userRole === 'superadmin') {
-      return item.href === '/dashboard/superadmin'
-    }
-    
-    // For normal users, hide the Super Admin link
-    if (item.href === '/dashboard/superadmin') {
-      return false
-    }
-
-    // Role-based restriction: hide Campaigns, Contacts, and Settings if no full access
-    if (!seeAll && (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts' || item.href === '/dashboard/settings')) {
-      return false
-    }
-
-    if (item.href === '/dashboard') {
-      return features.enable_messages
-    }
-    if (item.href === '/dashboard/tickets') {
-      return features.enable_messages
-    }
-    if (item.href === '/dashboard/flows') {
-      const isAllowed = isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin'
-      return features.enable_messages && isAllowed
-    }
-    if (item.href === '/dashboard/campaigns' || item.href === '/dashboard/contacts') {
+  // Whether the organization has the feature behind a page switched on (independent of role)
+  const isFeatureEnabled = (path: string) => {
+    if (path === '/dashboard' || path.startsWith('/dashboard/tickets')) return features.enable_messages
+    // WhatsApp Flows are limited to the beta organization for now
+    if (path.startsWith('/dashboard/flows')) return features.enable_messages && flowsEnabled
+    if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {
       return features.enable_messages || features.enable_email
     }
-    return true
-  })
-
-  const isPageAllowed = () => {
-    if (userRole === 'superadmin') {
-      return pathname.startsWith('/dashboard/superadmin')
-    }
-    if (pathname.startsWith('/dashboard/superadmin') && userRole !== 'superadmin') return false
-
-    // Restrict WhatsApp Flows to Magnetora testing organization only
-    if (pathname.startsWith('/dashboard/flows')) {
-      const isAllowed = isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin'
-      if (!isAllowed) return false
-    }
-
-    // Role-based page access protection
-    if (!seeAll && (pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts') || pathname.startsWith('/dashboard/settings'))) {
-      return false
-    }
-
-    if (pathname === '/dashboard' && !features.enable_messages) return false
-    if (pathname.startsWith('/dashboard/ivr')) return false
-    if ((pathname.startsWith('/dashboard/campaigns') || pathname.startsWith('/dashboard/contacts')) && !features.enable_messages && !features.enable_email) return false
+    if (path.startsWith('/dashboard/ivr')) return false
     return true
   }
+
+  // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
+  const filteredNavItems = profileLoaded
+    ? navItems.filter((item) => canAccessPage(currentUser, item.href) && (isPlatformAdmin || isFeatureEnabled(item.href)))
+    : []
+  const isNavVisible = (href: string) => filteredNavItems.some((item) => item.href === href)
+
+  // Links the mobile bottom bar already shows; the drawer lists everything else
+  const mobileBarLinks = ['/dashboard', '/dashboard/tickets', '/dashboard/leads']
+  const mobileDrawerItems = [
+    ...filteredNavItems.filter((item) => !mobileBarLinks.includes(item.href)),
+    { href: '/dashboard/profile', label: 'My Profile', icon: User },
+  ]
+
+  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' = !profileLoaded
+    ? 'loading'
+    : !canAccessPage(currentUser, pathname)
+      ? 'role'
+      : !isPlatformAdmin && !isFeatureEnabled(pathname)
+        ? 'feature'
+        : 'allowed'
 
   if (isStandalone) {
     return (
@@ -1045,7 +1040,7 @@ export default function DashboardLayout({
         {!hasActiveChat && (
           <nav aria-label="Primary" className="md:hidden fixed bottom-0 left-0 right-0 h-[68px] bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md z-45 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)] flex items-center justify-around px-2" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           {/* Chats */}
-          {features.enable_messages && (
+          {isNavVisible('/dashboard') && (
             <Link
               href="/dashboard"
               onClick={(e) => handleNavClick(e, '/dashboard')}
@@ -1070,7 +1065,7 @@ export default function DashboardLayout({
           )}
 
           {/* Tickets */}
-          {features.enable_messages && (
+          {isNavVisible('/dashboard/tickets') && (
             <Link
               href="/dashboard/tickets"
               onClick={(e) => handleNavClick(e, '/dashboard/tickets')}
@@ -1095,6 +1090,7 @@ export default function DashboardLayout({
           )}
 
           {/* Pipeline */}
+          {isNavVisible('/dashboard/leads') && (
           <Link
             href="/dashboard/leads"
             onClick={(e) => handleNavClick(e, '/dashboard/leads')}
@@ -1116,6 +1112,7 @@ export default function DashboardLayout({
               </span>
             )}
           </Link>
+          )}
 
           {/* More (opens side drawer) */}
           <button
@@ -1176,14 +1173,7 @@ export default function DashboardLayout({
 
               {/* Navigation Items */}
               <nav className="flex-1 overflow-y-auto py-2">
-                {[
-                  ...((seeAll && features.enable_messages && (isFlowBetaAllowed(orgId, orgSlug, orgName) || userRole === 'superadmin')) ? [{ href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow }] : []),
-                  ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone }] : []),
-                  ...((seeAll && (features.enable_messages || features.enable_email)) ? [{ href: '/dashboard/contacts', label: 'Contacts', icon: Users }] : []),
-                  ...(seeAll ? [{ href: '/dashboard/settings', label: 'Settings', icon: Settings }] : []),
-                  ...(seeAll ? [{ href: '/dashboard/playground', label: 'AI Playground', icon: Sparkles }] : []),
-                  { href: '/dashboard/profile', label: 'My Profile', icon: User },
-                ].map((item) => {
+                {mobileDrawerItems.map((item) => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
                   return (
@@ -1256,8 +1246,12 @@ export default function DashboardLayout({
             : 'pb-[68px] h-[calc(100dvh-68px)]'
         }`}>
           <div className="h-full w-full p-0 flex flex-col overflow-hidden">
-            {isPageAllowed() ? (
+            {pageAccess === 'allowed' ? (
               children
+            ) : pageAccess === 'loading' ? (
+              <div className="flex items-center justify-center h-full" role="status" aria-label="Loading">
+                <div className="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-[#00a884] animate-spin" />
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full p-4 select-none">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-8 max-w-md w-full text-center shadow-xl animate-in fade-in duration-300">
@@ -1266,23 +1260,43 @@ export default function DashboardLayout({
                       <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                     </svg>
                   </div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">Feature Disabled</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
-                    This feature has been disabled in the Global Features Configuration. Please contact an administrator or visit Settings to enable it.
-                  </p>
-                  <Link
-                    href="/dashboard/settings"
-                    className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
-                  >
-                    Go to Settings
-                  </Link>
+                  {pageAccess === 'role' ? (
+                    <>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">You don&apos;t have access to this page</h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
+                        Your role doesn&apos;t include this area. Ask an organization admin if you need it.
+                      </p>
+                      <Link
+                        href={isPlatformAdmin ? '/dashboard/superadmin' : filteredNavItems[0]?.href || '/dashboard/profile'}
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                      >
+                        Go back
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">Feature Disabled</h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
+                        {canAccessPage(currentUser, '/dashboard/settings')
+                          ? 'This feature is switched off for your organization. You can turn it on in Settings.'
+                          : 'This feature is switched off for your organization. Ask an organization admin to turn it on.'}
+                      </p>
+                      <Link
+                        href={canAccessPage(currentUser, '/dashboard/settings') ? '/dashboard/settings' : '/dashboard/profile'}
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                      >
+                        {canAccessPage(currentUser, '/dashboard/settings') ? 'Go to Settings' : 'Go to my profile'}
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
             )}
           </div>
           
           {/* Onboarding Credentials Checklist Overlay */}
-          {showOnboarding && (
+          {/* Only shown to people who can act on it: channel credentials live in Settings */}
+          {showOnboarding && !isPlatformAdmin && can(currentUser, 'settings.manage') && (
             <div className={`fixed bottom-[80px] md:bottom-6 right-6 z-50 max-w-sm w-[calc(100%-3rem)] bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl p-5 select-none transition-all duration-300 transform ${isMinimized ? 'translate-y-[calc(100%-55px)]' : 'translate-y-0'}`}>
               {/* Card Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[#e9edef] dark:border-[#2a3942] cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
