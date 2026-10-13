@@ -45,10 +45,12 @@ export function WhatsAppEmbeddedSignup({
   const capturedDataRef = useRef<{ wabaId?: string; phoneNumberId?: string; businessId?: string; catalogIds?: string[] }>({})
 
   const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
-  const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || '1078124458153332'
+  const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || '1797596798044163'
   // Embedded Signup v4 takes its whole setup from the Facebook Login for Business configuration,
-  // and Meta documents that `extras` must then be empty. Older configurations need the fields below.
-  const SIGNUP_EXTRAS = process.env.NEXT_PUBLIC_META_ES_VERSION === 'v4' ? {} : { setup: {}, featureType: '', sessionInfoVersion: '3' }
+  // and Meta documents that `extras` must then be empty. A configuration made for v2 or v3
+  // (NEXT_PUBLIC_META_ES_VERSION=v2) needs the older fields instead.
+  const legacySignup = ['v2', 'v3'].includes(process.env.NEXT_PUBLIC_META_ES_VERSION || '')
+  const SIGNUP_EXTRAS = legacySignup ? { setup: {}, featureType: '', sessionInfoVersion: '3' } : {}
 
   // Load and initialize Facebook JavaScript SDK
   useEffect(() => {
