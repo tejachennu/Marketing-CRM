@@ -1,19 +1,50 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BookOpen, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, User, X } from 'lucide-react'
+import { AlertCircle, BookOpen, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, UploadCloud, User, X } from 'lucide-react'
 import type { CommerceProduct } from '@/lib/types'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
+import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
 const PAGE_SIZE = 24
 /** WhatsApp shows at most 30 products in one message. */
 const MAX_COLLECTION = 30
 
-const EMPTY_FORM = { id: '', title: '', retailer_id: '', price: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true }
+const EMPTY_FORM = {
+  id: '', title: '', retailer_id: '', price: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true,
+  // Details the WhatsApp catalog asks for
+  brand: '', condition: 'new', origin_country: '', is_service: false, importer_name: '', importer_street: '', importer_city: '', importer_postal_code: '',
+}
 type ProductForm = typeof EMPTY_FORM
+
+type CatalogFilter = 'all' | 'attention' | 'not_sent'
+
+const CATALOG_CHIP: Record<CatalogState, string> = {
+  in_catalog: 'bg-white/90 text-emerald-700',
+  in_review: 'bg-amber-100 text-amber-800',
+  rejected: 'bg-rose-600 text-white',
+  sending: 'bg-sky-100 text-sky-800',
+  error: 'bg-rose-600 text-white',
+  not_sent: 'bg-white/90 text-slate-600',
+}
+
+const ORIGIN_COUNTRIES: Array<[string, string]> = [
+  ['IN', 'India'], ['CN', 'China'], ['US', 'United States'], ['GB', 'United Kingdom'], ['AE', 'United Arab Emirates'], ['BD', 'Bangladesh'],
+  ['VN', 'Vietnam'], ['TH', 'Thailand'], ['ID', 'Indonesia'], ['MY', 'Malaysia'], ['SG', 'Singapore'], ['JP', 'Japan'], ['KR', 'South Korea'],
+  ['TW', 'Taiwan'], ['DE', 'Germany'], ['FR', 'France'], ['IT', 'Italy'], ['TR', 'Türkiye'], ['LK', 'Sri Lanka'], ['NP', 'Nepal'],
+]
+
+/** What to tell someone about to send a product that WhatsApp cannot show as a catalog card yet. */
+function catalogCaution(state: CatalogState): string {
+  if (state === 'sending') return 'This product is still being added to your WhatsApp catalog. If the card does not arrive, try again in a few minutes.'
+  if (state === 'in_review') return 'WhatsApp is still reviewing this product, so the card may not show until it is approved.'
+  if (state === 'rejected') return 'WhatsApp rejected this product, so it cannot be sent as a catalog card. Open it to see why.'
+  if (state === 'error' || state === 'not_sent') return 'This product is not in your WhatsApp catalog, so WhatsApp cannot show it as a catalog card yet.'
+  return ''
+}
 
 type ShareTarget =
   | { kind: 'product'; product: CommerceProduct }
@@ -26,7 +57,6 @@ interface Recipient {
   label: string
 }
 
-const fromMeta = (product: CommerceProduct) => product.metadata?.source === 'meta'
 const inStock = (product: CommerceProduct) => product.is_available && (product.inventory_count ?? 1) > 0
 
 interface ProductsTabProps {
@@ -53,6 +83,11 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isPushing, setIsPushing] = useState(false)
+  const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>('all')
+  // Store-wide: how many products are outside the catalog, need a look, or are still being processed by Meta
+  const [catalogCounts, setCatalogCounts] = useState({ sending: 0, attention: 0, notSent: 0 })
+  const refreshTriesRef = useRef(0)
 
   // Products selected for a collection. Kept by id so the selection survives paging and searching.
   const [picked, setPicked] = useState<Map<string, CommerceProduct>>(new Map())
@@ -63,7 +98,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [share, setShare] = useState<ShareTarget | null>(null)
 
   const requestRef = useRef(0)
-  const filtered = Boolean(appliedSearch.trim()) || availability !== 'all'
+  const filtered = Boolean(appliedSearch.trim()) || availability !== 'all' || catalogFilter !== 'all'
 
   const load = useCallback(async (targetPage: number, options: { silent?: boolean } = {}) => {
     const requestId = ++requestRef.current
@@ -71,6 +106,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     try {
       const params = new URLSearchParams({ organizationId: orgId, page: String(targetPage), limit: String(PAGE_SIZE), availability })
       if (appliedSearch.trim()) params.set('search', appliedSearch.trim())
+      if (catalogLinked) params.set('counts', '1')
+      if (catalogLinked && catalogFilter !== 'all') params.set('catalog', catalogFilter)
       const res = await fetch(`/api/commerce/products?${params.toString()}`)
       const data = await res.json().catch(() => ({}))
       if (requestId !== requestRef.current) return
@@ -80,8 +117,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       setPagination({ total: data.pagination?.total || 0, pages: data.pagination?.pages || 1 })
       setPage(targetPage)
       setError('')
+      if (data.catalog) setCatalogCounts(data.catalog)
       // The tab shows how many products the store has, not how many match a search
-      if (!appliedSearch.trim() && availability === 'all') onCount(data.pagination?.total || 0)
+      if (!appliedSearch.trim() && availability === 'all' && catalogFilter === 'all') onCount(data.pagination?.total || 0)
 
       if ((data.products || []).length === 0 && (data.pagination?.total || 0) > 0 && targetPage > 1) {
         load(Math.min(targetPage - 1, data.pagination.pages), options)
@@ -92,11 +130,31 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     } finally {
       if (requestId === requestRef.current) setLoading(false)
     }
-  }, [orgId, appliedSearch, availability, onCount])
+  }, [orgId, appliedSearch, availability, catalogFilter, catalogLinked, onCount])
 
   useEffect(() => {
     load(1)
   }, [load])
+
+  // Meta processes catalog changes in the background. While some are outstanding, ask how they went.
+  useEffect(() => {
+    if (!canManageStore || !catalogLinked || catalogCounts.sending === 0 || refreshTriesRef.current >= 12) return
+    const timer = setTimeout(async () => {
+      refreshTriesRef.current += 1
+      try {
+        await fetch('/api/commerce/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organizationId: orgId, action: 'refresh_catalog' }),
+        })
+      } catch {
+        // Tried again on the next round
+      }
+      load(page, { silent: true })
+    }, 30000)
+    return () => clearTimeout(timer)
+    // `products` changes with every reload, which schedules the next round
+  }, [canManageStore, catalogLinked, catalogCounts.sending, orgId, load, page, products])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -118,14 +176,51 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The catalog could not be synced')
+      refreshTriesRef.current = 0
       await load(1, { silent: true })
       const removed = data.removed ? ` ${data.removed} no longer in the catalog ${data.removed === 1 ? 'was' : 'were'} removed.` : ''
+      const skipped = data.skipped ? ` ${data.skipped} with changes of your own ${data.skipped === 1 ? 'was' : 'were'} left as ${data.skipped === 1 ? 'it is' : 'they are'}.` : ''
       if (data.error) showToast('error', `Synced ${data.synced || 0} of ${data.total || 0} products. Some could not be saved: ${data.error}`)
-      else showToast('success', `${data.synced || 0} product${data.synced === 1 ? '' : 's'} synced from your Meta catalog.${removed}`)
+      else showToast('success', `${data.synced || 0} product${data.synced === 1 ? '' : 's'} synced from your WhatsApp catalog.${removed}${skipped}`)
     } catch (err: any) {
       showToast('error', err.message)
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  /** Send every product that is not in the WhatsApp catalog yet (and retry the ones Meta turned down). */
+  async function sendToCatalog() {
+    setIsPushing(true)
+    try {
+      const res = await fetch('/api/commerce/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action: 'push_meta' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The products could not be sent to your catalog')
+      refreshTriesRef.current = 0
+      await load(page, { silent: true })
+
+      if (data.requestError && !data.sent) {
+        alert({ title: 'Nothing was added to your catalog', message: data.requestError })
+        return
+      }
+      if (data.sent) showToast('success', `${data.sent} product${data.sent === 1 ? '' : 's'} sent to your WhatsApp catalog. They usually appear within a few minutes.`)
+      if (data.rejected) {
+        const examples = (data.problems || []).map((problem: { title: string; errors: string[] }) => `• ${problem.title}: ${problem.errors[0]}`).join('\n')
+        alert({
+          title: `${data.rejected} product${data.rejected === 1 ? ' was' : 's were'} not added`,
+          message: `${examples}${data.rejected > (data.problems || []).length ? '\n…and more.' : ''}\n\nChoose “Needs attention” in the filter to see and fix them.`,
+        })
+      } else if (!data.sent) {
+        showToast('success', 'Every product is already in your WhatsApp catalog.')
+      }
+    } catch (err: any) {
+      showToast('error', err.message)
+    } finally {
+      setIsPushing(false)
     }
   }
 
@@ -134,6 +229,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     setForm({ ...EMPTY_FORM, currency })
   }
   const openEdit = (product: CommerceProduct) => {
+    const attributes = getProductAttributes(product)
     setFormError('')
     setForm({
       id: product.id,
@@ -147,6 +243,14 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       category: product.category || '',
       inventory_count: product.inventory_count === null || product.inventory_count === undefined ? '' : String(product.inventory_count),
       is_available: product.is_available !== false,
+      brand: attributes.brand || '',
+      condition: attributes.condition || 'new',
+      origin_country: attributes.origin_country || '',
+      is_service: attributes.is_service === true,
+      importer_name: attributes.importer_name || '',
+      importer_street: attributes.importer_address?.street1 || '',
+      importer_city: attributes.importer_address?.city || '',
+      importer_postal_code: attributes.importer_address?.postal_code || '',
     })
   }
 
@@ -168,7 +272,18 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       await load(id ? page : 1, { silent: true })
       // A ticked product keeps its ticks but shows its new details
       if (data.product && picked.has(data.product.id)) setPicked((current) => new Map(current).set(data.product.id, data.product))
-      showToast('success', `“${data.product?.title || 'Product'}” was saved.`)
+      refreshTriesRef.current = 0
+      const name = `“${data.product?.title || 'Product'}”`
+      if (data.catalog?.state === 'error') {
+        alert({
+          title: 'Saved, but not in your WhatsApp catalog',
+          message: `${name} was saved here. Your WhatsApp catalog did not take the change:\n\n${(data.catalog.errors || []).map((line: string) => `• ${line}`).join('\n')}`,
+        })
+      } else if (data.catalog?.state === 'pending') {
+        showToast('success', `${name} was saved and sent to your WhatsApp catalog.`)
+      } else {
+        showToast('success', `${name} was saved.`)
+      }
     } catch (err: any) {
       setFormError(err.message)
     } finally {
@@ -179,8 +294,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   async function deleteProduct(product: CommerceProduct) {
     const confirmed = await confirm({
       title: 'Remove this product?',
-      message: fromMeta(product)
-        ? `“${product.title}” will be removed from this list. It stays in your Meta catalog, and the next catalog sync brings it back.`
+      message: catalogLinked && isInCatalog(product)
+        ? `“${product.title}” will be removed here and from your WhatsApp catalog, so customers can no longer order it. To stop selling it for a while, edit it and untick “Available to sell” instead. Orders that already contain it keep their details.`
         : `“${product.title}” will be removed. Orders that already contain it keep their details.`,
       confirmLabel: 'Remove',
       destructive: true,
@@ -190,6 +305,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       const res = await fetch(`/api/commerce/products?organizationId=${orgId}&id=${product.id}`, { method: 'DELETE' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The product could not be removed')
+      if (data.inCatalog && !data.catalogRemoved) {
+        showToast('error', `Removed here, but it is still in your WhatsApp catalog${data.catalogError ? `: ${data.catalogError}` : '.'} The next sync brings it back.`)
+      }
       setPicked((current) => {
         const next = new Map(current)
         next.delete(product.id)
@@ -200,6 +318,10 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       showToast('error', err.message)
     }
   }
+
+  // What Meta said about the product being edited, shown in the form so it can be fixed there
+  const editedSync = form?.id ? getCatalogSync(products.find((product) => product.id === form.id)) : null
+  const editedIssues = [...(editedSync?.errors || []), ...(editedSync?.warnings || [])]
 
   const togglePicked = (product: CommerceProduct) => {
     if (!picked.has(product.id) && picked.size >= MAX_COLLECTION) {
@@ -246,6 +368,13 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               </button>
             ))}
           </div>
+          {catalogLinked && (
+            <select aria-label="Filter by place in the WhatsApp catalog" value={catalogFilter} onChange={(event) => setCatalogFilter(event.target.value as CatalogFilter)} className={`${inputClass} h-9 sm:w-52`}>
+              <option value="all">Any catalog status</option>
+              <option value="attention">Needs attention{catalogCounts.attention ? ` (${catalogCounts.attention})` : ''}</option>
+              <option value="not_sent">Not in catalog{catalogCounts.notSent ? ` (${catalogCounts.notSent})` : ''}</option>
+            </select>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -256,9 +385,15 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
           )}
           {canManageStore && (
             <>
-              <button type="button" onClick={syncCatalog} disabled={isSyncing || !catalogLinked} title={catalogLinked ? 'Copy products from your Meta catalog' : 'Link a Meta catalog in Store settings first'} className={secondaryButton}>
+              {catalogLinked && catalogCounts.notSent > 0 && (
+                <button type="button" onClick={sendToCatalog} disabled={isPushing} title="Add the products that are not in your WhatsApp catalog yet" className={secondaryButton}>
+                  {isPushing ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />}
+                  {isPushing ? 'Sending…' : `Add ${catalogCounts.notSent} to catalog`}
+                </button>
+              )}
+              <button type="button" onClick={syncCatalog} disabled={isSyncing || !catalogLinked} title={catalogLinked ? 'Bring this list up to date with your WhatsApp catalog' : 'Link a Meta catalog in Store settings first'} className={secondaryButton}>
                 <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
-                {isSyncing ? 'Syncing…' : 'Sync from Meta'}
+                {isSyncing ? 'Syncing…' : 'Sync catalog'}
               </button>
               <button type="button" onClick={openNew} className={primaryButton}>
                 <Plus size={14} /> Add product
@@ -306,11 +441,11 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
             {filtered
               ? 'Try a different name, SKU or filter.'
               : catalogLinked
-                ? 'Press “Sync from Meta” to list what customers can buy on WhatsApp.'
+                ? 'Add a product here, or press “Sync catalog” to list what is already in your WhatsApp catalog.'
                 : 'Link your Meta catalog in Store settings to sell in WhatsApp, or add a product to share as a website link.'}
           </p>
           {filtered && (
-            <button type="button" onClick={() => { setSearch(''); setAvailability('all') }} className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">
+            <button type="button" onClick={() => { setSearch(''); setAvailability('all'); setCatalogFilter('all') }} className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">
               Show all products
             </button>
           )}
@@ -321,6 +456,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
             {products.map((product) => {
               const available = inStock(product)
               const isPicked = picked.has(product.id)
+              const catalogState = getCatalogState(product)
+              const catalogSync = getCatalogSync(product)
+              const catalogIssue = catalogState === 'error' ? catalogSync?.errors?.[0] : catalogState === 'rejected' ? 'WhatsApp reviewed this item and did not approve it. Check it against the WhatsApp Commerce Policy in Commerce Manager.' : ''
               // Only items that are in the Meta catalog can go into a WhatsApp cart
               const canCollect = canEdit && catalogLinked && available
               return (
@@ -335,7 +473,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                     )}
                     <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
                       {!available && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-900/80 text-white">{product.is_available ? 'Out of stock' : 'Unavailable'}</span>}
-                      {fromMeta(product) && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/90 text-emerald-700 shadow-sm">WhatsApp catalog</span>}
+                      {(catalogLinked || catalogState !== 'not_sent') && (
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm ${CATALOG_CHIP[catalogState]}`}>{getCatalogStateLabel(product)}</span>
+                      )}
                     </div>
                     {canCollect && (
                       <label className="absolute top-2 right-2 h-7 px-2 rounded-full bg-white/95 dark:bg-slate-900/90 shadow-sm inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none" title="Select several products to send them in one message">
@@ -348,7 +488,11 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                     <div className="min-w-0">
                       <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate" title={product.title}>{product.title}</h3>
                       <p className="text-[11px] text-slate-500 truncate">SKU {product.retailer_id}{product.category ? ` · ${product.category}` : ''}</p>
-                      {product.description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{product.description}</p>}
+                      {catalogIssue ? (
+                        <p className="mt-1 text-xs text-rose-600 dark:text-rose-400 line-clamp-2" title={catalogIssue}>{catalogIssue}</p>
+                      ) : (
+                        product.description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{product.description}</p>
+                      )}
                     </div>
                     <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                       <span className="font-bold text-base text-slate-900 dark:text-white tabular-nums">{formatMoney(product.price, product.currency)}</span>
@@ -398,10 +542,18 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         <Modal title={form.id ? 'Edit product' : 'Add product'} onClose={() => setForm(null)} wide>
           <form onSubmit={saveProduct} className="space-y-3.5">
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              {form.id && products.find((product) => product.id === form.id && fromMeta(product))
-                ? 'This product is a copy of an item in your Meta catalog. Changes made here are replaced by the next catalog sync; change the price or photo in Commerce Manager to keep them.'
-                : 'Products added here are saved in this CRM only. To sell one from the WhatsApp cart, add it to your Meta catalog with the same SKU.'}
+              {catalogLinked
+                ? 'Saving sends this product to your WhatsApp catalog, where customers can add it to a cart. WhatsApp reviews new items before it shows them.'
+                : 'This product is saved in this CRM. Link your Meta catalog in Store settings to sell it from the WhatsApp cart.'}
             </p>
+            {editedIssues.length > 0 && (
+              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-100">
+                <p className="font-semibold">Your WhatsApp catalog said this about the product</p>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                  {editedIssues.map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              </div>
+            )}
             {formError && (
               <p role="alert" className="flex items-start gap-2 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-200">
                 <AlertCircle size={14} className="shrink-0 mt-px" /> {formError}
@@ -444,14 +596,72 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <textarea id="product-description" rows={2} maxLength={2000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={textareaClass} />
             </div>
             <div>
-              <label htmlFor="product-image" className={labelClass}>Image link (optional)</label>
+              <label htmlFor="product-image" className={labelClass}>Photo link{catalogLinked ? '' : ' (optional)'}</label>
               <input id="product-image" type="url" placeholder="https://…" value={form.image_url} onChange={(event) => setForm({ ...form, image_url: event.target.value })} className={inputClass} />
+              <p className={hintClass}>A JPEG or PNG of at least 500 × 500 pixels. WhatsApp needs one for every catalog item.</p>
             </div>
             <div>
               <label htmlFor="product-url" className={labelClass}>Product page on your website (optional)</label>
               <input id="product-url" type="url" placeholder="https://yourstore.com/products/…" value={form.website_url} onChange={(event) => setForm({ ...form, website_url: event.target.value })} className={inputClass} />
-              <p className={hintClass}>Needed to share this product as a website link.</p>
+              <p className={hintClass}>Needed to share this product as a website link. Without one, the catalog item links to your WhatsApp chat.</p>
             </div>
+
+            <fieldset className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <legend className="text-xs font-bold text-slate-900 dark:text-white">WhatsApp catalog details</legend>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor="product-brand" className={labelClass}>Brand (optional)</label>
+                  <input id="product-brand" type="text" maxLength={100} placeholder="Your store name" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} className={inputClass} />
+                </div>
+                <div>
+                  <label htmlFor="product-condition" className={labelClass}>Condition</label>
+                  <select id="product-condition" value={form.condition} onChange={(event) => setForm({ ...form, condition: event.target.value })} className={inputClass}>
+                    {PRODUCT_CONDITIONS.map((condition) => (
+                      <option key={condition} value={condition}>{condition.charAt(0).toUpperCase() + condition.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label htmlFor="product-origin" className={labelClass}>Made in</label>
+                  <select id="product-origin" value={form.origin_country} disabled={form.is_service} onChange={(event) => setForm({ ...form, origin_country: event.target.value })} className={inputClass}>
+                    <option value="">Not specified</option>
+                    {[...ORIGIN_COUNTRIES, ...(form.origin_country && !ORIGIN_COUNTRIES.some(([code]) => code === form.origin_country) ? [[form.origin_country, form.origin_country] as [string, string]] : [])].map(([code, name]) => (
+                      <option key={code} value={code}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input type="checkbox" checked={form.is_service} onChange={(event) => setForm({ ...form, is_service: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#00a884]" />
+                <span>
+                  This is a service or a digital item
+                  <span className="block text-slate-500 dark:text-slate-400">No country of origin is needed for it.</span>
+                </span>
+              </label>
+              {!form.is_service && form.currency === 'INR' && (
+                <p className={hintClass}>For goods sold in India, WhatsApp asks where each item was made, and who imported it when that is another country.</p>
+              )}
+              {!form.is_service && form.currency === 'INR' && form.origin_country && form.origin_country !== 'IN' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label htmlFor="importer-name" className={labelClass}>Importer’s legal name</label>
+                    <input id="importer-name" type="text" maxLength={200} value={form.importer_name} onChange={(event) => setForm({ ...form, importer_name: event.target.value })} className={inputClass} />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="importer-street" className={labelClass}>Importer’s street address</label>
+                    <input id="importer-street" type="text" maxLength={200} value={form.importer_street} onChange={(event) => setForm({ ...form, importer_street: event.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label htmlFor="importer-city" className={labelClass}>City</label>
+                    <input id="importer-city" type="text" maxLength={100} value={form.importer_city} onChange={(event) => setForm({ ...form, importer_city: event.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label htmlFor="importer-pin" className={labelClass}>PIN code (optional)</label>
+                    <input id="importer-pin" type="text" maxLength={20} value={form.importer_postal_code} onChange={(event) => setForm({ ...form, importer_postal_code: event.target.value })} className={inputClass} />
+                  </div>
+                </div>
+              )}
+            </fieldset>
             <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
               <input type="checkbox" checked={form.is_available} onChange={(event) => setForm({ ...form, is_available: event.target.checked })} className="h-4 w-4 rounded accent-[#00a884]" />
               Available to sell
@@ -528,6 +738,15 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
 
   const typedPhone = toDialablePhone(query)
   const title = target.kind === 'product' ? 'Send product on WhatsApp' : target.kind === 'collection' ? `Send ${target.products.length} products on WhatsApp` : 'Send your catalog on WhatsApp'
+  // Only items WhatsApp has in the catalog can be shown as cards; say so before the send fails
+  const notReady = target.kind === 'collection' ? target.products.filter((item) => getCatalogState(item) !== 'in_catalog').length : 0
+  const caution = !catalogLinked
+    ? ''
+    : product && mode === 'single_product'
+      ? catalogCaution(getCatalogState(product))
+      : notReady > 0
+        ? `${notReady} of these products ${notReady === 1 ? 'is' : 'are'} not approved in your WhatsApp catalog yet, so WhatsApp may refuse the message or leave ${notReady === 1 ? 'it' : 'them'} out.`
+        : ''
   const blocked = target.kind === 'product' ? (mode === 'single_product' ? !canSendCard : !canSendLink) : !catalogLinked
 
   async function send(event: React.FormEvent) {
@@ -666,6 +885,12 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
           <label htmlFor="share-message" className={labelClass}>Message</label>
           <textarea id="share-message" rows={2} maxLength={1000} required value={message} onChange={(event) => setMessage(event.target.value)} className={textareaClass} />
         </div>
+
+        {caution && (
+          <p role="status" className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-100">
+            <AlertCircle size={14} className="shrink-0 mt-px" /> {caution}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>

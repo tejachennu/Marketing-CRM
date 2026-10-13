@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { inspectToken } from '@/lib/commerce/meta-catalog'
+import { LEGACY_REGISTRATION_PIN, PIN_MISMATCH_ERROR_CODE, getRegistrationPin, parseSignupSession } from '@/lib/whatsapp-onboarding'
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -21,13 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const {
-      code,
-      accessToken: directAccessToken,
-      wabaId: incomingWabaId,
-      phoneNumberId: incomingPhoneNumberId,
-      organizationId: requestedOrgId,
-    } = body
+    const { code, accessToken: directAccessToken, organizationId: requestedOrgId } = body
+    // IDs reported by the signup window. They are only ever used with the customer's own token.
+    const session = parseSignupSession(body)
 
     const targetOrgId = requestedOrgId || user.organization_id
     if (!targetOrgId) {
@@ -40,7 +38,8 @@ export async function POST(request: NextRequest) {
     }
 
     const appId = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
-    const appSecret = process.env.META_APP_SECRET || '7265702af260e098afcd8328559e5b9a'
+    // The app secret lives in the environment only. It must never be written into the source.
+    const appSecret = process.env.META_APP_SECRET
     const graphVersion = 'v22.0'
 
     let finalAccessToken = directAccessToken || ''
@@ -104,10 +103,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let wabaId = incomingWabaId || ''
-    let phoneNumberId = incomingPhoneNumberId || ''
+    let wabaId = session.wabaId
+    let phoneNumberId = session.phoneNumberId
     let displayPhoneNumber = ''
     let verifiedName = ''
+    let sharedCatalogId = session.catalogIds[0] || ''
+
+    // 1c. If the signup window did not report what was shared, ask Meta what the token was granted
+    if (!wabaId || !sharedCatalogId) {
+      const access = await inspectToken(finalAccessToken, { id: appId, secret: appSecret }, graphVersion)
+      if (!wabaId) wabaId = access?.targets.whatsapp_business_management?.[0] || ''
+      if (!sharedCatalogId) sharedCatalogId = access?.targets.catalog_management?.[0] || ''
+    }
 
     // 2. If phone_number_id is provided, fetch its phone number details from Meta Graph API
     if (phoneNumberId) {
@@ -169,23 +176,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4b. Register the phone number with Meta Cloud API for messaging
+    // 4b. Register the phone number with Meta Cloud API for messaging.
+    // The PIN becomes the number's two-step verification PIN, so each number gets its own.
     if (phoneNumberId) {
-      try {
-        console.log(`[Meta Embedded Signup] Registering phone number ${phoneNumberId} with Cloud API...`)
+      const register = async (pin: string) => {
         const regRes = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/register`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${finalAccessToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            pin: '123456',
-          }),
+          body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
         })
-        const regData = await regRes.json()
-        console.log(`[Meta Embedded Signup] Phone registration response:`, regData)
+        return regRes.json()
+      }
+      try {
+        console.log(`[Meta Embedded Signup] Registering phone number ${phoneNumberId} with Cloud API...`)
+        const pin = getRegistrationPin(phoneNumberId)
+        let regData = await register(pin)
+        // A number registered before per-number PINs still carries the old one
+        if (regData?.error?.code === PIN_MISMATCH_ERROR_CODE && pin !== LEGACY_REGISTRATION_PIN) {
+          regData = await register(LEGACY_REGISTRATION_PIN)
+        }
+        console.log(`[Meta Embedded Signup] Phone registration response:`, regData?.error ? { error: regData.error.message } : regData)
       } catch (err) {
         console.warn('[Meta Embedded Signup] Phone registration call warning (non-fatal):', err)
       }
@@ -202,6 +215,16 @@ export async function POST(request: NextRequest) {
     if (wabaId) updatePayload.whatsapp_business_account_id = wabaId
     if (phoneNumberId) updatePayload.whatsapp_phone_number_id = phoneNumberId
     if (displayPhoneNumber) updatePayload.whatsapp_default_phone = displayPhoneNumber
+
+    // A catalog the customer shared during signup becomes the store's catalog, unless one is already linked
+    let linkedCatalogId = ''
+    if (sharedCatalogId) {
+      const { data: current } = await admin.from('organizations').select('meta_catalog_id').eq('id', targetOrgId).maybeSingle()
+      if (!String(current?.meta_catalog_id || '').trim()) {
+        updatePayload.meta_catalog_id = sharedCatalogId
+        linkedCatalogId = sharedCatalogId
+      }
+    }
 
     const { error: updateError } = await admin
       .from('organizations')
@@ -226,6 +249,7 @@ export async function POST(request: NextRequest) {
         displayPhoneNumber,
         verifiedName,
         graphVersion,
+        catalogId: linkedCatalogId || undefined,
       },
     })
   } catch (error: any) {

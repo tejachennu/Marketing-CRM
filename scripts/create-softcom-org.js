@@ -17,11 +17,17 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
+if (!process.env.SOFTCOM_WHATSAPP_TOKEN || !process.env.SOFTCOM_DEMO_PASSWORD) {
+  console.error('Set SOFTCOM_WHATSAPP_TOKEN (the WhatsApp access token for this organization) and SOFTCOM_DEMO_PASSWORD (the demo user\'s password) in .env.local.');
+  process.exit(1);
+}
+
 const ORG_CONFIG = {
   name: 'Softcom Technologies',
   slug: 'softcom-technologies',
   whatsapp_provider: 'facebook',
-  whatsapp_api_token: 'EAAkhVZCE7GZBgBSsVoCjf5ExiHF45nwGBrdueDZBZCKLM7kbivV6Ka5xoA6TccvuQEvf19etBOcslBpEme7My3jQ7aQWbudqqakgOCH3b1SBhpx4y7TPeuQqogZCm3VAed64JZC2J8gG8jtv0qY00JgC54b53Wbh3C43AZCeZBxrZB1fGHSPnIefjMvPkIAR8Rf2ZChwZDZD',
+  // Never written into this file: the repository is public. Set SOFTCOM_WHATSAPP_TOKEN in .env.local.
+  whatsapp_api_token: process.env.SOFTCOM_WHATSAPP_TOKEN,
   whatsapp_phone_number_id: '1326239367246484',
   whatsapp_business_account_id: '3220691194788830',
   whatsapp_default_phone: '+91 85007 57299',
@@ -39,7 +45,8 @@ const ORG_CONFIG = {
 
 const DEMO_USER = {
   email: 'mani.softcom@demo.com',
-  password: 'SoftcomDemo@2026',
+  // Not kept in this file either: set SOFTCOM_DEMO_PASSWORD in .env.local
+  password: process.env.SOFTCOM_DEMO_PASSWORD,
   fullName: 'Manikanta',
   role: 'org_admin'
 };

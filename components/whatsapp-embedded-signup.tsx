@@ -42,10 +42,13 @@ export function WhatsAppEmbeddedSignup({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
-  const capturedDataRef = useRef<{ wabaId?: string; phoneNumberId?: string }>({})
+  const capturedDataRef = useRef<{ wabaId?: string; phoneNumberId?: string; businessId?: string; catalogIds?: string[] }>({})
 
   const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
   const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || '1078124458153332'
+  // Embedded Signup v4 takes its whole setup from the Facebook Login for Business configuration,
+  // and Meta documents that `extras` must then be empty. Older configurations need the fields below.
+  const SIGNUP_EXTRAS = process.env.NEXT_PUBLIC_META_ES_VERSION === 'v4' ? {} : { setup: {}, featureType: '', sessionInfoVersion: '3' }
 
   // Load and initialize Facebook JavaScript SDK
   useEffect(() => {
@@ -84,23 +87,29 @@ export function WhatsAppEmbeddedSignup({
     if (typeof window === 'undefined') return
 
     const handleMessage = (event: MessageEvent) => {
-      // Validate Meta origin
-      if (
-        event.origin !== 'https://www.facebook.com' &&
-        event.origin !== 'https://web.facebook.com'
-      ) {
+      // Only messages from Meta's own pages (www, web, business, ...) are read
+      let host = ''
+      try {
+        const origin = new URL(event.origin)
+        host = origin.protocol === 'https:' ? origin.hostname : ''
+      } catch {
         return
       }
+      if (host !== 'facebook.com' && !host.endsWith('.facebook.com')) return
 
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
         if (data?.type === 'WA_EMBEDDED_SIGNUP') {
           console.log('[Meta Embedded Signup] PostMessage Event:', data)
-          if (data.event === 'FINISH' && data.data) {
-            const { phone_number_id, waba_id } = data.data
+          // FINISH, FINISH_ONLY_WABA, FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING, ...: the flow completed
+          if (typeof data.event === 'string' && data.event.startsWith('FINISH') && data.data) {
+            const { phone_number_id, waba_id, business_id, catalog_ids } = data.data
             capturedDataRef.current = {
               phoneNumberId: phone_number_id,
               wabaId: waba_id,
+              businessId: business_id,
+              // Present only when the customer chose to share catalogs
+              catalogIds: Array.isArray(catalog_ids) ? catalog_ids : undefined,
             }
           } else if (data.event === 'CANCEL') {
             console.log('[Meta Embedded Signup] User cancelled at step:', data.data?.current_step)
@@ -148,6 +157,8 @@ export function WhatsAppEmbeddedSignup({
                 accessToken: directAccessToken || undefined,
                 wabaId: capturedDataRef.current.wabaId,
                 phoneNumberId: capturedDataRef.current.phoneNumberId,
+                businessId: capturedDataRef.current.businessId,
+                catalogIds: capturedDataRef.current.catalogIds,
                 organizationId,
               }),
             })
@@ -185,11 +196,7 @@ export function WhatsAppEmbeddedSignup({
           config_id: META_CONFIG_ID,
           response_type: 'code',
           override_default_response_type: true,
-          extras: {
-            setup: {},
-            featureType: '',
-            sessionInfoVersion: '3',
-          },
+          extras: SIGNUP_EXTRAS,
         }
       )
     } catch (err: any) {

@@ -4,6 +4,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getMetaCredentials, metaRequest, uploadNativeFlow } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
 import { formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
+import { setCommerceSettings } from '@/lib/commerce/meta-catalog'
 
 /**
  * The address form with this store's delivery options: the express choice shows what it costs,
@@ -236,14 +237,7 @@ export async function POST(request: NextRequest) {
         throw new Error('Phone Number ID is missing in organization settings')
       }
 
-      await metaRequest(credentials, `${credentials.phoneNumberId}/whatsapp_commerce_settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_cart_enabled: true,
-          is_catalog_visible: true,
-        }),
-      })
+      await setCommerceSettings(credentials, { is_cart_enabled: true, is_catalog_visible: true })
 
       return NextResponse.json({
         success: true,

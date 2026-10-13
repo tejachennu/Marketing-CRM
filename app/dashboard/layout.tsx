@@ -677,9 +677,20 @@ export default function DashboardLayout({
     return true
   }
 
+  // Commerce and the Flow Builder are still being tested, so the menu lists them only on a
+  // developer's machine (`next dev`), or where NEXT_PUBLIC_SHOW_PREVIEW_MODULES is "true".
+  // Only the menu entry is hidden: the pages keep their usual role and feature rules.
+  const previewPages = ['/dashboard/commerce', '/dashboard/flows']
+  const showPreviewPages = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PREVIEW_MODULES === 'true'
+
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
   const filteredNavItems = profileLoaded
-    ? navItems.filter((item) => canAccessPage(currentUser, item.href) && (isPlatformAdmin || isFeatureEnabled(item.href)))
+    ? navItems.filter(
+        (item) =>
+          (showPreviewPages || !previewPages.includes(item.href)) &&
+          canAccessPage(currentUser, item.href) &&
+          (isPlatformAdmin || isFeatureEnabled(item.href))
+      )
     : []
   const isNavVisible = (href: string) => filteredNavItems.some((item) => item.href === href)
 

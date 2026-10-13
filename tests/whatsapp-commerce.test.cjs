@@ -392,7 +392,9 @@ test('Catalog sync: Meta items become product rows', () => {
   assert.equal(meta.parseMetaPrice(null), 0)
 
   const row = meta.toCatalogProductRow({ id: '1', retailer_id: 'SKU-9', name: 'Kurta', price: '₹1,299.00', sale_price: '₹999.00', currency: 'inr', availability: 'in stock', inventory: 7, image_url: 'https://x/y.jpg', url: 'https://shop/kurta' })
-  assert.deepEqual(row, { retailer_id: 'SKU-9', title: 'Kurta', description: '', price: 999, currency: 'INR', image_url: 'https://x/y.jpg', website_url: 'https://shop/kurta', is_available: true, inventory_count: 7, metadata: { source: 'meta' } })
+  const { metadata, ...columns } = row
+  assert.deepEqual(columns, { retailer_id: 'SKU-9', title: 'Kurta', description: '', price: 999, currency: 'INR', image_url: 'https://x/y.jpg', website_url: 'https://shop/kurta', is_available: true, inventory_count: 7 })
+  assert.equal(metadata.source, 'meta')
   // No sale: the regular price. Not purchasable: marked unavailable.
   assert.equal(meta.toCatalogProductRow({ retailer_id: 'A', price: '₹500.00', sale_price: '₹0.00' }).price, 500)
   assert.equal(meta.toCatalogProductRow({ retailer_id: 'A', availability: 'out of stock' }).is_available, false)

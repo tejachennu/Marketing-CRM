@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { AlertCircle, Check, CheckCircle2, Loader2, ShoppingBag, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Plus, ShoppingBag, Sparkles } from 'lucide-react'
 import { useAlert } from '@/lib/dialog-context'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
@@ -11,6 +11,18 @@ const GATEWAY_LABELS: Record<string, string> = {
   payu: 'PayU',
   billdesk: 'BillDesk',
   zaakpay: 'Zaakpay',
+}
+
+/** The store's catalog as Meta sees it, from /api/commerce/catalog. */
+interface CatalogInfo {
+  linkedCatalogId: string | null
+  linkedError: string | null
+  connectionKnown: boolean
+  catalogs: Array<{ id: string; name: string; product_count: number; connected: boolean }>
+  businessId: string | null
+  /** Whether this WhatsApp connection may change the catalog; null when Meta would not say. */
+  canEdit: boolean | null
+  canCreate: boolean | null
 }
 
 interface StoreSettingsProps {
@@ -49,17 +61,92 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const [isDeployingFlow, setIsDeployingFlow] = useState(false)
   const [isEnablingCart, setIsEnablingCart] = useState(false)
 
+  const [catalogInfo, setCatalogInfo] = useState<CatalogInfo | null>(null)
+  const [isConnectingCatalog, setIsConnectingCatalog] = useState(false)
+  const [newCatalog, setNewCatalog] = useState<{ name: string; businessId: string } | null>(null)
+  const [isCreatingCatalog, setIsCreatingCatalog] = useState(false)
+
+  const loadCatalogInfo = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/commerce/catalog?organizationId=${orgId}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) setCatalogInfo(data)
+      return res.ok ? (data as CatalogInfo) : null
+    } catch {
+      return null // The catalog status is extra information; the settings work without it
+    }
+  }, [orgId])
+
+  useEffect(() => {
+    if (whatsappConnected) loadCatalogInfo()
+  }, [whatsappConnected, loadCatalogInfo])
+
+  const chosenCatalogId = form.meta_catalog_id.trim()
+  const chosenCatalog = catalogInfo?.catalogs.find((catalog) => catalog.id === chosenCatalogId) || null
+  const isLinkedCatalog = Boolean(catalogInfo && chosenCatalogId && chosenCatalogId === catalogInfo.linkedCatalogId)
+
+  async function connectCatalog() {
+    setIsConnectingCatalog(true)
+    try {
+      const res = await fetch('/api/commerce/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action: 'connect', catalogId: chosenCatalogId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The catalog could not be connected')
+      // The server saved the catalog as this store's; mirror it locally
+      onSaved({ meta_catalog_id: data.catalogId })
+      await loadCatalogInfo()
+      showToast('success', 'The catalog is connected to your WhatsApp account. Its products can now be sent and ordered in chats.')
+    } catch (err: any) {
+      alert({ title: 'Catalog not connected', message: err.message })
+    } finally {
+      setIsConnectingCatalog(false)
+    }
+  }
+
+  async function createCatalog(event: React.FormEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!newCatalog) return
+    setIsCreatingCatalog(true)
+    try {
+      const res = await fetch('/api/commerce/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action: 'create', name: newCatalog.name, businessId: newCatalog.businessId.trim() || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The catalog could not be created')
+      set({ meta_catalog_id: data.catalogId })
+      onSaved({ meta_catalog_id: data.catalogId })
+      setNewCatalog(null)
+      await loadCatalogInfo()
+      if (data.connected) showToast('success', 'Your catalog was created and connected to WhatsApp. Add products in the Products tab.')
+      else alert({ title: 'Catalog created, but not connected', message: `The catalog was created and saved here. Connecting it to your WhatsApp account did not work: ${data.connectError || 'Meta did not say why.'} Press “Connect to WhatsApp” to try again.` })
+    } catch (err: any) {
+      alert({ title: 'Catalog not created', message: err.message })
+    } finally {
+      setIsCreatingCatalog(false)
+    }
+  }
+
+  // Catalogs to pick from: Meta's full answer when there is one, otherwise what "Detect" found
+  const catalogOptions: Array<{ id: string; name: string; product_count: number; connected?: boolean }> = catalogInfo?.catalogs.length ? catalogInfo.catalogs : detected?.catalogs || []
+
   const hasGateway = Boolean(form.commerce_gateway_config_name.trim())
   const cartOn = detected?.commerceSettings ? detected.commerceSettings.is_cart_enabled === true && detected.commerceSettings.is_catalog_visible === true : null
 
   async function detectFromMeta() {
     setIsDetecting(true)
     try {
-      const res = await fetch(`/api/commerce/meta-detect?organizationId=${orgId}`)
+      const [res, catalog] = await Promise.all([fetch(`/api/commerce/meta-detect?organizationId=${orgId}`), loadCatalogInfo()])
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Meta could not be reached')
       setDetected({ catalogs: data.catalogs || [], paymentConfigs: data.paymentConfigs || [], flows: data.flows || [], commerceSettings: data.commerceSettings || null })
-      showToast('success', `Found ${data.catalogs?.length || 0} catalog(s), ${data.paymentConfigs?.length || 0} payment setup(s) and ${data.flows?.length || 0} form(s). Pick them from the lists below.`)
+      const catalogCount = catalog?.catalogs.length ?? data.catalogs?.length ?? 0
+      showToast('success', `Found ${catalogCount} catalog(s), ${data.paymentConfigs?.length || 0} payment setup(s) and ${data.flows?.length || 0} form(s). Pick them from the lists below.`)
     } catch (err: any) {
       showToast('error', err.message)
     } finally {
@@ -187,19 +274,109 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         </div>
         <div>
           <label htmlFor="catalog-id" className={labelClass}>Meta catalog ID</label>
-          {detected && detected.catalogs.length > 0 && (
-            <select aria-label="Detected catalogs" value="" onChange={(event) => event.target.value && set({ meta_catalog_id: event.target.value })} className={`${inputClass} mb-2`}>
-              <option value="">Choose a detected catalog…</option>
-              {detected.catalogs.map((catalog) => (
+          {catalogOptions.length > 0 && (
+            <select aria-label="Catalogs found on Meta" value="" onChange={(event) => event.target.value && set({ meta_catalog_id: event.target.value })} className={`${inputClass} mb-2`}>
+              <option value="">Choose one of your catalogs…</option>
+              {catalogOptions.map((catalog) => (
                 <option key={catalog.id} value={catalog.id}>
-                  {catalog.name || 'Catalog'} · {catalog.product_count || 0} products
+                  {catalog.name || 'Catalog'} · {catalog.product_count || 0} products{catalog.connected ? ' · connected to WhatsApp' : ''}
                 </option>
               ))}
             </select>
           )}
           <input id="catalog-id" type="text" inputMode="numeric" placeholder="e.g. 102938475610293" value={form.meta_catalog_id} onChange={(event) => set({ meta_catalog_id: event.target.value })} className={inputClass} />
-          <p className={hintClass}>Found in Meta Business Suite → Commerce Manager → Catalogs. The catalog must also be connected to your WhatsApp number there.</p>
+          <p className={hintClass}>Found in Meta Business Suite → Commerce Manager → Catalogs. WhatsApp sells from one catalog per account.</p>
         </div>
+
+        {/* What Meta says about the chosen catalog */}
+        {catalogInfo && chosenCatalogId && (
+          <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+            {isLinkedCatalog && catalogInfo.linkedError && (
+              <li role="alert" className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+                <AlertCircle size={15} className="shrink-0 mt-px" /> {catalogInfo.linkedError}
+              </li>
+            )}
+            {chosenCatalog && (
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="shrink-0 mt-px text-emerald-500" />
+                <span><strong className="font-semibold text-slate-900 dark:text-white">{chosenCatalog.name}</strong> has {chosenCatalog.product_count} product{chosenCatalog.product_count === 1 ? '' : 's'} on Meta.</span>
+              </li>
+            )}
+            {chosenCatalog && catalogInfo.connectionKnown && (
+              chosenCatalog.connected ? (
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 size={15} className="shrink-0 mt-px text-emerald-500" /> It is connected to your WhatsApp account.
+                </li>
+              ) : (
+                <li className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-100">
+                  <span className="flex items-start gap-2">
+                    <AlertCircle size={15} className="shrink-0 mt-px" />
+                    It is not connected to your WhatsApp account, so its products cannot be sent or ordered in chats yet.
+                  </span>
+                  <button type="button" onClick={connectCatalog} disabled={isConnectingCatalog} className={`${secondaryButton} shrink-0`}>
+                    {isConnectingCatalog ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                    {isConnectingCatalog ? 'Connecting…' : 'Connect to WhatsApp'}
+                  </button>
+                </li>
+              )
+            )}
+            {isLinkedCatalog && catalogInfo.canEdit === true && (
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={15} className="shrink-0 mt-px text-emerald-500" /> Products you add or change in the Products tab are sent to this catalog.
+              </li>
+            )}
+            {isLinkedCatalog && catalogInfo.canEdit === false && (
+              <li className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+                <AlertCircle size={15} className="shrink-0 mt-px" />
+                <span>
+                  This WhatsApp connection can read the catalog but not change it, so products added here stay out of WhatsApp. To manage the catalog from here, reconnect WhatsApp and include the catalog, or use an access token that has the <span className="font-mono">catalog_management</span> permission.
+                </span>
+              </li>
+            )}
+            {!isLinkedCatalog && <li className={hintClass}>Save the store settings to use this catalog.</li>}
+          </ul>
+        )}
+
+        {/* A store with no catalog can make one here */}
+        {whatsappConnected && (
+          newCatalog ? (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 space-y-3">
+              <div className={`grid grid-cols-1 gap-3 ${catalogInfo?.businessId ? '' : 'sm:grid-cols-2'}`}>
+                <div>
+                  <label htmlFor="new-catalog-name" className={labelClass}>Catalog name</label>
+                  <input id="new-catalog-name" type="text" maxLength={100} autoFocus value={newCatalog.name} onChange={(event) => setNewCatalog({ ...newCatalog, name: event.target.value })} className={inputClass} />
+                </div>
+                {!catalogInfo?.businessId && (
+                  <div>
+                    <label htmlFor="new-catalog-business" className={labelClass}>Business portfolio ID</label>
+                    <input id="new-catalog-business" type="text" inputMode="numeric" placeholder="e.g. 123456789012345" value={newCatalog.businessId} onChange={(event) => setNewCatalog({ ...newCatalog, businessId: event.target.value })} className={inputClass} />
+                    <p className={hintClass}>Shown in Meta Business Suite → Settings → Business info.</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setNewCatalog(null)} className={secondaryButton}>Cancel</button>
+                <button type="button" onClick={createCatalog} disabled={isCreatingCatalog || !newCatalog.name.trim()} className={primaryButton}>
+                  {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
+                  {isCreatingCatalog ? 'Creating…' : 'Create and connect'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            !chosenCatalogId && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  No catalog yet? Create one on Meta and connect it to your WhatsApp account in one step.
+                  {catalogInfo?.canCreate === false && ' This needs a WhatsApp connection that is allowed to manage catalogs.'}
+                </p>
+                <button type="button" onClick={() => setNewCatalog({ name: `${orgData.name || 'My store'} catalog`, businessId: '' })} className={`${secondaryButton} shrink-0`}>
+                  <Plus size={13} /> Create a catalog
+                </button>
+              </div>
+            )
+          )
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
           <p className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2">
             {cartOn === true ? <CheckCircle2 size={15} className="shrink-0 mt-px text-emerald-500" /> : <ShoppingBag size={15} className="shrink-0 mt-px text-slate-400" />}
