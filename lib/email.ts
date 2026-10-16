@@ -1,33 +1,25 @@
 import nodemailer from 'nodemailer'
+import { formatFrom, getPlatformEmailSettings, type PlatformEmailSettings } from '@/lib/platform-email'
 
-/**
- * Creates and returns the nodemailer transporter configured with the Hostinger SMTP server
- * from the environment variables.
- */
-export function getMailTransporter() {
-  const host = process.env.HOSTINGER_SMTP_HOST || 'smtp.hostinger.com'
-  const port = parseInt(process.env.HOSTINGER_SMTP_PORT || '465', 10)
-  const secure = process.env.HOSTINGER_SMTP_SECURE === 'true'
-  const user = process.env.HOSTINGER_SMTP_USER || 'noreply@consularhelpdesk.com'
-  // The password lives in the environment only. It must never be written into the source.
-  const pass = process.env.HOSTINGER_SMTP_PASS
-
+/** A mail transport that signs in to one mailbox. */
+export function createSmtpTransport(settings: PlatformEmailSettings) {
   return nodemailer.createTransport({
-    host,
-    port,
-    secure,
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
     connectionTimeout: 8000,
     greetingTimeout: 8000,
     socketTimeout: 10000,
     auth: {
-      user,
-      pass,
+      user: settings.user,
+      pass: settings.password,
     },
   })
 }
 
 /**
- * Sends an email using the Hostinger SMTP transporter, with fallback to SendGrid if configured
+ * Sends one of the platform's own emails from the platform mailbox (set in the superadmin panel,
+ * otherwise in the environment), with fallback to SendGrid if configured
  */
 export async function sendEmail({
   to,
@@ -44,29 +36,31 @@ export async function sendEmail({
 }) {
   let smtpError: any = null
 
-  // 1. Try Nodemailer Transporter
-  try {
-    const transporter = getMailTransporter()
-    const fromUser = process.env.HOSTINGER_SMTP_USER || process.env.SMTP_USER || process.env.SMTP_EMAIL || 'noreply@consularhelpdesk.com'
-    
-    const mailOptions: any = {
-      from: `"OmniCRM Security" <${fromUser}>`,
-      to,
-      subject,
-      text: text || '',
-      html,
-    }
+  // 1. Try the platform mailbox
+  const { settings, source } = await getPlatformEmailSettings()
+  if (settings) {
+    try {
+      const mailOptions: any = {
+        from: formatFrom(settings),
+        to,
+        subject,
+        text: text || '',
+        html,
+      }
 
-    if (attachments && attachments.length > 0) {
-      mailOptions.attachments = attachments
-    }
+      if (attachments && attachments.length > 0) {
+        mailOptions.attachments = attachments
+      }
 
-    const info = await transporter.sendMail(mailOptions)
-    console.log('[Email] Email sent successfully via SMTP:', info.messageId)
-    return { success: true, provider: 'smtp', messageId: info.messageId }
-  } catch (error: any) {
-    smtpError = error
-    console.warn('[Email] SMTP failed, attempting fallback if available:', error?.message || error)
+      const info = await createSmtpTransport(settings).sendMail(mailOptions)
+      console.log(`[Email] Email sent successfully via SMTP (${source}):`, info.messageId)
+      return { success: true, provider: 'smtp', messageId: info.messageId }
+    } catch (error: any) {
+      smtpError = error
+      console.warn('[Email] SMTP failed, attempting fallback if available:', error?.message || error)
+    }
+  } else {
+    smtpError = new Error('No platform mailbox is set up (superadmin panel > Platform Email, or PLATFORM_SMTP_* variables).')
   }
 
   // 2. Fallback to SendGrid if available in environment

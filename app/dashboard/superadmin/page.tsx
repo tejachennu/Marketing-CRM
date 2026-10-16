@@ -36,6 +36,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { useConfirm } from '@/lib/dialog-context'
+import { PlatformEmailSettings } from '@/components/superadmin/platform-email-settings'
 
 // Define interfaces
 interface OrgStats {
@@ -139,7 +140,7 @@ function ToggleSwitch({ checked, onChange, label, description }: ToggleProps) {
 export default function SuperAdminPage() {
   const confirm = useConfirm()
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'analytics' | 'organizations' | 'users'>('analytics')
+  const [activeTab, setActiveTab] = useState<'analytics' | 'organizations' | 'users' | 'email'>('analytics')
 
   // Selected Organization Settings
   const [selectedOrgSettings, setSelectedOrgSettings] = useState<Organization | null>(null)
@@ -1063,7 +1064,20 @@ export default function SuperAdminPage() {
         >
           Users & Managers ({users.length})
         </button>
+        <button
+          onClick={() => setActiveTab('email')}
+          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            activeTab === 'email' 
+              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
+              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
+          }`}
+        >
+          Platform Email
+        </button>
       </div>
+
+      {/* TAB CONTENT: PLATFORM EMAIL */}
+      {activeTab === 'email' && <PlatformEmailSettings />}
 
       {/* TAB CONTENT: ANALYTICS OVERVIEW */}
       {activeTab === 'analytics' && (
