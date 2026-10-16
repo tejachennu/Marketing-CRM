@@ -131,6 +131,11 @@ export function WhatsAppEmbeddedSignup({
   }, [])
 
   const handleLaunchSignup = () => {
+    // Facebook only opens its login window from https pages; on http FB.login does nothing
+    if (window.location.protocol !== 'https:') {
+      setError('Meta sign-up only works over https. Locally, run "npm run dev:https" and open https://localhost:3000.')
+      return
+    }
     if (!window.FB) {
       setError('Facebook SDK is still loading. Please wait 2 seconds and try again.')
       return
