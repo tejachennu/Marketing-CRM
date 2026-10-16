@@ -3,8 +3,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHmac } = require('node:crypto')
 
-const { verifyMetaSignature } = require('../lib/meta-webhook.ts')
-const { getPublicBaseUrl, getWebhookOverride } = require('../lib/whatsapp-onboarding.ts')
+const { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } = require('../lib/meta-webhook.ts')
+const { getPublicBaseUrl, getWebhookOverride, describeIncompleteSignup } = require('../lib/whatsapp-onboarding.ts')
 
 const ORG = '99999999-9999-4999-8999-999999999999'
 const SECRET = 'app-secret'
@@ -62,4 +62,34 @@ test('Onboarding: each organization gets its own webhook address and verify toke
   assert.equal(getWebhookOverride(`${ORG}/../x`, 'https://crm.example.com'), null)
   // Meta takes at most 200 characters
   assert.equal(getWebhookOverride(ORG, `https://${'a'.repeat(180)}.example.com`), null)
+})
+
+test('Webhook: an event belongs to the workspace that has its account connected', () => {
+  const shop = { id: 'shop', whatsapp_business_account_id: '111', whatsapp_phone_number_id: '222' }
+  assert.equal(ownsWhatsAppEvent(shop, '111', '222'), true)
+  assert.equal(ownsWhatsAppEvent(shop, '111', '999'), false)                // another number on the same account
+  assert.equal(ownsWhatsAppEvent(shop, '999', '222'), false)
+  assert.equal(ownsWhatsAppEvent({ whatsapp_phone_number_id: '222' }, '111', '222'), true) // account ID never saved
+  // A workspace that disconnected, or never connected, takes no events at all
+  assert.equal(ownsWhatsAppEvent({ whatsapp_business_account_id: null, whatsapp_phone_number_id: null }, '111', '222'), false)
+  assert.equal(ownsWhatsAppEvent(null, '111', '222'), false)
+})
+
+test('Webhook: an event that reached the wrong address goes to its one owner, never a guess', () => {
+  const shop = { id: 'shop', whatsapp_business_account_id: '111', whatsapp_phone_number_id: '222' }
+  const sameAccountOtherNumber = { id: 'other', whatsapp_business_account_id: '111', whatsapp_phone_number_id: '333' }
+  assert.equal(pickEventOwner([shop, sameAccountOtherNumber], '111', '222'), shop)
+  assert.equal(pickEventOwner([sameAccountOtherNumber], '111', '222'), null)
+  assert.equal(pickEventOwner([shop, { ...shop, id: 'copy' }], '111', '222'), null) // connected twice: cannot tell which
+  assert.equal(pickEventOwner([], '111', '222'), null)
+  assert.equal(pickEventOwner(null, '111', '222'), null)
+})
+
+test('Signup: a finished flow is only saved with a WhatsApp account and a phone number', () => {
+  assert.equal(describeIncompleteSignup('3220691194788830', '1326239367246484'), null)
+  // Meta granted the business but no WhatsApp account (a number already used by another app)
+  assert.match(describeIncompleteSignup('', ''), /without sharing a WhatsApp Business account/)
+  assert.match(describeIncompleteSignup('', '1326239367246484'), /without sharing a WhatsApp Business account/)
+  // The customer finished without adding a number
+  assert.match(describeIncompleteSignup('3220691194788830', ''), /no phone number yet/)
 })

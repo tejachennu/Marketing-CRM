@@ -45,6 +45,8 @@ export function WhatsAppEmbeddedSignup({
   const [notice, setNotice] = useState<string | null>(null)
 
   const capturedDataRef = useRef<{ wabaId?: string; phoneNumberId?: string; businessId?: string; catalogIds?: string[] }>({})
+  // The error Meta reported inside its window, shown if the window then closes without connecting
+  const signupErrorRef = useRef<string | null>(null)
 
   const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
   const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || '1797596798044163'
@@ -68,7 +70,7 @@ export function WhatsAppEmbeddedSignup({
         appId: META_APP_ID,
         cookie: true,
         xfbml: true,
-        version: 'v22.0',
+        version: 'v25.0',
       })
       setSdkLoaded(true)
     }
@@ -115,10 +117,15 @@ export function WhatsAppEmbeddedSignup({
               // Present only when the customer chose to share catalogs
               catalogIds: Array.isArray(catalog_ids) ? catalog_ids : undefined,
             }
-          } else if (data.event === 'CANCEL') {
-            console.log('[Meta Embedded Signup] User cancelled at step:', data.data?.current_step)
-          } else if (data.event === 'ERROR') {
-            console.error('[Meta Embedded Signup] Modal error:', data.data?.error_message)
+          } else if (data.event === 'CANCEL' || data.event === 'ERROR') {
+            // An error the customer hit in Meta's window comes as CANCEL with an error_message
+            const { current_step, error_message, error_code, session_id } = data.data || {}
+            if (error_message) {
+              console.error('[Meta Embedded Signup] Error in Meta window:', { error_message, error_code, session_id })
+              signupErrorRef.current = `${error_message}${session_id ? ` (Meta session ID: ${session_id})` : ''}`
+            } else {
+              console.log('[Meta Embedded Signup] User cancelled at step:', current_step)
+            }
           }
         }
       } catch {
@@ -129,6 +136,14 @@ export function WhatsAppEmbeddedSignup({
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [])
+
+  /** Waits until Meta has reported the finished sign-up's IDs, or up to `timeoutMs`. */
+  const waitForSignupSession = async (timeoutMs = 4000) => {
+    const startedAt = Date.now()
+    while (!capturedDataRef.current.wabaId && !signupErrorRef.current && Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
 
   const handleLaunchSignup = () => {
     // Facebook only opens its login window from https pages; on http FB.login does nothing
@@ -146,6 +161,7 @@ export function WhatsAppEmbeddedSignup({
     setNotice(null)
     setIsLaunching(true)
     capturedDataRef.current = {}
+    signupErrorRef.current = null
 
     try {
       window.FB.login(
@@ -159,19 +175,22 @@ export function WhatsAppEmbeddedSignup({
             setIsLaunching(false)
             setIsProcessing(true)
 
-            fetch('/api/whatsapp/embedded-signup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                code: code || undefined,
-                accessToken: directAccessToken || undefined,
-                wabaId: capturedDataRef.current.wabaId,
-                phoneNumberId: capturedDataRef.current.phoneNumberId,
-                businessId: capturedDataRef.current.businessId,
-                catalogIds: capturedDataRef.current.catalogIds,
-                organizationId,
-              }),
-            })
+            // Meta's "finished" message, which carries the account and number IDs, can arrive after this
+            // callback. The code stays valid for 30 seconds, so waiting a few for it is safe.
+            waitForSignupSession()
+              .then(() => fetch('/api/whatsapp/embedded-signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  code: code || undefined,
+                  accessToken: directAccessToken || undefined,
+                  wabaId: capturedDataRef.current.wabaId,
+                  phoneNumberId: capturedDataRef.current.phoneNumberId,
+                  businessId: capturedDataRef.current.businessId,
+                  catalogIds: capturedDataRef.current.catalogIds,
+                  organizationId,
+                }),
+              }))
               .then((res) => res.json().then((result) => ({ res, result })))
               .then(({ res, result }) => {
                 if (!res.ok || !result.success) {
@@ -200,7 +219,9 @@ export function WhatsAppEmbeddedSignup({
               })
           } else {
             setIsLaunching(false)
-            if (response?.status === 'not_authorized') {
+            if (signupErrorRef.current) {
+              setError(`Meta could not finish the sign-up: ${signupErrorRef.current}`)
+            } else if (response?.status === 'not_authorized') {
               setError('Authorization was not completed in Meta dialog.')
             }
           }

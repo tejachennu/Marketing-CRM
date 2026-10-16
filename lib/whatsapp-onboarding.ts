@@ -97,3 +97,21 @@ export function getWebhookOverride(organizationId: string, baseUrl: string | nul
   // The webhook route answers Meta's verification request when the token is the organization's ID
   return { override_callback_uri: uri, verify_token: organizationId }
 }
+
+/**
+ * Why a finished sign-up cannot be saved, or null when it can. Meta can end the flow having granted
+ * the app access to the business but to no WhatsApp account (for example when the chosen number is
+ * already used by another app), and a workspace saved like that can neither send nor receive.
+ */
+export function describeIncompleteSignup(wabaId: string, phoneNumberId: string): string | null {
+  if (!wabaId) {
+    return 'Meta finished without sharing a WhatsApp Business account with this app, so nothing was connected. ' +
+      'Run "Connect WhatsApp with Meta" again and pick (or create) a WhatsApp account and phone number on Meta\'s screens. ' +
+      'A number already connected to another provider or app may not be offered there.'
+  }
+  if (!phoneNumberId) {
+    return 'Your WhatsApp Business account was shared, but it has no phone number yet, so nothing was connected. ' +
+      'Add and verify a number in WhatsApp Manager, then run "Connect WhatsApp with Meta" again.'
+  }
+  return null
+}

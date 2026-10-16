@@ -9,7 +9,8 @@ export function getMailTransporter() {
   const port = parseInt(process.env.HOSTINGER_SMTP_PORT || '465', 10)
   const secure = process.env.HOSTINGER_SMTP_SECURE === 'true'
   const user = process.env.HOSTINGER_SMTP_USER || 'noreply@consularhelpdesk.com'
-  const pass = process.env.HOSTINGER_SMTP_PASS || '**Noreply20#'
+  // The password lives in the environment only. It must never be written into the source.
+  const pass = process.env.HOSTINGER_SMTP_PASS
 
   return nodemailer.createTransport({
     host,

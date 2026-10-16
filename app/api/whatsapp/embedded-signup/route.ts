@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { inspectToken } from '@/lib/commerce/meta-catalog'
-import { LEGACY_REGISTRATION_PIN, PIN_MISMATCH_ERROR_CODE, getPublicBaseUrl, getRegistrationPin, getWebhookOverride, parseSignupSession, type WebhookOverride } from '@/lib/whatsapp-onboarding'
+import { LEGACY_REGISTRATION_PIN, PIN_MISMATCH_ERROR_CODE, describeIncompleteSignup, getPublicBaseUrl, getRegistrationPin, getWebhookOverride, parseSignupSession, type WebhookOverride } from '@/lib/whatsapp-onboarding'
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
     const appId = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
     // The app secret lives in the environment only. It must never be written into the source.
     const appSecret = process.env.META_APP_SECRET
-    const graphVersion = 'v22.0'
+    // Saved on the organization, so it must be one the rest of the app sends with
+    const graphVersion = 'v25.0'
 
     let finalAccessToken = directAccessToken || ''
 
@@ -156,6 +157,14 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.warn('[Meta Embedded Signup] Fetch WABA phone numbers error:', err)
       }
+    }
+
+    // Without an account and a number the workspace could neither send nor receive: say so and keep
+    // its current connection, rather than saving a token that reaches no WhatsApp account
+    const incomplete = describeIncompleteSignup(wabaId, phoneNumberId)
+    if (incomplete) {
+      console.warn('[Meta Embedded Signup] Nothing saved:', { wabaId: wabaId || null, phoneNumberId: phoneNumberId || null })
+      return NextResponse.json({ success: false, error: incomplete }, { status: 422 })
     }
 
     // 4. Subscribe this app to the customer's WhatsApp Business account, and have Meta deliver its

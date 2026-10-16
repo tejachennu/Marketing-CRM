@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { verifyMetaSignature } from '@/lib/meta-webhook'
+import { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } from '@/lib/meta-webhook'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
@@ -145,9 +145,69 @@ export async function GET(
   }
 }
 
+/** Which Meta app a workspace's saved token belongs to, remembered for an hour per token. */
+const tokenAppCache = new Map<string, { appId: string | null; at: number }>()
+const TOKEN_APP_CACHE_MS = 60 * 60 * 1000
+
+/**
+ * The Meta app ID when the workspace in the URL is connected to WhatsApp through its own Meta app
+ * (not this one), otherwise null. Meta signs that app's webhooks with that app's secret.
+ */
+async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }): Promise<string | null> {
+  try {
+    const resolvedParams = await (context.params as any)
+    const orgId = String(resolvedParams?.orgIdAndSlug || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]
+    if (!orgId) return null
+
+    const { data: org } = await getSupabaseClient()
+      .from('organizations')
+      .select('whatsapp_provider, whatsapp_api_token')
+      .eq('id', orgId)
+      .maybeSingle()
+    const token = String(org?.whatsapp_api_token || '')
+    if (org?.whatsapp_provider !== 'facebook' || !token) return null
+
+    const cacheKey = `${orgId}:${token.slice(-16)}`
+    const cached = tokenAppCache.get(cacheKey)
+    let appId = cached && Date.now() - cached.at < TOKEN_APP_CACHE_MS ? cached.appId : undefined
+    if (appId === undefined) {
+      const res = await fetch('https://graph.facebook.com/v25.0/app?fields=id', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.id) return null // Not known: refused, and Meta retries
+      appId = String(data.id)
+      tokenAppCache.set(cacheKey, { appId, at: Date.now() })
+    }
+    const thisApp = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
+    return appId && appId !== thisApp ? appId : null
+  } catch (err) {
+    console.error('[Facebook Webhook POST] Could not tell which Meta app this workspace uses:', err)
+    return null
+  }
+}
+
+/** The workspace that has this phone number or WhatsApp Business account connected, if exactly one does. */
+async function findEventOwner(supabase: ReturnType<typeof getSupabaseClient>, wabaId: string, phoneNumberId: string) {
+  // Meta IDs are digits only; anything else must not reach the filter
+  const filters = [
+    /^\d+$/.test(phoneNumberId) ? `whatsapp_phone_number_id.eq.${phoneNumberId}` : '',
+    /^\d+$/.test(wabaId) ? `whatsapp_business_account_id.eq.${wabaId}` : '',
+  ].filter(Boolean)
+  if (filters.length === 0) return null
+
+  const { data, error } = await supabase.from('organizations').select('*').or(filters.join(',')).limit(10)
+  if (error) {
+    console.error('[Facebook Webhook POST] Could not look up the workspace for this account:', error.message)
+    return null
+  }
+  const owner = pickEventOwner(data, wabaId, phoneNumberId)
+  if (!owner && (data || []).length > 1) console.error('[Facebook Webhook POST] Several workspaces have this account connected; event not delivered')
+  return owner
+}
+
 async function processEvent(
   request: NextRequest,
-  { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }
+  { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } },
+  options: { signed: boolean }
 ) {
   try {
     // Resolve dynamic path params and extract organization UUID
@@ -160,19 +220,36 @@ async function processEvent(
       return NextResponse.json({ error: 'Invalid organization context' }, { status: 400 })
     }
     
-    const orgId = uuidMatch[0]
+    let orgId = uuidMatch[0]
+
+    const payload = await request.json()
+    const entry = payload.entry?.[0]
+    const change = entry?.changes?.[0]
+    const value = change?.value
+    const eventWabaId = String(entry?.id || '')
+    const eventPhoneNumberId = String(value?.metadata?.phone_number_id || '')
 
     // Fetch credentials for this specific organization
     const supabase = getSupabaseClient()
-    const { data: orgData } = await supabase
+    let { data: orgData } = await supabase
       .from('organizations')
       .select('*')
       .eq('id', orgId)
       .maybeSingle()
 
-    if (!orgData) {
-      console.error('[Facebook Webhook POST] Organization not found:', orgId)
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+    if (!ownsWhatsAppEvent(orgData, eventWabaId, eventPhoneNumberId)) {
+      // A Meta app has one callback address, so an account's events can arrive at another workspace's
+      // address: the app's default one when the account's own could not be set, or a workspace that has
+      // since disconnected. They go to the workspace that has the account connected, which is only
+      // trusted when Meta signed the payload.
+      const owner = options.signed ? await findEventOwner(supabase, eventWabaId, eventPhoneNumberId) : null
+      if (!owner) {
+        console.warn('[Facebook Webhook POST] No workspace has this account connected. WABA:', eventWabaId, 'phone number ID:', eventPhoneNumberId)
+        // Acknowledged, or Meta would retry an event no workspace can take for a week
+        return NextResponse.json({ success: true, ignored: true, reason: 'No workspace has this WhatsApp account connected' })
+      }
+      orgData = owner
+      orgId = owner.id
     }
 
     // Verify if Facebook is the active provider
@@ -182,17 +259,7 @@ async function processEvent(
       return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
     }
 
-    const payload = await request.json()
     console.log('[Facebook Webhook POST] Event received for organization:', orgId)
-
-    const entry = payload.entry?.[0]
-    const change = entry?.changes?.[0]
-    const value = change?.value
-
-    if ((orgData.whatsapp_business_account_id && entry?.id !== orgData.whatsapp_business_account_id) ||
-        (orgData.whatsapp_phone_number_id && value?.metadata?.phone_number_id !== orgData.whatsapp_phone_number_id)) {
-      return NextResponse.json({ error: 'Webhook account does not match this organization' }, { status: 403 })
-    }
 
     // If it's a status callback, acknowledge and exit
     if (value?.statuses) {
@@ -1232,10 +1299,21 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
   // Verify X-Hub-Signature-256 HMAC (Meta signs every webhook POST)
   const signature = verifyMetaSignature(rawBody, request.headers.get('x-hub-signature-256'))
   if (!signature.valid) {
-    console.error('[Facebook Webhook POST] Rejected:', signature.note)
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    // A workspace connected with its own Meta app gets that app's webhooks, signed with a secret this
+    // server does not have. Those are taken for that workspace's own account only, as before signing
+    // was checked; everything else must be signed with this app's secret.
+    const ownApp = await workspaceOwnMetaApp(context)
+    if (!ownApp) {
+      console.error('[Facebook Webhook POST] Rejected:', signature.note)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
+    console.warn(`[Facebook Webhook POST] ${signature.note}; accepted for this workspace only, which is connected through its own Meta app ${ownApp}`)
+  } else if (signature.note) {
+    console.warn('[Facebook Webhook POST]', signature.note)
   }
-  if (signature.note) console.warn('[Facebook Webhook POST]', signature.note)
+  // Signed by Meta with this app's secret, as opposed to unchecked (a developer's machine, or a
+  // workspace's own Meta app): only a signed event may be delivered to another workspace
+  const signed = signature.valid && !signature.note
 
   let payload: any
   try { payload = JSON.parse(rawBody) }
@@ -1249,7 +1327,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
       ]
       for (const event of events) {
         const response = await processEvent(new NextRequest(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context)
+          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context, { signed })
         if (!response.ok) return response
       }
     }

@@ -507,6 +507,8 @@ function ConversationsPageContent() {
     assignedTo?: string | null,
     force = false
   ) => {
+    // The user saved at sign-in has no organization yet; the list loads once the profile has arrived
+    if (!orgId) return
     const fetchKey = `${orgId}-${pageNum}-${append}-${searchVal}-${unreadOnly}-${assignedTo || ''}`
     if (!force && fetchKey === lastFetchedKeyRef.current) {
       return
@@ -578,6 +580,7 @@ function ConversationsPageContent() {
   }, [fetchConversations, loadUnreadCount])
 
   const loadContacts = useCallback(async (orgId: string) => {
+    if (!orgId) return
     try {
       const data = await fetchContacts(orgId)
       setContacts(data)
@@ -684,7 +687,8 @@ function ConversationsPageContent() {
   // Dynamically fetch selected conversation if it is not in the active conversations list
   // OR fetch/create conversation if contactId is in the URL
   useEffect(() => {
-    if (!user) return
+    // Wait for the profile: the user saved at sign-in has no organization to look the conversation up in
+    if (!user?.organization_id) return
     const currentContactId = contactIdParam || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('contactId') : null)
 
     if (currentContactId) {
