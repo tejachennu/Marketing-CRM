@@ -9,6 +9,7 @@ import {
   describeCatalogError,
   getCatalog,
   getCatalogCredentials,
+  getWabaOwnerId,
   inspectToken,
   isGraphId,
   listOwnedCatalogs,
@@ -62,7 +63,8 @@ export async function GET(request: NextRequest) {
       inspectToken(credentials.token, appCredentials(), credentials.version),
     ])
 
-    const businessId = findBusinessId(linked, access)
+    // Where a new catalog goes: the linked catalog's owner, the granted business, or the WhatsApp account's owner
+    const businessId = findBusinessId(linked, access) || (await getWabaOwnerId(org))
     const owned = businessId ? await listOwnedCatalogs(credentials, businessId).catch(() => []) : []
 
     const connectedIds = new Set((connected || []).map((catalog) => String(catalog.id)))
@@ -185,10 +187,10 @@ export async function POST(request: NextRequest) {
         isGraphId(linkedId) ? getCatalog(credentials, linkedId).catch(() => null) : null,
         inspectToken(credentials.token, appCredentials(), credentials.version),
       ])
-      businessId = findBusinessId(linked, access) || ''
+      businessId = findBusinessId(linked, access) || (await getWabaOwnerId(org)) || ''
     }
     if (!businessId) {
-      return NextResponse.json({ error: 'Enter your business portfolio ID. It is shown in Meta Business Suite → Settings → Business info.', needsBusinessId: true }, { status: 400 })
+      return NextResponse.json({ error: 'Meta did not say which business portfolio owns your WhatsApp account. Reconnect WhatsApp in Settings and try again.' }, { status: 400 })
     }
 
     let catalogId: string

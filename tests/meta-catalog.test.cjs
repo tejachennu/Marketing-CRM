@@ -265,7 +265,7 @@ test('Catalog API: large sends are split, and a refused request stops the rest',
   const failed = await meta.sendItemsBatch(CREDENTIALS, CATALOG, many, refused)
   assert.equal(refused.calls.length, 1)                                // the second chunk would fail the same way
   assert.equal(failed.failed.size, many.length)
-  assert.match(failed.failed.get('SKU-0'), /not allowed to manage the catalog/)
+  assert.match(failed.failed.get('SKU-0'), /needs catalog access/)
 
   // Meta answered but took nothing in
   const empty = await meta.sendItemsBatch(CREDENTIALS, CATALOG, [items.toDeleteRequest('X-1')], graph({ handles: [] }))
@@ -371,7 +371,7 @@ test('Catalog API: failures are explained in the store owner’s terms', () => {
   assert.equal(meta.describeCatalogError(error(190)).kind, 'token')
   assert.match(meta.describeCatalogError(error(190)).message, /Reconnect WhatsApp/)
   assert.equal(meta.describeCatalogError(error(200)).kind, 'permission')
-  assert.match(meta.describeCatalogError(error(10)).message, /catalog_management/)
+  assert.match(meta.describeCatalogError(error(10)).message, /Connect catalog with Meta/)
   assert.equal(meta.describeCatalogError(error(80014)).kind, 'rate_limit')
   assert.equal(meta.describeCatalogError(error(100, "Object with ID '9' does not exist")).kind, 'not_found')
   assert.deepEqual(meta.describeCatalogError(error(100, 'Param name must be a string')), { kind: 'invalid', message: 'Param name must be a string' })
@@ -428,10 +428,10 @@ test('Catalog sync: a request Meta refuses outright leaves catalog items as they
   ])
   const summary = await sync.pushProductsToCatalog(db, ORG, db.rows.map((row) => ({ ...row })), { fetcher: graph({ error: { code: 200, message: 'Permissions error' } }) })
 
-  assert.match(summary.requestError, /not allowed to manage the catalog/)
+  assert.match(summary.requestError, /needs catalog access/)
   assert.deepEqual(db.rows[0].metadata, inCatalog)                       // still shown as in the catalog, which it is
   assert.equal(db.rows[1].metadata.catalog.state, 'error')               // the new one says why it is not there
-  assert.match(db.rows[1].metadata.catalog.errors[0], /not allowed/)
+  assert.match(db.rows[1].metadata.catalog.errors[0], /needs catalog access/)
 })
 
 test('Catalog sync: a store without a linked catalog is told so', async () => {

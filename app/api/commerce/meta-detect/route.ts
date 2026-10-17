@@ -4,7 +4,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getMetaCredentials, metaRequest, uploadNativeFlow } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
 import { formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
-import { setCommerceSettings } from '@/lib/commerce/meta-catalog'
+import { describeCatalogError, flattenPaymentConfigurations, getCatalogCredentials, setCommerceSettings } from '@/lib/commerce/meta-catalog'
 
 /**
  * The address form with this store's delivery options: the express choice shows what it costs,
@@ -75,65 +75,52 @@ export async function GET(request: NextRequest) {
     const wabaId = credentials.businessAccountId
     const phoneNumberId = credentials.phoneNumberId
 
-    // 1. Auto-fetch Payment Configurations from Meta
-    let paymentConfigs: any[] = []
+    // The connection first: an expired token would otherwise show up as empty lists everywhere below
+    let account: any
     try {
-      const payRes = await metaRequest(credentials, `${wabaId}/payment_configurations`)
-      paymentConfigs = payRes?.data || []
-    } catch (payErr: any) {
-      console.warn('[Meta Detect] Payment configs fetch note:', payErr.message)
+      account = await metaRequest(credentials, `${wabaId}?fields=id,name,owner_business_info`)
+    } catch (error) {
+      const described = describeCatalogError(error)
+      return NextResponse.json({
+        success: false,
+        connectionError: described.kind === 'token' ? described.message : `Meta did not answer for your WhatsApp account: ${described.message}`,
+      })
     }
 
-    // 2. Auto-fetch Product Catalogs from Meta
-    let catalogs: any[] = []
-    try {
-      // Try product_catalogs first
-      const catRes = await metaRequest(
-        credentials,
-        `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`
-      )
-      catalogs = catRes?.data || []
-    } catch (catErr: any) {
+    /** Each lookup on its own, so one Meta refusal does not hide the others. */
+    const attempt = async <T,>(run: () => Promise<T>): Promise<{ value: T | null; error: string | null }> => {
       try {
-        // Fallback to assigned_product_catalogs
-        const catRes2 = await metaRequest(
-          credentials,
-          `${wabaId}/assigned_product_catalogs?fields=id,name,vertical,product_count`
-        )
-        catalogs = catRes2?.data || []
-      } catch (catErr2: any) {
-        console.warn('[Meta Detect] Catalogs fetch note:', catErr2.message)
+        return { value: await run(), error: null }
+      } catch (error) {
+        return { value: null, error: describeCatalogError(error).message }
       }
     }
 
-    // 3. Auto-fetch Existing Flows from Meta
-    let flows: any[] = []
-    try {
-      const flowRes = await metaRequest(credentials, `${wabaId}/flows?fields=id,name,status,categories`)
-      flows = flowRes?.data || []
-    } catch (flowErr: any) {
-      console.warn('[Meta Detect] Flows fetch note:', flowErr.message)
-    }
-
-    // 4. Auto-fetch Current WhatsApp Commerce Settings
-    let commerceSettings: any = null
-    if (phoneNumberId) {
-      try {
-        const commRes = await metaRequest(credentials, `${phoneNumberId}/whatsapp_commerce_settings`)
-        commerceSettings = commRes?.data?.[0] || null
-      } catch (commErr: any) {
-        console.warn('[Meta Detect] Commerce settings note:', commErr.message)
-      }
-    }
+    const [catalogs, payments, flows, settings] = await Promise.all([
+      // Listing the account's catalog needs catalog access: the catalog connection when the store made one
+      attempt(async () => (await metaRequest(getCatalogCredentials(org), `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`))?.data || []),
+      attempt(async () => flattenPaymentConfigurations(await metaRequest(credentials, `${wabaId}/payment_configurations`))),
+      attempt(async () => (await metaRequest(credentials, `${wabaId}/flows?fields=id,name,status,categories`))?.data || []),
+      phoneNumberId
+        ? attempt(async () => (await metaRequest(credentials, `${phoneNumberId}/whatsapp_commerce_settings`))?.data?.[0] || null)
+        : Promise.resolve({ value: null, error: 'No WhatsApp number is connected.' }),
+    ])
 
     return NextResponse.json({
       success: true,
       wabaId,
       phoneNumberId,
-      paymentConfigs,
-      catalogs,
-      flows,
-      commerceSettings,
+      // The business portfolio that owns the WhatsApp account: where a new catalog is created
+      businessId: account?.owner_business_info?.id ? String(account.owner_business_info.id) : null,
+      businessName: account?.owner_business_info?.name || null,
+      catalogs: catalogs.value || [],
+      catalogsError: catalogs.error,
+      paymentConfigs: payments.value || [],
+      paymentConfigsError: payments.error,
+      flows: flows.value || [],
+      flowsError: flows.error,
+      commerceSettings: settings.value,
+      commerceSettingsError: settings.error,
     })
   } catch (err: any) {
     console.error('[API Commerce Meta Detect GET] Error:', err)

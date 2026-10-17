@@ -79,7 +79,7 @@ export function describeCatalogError(error: any): { kind: CatalogErrorKind; mess
   if (code === 200 || code === 10 || code === 3 || code === 294) {
     return {
       kind: 'permission',
-      message: 'This WhatsApp connection is not allowed to manage the catalog. Reconnect WhatsApp and give access to the catalog, or use an access token that has the catalog_management permission.',
+      message: 'Meta needs catalog access for this: use “Connect catalog with Meta” in Store settings to give it.',
     }
   }
   if ([4, 17, 32, 613, 80008, 80009, 80014].includes(code)) {
@@ -164,6 +164,35 @@ export async function exchangeLoginCode(
   const data = await response.json().catch(() => null)
   if (!response.ok || !data?.access_token) throw new Error(data?.error?.message || 'Meta did not exchange the login code.')
   return String(data.access_token)
+}
+
+/**
+ * Meta lists payment setups as `{ data: [{ payment_configurations: [...] }] }`; older answers had
+ * the setups straight in `data`. Either way, one flat list.
+ */
+export function flattenPaymentConfigurations(response: any): any[] {
+  const entries: any[] = Array.isArray(response?.data) ? response.data : []
+  return entries.flatMap((entry) => (Array.isArray(entry?.payment_configurations) ? entry.payment_configurations : [entry])).filter((config) => config?.configuration_name)
+}
+
+/** The business portfolio that owns the organization's WhatsApp Business account, or null. */
+export async function getWabaOwnerId(organization: Record<string, any> | null | undefined, fetcher: typeof fetch = fetch): Promise<string | null> {
+  const token = String(organization?.whatsapp_api_token || '').trim()
+  const wabaId = String(organization?.whatsapp_business_account_id || '').trim()
+  if (!token || !isGraphId(wabaId)) return null
+  const version = String(organization?.whatsapp_graph_api_version || '')
+  try {
+    const data = await metaRequest(
+      { token, version: /^v\d+\.\d+$/.test(version) ? version : DEFAULT_GRAPH_VERSION, businessAccountId: wabaId, phoneNumberId: '' },
+      `${wabaId}?fields=owner_business_info`,
+      {},
+      fetcher
+    )
+    const ownerId = String(data?.owner_business_info?.id || '')
+    return isGraphId(ownerId) ? ownerId : null
+  } catch {
+    return null
+  }
 }
 
 // ── Cart and catalog buttons on the phone number ────────────────────────────

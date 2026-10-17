@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, ShoppingBag, Sparkles, Trash2, Unlink } from 'lucide-react'
+import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, RefreshCw, ShoppingBag, Sparkles, Trash2, Unlink } from 'lucide-react'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
@@ -59,7 +59,19 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const set = (changes: Partial<typeof form>) => setForm((current) => ({ ...current, ...changes }))
 
   const [isSaving, setIsSaving] = useState(false)
-  const [detected, setDetected] = useState<{ catalogs: any[]; paymentConfigs: any[]; flows: any[]; commerceSettings: any | null } | null>(null)
+  // What Meta reports for the WhatsApp Business account: the choices below come only from here
+  const [detected, setDetected] = useState<{
+    businessId: string | null
+    businessName: string | null
+    catalogs: any[]
+    catalogsError: string | null
+    paymentConfigs: any[]
+    paymentConfigsError: string | null
+    flows: any[]
+    flowsError: string | null
+    commerceSettings: any | null
+  } | null>(null)
+  const [detectError, setDetectError] = useState<string | null>(null)
   const [isDetecting, setIsDetecting] = useState(false)
   const [isDeployingFlow, setIsDeployingFlow] = useState(false)
   const [isEnablingCart, setIsEnablingCart] = useState(false)
@@ -86,9 +98,11 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     }
   }, [orgId])
 
+  // Everything Meta knows is read when the screen opens; "Refresh from Meta" reads it again
   useEffect(() => {
-    if (whatsappConnected) loadCatalogInfo()
-  }, [whatsappConnected, loadCatalogInfo])
+    if (whatsappConnected) detectFromMeta(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whatsappConnected, orgId])
 
   const chosenCatalogId = form.meta_catalog_id.trim()
   const chosenCatalog = catalogInfo?.catalogs.find((catalog) => catalog.id === chosenCatalogId) || null
@@ -124,7 +138,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       const res = await fetch('/api/commerce/catalog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationId: orgId, action: 'create', name: newCatalog.name, businessId: newCatalog.businessId.trim() || undefined }),
+        body: JSON.stringify({ organizationId: orgId, action: 'create', name: newCatalog.name, businessId: detected?.businessId || catalogInfo?.businessId || undefined }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The catalog could not be created')
@@ -258,20 +272,48 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const hasGateway = Boolean(form.commerce_gateway_config_name.trim())
   const cartOn = detected?.commerceSettings ? detected.commerceSettings.is_cart_enabled === true && detected.commerceSettings.is_catalog_visible === true : null
 
-  async function detectFromMeta() {
+  async function detectFromMeta(quiet = false) {
     setIsDetecting(true)
     try {
-      const [res, catalog] = await Promise.all([fetch(`/api/commerce/meta-detect?organizationId=${orgId}`), loadCatalogInfo()])
+      const [res] = await Promise.all([fetch(`/api/commerce/meta-detect?organizationId=${orgId}`), loadCatalogInfo()])
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Meta could not be reached')
-      setDetected({ catalogs: data.catalogs || [], paymentConfigs: data.paymentConfigs || [], flows: data.flows || [], commerceSettings: data.commerceSettings || null })
-      const catalogCount = catalog?.catalogs.length ?? data.catalogs?.length ?? 0
-      showToast('success', `Found ${catalogCount} catalog(s), ${data.paymentConfigs?.length || 0} payment setup(s) and ${data.flows?.length || 0} form(s). Pick them from the lists below.`)
+      if (data.success === false) {
+        // The connection itself failed (expired or removed): say so instead of showing empty lists
+        setDetected(null)
+        setDetectError(data.connectionError || 'Meta could not be reached')
+        return
+      }
+      setDetectError(null)
+      setDetected({
+        businessId: data.businessId || null,
+        businessName: data.businessName || null,
+        catalogs: data.catalogs || [],
+        catalogsError: data.catalogsError || null,
+        paymentConfigs: data.paymentConfigs || [],
+        paymentConfigsError: data.paymentConfigsError || null,
+        flows: data.flows || [],
+        flowsError: data.flowsError || null,
+        commerceSettings: data.commerceSettings || null,
+      })
+      if (!quiet) showToast('success', 'Refreshed from Meta.')
     } catch (err: any) {
-      showToast('error', err.message)
+      setDetectError(err.message)
     } finally {
       setIsDetecting(false)
     }
+  }
+
+  // Payment setups and forms Meta reports, and the one a choice of setup means for the gateway
+  const paymentSetups: any[] = detected?.paymentConfigs || []
+  const publishedFlows: any[] = (detected?.flows || []).filter((flow) => flow.status === 'PUBLISHED')
+  function choosePaymentSetup(name: string) {
+    const found = paymentSetups.find((config) => config.configuration_name === name)
+    const gateway = String(found?.provider_name || '').toLowerCase()
+    set({
+      commerce_gateway_config_name: name,
+      commerce_payment_gateway: (SUPPORTED_PAYMENT_GATEWAYS as readonly string[]).includes(gateway) ? gateway : form.commerce_payment_gateway,
+    })
   }
 
   async function deployAddressFlow() {
@@ -287,6 +329,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       // The server already saved the ID; mirror it locally
       set({ commerce_address_flow_id: data.flowId })
       onSaved({ commerce_address_flow_id: data.flowId })
+      detectFromMeta(true)
       showToast('success', 'The delivery address form is published and will be sent after each order.')
     } catch (err: any) {
       alert({ title: 'Address form not published', message: err.message })
@@ -378,12 +421,25 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
 
       <div className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
         <div>
-          <h2 className={heading}>Fill in from Meta</h2>
-          <p className={subheading}>Looks up the catalogs, payment setups and forms on your WhatsApp Business account so you can pick them below.</p>
+          <h2 className={heading}>From your WhatsApp Business account</h2>
+          <p className={subheading}>
+            {!whatsappConnected
+              ? 'Connect WhatsApp in Settings first: the catalog, payment setup and address form are chosen from it.'
+              : detected
+                ? `Catalogs, payment setups and forms are read from Meta${detected.businessName ? ` for ${detected.businessName}` : ''}.`
+                : detectError
+                  ? 'Meta could not be read.'
+                  : 'Reading your catalogs, payment setups and forms from Meta…'}
+          </p>
+          {detectError && (
+            <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-xs font-medium text-red-700 dark:text-red-300">
+              <AlertCircle size={14} className="shrink-0 mt-px" /> {detectError}
+            </p>
+          )}
         </div>
-        <button type="button" onClick={detectFromMeta} disabled={isDetecting || !whatsappConnected} title={whatsappConnected ? undefined : 'Connect WhatsApp in Settings first'} className={secondaryButton}>
-          {isDetecting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-          {isDetecting ? 'Looking…' : 'Detect from Meta'}
+        <button type="button" onClick={() => detectFromMeta()} disabled={isDetecting || !whatsappConnected} title={whatsappConnected ? undefined : 'Connect WhatsApp in Settings first'} className={`${secondaryButton} shrink-0`}>
+          {isDetecting ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          {isDetecting ? 'Reading…' : 'Refresh from Meta'}
         </button>
       </div>
 
@@ -393,19 +449,23 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           <p className={subheading}>The Meta catalog whose products customers can add to a WhatsApp cart.</p>
         </div>
         <div>
-          <label htmlFor="catalog-id" className={labelClass}>Meta catalog ID</label>
-          {catalogOptions.length > 0 && (
-            <select aria-label="Catalogs found on Meta" value="" onChange={(event) => event.target.value && set({ meta_catalog_id: event.target.value })} className={`${inputClass} mb-2`}>
-              <option value="">Choose one of your catalogs…</option>
-              {catalogOptions.map((catalog) => (
-                <option key={catalog.id} value={catalog.id}>
-                  {catalog.name || 'Catalog'} · {catalog.product_count || 0} products{catalog.connected ? ' · connected to WhatsApp' : ''}
-                </option>
-              ))}
-            </select>
-          )}
-          <input id="catalog-id" type="text" inputMode="numeric" placeholder="e.g. 102938475610293" value={form.meta_catalog_id} onChange={(event) => set({ meta_catalog_id: event.target.value })} className={inputClass} />
-          <p className={hintClass}>Found in Meta Business Suite → Commerce Manager → Catalogs. WhatsApp sells from one catalog per account.</p>
+          <label htmlFor="catalog-id" className={labelClass}>Catalog</label>
+          <select id="catalog-id" value={form.meta_catalog_id} onChange={(event) => set({ meta_catalog_id: event.target.value })} disabled={!whatsappConnected} className={inputClass}>
+            <option value="">{catalogOptions.length > 0 ? 'Choose your catalog…' : 'No catalog found on Meta'}</option>
+            {form.meta_catalog_id && !catalogOptions.some((catalog) => catalog.id === form.meta_catalog_id) && (
+              <option value={form.meta_catalog_id}>Saved catalog {form.meta_catalog_id} (not listed by Meta right now)</option>
+            )}
+            {catalogOptions.map((catalog) => (
+              <option key={catalog.id} value={catalog.id}>
+                {catalog.name || 'Catalog'} · {catalog.product_count || 0} products{catalog.connected ? ' · connected to WhatsApp' : ''}
+              </option>
+            ))}
+          </select>
+          <p className={hintClass}>
+            {detected?.catalogsError && catalogOptions.length === 0
+              ? `Meta did not list your catalogs: ${detected.catalogsError}`
+              : 'Read from your WhatsApp Business account. WhatsApp sells from one catalog per account.'}
+          </p>
         </div>
 
         {/* What Meta says about the chosen catalog */}
@@ -515,18 +575,14 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         {whatsappConnected && (
           newCatalog ? (
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 space-y-3">
-              <div className={`grid grid-cols-1 gap-3 ${catalogInfo?.businessId ? '' : 'sm:grid-cols-2'}`}>
-                <div>
-                  <label htmlFor="new-catalog-name" className={labelClass}>Catalog name</label>
-                  <input id="new-catalog-name" type="text" maxLength={100} autoFocus value={newCatalog.name} onChange={(event) => setNewCatalog({ ...newCatalog, name: event.target.value })} className={inputClass} />
-                </div>
-                {!catalogInfo?.businessId && (
-                  <div>
-                    <label htmlFor="new-catalog-business" className={labelClass}>Business portfolio ID</label>
-                    <input id="new-catalog-business" type="text" inputMode="numeric" placeholder="e.g. 123456789012345" value={newCatalog.businessId} onChange={(event) => setNewCatalog({ ...newCatalog, businessId: event.target.value })} className={inputClass} />
-                    <p className={hintClass}>Shown in Meta Business Suite → Settings → Business info.</p>
-                  </div>
-                )}
+              <div>
+                <label htmlFor="new-catalog-name" className={labelClass}>Catalog name</label>
+                <input id="new-catalog-name" type="text" maxLength={100} autoFocus value={newCatalog.name} onChange={(event) => setNewCatalog({ ...newCatalog, name: event.target.value })} className={inputClass} />
+                <p className={hintClass}>
+                  {detected?.businessName
+                    ? `Created in your business portfolio “${detected.businessName}” and connected to your WhatsApp account.`
+                    : 'Created in the business portfolio that owns your WhatsApp account, and connected to it.'}
+                </p>
               </div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setNewCatalog(null)} className={secondaryButton}>Cancel</button>
@@ -577,26 +633,26 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           <p className={subheading}>Optional. When set, customers get an address form right after they send a cart, before they are asked to pay.</p>
         </div>
         <div>
-          <label htmlFor="address-flow" className={labelClass}>Address form (Meta Flow ID)</label>
-          {detected && detected.flows.length > 0 && (
-            <select aria-label="Detected forms" value="" onChange={(event) => event.target.value && set({ commerce_address_flow_id: event.target.value })} className={`${inputClass} mb-2`}>
-              <option value="">Choose one of your Meta forms…</option>
-              {detected.flows.map((flow) => (
-                <option key={flow.id} value={flow.id} disabled={flow.status !== 'PUBLISHED'}>
-                  {flow.name} · {flow.status === 'PUBLISHED' ? 'published' : 'not published'}
-                </option>
+          <label htmlFor="address-flow" className={labelClass}>Address form</label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <select id="address-flow" value={form.commerce_address_flow_id} onChange={(event) => set({ commerce_address_flow_id: event.target.value })} disabled={!whatsappConnected} className={inputClass}>
+              <option value="">No address step</option>
+              {form.commerce_address_flow_id && !publishedFlows.some((flow) => flow.id === form.commerce_address_flow_id) && (
+                <option value={form.commerce_address_flow_id}>Saved form {form.commerce_address_flow_id}{detected ? ' (not published on Meta)' : ''}</option>
+              )}
+              {publishedFlows.map((flow) => (
+                <option key={flow.id} value={flow.id}>{flow.name}</option>
               ))}
             </select>
-          )}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input id="address-flow" type="text" inputMode="numeric" placeholder="Leave empty to skip the address step" value={form.commerce_address_flow_id} onChange={(event) => set({ commerce_address_flow_id: event.target.value })} className={inputClass} />
             <button type="button" onClick={deployAddressFlow} disabled={isDeployingFlow || !whatsappConnected} className={`${secondaryButton} shrink-0`}>
               {isDeployingFlow ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
               {isDeployingFlow ? 'Publishing…' : 'Create the standard form'}
             </button>
           </div>
           <p className={hintClass}>
-            “Create the standard form” publishes a ready-made address form to your WhatsApp account and saves its ID here. It shows the express delivery charge set below, so save the shipping section first if you change that. A custom form must start on a screen named SHIPPING_DETAILS.
+            {detected?.flowsError
+              ? `Meta did not list your forms: ${detected.flowsError}`
+              : 'Your published WhatsApp forms. “Create the standard form” publishes a ready-made address form and selects it; it shows the express delivery charge set below, so save the shipping section first if you change that. A custom form must start on a screen named SHIPPING_DETAILS.'}
           </p>
         </div>
       </section>
@@ -614,44 +670,34 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                   : 'Choose at least one way for customers to pay.'}
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="gateway" className={labelClass}>Payment gateway</label>
-            <select id="gateway" value={form.commerce_payment_gateway} onChange={(event) => set({ commerce_payment_gateway: event.target.value })} className={inputClass}>
-              {SUPPORTED_PAYMENT_GATEWAYS.map((gateway) => (
-                <option key={gateway} value={gateway}>{GATEWAY_LABELS[gateway]}</option>
-              ))}
-            </select>
-            <p className={hintClass}>In-chat payment is offered by WhatsApp for businesses in India, in rupees.</p>
-          </div>
-          <div>
-            <label htmlFor="gateway-config" className={labelClass}>Gateway configuration name</label>
-            {detected && detected.paymentConfigs.length > 0 && (
-              <select
-                aria-label="Detected payment setups"
-                value=""
-                onChange={(event) => {
-                  const found = detected.paymentConfigs.find((config) => config.configuration_name === event.target.value)
-                  if (!found) return
-                  const gateway = String(found.provider_name || found.payment_gateway || '').toLowerCase()
-                  set({
-                    commerce_gateway_config_name: found.configuration_name,
-                    commerce_payment_gateway: (SUPPORTED_PAYMENT_GATEWAYS as readonly string[]).includes(gateway) ? gateway : form.commerce_payment_gateway,
-                  })
-                }}
-                className={`${inputClass} mb-2`}
-              >
-                <option value="">Choose a detected setup…</option>
-                {detected.paymentConfigs.map((config) => (
-                  <option key={config.configuration_name} value={config.configuration_name}>
-                    {config.configuration_name} · {config.provider_name || config.payment_gateway || 'gateway'}
-                  </option>
-                ))}
-              </select>
+        <div>
+          <label htmlFor="gateway-config" className={labelClass}>Online payment</label>
+          <select id="gateway-config" value={form.commerce_gateway_config_name} onChange={(event) => choosePaymentSetup(event.target.value)} disabled={!whatsappConnected} className={inputClass}>
+            <option value="">No online payment</option>
+            {form.commerce_gateway_config_name && !paymentSetups.some((config) => config.configuration_name === form.commerce_gateway_config_name) && (
+              <option value={form.commerce_gateway_config_name}>
+                Saved setup “{form.commerce_gateway_config_name}” · {GATEWAY_LABELS[form.commerce_payment_gateway] || form.commerce_payment_gateway}{detected ? ' (not found on Meta)' : ''}
+              </option>
             )}
-            <input id="gateway-config" type="text" placeholder="Leave empty if you only take COD" value={form.commerce_gateway_config_name} onChange={(event) => set({ commerce_gateway_config_name: event.target.value })} className={inputClass} />
-            <p className={hintClass}>The name you gave the payment setup in WhatsApp Manager → Payments. It must match exactly.</p>
-          </div>
+            {paymentSetups.map((config) => {
+              const provider = String(config.provider_name || '').toLowerCase()
+              const supported = (SUPPORTED_PAYMENT_GATEWAYS as readonly string[]).includes(provider)
+              return (
+                <option key={config.configuration_name} value={config.configuration_name} disabled={!supported}>
+                  {config.configuration_name} · {GATEWAY_LABELS[provider] || config.provider_name || 'gateway'}
+                  {config.status ? ` · ${config.status}` : ''}
+                  {supported ? '' : ' · not supported here'}
+                </option>
+              )
+            })}
+          </select>
+          <p className={hintClass}>
+            {detected?.paymentConfigsError
+              ? `Meta did not list your payment setups: ${detected.paymentConfigsError}`
+              : detected && paymentSetups.length === 0
+                ? 'No payment setup on your WhatsApp account yet. Add one in WhatsApp Manager → Payments (Razorpay, PayU, BillDesk or Zaakpay), then Refresh from Meta.'
+                : 'Payment setups on your WhatsApp account (WhatsApp Manager → Payments). In-chat payment is for businesses in India, in rupees.'}
+          </p>
         </div>
         <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 cursor-pointer">
           <input type="checkbox" checked={form.commerce_enable_cod} onChange={(event) => set({ commerce_enable_cod: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#00a884]" />
