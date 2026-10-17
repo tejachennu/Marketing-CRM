@@ -229,9 +229,17 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold text-slate-500 dark:text-[#8696a0] uppercase tracking-widest mb-2">
-                    Password
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label htmlFor="password" className="block text-[10px] font-bold text-slate-500 dark:text-[#8696a0] uppercase tracking-widest">
+                      Password
+                    </label>
+                    <Link
+                      href={email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : '/forgot-password'}
+                      className="text-[11px] font-semibold text-[#00a884] hover:text-[#008069] dark:hover:text-[#00c49a] transition-colors"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
                       <Lock size={15} />

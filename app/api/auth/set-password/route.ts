@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     if (!tokenRecords || tokenRecords.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid or expired setup token. Please request another invite.' },
+        { error: 'This link is invalid or has expired. Request a new reset link from the login page, or ask your admin for a new invite.' },
         { status: 400 }
       )
     }

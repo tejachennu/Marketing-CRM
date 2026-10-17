@@ -9,6 +9,7 @@ function SetPasswordContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
+  const isReset = searchParams.get('reset') === '1'
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -21,9 +22,9 @@ function SetPasswordContent() {
 
   useEffect(() => {
     if (!token) {
-      setError('Missing or invalid invitation token.')
+      setError(isReset ? 'This reset link is incomplete. Request a new one from the login page.' : 'Missing or invalid invitation token.')
     }
-  }, [token])
+  }, [token, isReset])
 
   useEffect(() => {
     if (password.length === 0) {
@@ -123,9 +124,11 @@ function SetPasswordContent() {
           ) : (
             <>
               <div className="mb-8">
-                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Set Workspace Password</h2>
+                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">{isReset ? 'Choose a New Password' : 'Set Workspace Password'}</h2>
                 <p className="text-xs text-slate-500 dark:text-[#8696a0] mt-2 font-medium leading-relaxed">
-                  Establish a secure login credential to access your organization dashboard.
+                  {isReset
+                    ? 'Enter a new password for your account. You will use it the next time you sign in.'
+                    : 'Establish a secure login credential to access your organization dashboard.'}
                 </p>
               </div>
 
