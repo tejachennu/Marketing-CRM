@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { MetaTechProviderBadge } from '@/components/landing/meta-tech-provider-badge'
 import { 
   Bot, Zap, Sparkles, ArrowRight, Check, Send, Star, 
   Coins, CheckCircle2, ChevronRight, TrendingUp, Users, Clock, 
@@ -88,16 +89,18 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#fafbfa] text-[#141c18] font-sans antialiased selection:bg-[#27d34b] selection:text-[#0c2014]">
       
       {/* ━━━ TOP ANNOUNCEMENT PILL ━━━ */}
-      <div className="bg-[#0c2014] text-white py-2.5 px-4 text-center text-xs font-medium border-b border-emerald-950/50 relative z-50">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 flex-wrap">
-          <span className="bg-[#27d34b]/20 text-[#27d34b] text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border border-[#27d34b]/30">
-            2026 Meta Cloud Direct Tier
+      <div className="bg-[#0c2014] text-white py-2 px-4 text-center text-xs font-medium border-b border-emerald-950/50 relative z-50">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-x-3 gap-y-1.5 flex-wrap">
+          <a href="#meta-partner" className="inline-flex items-center gap-1.5 bg-[#0866FF]/20 text-[#a9c8ff] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-[#0866FF]/40 hover:bg-[#0866FF]/30 transition">
+            <ShieldCheck size={12} />
+            Now an official Meta Tech Provider
+          </a>
+          <span className="text-white/85">
+            <span className="sm:hidden">First 1,000 conversations free every month.</span>
+            <span className="hidden sm:inline">First 1,000 monthly WhatsApp conversations free, with 0% markup on Meta rates.</span>
           </span>
-          <span className="text-white/90">
-            First 1,000 monthly WhatsApp conversations 100% free with 0% token markup.
-          </span>
-          <a href="#demo" className="text-[#27d34b] font-bold hover:underline inline-flex items-center gap-1 ml-1">
-            Request Demo Access <ArrowRight size={12} />
+          <a href="#demo" className="text-[#27d34b] font-bold hover:underline inline-flex items-center gap-1">
+            Book a demo <ArrowRight size={12} />
           </a>
         </div>
       </div>
@@ -238,6 +241,9 @@ export default function LandingPage() {
               ❓ FAQ
             </a>
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2.5">
+              <div className="flex justify-center pb-1">
+                <MetaTechProviderBadge size="sm" />
+              </div>
               <Link 
                 href="/login" 
                 className="w-full text-center py-2 text-sm font-semibold border border-slate-300 rounded-full"
@@ -256,10 +262,12 @@ export default function LandingPage() {
       </header>
 
       {/* ━━━ HERO SECTION (SPACIOUS, MODERN OMNIENGAGE STYLE) ━━━ */}
-      <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 overflow-hidden bg-white">
+      <section className="relative isolate pt-10 pb-16 md:pt-20 md:pb-28 overflow-hidden bg-white">
         
-        {/* Ambient Top Glow */}
+        {/* Ambient glows and a faint dot grid */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[450px] bg-gradient-to-b from-[#eaf6ec]/90 to-transparent blur-[120px] -z-10 pointer-events-none" />
+        <div className="absolute -top-24 right-[-10%] w-[520px] h-[520px] rounded-full bg-[#0866FF]/[0.07] blur-[110px] -z-10 pointer-events-none" />
+        <div className="absolute inset-0 -z-10 pointer-events-none opacity-60 [background-image:radial-gradient(#d7e4dc_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,#000_40%,transparent_100%)]" />
         
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
@@ -267,14 +275,19 @@ export default function LandingPage() {
             {/* Left Hero Copy */}
             <div className="lg:col-span-6 text-center lg:text-left">
               
-              {/* Eyebrow Pill */}
-              <div className="inline-flex items-center gap-2 rounded-full bg-[#e7f6ea] px-4 py-1.5 text-xs font-bold text-[#107038] mb-6 border border-[#bfe3c8]">
-                <span className="h-2 w-2 rounded-full bg-[#27d34b] animate-pulse" />
-                <span>WhatsApp Cloud API Integration • Zero Token Markup</span>
+              {/* Credential + eyebrow */}
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2.5 mb-6">
+                <a href="#meta-partner" className="transition hover:-translate-y-0.5">
+                  <MetaTechProviderBadge />
+                </a>
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#e7f6ea] px-3.5 py-1.5 text-[11px] font-bold text-[#107038] border border-[#bfe3c8]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#27d34b] animate-pulse" />
+                  WhatsApp Cloud API • 0% markup
+                </span>
               </div>
 
               {/* Main Headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-[62px] font-extrabold text-[#0c2014] leading-[1.06] tracking-[-0.03em] mb-6">
+              <h1 className="text-[40px] sm:text-5xl lg:text-[64px] font-extrabold text-[#0c2014] leading-[1.04] tracking-[-0.035em] mb-5 sm:mb-6 text-balance">
                 Turn every chat <br className="hidden sm:inline" />
                 <span className="bg-gradient-to-r from-[#008069] to-[#27d34b] bg-clip-text text-transparent">
                   into revenue.
@@ -282,12 +295,12 @@ export default function LandingPage() {
               </h1>
 
               {/* Punchy Subheadline (Less Content, Clear Meaning) */}
-              <p className="text-base sm:text-lg text-[#52635b] max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed font-normal">
+              <p className="text-[15px] sm:text-lg text-[#52635b] max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed font-normal text-pretty">
                 Deploy a <strong className="text-[#0c2014]">24/7 WhatsApp AI Chatbot</strong> that qualifies buyers and closes sales, and blast <strong className="text-[#0c2014]">personalized bulk broadcasts</strong> from Excel with <span className="text-[#008069] font-bold underline decoration-[#27d34b] decoration-2">98% open rates</span> at wholesale Meta rates.
               </p>
 
               {/* CTA Pill Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3.5 justify-center lg:justify-start items-center mb-10">
+              <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start items-center mb-6">
                 <Link 
                   href="/signup" 
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full px-8 py-3.5 text-[15px] font-bold text-[#0c2014] transition hover:-translate-y-0.5 bg-[#27d34b] shadow-[0_12px_30px_-10px_rgba(39,211,75,0.5)] hover:shadow-[0_16px_32px_-8px_rgba(39,211,75,0.65)] active:scale-[0.98]"
@@ -299,31 +312,43 @@ export default function LandingPage() {
                   href="#showcase" 
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border-2 border-slate-300 px-6 py-3 text-[15px] font-semibold text-[#0c2014] hover:bg-slate-50 transition"
                 >
-                  <span>Explore Stacked Studio</span>
+                  <span>See how it works</span>
                 </a>
               </div>
 
+              {/* Trust row */}
+              <ul className="flex flex-wrap items-center justify-center lg:justify-start gap-x-5 gap-y-2 text-[12.5px] font-semibold text-[#4a5852] mb-10">
+                <li className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-[#27d34b]" /> 14-day free trial</li>
+                <li className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-[#27d34b]" /> Connect your number in minutes</li>
+                <li className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-[#27d34b]" /> Pay Meta&apos;s rates directly</li>
+              </ul>
+
               {/* Conversion Metric Ticker */}
-              <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto lg:mx-0 pt-6 border-t border-slate-100 text-left">
-                <div>
-                  <div className="text-2xl font-black text-[#0c2014] tracking-tight">98.4%</div>
-                  <div className="text-[12px] font-medium text-[#7b8a83]">WhatsApp Open Rate</div>
+              <div className="grid grid-cols-3 max-w-lg mx-auto lg:mx-0 rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-sm shadow-[0_8px_24px_-16px_rgba(12,32,20,0.25)] divide-x divide-slate-100 text-center lg:text-left">
+                <div className="px-3 py-3.5 sm:px-5">
+                  <div className="text-xl sm:text-2xl font-black text-[#0c2014] tracking-tight whitespace-nowrap">98.4%</div>
+                  <div className="text-[11px] sm:text-[12px] font-medium text-[#7b8a83] leading-tight mt-0.5">Open rate</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-black text-[#008069] tracking-tight">&lt; 1.8s</div>
-                  <div className="text-[12px] font-medium text-[#7b8a83]">AI Reply Speed</div>
+                <div className="px-3 py-3.5 sm:px-5">
+                  <div className="text-xl sm:text-2xl font-black text-[#008069] tracking-tight whitespace-nowrap">&lt;1.8s</div>
+                  <div className="text-[11px] sm:text-[12px] font-medium text-[#7b8a83] leading-tight mt-0.5">AI reply speed</div>
                 </div>
-                <div>
-                  <div className="text-2xl font-black text-[#0c2014] tracking-tight">0% Markup</div>
-                  <div className="text-[12px] font-medium text-[#7b8a83]">Direct Meta Wholesale</div>
+                <div className="px-3 py-3.5 sm:px-5">
+                  <div className="text-xl sm:text-2xl font-black text-[#0c2014] tracking-tight whitespace-nowrap">0%</div>
+                  <div className="text-[11px] sm:text-[12px] font-medium text-[#7b8a83] leading-tight mt-0.5">Markup on Meta rates</div>
                 </div>
               </div>
 
             </div>
 
             {/* Right Hero: WhatsApp Chatbot Simulator Card */}
-            <div className="lg:col-span-6">
-              <div className="relative mx-auto max-w-md bg-white rounded-[28px] border border-slate-200 shadow-[0_20px_50px_-20px_rgba(12,32,20,0.12)] overflow-hidden">
+            <div className="lg:col-span-6 relative">
+              <div className="absolute inset-x-10 top-10 bottom-0 -z-10 rounded-[40px] bg-gradient-to-br from-[#27d34b]/25 via-[#008069]/10 to-[#0866FF]/20 blur-3xl pointer-events-none" />
+              <div className="hidden sm:flex absolute -top-4 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap items-center gap-2 rounded-full bg-white border border-slate-200 shadow-lg px-3 py-1.5 text-[11px] font-bold text-[#0c2014]">
+                <span className="h-2 w-2 rounded-full bg-[#27d34b] animate-pulse" />
+                Live demo · tap a question below
+              </div>
+              <div className="relative mx-auto max-w-md bg-white rounded-[28px] border border-slate-200 shadow-[0_30px_70px_-25px_rgba(12,32,20,0.35)] overflow-hidden">
                 
                 {/* Header Bar */}
                 <div className="bg-[#008069] px-4 py-3.5 text-white flex items-center justify-between">
@@ -476,29 +501,67 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ━━━ INTEGRATION LOGO BAR ━━━ */}
-      <section className="py-8 bg-[#fafbfa] border-y border-[#e9eeeb]">
-        <div className="max-w-[1400px] mx-auto px-4 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4">
-            Connects natively with your existing e-commerce &amp; marketing stack
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-14 text-slate-600 font-bold text-xs sm:text-sm">
-            <span className="flex items-center gap-2"><ShoppingBag size={16} className="text-[#27d34b]" /> Shopify</span>
-            <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-[#008069]" /> Excel &amp; CSV</span>
-            <span className="flex items-center gap-2"><Globe size={16} className="text-blue-500" /> WooCommerce</span>
-            <span className="flex items-center gap-2"><Zap size={16} className="text-amber-500" /> Meta Cloud API</span>
-            <span className="flex items-center gap-2"><Database size={16} className="text-teal-600" /> Google Sheets</span>
-            <span className="flex items-center gap-2"><Lock size={16} className="text-indigo-600" /> Stripe Invoicing</span>
+      {/* ━━━ OFFICIAL META TECH PROVIDER ━━━ */}
+      <section id="meta-partner" className="relative py-14 md:py-20 bg-[#fafbfa] border-y border-[#e9eeeb] scroll-mt-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden rounded-[28px] sm:rounded-[32px] bg-[#0c2014] text-white p-6 sm:p-10 lg:p-12 shadow-[0_30px_80px_-30px_rgba(12,32,20,0.55)]">
+            <div className="absolute -top-32 -right-24 h-80 w-80 rounded-full bg-[#0866FF]/30 blur-[90px] pointer-events-none" />
+            <div className="absolute -bottom-32 -left-24 h-80 w-80 rounded-full bg-[#27d34b]/20 blur-[90px] pointer-events-none" />
+
+            <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+              <div className="lg:col-span-5 text-center lg:text-left">
+                <MetaTechProviderBadge variant="dark" size="lg" />
+                <h2 className="mt-6 text-[28px] sm:text-4xl font-extrabold tracking-[-0.02em] leading-[1.1] text-balance">
+                  Built on Meta&apos;s official WhatsApp platform.
+                </h2>
+                <p className="mt-4 text-[15px] sm:text-base text-emerald-100/75 leading-relaxed text-pretty">
+                  WAMACRM is an official Meta Tech Provider. Your WhatsApp number connects straight to Meta&apos;s Cloud API, with no middleman between you and your customers.
+                </p>
+              </div>
+
+              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
+                {[
+                  { icon: Zap, title: 'Connect in minutes', text: 'Link your WhatsApp Business number with Meta\'s Embedded Signup, right inside WAMACRM.' },
+                  { icon: ShieldCheck, title: 'Reviewed by Meta', text: 'A business-verified, Meta-approved app. Your data and messages stay on official channels.' },
+                  { icon: Coins, title: 'Meta\'s rates, direct', text: 'Conversations are billed by Meta at its own prices. We add 0% markup.' },
+                ].map(({ icon: Icon, title, text }) => (
+                  <div key={title} className="rounded-2xl bg-white/[0.06] border border-white/10 p-5 text-left backdrop-blur-sm lg:flex lg:items-start lg:gap-4">
+                    <span className="h-9 w-9 shrink-0 rounded-xl bg-[#27d34b]/15 text-[#27d34b] flex items-center justify-center mb-3 lg:mb-0">
+                      <Icon size={18} />
+                    </span>
+                    <div>
+                      <div className="font-bold text-[15px] text-white">{title}</div>
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-emerald-100/65">{text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Integrations */}
+          <div className="mt-10 sm:mt-12 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-5">
+              Works with the tools you already use
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 max-w-5xl mx-auto text-slate-700 font-bold text-[13px]">
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><ShoppingBag size={16} className="text-[#27d34b]" /> Shopify</span>
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><FileSpreadsheet size={16} className="text-[#008069]" /> Excel &amp; CSV</span>
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><Globe size={16} className="text-blue-500" /> WooCommerce</span>
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><Zap size={16} className="text-[#0866FF]" /> Meta Cloud API</span>
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><Database size={16} className="text-teal-600" /> Google Sheets</span>
+              <span className="flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-200/80 py-3 px-3"><Lock size={16} className="text-indigo-600" /> Stripe</span>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ━━━ SIGNATURE OMNIENGAGE STACKED BENTO CARDS SHOWCASE (AS IN USER SCREENSHOTS) ━━━ */}
-      <section id="showcase" className="py-20 md:py-28 bg-[#f3f4f5]">
+      <section id="showcase" className="py-16 md:py-28 bg-[#f3f4f5] scroll-mt-20">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
           
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-[48px] font-extrabold text-[#0c2014] tracking-[-0.02em] leading-[1.12] mb-4">
+          <div className="max-w-3xl mx-auto text-center mb-10 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl lg:text-[48px] font-extrabold text-[#0c2014] tracking-[-0.02em] leading-[1.12] mb-4 text-balance">
               Everything you need to turn conversations into revenue.
             </h2>
             <p className="text-base sm:text-lg text-[#5d6b67] font-normal leading-relaxed">
@@ -510,7 +573,7 @@ export default function LandingPage() {
           <div className="space-y-8 max-w-6xl mx-auto">
             
             {/* ━━━ CARD 1: BULK WHATSAPP CAMPAIGNS (WITH TRACKING & REPLY) ━━━ */}
-            <article className="rounded-[32px] bg-[#F8EAC6] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-amber-200/50 transition-all">
+            <article className="rounded-[24px] sm:rounded-[32px] bg-[#F8EAC6] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-amber-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -564,9 +627,9 @@ export default function LandingPage() {
 
                 {/* Right Visual Column */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#F2DBA3]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#F2DBA3]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       {/* Campaign Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -642,7 +705,7 @@ export default function LandingPage() {
                           <div className="flex items-center gap-2">
                             <span>🇮🇳</span>
                             <span className="font-bold text-slate-800">Priya Sharma</span>
-                            <span className="text-slate-400">+91 98765 43210</span>
+                            <span className="hidden sm:inline text-slate-400">+91 98765 43210</span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="bg-emerald-50 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded">Read ✓✓</span>
@@ -653,7 +716,7 @@ export default function LandingPage() {
                           <div className="flex items-center gap-2">
                             <span>🇺🇸</span>
                             <span className="font-bold text-slate-800">Alex Morgan</span>
-                            <span className="text-slate-400">+1 (555) 019-2834</span>
+                            <span className="hidden sm:inline text-slate-400">+1 (555) 019-2834</span>
                           </div>
                           <span className="bg-emerald-50 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded">Delivered ✓</span>
                         </div>
@@ -661,7 +724,7 @@ export default function LandingPage() {
                           <div className="flex items-center gap-2">
                             <span>🇬🇧</span>
                             <span className="font-bold text-slate-800">James Wilson</span>
-                            <span className="text-slate-400">+44 7911 123456</span>
+                            <span className="hidden sm:inline text-slate-400">+44 7911 123456</span>
                           </div>
                           <span className="bg-rose-50 text-rose-600 text-[9px] font-bold px-1.5 py-0.5 rounded">Failed ✗</span>
                         </div>
@@ -676,7 +739,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 2: 24/7 AUTONOMOUS AI CHATBOT ━━━ */}
-            <article id="features-ai" className="rounded-[32px] bg-[#DBF2E1] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
+            <article id="features-ai" className="rounded-[24px] sm:rounded-[32px] bg-[#DBF2E1] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -726,9 +789,9 @@ export default function LandingPage() {
 
                 {/* Right Visual Column */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#C4EACF]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#C4EACF]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       {/* Chat Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -788,7 +851,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 3: VISUAL SALES PIPELINE ━━━ */}
-            <article id="features-pipeline" className="rounded-[32px] bg-[#EFE8FD] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-purple-200/50 transition-all">
+            <article id="features-pipeline" className="rounded-[24px] sm:rounded-[32px] bg-[#EFE8FD] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-purple-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -838,9 +901,9 @@ export default function LandingPage() {
 
                 {/* Right Visual Column */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#DBCBF9]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#DBCBF9]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       {/* Pipeline Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -854,30 +917,30 @@ export default function LandingPage() {
                       </div>
 
                       {/* 3 Mini Stages */}
-                      <div className="grid grid-cols-3 gap-2 text-left">
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-2">
-                          <div className="text-[10px] font-bold text-slate-500 uppercase">Qualified (3)</div>
-                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
+                      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-left">
+                        <div className="bg-slate-50 p-1.5 sm:p-2.5 rounded-xl border border-slate-200/70 space-y-2">
+                          <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase truncate">Qualified (3)</div>
+                          <div className="bg-white p-1.5 sm:p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
                             <div className="text-xs font-bold text-slate-900 truncate">Acme Retails</div>
-                            <div className="text-xs font-black text-purple-700">₹1,20,000</div>
+                            <div className="text-[11px] sm:text-xs font-black text-purple-700">₹1,20,000</div>
                             <div className="text-[9px] text-slate-400">Broadcast Lead</div>
                           </div>
                         </div>
 
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-2">
-                          <div className="text-[10px] font-bold text-slate-500 uppercase">Proposal (2)</div>
-                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
+                        <div className="bg-slate-50 p-1.5 sm:p-2.5 rounded-xl border border-slate-200/70 space-y-2">
+                          <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase truncate">Proposal (2)</div>
+                          <div className="bg-white p-1.5 sm:p-2.5 rounded-lg shadow-2xs border border-slate-100 space-y-1">
                             <div className="text-xs font-bold text-slate-900 truncate">Apex Global</div>
-                            <div className="text-xs font-black text-purple-700">₹3,50,000</div>
+                            <div className="text-[11px] sm:text-xs font-black text-purple-700">₹3,50,000</div>
                             <div className="text-[9px] text-emerald-600 font-bold">Hot Deal 🔥</div>
                           </div>
                         </div>
 
-                        <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/70 space-y-2">
-                          <div className="text-[10px] font-bold text-emerald-700 uppercase">Won (14)</div>
-                          <div className="bg-white p-2.5 rounded-lg shadow-2xs border border-emerald-100 space-y-1">
+                        <div className="bg-emerald-50/60 p-1.5 sm:p-2.5 rounded-xl border border-emerald-200/70 space-y-2">
+                          <div className="text-[9px] sm:text-[10px] font-bold text-emerald-700 uppercase truncate">Won (14)</div>
+                          <div className="bg-white p-1.5 sm:p-2.5 rounded-lg shadow-2xs border border-emerald-100 space-y-1">
                             <div className="text-xs font-bold text-slate-900 truncate">TrendKart D2C</div>
-                            <div className="text-xs font-black text-emerald-600">₹4,80,000</div>
+                            <div className="text-[11px] sm:text-xs font-black text-emerald-600">₹4,80,000</div>
                             <div className="text-[9px] text-emerald-600 font-bold">✓ Closed in Chat</div>
                           </div>
                         </div>
@@ -903,7 +966,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 4: SMART TICKETING SYSTEM & SLAS ━━━ */}
-            <article id="features-ticketing" className="rounded-[32px] bg-[#FFE8DE] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-rose-200/50 transition-all">
+            <article id="features-ticketing" className="rounded-[24px] sm:rounded-[32px] bg-[#FFE8DE] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-rose-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -953,9 +1016,9 @@ export default function LandingPage() {
 
                 {/* Right Visual Column */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#FDD0C0]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#FDD0C0]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       {/* Ticket Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1005,7 +1068,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 5: TEAM MANAGEMENT & SHARED INBOX ━━━ */}
-            <article id="features-team" className="rounded-[32px] bg-[#E0F2FE] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-sky-200/50 transition-all">
+            <article id="features-team" className="rounded-[24px] sm:rounded-[32px] bg-[#E0F2FE] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-sky-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -1055,9 +1118,9 @@ export default function LandingPage() {
 
                 {/* Right Visual Column */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#C5E4FD]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#C5E4FD]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <span className="text-xs font-bold text-slate-800">Team Presence &amp; Active Chats</span>
@@ -1112,7 +1175,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 6: REPORTS & AI ANALYTICS (EXACT SCREENSHOT 2 LOOK) ━━━ */}
-            <article className="rounded-[32px] bg-[#DBF2E1] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
+            <article className="rounded-[24px] sm:rounded-[32px] bg-[#DBF2E1] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-emerald-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -1143,10 +1206,10 @@ export default function LandingPage() {
 
                 {/* Right Visual Column (Darker Mint Background with Floating Dashboard Mockup) */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#C4EACF]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#C4EACF]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
                     {/* White Floating Dashboard Mockup */}
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       {/* Window Dots & Filter Dropdown */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1248,7 +1311,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 3: ZERO MARKUP WHOLESALE (THE TOOL ADVANTAGE) ━━━ */}
-            <article className="rounded-[32px] bg-[#DCE8FF] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-blue-200/50 transition-all">
+            <article className="rounded-[24px] sm:rounded-[32px] bg-[#DCE8FF] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-blue-200/50 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -1279,10 +1342,10 @@ export default function LandingPage() {
 
                 {/* Right Visual Column (Darker Blue Container with Cost Comparison Card) */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-[#C2D6FF]/80 p-6 sm:p-8 flex items-center justify-center">
+                  <div className="rounded-[24px] bg-[#C2D6FF]/80 p-3 sm:p-6 lg:p-8 flex items-center justify-center">
                     
                     {/* White Floating Comparison Card */}
-                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-5 sm:p-6 space-y-4">
+                    <div className="w-full bg-white rounded-[20px] shadow-[0_16px_36px_-12px_rgba(0,0,0,0.1)] p-4 sm:p-6 space-y-4">
                       
                       <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                         <span className="text-xs font-bold text-slate-700">Monthly Bill Breakdown (35,000 WhatsApps)</span>
@@ -1334,7 +1397,7 @@ export default function LandingPage() {
             </article>
 
             {/* ━━━ CARD 4: HOW IT ALL WORKS — COMPLETE MARKETING WORKFLOW ━━━ */}
-            <article className="rounded-[32px] bg-gradient-to-br from-[#0c2014] to-[#1a4a2e] p-8 lg:p-12 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.2)] border border-emerald-900/30 transition-all">
+            <article className="rounded-[24px] sm:rounded-[32px] bg-gradient-to-br from-[#0c2014] to-[#1a4a2e] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.2)] border border-emerald-900/30 transition-all">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                 
                 {/* Left Text Column */}
@@ -1403,7 +1466,7 @@ export default function LandingPage() {
 
                 {/* Right Visual Column — Marketing Flow Diagram */}
                 <div className="lg:col-span-7">
-                  <div className="rounded-[24px] bg-white/5 backdrop-blur-sm border border-white/10 p-6 sm:p-8">
+                  <div className="rounded-[24px] bg-white/5 backdrop-blur-sm border border-white/10 p-3 sm:p-6 lg:p-8">
                     <div className="w-full space-y-3">
 
                       {/* Flow Step 1 */}
@@ -1897,7 +1960,9 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-6 text-xs font-semibold text-slate-300">
+            <MetaTechProviderBadge variant="dark" size="sm" className="md:order-last" />
+
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-semibold text-slate-300">
               <a href="#showcase" className="hover:text-white transition">Broadcasts</a>
               <a href="#features-pipeline" className="hover:text-white transition">Sales Pipeline</a>
               <a href="#features-ai" className="hover:text-white transition">24/7 AI Chatbot</a>
@@ -1923,9 +1988,9 @@ export default function LandingPage() {
               <Link href="/data-deletion" className="hover:text-slate-300 underline underline-offset-2 transition">User Data Deletion</Link>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-[#27d34b] font-medium">WhatsApp Cloud API Integration</span>
+              <span className="text-[#8fb8ff] font-medium">Official Meta Tech Provider</span>
               <span>•</span>
-              <span>Enterprise Grade Security</span>
+              <span className="text-[#27d34b] font-medium">WhatsApp Cloud API</span>
             </div>
           </div>
         </div>
