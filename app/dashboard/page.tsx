@@ -1757,22 +1757,22 @@ function ConversationsPageContent() {
           selectedConversation ? 'flex' : 'hidden md:flex'
         }`}>
           {/* Chat Header */}
-          <div className="px-4 py-2 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between h-[60px] flex-shrink-0 select-none z-10">
-            <div className="flex items-center gap-3">
+          <div className="px-4 py-2 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between gap-2 min-h-[60px] flex-shrink-0 select-none z-10">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               {/* Back Button for mobile */}
               <button
                 onClick={() => setSelectedConversation(null)}
-                className="md:hidden p-1.5 hover:bg-slate-200 dark:hover:bg-[#2a3942] rounded-full text-[#667781] dark:text-slate-400 mr-1 flex items-center justify-center transition-colors"
+                className="md:hidden p-1.5 hover:bg-slate-200 dark:hover:bg-[#2a3942] rounded-full text-[#667781] dark:text-slate-400 shrink-0 flex items-center justify-center transition-colors"
                 title="Back to inbox"
               >
                 <ArrowLeft size={18} />
               </button>
-              <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center font-semibold text-[13px] select-none ${getAvatarTone(selectedContact.id)}`}>
+              <div className={`h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-full flex items-center justify-center font-semibold text-[13px] select-none ${getAvatarTone(selectedContact.id)}`}>
                 {getContactAvatarInitials(selectedContact)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef] leading-tight truncate">
+                <div className="flex items-center gap-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef] leading-tight truncate min-w-0">
                     {formatContactDisplayName(selectedContact)}
                   </h3>
                   <button
@@ -1790,7 +1790,7 @@ function ConversationsPageContent() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 min-w-0">
                     {isBsuid(selectedContact.phone_number || selectedContact.first_name) ? (
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
                         <ShieldCheck size={10} className="shrink-0" />
@@ -1836,7 +1836,7 @@ function ConversationsPageContent() {
             </div>
 
             {/* Right Side Header Controls */}
-            <div className="flex items-center gap-2 md:gap-4 shrink-0">
+            <div className="flex items-center gap-1.5 md:gap-4 shrink-0">
               {/* AI Suggestions Trigger */}
               {features.enable_ai && selectedConversation && (
                 <button
@@ -1859,30 +1859,34 @@ function ConversationsPageContent() {
 
               {/* Ticket Controls */}
               {selectedConversation && currentTicket && (
-                <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-2 md:pl-4">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
+                <div className="flex items-center gap-1 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-1.5 md:pl-4">
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
                     🎫 Open Ticket
                   </span>
                   <button
                     onClick={() => handleResolveTicket(currentTicket.id)}
-                    className="px-2 py-1 text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-all cursor-pointer"
+                    className="px-1.5 sm:px-2 py-1 text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded transition-all cursor-pointer flex items-center gap-1"
                     title="Mark ticket as resolved"
+                    aria-label="Resolve ticket"
                   >
-                    Resolve
+                    <Check size={12} className="sm:hidden" />
+                    <span className="hidden sm:inline">Resolve</span>
                   </button>
                   <button
                     onClick={() => openConvertModal(currentTicket)}
-                    className="px-2 py-1 text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-all cursor-pointer"
+                    className="px-1.5 sm:px-2 py-1 text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 rounded transition-all cursor-pointer flex items-center gap-1"
                     title="Convert ticket to a sales lead"
+                    aria-label="Make lead"
                   >
-                    Make Lead
+                    <Briefcase size={12} className="sm:hidden" />
+                    <span className="hidden sm:inline">Make Lead</span>
                   </button>
                 </div>
               )}
 
               {/* Auto-Reply Chatbot Toggle Override */}
               {selectedConversation && (
-                <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-2 md:pl-4">
+                <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-1.5 md:pl-4">
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none hidden sm:inline">
                     Auto-Reply Chatbot
                   </span>
