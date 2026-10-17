@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { forgetCatalog } from '@/lib/commerce/catalog-sync'
 import {
   canEditCatalog,
   connectCatalog,
   createCatalog,
+  deleteCatalog,
   describeCatalogError,
   getCatalog,
   getCatalogCredentials,
@@ -11,6 +13,7 @@ import {
   isGraphId,
   listOwnedCatalogs,
   listWabaCatalogs,
+  renameCatalog,
   type MetaCatalog,
   type TokenAccess,
 } from '@/lib/commerce/meta-catalog'
@@ -98,7 +101,7 @@ export async function POST(request: NextRequest) {
     const auth = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
     if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-    if (action !== 'connect' && action !== 'create') return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    if (!['connect', 'create', 'unlink', 'rename', 'delete'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
     const org = await loadOrganization(organizationId)
     if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
@@ -111,6 +114,50 @@ export async function POST(request: NextRequest) {
         .update({ meta_catalog_id: catalogId, updated_at: new Date().toISOString() })
         .eq('id', organizationId)
       if (error) throw error
+    }
+
+    // Unlink, rename and delete apply only to this store's own catalog
+    if (action === 'unlink' || action === 'rename' || action === 'delete') {
+      const linkedId = String(org.meta_catalog_id || '').trim()
+      if (!isGraphId(linkedId)) return NextResponse.json({ error: 'No catalog is linked to this store.' }, { status: 400 })
+      const unlink = async () => {
+        const { error } = await getSupabaseAdminClient()
+          .from('organizations')
+          .update({ meta_catalog_id: null, updated_at: new Date().toISOString() })
+          .eq('id', organizationId)
+        if (error) throw error
+      }
+
+      if (action === 'rename') {
+        const name = String(body.name || '').trim()
+        try {
+          await renameCatalog(credentials, linkedId, name)
+        } catch (error) {
+          return NextResponse.json({ error: describeCatalogError(error).message }, { status: 422 })
+        }
+        return NextResponse.json({ success: true, catalogId: linkedId, name })
+      }
+
+      // Meta has no API to disconnect a catalog from a WhatsApp account (its reference: deleting on
+      // /{waba}/product_catalogs is not supported). This store stops using it; the business disconnects
+      // it in WhatsApp Manager if it should also leave WhatsApp.
+      if (action === 'unlink') {
+        await unlink()
+        return NextResponse.json({ success: true, catalogId: linkedId, unlinked: true })
+      }
+
+      // Deleting removes the catalog and all its items in Meta for good, so the caller repeats its ID
+      if (String(body.confirm || '') !== linkedId) {
+        return NextResponse.json({ error: 'Confirm by sending the catalog ID.' }, { status: 400 })
+      }
+      try {
+        await deleteCatalog(credentials, linkedId)
+      } catch (error) {
+        return NextResponse.json({ error: describeCatalogError(error).message }, { status: 422 })
+      }
+      await unlink()
+      const productsReset = await forgetCatalog(getSupabaseAdminClient(), organizationId, linkedId).catch(() => 0)
+      return NextResponse.json({ success: true, deleted: linkedId, productsReset })
     }
 
     if (action === 'connect') {

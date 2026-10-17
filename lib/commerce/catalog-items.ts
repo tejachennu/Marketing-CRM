@@ -35,6 +35,8 @@ export interface CatalogSync {
   /** WhatsApp's review of the item: approved, pending, rejected, outdated or empty. */
   review_status?: string
   synced_at?: string
+  /** The catalog the item was sent to or found in, so a different catalog's sync never removes it. */
+  catalog_id?: string
 }
 
 export type CatalogState = 'in_catalog' | 'in_review' | 'rejected' | 'sending' | 'error' | 'not_sent'

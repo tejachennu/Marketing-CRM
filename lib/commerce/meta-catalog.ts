@@ -130,6 +130,20 @@ export async function connectCatalog(credentials: MetaCredentials, catalogId: st
   if (connected?.success !== true) throw new Error('Meta did not confirm that the catalog was connected.')
 }
 
+/** Rename a catalog. Needs `catalog_management`. */
+export async function renameCatalog(credentials: MetaCredentials, catalogId: string, name: string, fetcher: typeof fetch = fetch): Promise<void> {
+  const catalogName = name.trim().slice(0, 100)
+  if (!catalogName) throw new Error('Give the catalog a name.')
+  const result = await metaRequest(credentials, requireId(catalogId, 'The catalog ID'), form({ name: catalogName }), fetcher)
+  if (result?.success !== true) throw new Error('Meta did not confirm the new name.')
+}
+
+/** Delete a catalog and every item in it, in Meta. Cannot be undone. Needs `catalog_management`. */
+export async function deleteCatalog(credentials: MetaCredentials, catalogId: string, fetcher: typeof fetch = fetch): Promise<void> {
+  const result = await metaRequest(credentials, requireId(catalogId, 'The catalog ID'), { method: 'DELETE' }, fetcher)
+  if (result?.success !== true) throw new Error('Meta did not confirm that the catalog was deleted.')
+}
+
 // ── Cart and catalog buttons on the phone number ────────────────────────────
 
 export interface CommerceSettings {

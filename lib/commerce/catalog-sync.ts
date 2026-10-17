@@ -122,6 +122,7 @@ export async function pushProductsToCatalog(
     await saveCatalogSync(supabase, organization.id, product, {
       state: outcome.state,
       synced_at: now,
+      catalog_id: catalogId,
       ...(outcome.handle ? { handle: outcome.handle } : {}),
       ...(outcome.errors.length ? { errors: outcome.errors } : {}),
       ...(outcome.warnings.length ? { warnings: outcome.warnings } : {}),
@@ -210,11 +211,12 @@ export async function refreshCatalogStatus(
             state: 'error',
             errors: status.errors.get(product.retailer_id) || ['Meta did not accept this item.'],
             synced_at: stamp,
+            catalog_id: previous?.catalog_id || catalogId,
             ...(warnings.length ? { warnings } : {}),
           })
         } else {
           summary.accepted++
-          await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp, ...(warnings.length ? { warnings } : {}) })
+          await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp, catalog_id: previous?.catalog_id || catalogId, ...(warnings.length ? { warnings } : {}) })
         }
         return
       }
@@ -222,7 +224,7 @@ export async function refreshCatalogStatus(
       const sentAt = Date.parse(previous?.synced_at || '')
       if (!handle || (Number.isFinite(sentAt) && now - sentAt > BATCH_TIMEOUT_MS)) {
         summary.rejected++
-        await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp })
+        await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp, catalog_id: previous?.catalog_id || catalogId })
         return
       }
       summary.pending++
@@ -239,6 +241,18 @@ export interface PullSummary {
   /** Kept as they are because a change made here is still being processed, or was turned down by Meta. */
   skipped: number
   error: string | null
+}
+
+/**
+ * Whether a product missing from the catalog's listing was deleted there: it had been confirmed in
+ * this same catalog (or came from it), and no change made here is still waiting on Meta.
+ */
+export function wasDeletedInCatalog(product: { metadata?: Record<string, any> | null }, catalogId: string): boolean {
+  const sync = product.metadata?.catalog
+  if (sync?.state === 'pending' || sync?.state === 'error') return false
+  if (sync?.catalog_id) return sync.catalog_id === catalogId && sync.state === 'synced'
+  // Copies made before the catalog was recorded: only those that came from the catalog itself
+  return product.metadata?.source === 'meta'
 }
 
 /**
@@ -272,6 +286,7 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
     const row = toCatalogProductRow(item, getProductAttributes(current), now)
     if (!row || inCatalog.has(row.retailer_id)) continue
     inCatalog.add(row.retailer_id)
+    row.metadata = { ...row.metadata, catalog: { ...(row.metadata?.catalog || { state: 'synced' }), catalog_id: catalogId } }
     // A change made here that Meta has not applied must not be overwritten by the older catalog copy
     const state = current?.metadata?.catalog?.state
     if (state === 'pending' || state === 'error') skipped++
@@ -292,7 +307,7 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
   // Only after a complete, error-free read, so a partial sync can never empty the product list
   let removed = 0
   if (!firstError && inCatalog.size > 0) {
-    const stale = [...stored.values()].filter((product) => product.metadata?.source === 'meta' && !inCatalog.has(product.retailer_id)).map((product) => product.id)
+    const stale = [...stored.values()].filter((product) => !inCatalog.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId)).map((product) => product.id)
     for (let start = 0; start < stale.length; start += 100) {
       const ids = stale.slice(start, start + 100)
       const { error } = await supabase.from('commerce_products').delete().eq('organization_id', organization.id).in('id', ids)
@@ -301,4 +316,33 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
   }
 
   return { total: inCatalog.size, synced, removed, skipped, error: firstError }
+}
+
+/**
+ * After a catalog is deleted in Meta: its products stay here but are no longer "in the catalog",
+ * so they can be sent to another one. Returns how many were changed.
+ */
+export async function forgetCatalog(supabase: any, organizationId: string, catalogId: string): Promise<number> {
+  let changed = 0
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data, error } = await supabase
+      .from('commerce_products')
+      .select('id, retailer_id, metadata')
+      .eq('organization_id', organizationId)
+      .order('id', { ascending: true })
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+
+    const affected = (data || []).filter((product: StoredProduct) => {
+      const sync = product.metadata?.catalog
+      return sync?.catalog_id ? sync.catalog_id === catalogId : product.metadata?.source === 'meta' || Boolean(sync)
+    })
+    await inChunks(affected, WRITE_CONCURRENCY, async (product: StoredProduct) => {
+      const { catalog: _catalog, source: _source, ...rest } = product.metadata || {}
+      const { error: updateError } = await supabase.from('commerce_products').update({ metadata: rest }).eq('id', product.id).eq('organization_id', organizationId)
+      if (!updateError) changed++
+    })
+    if (!data || data.length < 1000) break
+  }
+  return changed
 }

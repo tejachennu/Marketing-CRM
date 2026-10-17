@@ -156,6 +156,28 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     // `products` changes with every reload, which schedules the next round
   }, [canManageStore, catalogLinked, catalogCounts.sending, orgId, load, page, products])
 
+  // Changes made in Commerce Manager (added, edited or deleted products) are brought in when the list
+  // opens, at most every 10 minutes per browser. Quiet: the Sync button reports in detail.
+  useEffect(() => {
+    if (!canManageStore || !catalogLinked || !orgId) return
+    const key = `commerce:catalog-pulled:${orgId}`
+    try {
+      if (Date.now() - (Number(localStorage.getItem(key)) || 0) < 10 * 60 * 1000) return
+      localStorage.setItem(key, String(Date.now()))
+    } catch {
+      // Storage unavailable (private window): pull this time
+    }
+    fetch('/api/commerce/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ organizationId: orgId, action: 'sync_meta' }),
+    })
+      .then((res) => (res.ok ? load(1, { silent: true }) : undefined))
+      .catch(() => {
+        // Store settings show why the catalog cannot be read
+      })
+  }, [canManageStore, catalogLinked, orgId, load])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return

@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Plus, ShoppingBag, Sparkles } from 'lucide-react'
-import { useAlert } from '@/lib/dialog-context'
+import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, ShoppingBag, Sparkles, Trash2, Unlink } from 'lucide-react'
+import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
 
@@ -65,6 +65,9 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const [isConnectingCatalog, setIsConnectingCatalog] = useState(false)
   const [newCatalog, setNewCatalog] = useState<{ name: string; businessId: string } | null>(null)
   const [isCreatingCatalog, setIsCreatingCatalog] = useState(false)
+  const confirm = useConfirm()
+  const [renameTo, setRenameTo] = useState<string | null>(null)
+  const [catalogAction, setCatalogAction] = useState<'rename' | 'unlink' | 'delete' | null>(null)
 
   const loadCatalogInfo = useCallback(async () => {
     try {
@@ -130,6 +133,61 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     } finally {
       setIsCreatingCatalog(false)
     }
+  }
+
+  /** Rename or delete the store's own catalog in Meta, or stop using it here. */
+  async function changeCatalog(action: 'rename' | 'unlink' | 'delete', extra: Record<string, string> = {}) {
+    setCatalogAction(action)
+    try {
+      const res = await fetch('/api/commerce/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action, ...extra }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The catalog could not be changed')
+      if (action === 'rename') {
+        setRenameTo(null)
+        showToast('success', 'The catalog was renamed.')
+      } else {
+        // The server unlinked the catalog from this store; mirror it locally
+        set({ meta_catalog_id: '' })
+        onSaved({ meta_catalog_id: '' })
+        showToast(
+          'success',
+          action === 'delete'
+            ? `The catalog was deleted in Meta.${data.productsReset ? ` ${data.productsReset} product${data.productsReset === 1 ? ' stays' : 's stay'} here, ready for another catalog.` : ''}`
+            : 'This store no longer uses the catalog. It is still connected to your WhatsApp account until you disconnect it in WhatsApp Manager.'
+        )
+      }
+      await loadCatalogInfo()
+    } catch (err: any) {
+      alert({ title: 'Catalog not changed', message: err.message })
+    } finally {
+      setCatalogAction(null)
+    }
+  }
+
+  async function unlinkCatalog() {
+    const confirmed = await confirm({
+      title: 'Stop using this catalog here?',
+      message: 'Products are no longer synced with it or sent from it in this dashboard. The catalog and its products stay in Meta. It also stays connected to your WhatsApp account: to remove it from WhatsApp, open WhatsApp Manager > Account tools > Catalog and disconnect it there (Meta offers no way to do this from here).',
+      confirmLabel: 'Stop using',
+      destructive: true,
+    })
+    if (confirmed) await changeCatalog('unlink')
+  }
+
+  async function deleteLinkedCatalog() {
+    const linkedId = catalogInfo?.linkedCatalogId
+    if (!linkedId) return
+    const confirmed = await confirm({
+      title: 'Delete the catalog in Meta?',
+      message: `This permanently deletes the catalog ${chosenCatalog?.name ? `“${chosenCatalog.name}” ` : ''}and every product in it from Meta, for WhatsApp and anything else using it. Your products stay in this dashboard. This cannot be undone.`,
+      confirmLabel: 'Delete catalog',
+      destructive: true,
+    })
+    if (confirmed) await changeCatalog('delete', { confirm: linkedId })
   }
 
   // Catalogs to pick from: Meta's full answer when there is one, otherwise what "Detect" found
@@ -334,6 +392,38 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
               </li>
             )}
             {!isLinkedCatalog && <li className={hintClass}>Save the store settings to use this catalog.</li>}
+            {isLinkedCatalog && (
+              <li className="pt-1">
+                {renameTo !== null ? (
+                  <form
+                    className="flex flex-col sm:flex-row gap-2"
+                    onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); changeCatalog('rename', { name: renameTo }) }}
+                  >
+                    <input autoFocus value={renameTo} onChange={(event) => setRenameTo(event.target.value)} maxLength={100} aria-label="New catalog name" className={inputClass} />
+                    <button type="submit" disabled={!renameTo.trim() || catalogAction !== null} className={`${primaryButton} shrink-0`}>
+                      {catalogAction === 'rename' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save name
+                    </button>
+                    <button type="button" onClick={() => setRenameTo(null)} className={`${secondaryButton} shrink-0`}>Cancel</button>
+                  </form>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {catalogInfo.canEdit === true && (
+                      <button type="button" onClick={() => setRenameTo(chosenCatalog?.name || '')} disabled={catalogAction !== null} className={secondaryButton}>
+                        <Pencil size={13} /> Rename
+                      </button>
+                    )}
+                    <button type="button" onClick={unlinkCatalog} disabled={catalogAction !== null} className={secondaryButton}>
+                      {catalogAction === 'unlink' ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />} Stop using here
+                    </button>
+                    {catalogInfo.canEdit === true && (
+                      <button type="button" onClick={deleteLinkedCatalog} disabled={catalogAction !== null} className={`${secondaryButton} text-red-600 dark:text-red-400`}>
+                        {catalogAction === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete catalog
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            )}
           </ul>
         )}
 

@@ -323,6 +323,38 @@ test('Catalog API: creating and connecting a catalog', async () => {
   assert.match(listed.calls[0].url, new RegExp(`/${WABA}/product_catalogs\\?fields=`))
 })
 
+test('Catalog API: renaming and deleting a catalog', async () => {
+  const rename = graph({ success: true })
+  await meta.renameCatalog(CREDENTIALS, CATALOG, '  Asha summer catalog ', rename)
+  assert.equal(rename.calls[0].url, `https://graph.facebook.com/v25.0/${CATALOG}`)
+  assert.equal(rename.calls[0].method, 'POST')
+  assert.deepEqual(rename.calls[0].body, { name: 'Asha summer catalog' })
+  await assert.rejects(() => meta.renameCatalog(CREDENTIALS, CATALOG, '  ', rename), /name/)
+
+  const remove = graph({ success: true })
+  await meta.deleteCatalog(CREDENTIALS, CATALOG, remove)
+  assert.equal(remove.calls[0].url, `https://graph.facebook.com/v25.0/${CATALOG}`)
+  assert.equal(remove.calls[0].method, 'DELETE')
+
+  await assert.rejects(() => meta.deleteCatalog(CREDENTIALS, 'not-an-id', graph({ success: true })), /numeric ID/)
+  await assert.rejects(() => meta.deleteCatalog(CREDENTIALS, CATALOG, graph({ success: false })), /did not confirm/)
+  assert.equal(meta.disconnectCatalog, undefined, 'Meta has no API to disconnect a catalog from a WhatsApp account')
+})
+
+test('Catalog sync: after a catalog is deleted its products stay, no longer marked as in it', async () => {
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'IN-IT', metadata: { source: 'meta', catalog: { state: 'synced', catalog_id: CATALOG }, attributes: { importer_name: 'Asha Imports' } } },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'OTHER', metadata: { catalog: { state: 'synced', catalog_id: '999999999999999' } } },
+    { id: 'c', organization_id: 'org-1', retailer_id: 'LOCAL', metadata: {} },
+  ])
+  assert.equal(await sync.forgetCatalog(db, 'org-1', CATALOG), 1)
+  const byId = Object.fromEntries(db.rows.map((row) => [row.id, row.metadata]))
+  assert.deepEqual(byId.a, { attributes: { importer_name: 'Asha Imports' } })
+  assert.equal(items.isInCatalog({ metadata: byId.a }), false)
+  assert.equal(byId.b.catalog.catalog_id, '999999999999999')
+  assert.deepEqual(byId.c, {})
+})
+
 test('Catalog API: cart and catalog buttons are set with query parameters', async () => {
   const fetcher = graph({ success: true })
   await meta.setCommerceSettings(CREDENTIALS, { is_cart_enabled: true, is_catalog_visible: true }, fetcher)
@@ -476,6 +508,36 @@ test('Catalog sync: copying the catalog back keeps local work and drops what lef
   assert.equal(byKey['org-1/MINE'].title, 'Dashboard only')
   assert.equal('org-1/GONE' in byKey, false)
   assert.equal(byKey['org-2/GONE'].title, 'Another store')
+})
+
+test('Catalog sync: each product remembers which catalog it was sent to', async () => {
+  const db = fakeDb([{ id: 'p1', organization_id: 'org-1', ...product() }])
+  await sync.pushProductsToCatalog(db, ORG, db.rows.map((row) => ({ ...row })), { fetcher: graph({ handles: ['H1'], validation_status: [] }) })
+  assert.equal(db.rows[0].metadata.catalog.catalog_id, CATALOG)
+
+  const pulled = fakeDb([])
+  await sync.pullCatalogToDatabase(pulled, ORG, graph({ data: [{ retailer_id: 'FRESH', name: 'Added in Commerce Manager', price: '250 INR' }] }))
+  assert.equal(pulled.rows[0].metadata.catalog.catalog_id, CATALOG)
+})
+
+test('Catalog sync: a product deleted in Commerce Manager is deleted here too, wherever it was created', async () => {
+  const confirmed = (catalog_id) => ({ catalog: { state: 'synced', review_status: 'approved', catalog_id } })
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'STILL-THERE', title: 'Kept', metadata: confirmed(CATALOG) },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'DELETED-IN-META', title: 'Made here, deleted in Meta', metadata: confirmed(CATALOG) },
+    { id: 'c', organization_id: 'org-1', retailer_id: 'OTHER-CATALOG', title: 'Confirmed in an earlier catalog', metadata: confirmed('999999999999999') },
+    { id: 'd', organization_id: 'org-1', retailer_id: 'SENDING', title: 'Still on its way', metadata: { catalog: { state: 'pending', handle: 'H1', catalog_id: CATALOG } } },
+    { id: 'e', organization_id: 'org-1', retailer_id: 'NEVER-SENT', title: 'Dashboard only', metadata: {} },
+  ])
+  const summary = await sync.pullCatalogToDatabase(db, ORG, graph({ data: [{ retailer_id: 'STILL-THERE', name: 'Kept', price: '100 INR', review_status: 'approved' }] }))
+  assert.equal(summary.removed, 1)
+  assert.deepEqual(db.rows.map((row) => row.retailer_id).sort(), ['NEVER-SENT', 'OTHER-CATALOG', 'SENDING', 'STILL-THERE'])
+
+  assert.equal(sync.wasDeletedInCatalog({ metadata: confirmed(CATALOG) }, CATALOG), true)
+  assert.equal(sync.wasDeletedInCatalog({ metadata: confirmed('999999999999999') }, CATALOG), false)  // switching catalogs never wipes products
+  assert.equal(sync.wasDeletedInCatalog({ metadata: { catalog: { state: 'error', catalog_id: CATALOG } } }, CATALOG), false)
+  assert.equal(sync.wasDeletedInCatalog({ metadata: { source: 'meta' } }, CATALOG), true)  // copies made before catalogs were recorded
+  assert.equal(sync.wasDeletedInCatalog({ metadata: {} }, CATALOG), false)
 })
 
 test('Catalog sync: an empty or failed read never empties the product list', async () => {
