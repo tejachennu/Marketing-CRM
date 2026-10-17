@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, ShoppingBag, Sparkles, Trash2, Unlink } from 'lucide-react'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
+import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
 
@@ -23,6 +24,8 @@ interface CatalogInfo {
   /** Whether this WhatsApp connection may change the catalog; null when Meta would not say. */
   canEdit: boolean | null
   canCreate: boolean | null
+  /** Catalog calls use a separate "Connect catalog with Meta" connection. */
+  catalogConnection?: boolean
 }
 
 interface StoreSettingsProps {
@@ -68,6 +71,9 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const confirm = useConfirm()
   const [renameTo, setRenameTo] = useState<string | null>(null)
   const [catalogAction, setCatalogAction] = useState<'rename' | 'unlink' | 'delete' | null>(null)
+  const [isConnectingAccess, setIsConnectingAccess] = useState(false)
+  // A Facebook Login for Business configuration that asks for catalog_management (not the WhatsApp signup one)
+  const catalogLoginConfigId = process.env.NEXT_PUBLIC_META_CATALOG_CONFIG_ID || ''
 
   const loadCatalogInfo = useCallback(async () => {
     try {
@@ -165,6 +171,62 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       alert({ title: 'Catalog not changed', message: err.message })
     } finally {
       setCatalogAction(null)
+    }
+  }
+
+  /** Ask the business, in Meta's window, for access to its catalog. */
+  async function connectCatalogAccess() {
+    if (window.location.protocol !== 'https:') {
+      alert({ title: 'Needs https', message: 'Meta’s sign-in only works over https. Locally, run "npm run dev:https" and open https://localhost:3000.' })
+      return
+    }
+    setIsConnectingAccess(true)
+    try {
+      const FB = await loadMetaSdk(process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162')
+      const code = await new Promise<string | null>((resolve) => {
+        FB.login((response: any) => resolve(response?.authResponse?.code || null), {
+          config_id: catalogLoginConfigId,
+          response_type: 'code',
+          override_default_response_type: true,
+        })
+      })
+      if (!code) return // Closed without granting access
+      const res = await fetch('/api/commerce/catalog/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Catalog access could not be saved')
+      if (data.linkedCatalogId) {
+        set({ meta_catalog_id: data.linkedCatalogId })
+        onSaved({ meta_catalog_id: data.linkedCatalogId })
+      }
+      await loadCatalogInfo()
+      showToast('success', 'Your catalog is connected. Products you add, change or delete here are now sent to Meta.')
+    } catch (err: any) {
+      alert({ title: 'Catalog not connected', message: err.message })
+    } finally {
+      setIsConnectingAccess(false)
+    }
+  }
+
+  async function removeCatalogAccess() {
+    const confirmed = await confirm({
+      title: 'Remove catalog access?',
+      message: 'Products will no longer be sent to your Meta catalog from here. The catalog and its products stay in Meta.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!confirmed) return
+    try {
+      const res = await fetch(`/api/commerce/catalog/access?organizationId=${orgId}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Catalog access could not be removed')
+      await loadCatalogInfo()
+      showToast('success', 'Catalog access removed.')
+    } catch (err: any) {
+      alert({ title: 'Not removed', message: err.message })
     }
   }
 
@@ -425,6 +487,28 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
               </li>
             )}
           </ul>
+        )}
+
+        {/* Catalog access: the WhatsApp signup does not include it, so it is granted separately */}
+        {whatsappConnected && catalogInfo && catalogLoginConfigId && (
+          catalogInfo.catalogConnection ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-100">
+              <span className="flex items-start gap-2"><CheckCircle2 size={15} className="shrink-0 mt-px" /> Your catalog is connected with Meta. Products are added, changed and deleted there from here.</span>
+              <div className="flex gap-2 shrink-0">
+                <button type="button" onClick={connectCatalogAccess} disabled={isConnectingAccess} className={secondaryButton}>
+                  {isConnectingAccess ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />} Reconnect
+                </button>
+                <button type="button" onClick={removeCatalogAccess} disabled={isConnectingAccess} className={`${secondaryButton} text-red-600 dark:text-red-400`}>Remove</button>
+              </div>
+            </div>
+          ) : catalogInfo.canEdit !== true ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-700 dark:text-slate-200">
+              <span>To add, change and delete products in your Meta catalog from here, give access to your catalog in Meta&apos;s window.</span>
+              <button type="button" onClick={connectCatalogAccess} disabled={isConnectingAccess} className={`${primaryButton} shrink-0`}>
+                {isConnectingAccess ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />} Connect catalog with Meta
+              </button>
+            </div>
+          ) : null
         )}
 
         {/* A store with no catalog can make one here */}

@@ -84,6 +84,8 @@ export async function GET(request: NextRequest) {
       businessId,
       canEdit: canEditCatalog(access, linkedId),
       canCreate: access ? access.valid && access.scopes.includes('catalog_management') && access.scopes.includes('business_management') : null,
+      // Catalog calls use a separate "Connect catalog with Meta" connection rather than the WhatsApp one
+      catalogConnection: Boolean(String(org.meta_catalog_token || '').trim()),
     })
   } catch (err: any) {
     console.error('[API Commerce Catalog GET] Error:', err)

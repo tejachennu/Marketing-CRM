@@ -41,9 +41,13 @@ export function isGraphId(value: unknown): value is string {
   return typeof value === 'string' && /^\d{5,25}$/.test(value)
 }
 
-/** The access the organization gave this CRM. A catalog call needs only the token; some need the account or number too. */
+/**
+ * The access the organization gave this CRM for its catalog: the catalog connection when it made one
+ * ("Connect catalog with Meta"), otherwise the WhatsApp connection. A catalog call needs only the
+ * token; some need the account or number too.
+ */
 export function getCatalogCredentials(organization: Record<string, any> | null | undefined): MetaCredentials {
-  const token = String(organization?.whatsapp_api_token || '').trim()
+  const token = String(organization?.meta_catalog_token || organization?.whatsapp_api_token || '').trim()
   if (!token) throw new Error('WhatsApp is not connected. Connect it in Settings first.')
   const version = String(organization?.whatsapp_graph_api_version || '')
   return {
@@ -142,6 +146,24 @@ export async function renameCatalog(credentials: MetaCredentials, catalogId: str
 export async function deleteCatalog(credentials: MetaCredentials, catalogId: string, fetcher: typeof fetch = fetch): Promise<void> {
   const result = await metaRequest(credentials, requireId(catalogId, 'The catalog ID'), { method: 'DELETE' }, fetcher)
   if (result?.success !== true) throw new Error('Meta did not confirm that the catalog was deleted.')
+}
+
+/**
+ * Exchange the code from a Facebook Login for Business window for an access token. Server only:
+ * it sends the app secret. The code is valid for 30 seconds.
+ */
+export async function exchangeLoginCode(
+  code: string,
+  app: { id?: string; secret?: string },
+  version: string = DEFAULT_GRAPH_VERSION,
+  fetcher: typeof fetch = fetch
+): Promise<string> {
+  if (!app.id || !app.secret) throw new Error('META_APP_SECRET is not configured on the server.')
+  const query = new URLSearchParams({ client_id: app.id, client_secret: app.secret, code: String(code || '') })
+  const response = await fetcher(`https://graph.facebook.com/${version}/oauth/access_token?${query.toString()}`, { signal: AbortSignal.timeout(20000) })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.access_token) throw new Error(data?.error?.message || 'Meta did not exchange the login code.')
+  return String(data.access_token)
 }
 
 // ── Cart and catalog buttons on the phone number ────────────────────────────
