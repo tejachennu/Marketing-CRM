@@ -9,6 +9,7 @@
  */
 
 import { formatSentProduct } from '@/lib/chat-commerce'
+import { LANGUAGE_RULES, fuzzyWordMatch } from '@/lib/chat-language'
 import { buildMultiProductMessage, buildSingleProductMessage, buildTextMessage } from './commerce-messages'
 import { sendWhatsAppMessage } from './commerce-webhook-handler'
 import { ORDER_STATUS_LABELS, formatMoney, getFulfillment, type OrderStatus } from './commerce-utils'
@@ -16,6 +17,8 @@ import { ORDER_STATUS_LABELS, formatMoney, getFulfillment, type OrderStatus } fr
 const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
 const MAX_PRODUCTS_SENT = 10
+/** How many products the spelling-tolerant pass reads when the exact search finds nothing. */
+const FUZZY_POOL = 300
 
 export interface AssistantProduct {
   retailer_id: string
@@ -66,11 +69,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_products',
-      description: 'Search the store catalog. Use English keywords from the product names (titles, authors, brands, categories), even if the customer wrote in another language.',
+      description: 'Search the store catalog. Pass the names and words as they would appear on the product (titles, authors, brands, categories), in English letters, even if the customer wrote in Telugu, Hindi or mixed language. Spelling may be approximate: the search tolerates it.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Keywords, e.g. "premchand novel". Empty to list popular products.' },
+          query: { type: 'string', description: 'Keywords, e.g. "radhakrishnan" for "me degara radhakrishnan books vunaya". Empty to list what the store sells.' },
           max_price: { type: 'number', description: 'Upper price limit, if the customer gave a budget.' },
           min_price: { type: 'number' },
         },
@@ -94,7 +97,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          message: { type: 'string', description: 'Short, friendly reply in the customer\'s language. At most 3 sentences.' },
+          message: { type: 'string', description: 'Short, friendly reply in the same language and style as the customer (Tenglish → Tenglish in English letters, Telugu script → Telugu script, English → English). At most 3 sentences.' },
           product_ids: { type: 'array', items: { type: 'string' }, description: 'retailer_id values from search_products results to show as product cards (best first, at most 10).' },
         },
         required: ['message'],
@@ -125,8 +128,9 @@ Rules:
 - If nothing matches, say so briefly and suggest something close from the results, or ask one clarifying question.
 - For order status, call get_my_orders and answer from it (status, items, tracking). If they have no orders, say so.
 - Anything else (policies, returns, shipping times, payment methods, greetings, complaints) or a request for a person: call not_a_shopping_question.
-- Reply in the customer's language. Keep it short: at most 3 sentences, no markdown.
-- Always finish by calling reply_to_customer or not_a_shopping_question.`
+- Always finish by calling reply_to_customer or not_a_shopping_question.
+
+${LANGUAGE_RULES}`
 }
 
 // ── Tool implementations ────────────────────────────────────────────────────
@@ -142,41 +146,62 @@ export function searchTerms(query: string): string[] {
   )].slice(0, 6)
 }
 
-/** How well a product matches the search words: title hits count most. */
+/** How well a product matches the search words, spelling-tolerant: title matches count most. */
 export function scoreProduct(product: AssistantProduct, terms: string[]): number {
-  const title = product.title.toLowerCase()
-  const rest = `${product.description || ''} ${product.category || ''}`.toLowerCase()
-  return terms.reduce((score, term) => score + (title.includes(term) ? 3 : 0) + (rest.includes(term) ? 1 : 0), 0)
+  const rest = `${product.description || ''} ${product.category || ''}`
+  return terms.reduce((score, term) => score + 3 * fuzzyWordMatch(term, product.title) + fuzzyWordMatch(term, rest), 0)
 }
 
-async function searchProducts(supabase: any, organizationId: string, args: any): Promise<AssistantProduct[]> {
-  const terms = searchTerms(args?.query)
-  let query = supabase
-    .from('commerce_products')
-    .select('retailer_id, title, price, currency, description, category, is_available')
-    .eq('organization_id', organizationId)
-    .or('is_available.is.null,is_available.eq.true')
-  const max = Number(args?.max_price)
-  const min = Number(args?.min_price)
-  if (Number.isFinite(max) && max > 0) query = query.lte('price', max)
-  if (Number.isFinite(min) && min > 0) query = query.gte('price', min)
-  if (terms.length > 0) {
-    query = query.or(terms.flatMap((term) => [`title.ilike.%${term}%`, `description.ilike.%${term}%`, `category.ilike.%${term}%`]).join(','))
-  }
-  const { data } = await query.limit(40)
-  const products: AssistantProduct[] = (data || []).map((row: any) => ({
+/** Rank products by the search words, best first; with words, only products that match at all. */
+export function rankProducts(products: AssistantProduct[], terms: string[], minimum = 0): AssistantProduct[] {
+  if (terms.length === 0) return products.slice(0, 10)
+  const scored = products
+    .map((product) => ({ product, score: scoreProduct(product, terms) }))
+    .filter(({ score }) => score > minimum)
+    .sort((a, b) => b.score - a.score)
+  // A broad word ("books") matches everything; keep only what is close to the best match
+  const best = scored[0]?.score || 0
+  return scored.filter(({ score }) => score >= best / 2).slice(0, 10).map(({ product }) => product)
+}
+
+function toProduct(row: any): AssistantProduct {
+  return {
     retailer_id: String(row.retailer_id),
     title: String(row.title || ''),
     price: Number(row.price) || 0,
     currency: String(row.currency || 'INR'),
     description: row.description ? String(row.description).slice(0, 160) : null,
     category: row.category || null,
-  }))
-  return products
-    .map((product) => ({ product, score: scoreProduct(product, terms) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map(({ product }) => product)
+  }
+}
+
+async function searchProducts(supabase: any, organizationId: string, args: any): Promise<AssistantProduct[]> {
+  const terms = searchTerms(args?.query)
+  const base = () => {
+    let query = supabase
+      .from('commerce_products')
+      .select('retailer_id, title, price, currency, description, category, is_available')
+      .eq('organization_id', organizationId)
+      .or('is_available.is.null,is_available.eq.true')
+    const max = Number(args?.max_price)
+    const min = Number(args?.min_price)
+    if (Number.isFinite(max) && max > 0) query = query.lte('price', max)
+    if (Number.isFinite(min) && min > 0) query = query.gte('price', min)
+    return query
+  }
+
+  // 1. The words as typed
+  let exact = base()
+  if (terms.length > 0) {
+    exact = exact.or(terms.flatMap((term) => [`title.ilike.%${term}%`, `description.ilike.%${term}%`, `category.ilike.%${term}%`]).join(','))
+  }
+  const { data } = await exact.limit(40)
+  const found = rankProducts((data || []).map(toProduct), terms)
+  if (found.length > 0 || terms.length === 0) return found
+
+  // 2. Nothing as typed: compare by sound and near spelling ("radakrishnan", "gitanjli", "premchnd")
+  const { data: pool } = await base().limit(FUZZY_POOL)
+  return rankProducts((pool || []).map(toProduct), terms, 2)
 }
 
 async function getMyOrders(supabase: any, organizationId: string, contactId: string) {

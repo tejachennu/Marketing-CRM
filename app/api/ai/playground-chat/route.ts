@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { isSuperAdmin } from '@/lib/rbac'
@@ -328,6 +329,7 @@ Rules:
 - If the latest message is already self-contained (e.g., a greeting like "hi" or "hello", or a complete question), return it as-is
 - Resolve pronouns and references (e.g., "it", "that", "this") using conversation history
 - Keep the query concise (under 30 words)
+${SEARCH_QUERY_LANGUAGE_RULE}
 - Do NOT add information not implied by the conversation
 
 Conversation history:
@@ -454,7 +456,10 @@ Use this history to maintain context, avoid repeating information, and respond n
 CRITICAL INSTRUCTIONS:
 You MUST respond in JSON format. The JSON object must contain two keys:
 1. "reply": (string) Your natural conversational reply to the customer.
-2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.`
+2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.
+
+${LANGUAGE_RULES}
+- The fixed "support team will reply" notice is also given in the customer's language; set "isRiseTicket" to true for it as before.`
 
       let botReply = ''
       let isRiseTicket = false

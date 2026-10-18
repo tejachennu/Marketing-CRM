@@ -68,8 +68,8 @@ const input = (database, fetcher, message = 'Do you have Premchand books?') => (
 test('Shopping assistant: searches, then sends real product cards with a short reply', async () => {
   const database = fakeDb()
   const openai = scriptedOpenAI([
-    [['search_products', { query: 'premchand' }]],
-    [['reply_to_customer', { message: 'Yes! Here are our Premchand books. Tap one to add it to your cart.', product_ids: ['BK-GODAAN', 'BK-GITANJALI'] }]],
+    [['search_products', { query: 'books' }]],
+    [['reply_to_customer', { message: 'Yes! Here are our books. Tap one to add it to your cart.', product_ids: ['BK-GODAAN', 'BK-GITANJALI'] }]],
   ])
   let result
   const sent = await withWhatsApp(async () => { result = await runShoppingAssistant(input(database, openai.fetcher)) })
@@ -77,9 +77,9 @@ test('Shopping assistant: searches, then sends real product cards with a short r
   assert.equal(sent.length, 1)
   assert.equal(sent[0].interactive.type, 'product_list')
   assert.deepEqual(sent[0].interactive.action.sections[0].product_items.map((item) => item.product_retailer_id), ['BK-GODAAN', 'BK-GITANJALI'])
-  assert.equal(sent[0].interactive.body.text, 'Yes! Here are our Premchand books. Tap one to add it to your cart.')
+  assert.equal(sent[0].interactive.body.text, 'Yes! Here are our books. Tap one to add it to your cart.')
   // The chat shows the reply and a product card line
-  assert.deepEqual(database.tables.messages.map((row) => row.body), ['Yes! Here are our Premchand books. Tap one to add it to your cart.', '[Sent 2 products from the catalog]'])
+  assert.deepEqual(database.tables.messages.map((row) => row.body), ['Yes! Here are our books. Tap one to add it to your cart.', '[Sent 2 products from the catalog]'])
   // The search result went back to the model, and only this store's products were in it
   const toolResult = openai.requests[1].messages.find((m) => m.role === 'tool')
   assert.ok(!toolResult.content.includes('X-1'))
@@ -138,4 +138,19 @@ test('Shopping assistant: when it runs, and how it searches', () => {
   assert.equal(shoppingAssistantEnabled({ ...organization, meta_catalog_id: '' }), false)
   assert.deepEqual(searchTerms('Premchand, books!! under 300 %_'), ['premchand', 'books', 'under', '300'])
   assert.ok(scoreProduct(PRODUCTS[0], ['premchand']) > scoreProduct(PRODUCTS[1], ['premchand']))
+})
+
+test('Shopping assistant: a Tenglish question reaches the model with the language rules, and a loose spelling still finds the book', async () => {
+  const database = fakeDb()
+  const openai = scriptedOpenAI([
+    [['search_products', { query: 'premchnd' }]],
+    [['reply_to_customer', { message: 'Avunu andi, maa daggara Premchand books unnayi. Product meeda tap chesi cart lo add cheyandi.', product_ids: ['BK-GODAAN'] }]],
+  ])
+  const sent = await withWhatsApp(async () => { await runShoppingAssistant(input(database, openai.fetcher, 'me degera premchand books vunaya')) })
+  assert.match(openai.requests[0].messages[0].content, /Tenglish in → Tenglish out/)
+  assert.equal(openai.requests[0].messages.at(-1).content, 'me degera premchand books vunaya')
+  const found = JSON.parse(openai.requests[1].messages.find((m) => m.role === 'tool').content)
+  assert.deepEqual(found.map((product) => product.retailer_id), ['BK-GODAAN'])
+  assert.equal(sent[0].interactive.action.product_retailer_id, 'BK-GODAAN')
+  assert.match(sent[0].interactive.body.text, /unnayi/)
 })
