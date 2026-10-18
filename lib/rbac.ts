@@ -227,7 +227,7 @@ export function canAccessPage(user: RoleSubject, pathname: string): boolean {
   // Managers open Settings for the Team and Knowledge tabs; the page hides the rest from them
   if (under('/dashboard/settings')) return isManager(user)
   if (under('/dashboard/flows')) return can(user, 'automation.manage')
-  if (under('/dashboard/campaigns') || under('/dashboard/contacts')) return canSeeAll(user)
+  if (under('/dashboard/campaigns') || under('/dashboard/contacts') || under('/dashboard/templates')) return canSeeAll(user)
   return true
 }
 

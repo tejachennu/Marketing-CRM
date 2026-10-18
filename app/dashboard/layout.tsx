@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -658,6 +658,7 @@ export default function DashboardLayout({
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
+    { href: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
@@ -673,6 +674,7 @@ export default function DashboardLayout({
     if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {
       return features.enable_messages || features.enable_email
     }
+    if (path.startsWith('/dashboard/templates')) return features.enable_messages
     if (path.startsWith('/dashboard/ivr')) return false
     return true
   }
