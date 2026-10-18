@@ -10,7 +10,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
-import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { MAGNETORA_ORG_ID, isFlowBetaAllowed } from '@/lib/flows/flow-types'
 
 export default function DashboardLayout({
   children,
@@ -679,15 +679,18 @@ export default function DashboardLayout({
 
   // Commerce and the Flow Builder are still being tested, so the menu lists them only on a
   // developer's machine (`next dev`), or where NEXT_PUBLIC_SHOW_PREVIEW_MODULES is "true".
+  // Commerce is also listed for the Magnetora AI Solutions workspace, which tests it on the live site.
   // Only the menu entry is hidden: the pages keep their usual role and feature rules.
   const previewPages = ['/dashboard/commerce', '/dashboard/flows']
   const showPreviewPages = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PREVIEW_MODULES === 'true'
+  const isListedInMenu = (href: string) =>
+    showPreviewPages || !previewPages.includes(href) || (href === '/dashboard/commerce' && orgId === MAGNETORA_ORG_ID)
 
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
   const filteredNavItems = profileLoaded
     ? navItems.filter(
         (item) =>
-          (showPreviewPages || !previewPages.includes(item.href)) &&
+          isListedInMenu(item.href) &&
           canAccessPage(currentUser, item.href) &&
           (isPlatformAdmin || isFeatureEnabled(item.href))
       )
