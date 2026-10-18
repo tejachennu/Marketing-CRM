@@ -389,6 +389,52 @@ export default function TemplatesPage() {
   }
 
   // ── List ─────────────────────────────────────────────────────────────────
+  const rowInfo = (template: MetaTemplate, index: number) => ({
+    body: template.components?.find((component: any) => component.type === 'BODY')?.text || '',
+    editable: !['PENDING', 'IN_APPEAL', 'DISABLED', 'PENDING_DELETION', 'DELETED'].includes(template.status),
+    // Further languages of the same template sit under its first row, as in WhatsApp Manager
+    continued: index > 0 && filtered[index - 1].name === template.name,
+  })
+  type Row = ReturnType<typeof rowInfo>
+
+  const rowTitle = (template: MetaTemplate, row: Row) => (
+    <button type="button" onClick={() => (canManage && row.editable ? startEdit(template) : undefined)} className="block w-full min-w-0 text-left">
+      {row.continued ? (
+        <span className="flex items-center gap-1.5 pl-1 text-[13px] text-[#65676b] dark:text-slate-400"><CornerDownRight size={14} /> {languageLabel(template.language)} version</span>
+      ) : (
+        <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white hover:underline break-all">{template.name}</span>
+      )}
+      <span className={`block text-[12.5px] text-[#65676b] dark:text-slate-400 line-clamp-2 md:line-clamp-1 break-words ${row.continued ? 'pl-6' : ''}`}>{row.body || (template.category === 'AUTHENTICATION' ? 'One-time passcode' : '')}</span>
+    </button>
+  )
+
+  const rowNotes = (template: MetaTemplate) => (
+    <>
+      {template.status === 'REJECTED' && (
+        <span className="block text-[12px] text-[#c11231] mt-1">
+          {REJECTION_REASONS[String(template.rejected_reason || 'NONE')] || template.rejected_reason}{' '}
+          <a href="https://business.facebook.com/business-support-home" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-semibold text-[#0064e0] hover:underline">Request review <ExternalLink size={11} /></a>
+        </span>
+      )}
+      {template.previous_category && <span className="block text-[12px] text-[#8a6100] mt-1">Category changed by Meta from {CATEGORY_LABELS[template.previous_category as TemplateCategory]?.title || template.previous_category}</span>}
+    </>
+  )
+
+  const rowActions = (template: MetaTemplate, row: Row) => canManage && (
+    <div className="relative shrink-0">
+      <button type="button" aria-label={`Actions for ${template.name}`} onClick={() => setMenuFor(menuFor === template.id ? null : template.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-[#65676b] hover:bg-[#e4e6eb] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={17} /></button>
+      {menuFor === template.id && (
+        <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-[#dadde1] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1">
+          {template.status === 'APPROVED' && <MenuItem icon={BarChart3} label="View insights" onClick={() => { setMenuFor(null); setView({ kind: 'insights', template }) }} />}
+          {row.editable && <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenuFor(null); startEdit(template) }} />}
+          <MenuItem icon={Languages} label="Add language" onClick={() => { setMenuFor(null); startAddLanguage(template) }} />
+          <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenuFor(null); startDuplicate(template) }} />
+          <MenuItem icon={Trash2} label="Delete" danger onClick={() => { setMenuFor(null); setConfirmDelete(template) }} />
+        </div>
+      )}
+    </div>
+  )
+
   const languagesInUse = [...new Set((templates || []).map((template) => template.language))]
   return (
     <Shell>
@@ -460,67 +506,56 @@ export default function TemplatesPage() {
             <p className="text-[13.5px] text-[#65676b] dark:text-slate-400">{templates.length ? 'Clear a filter to see more.' : 'Create your first template to start sending campaigns.'}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[720px]">
-              <thead>
-                <tr className="text-[12.5px] font-semibold text-[#65676b] dark:text-slate-400 bg-[#f5f6f7] dark:bg-slate-900/60">
-                  <th className="px-4 py-2.5">Template name</th>
-                  <th className="px-4 py-2.5">Category</th>
-                  <th className="px-4 py-2.5">Language</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5 w-12"><span className="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((template, index) => {
-                  const body = template.components?.find((component: any) => component.type === 'BODY')?.text || ''
-                  const editable = !['PENDING', 'IN_APPEAL', 'DISABLED', 'PENDING_DELETION', 'DELETED'].includes(template.status)
-                  // Further languages of the same template sit under its first row, as in WhatsApp Manager
-                  const continued = index > 0 && filtered[index - 1].name === template.name
-                  return (
-                    <tr key={template.id} className={`${continued ? '' : 'border-t border-[#ebedf0] dark:border-slate-800'} hover:bg-[#f7f8fa] dark:hover:bg-slate-900/40 align-top`}>
-                      <td className="px-4 py-3 max-w-[340px]">
-                        <button type="button" onClick={() => (canManage && editable ? startEdit(template) : undefined)} className="text-left">
-                          {continued ? (
-                            <span className="flex items-center gap-1.5 pl-1 text-[13px] text-[#65676b] dark:text-slate-400"><CornerDownRight size={14} /> {languageLabel(template.language)} version</span>
-                          ) : (
-                            <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white hover:underline">{template.name}</span>
-                          )}
-                          <span className={`block text-[12.5px] text-[#65676b] dark:text-slate-400 truncate ${continued ? 'pl-6' : ''}`}>{body || (template.category === 'AUTHENTICATION' ? 'One-time passcode' : '')}</span>
-                        </button>
-                        {template.status === 'REJECTED' && (
-                          <span className="block text-[12px] text-[#c11231] mt-1">
-                            {REJECTION_REASONS[String(template.rejected_reason || 'NONE')] || template.rejected_reason}{' '}
-                            <a href="https://business.facebook.com/business-support-home" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-semibold text-[#0064e0] hover:underline">Request review <ExternalLink size={11} /></a>
-                          </span>
-                        )}
-                        {template.previous_category && <span className="block text-[12px] text-[#8a6100] mt-1">Category changed by Meta from {CATEGORY_LABELS[template.previous_category as TemplateCategory]?.title || template.previous_category}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-slate-200">{CATEGORY_LABELS[template.category as TemplateCategory]?.title || template.category}</td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-slate-200">{languageLabel(template.language)}</td>
-                      <td className="px-4 py-3"><StatusPill template={template} /></td>
-                      <td className="px-2 py-2.5 relative">
-                        {canManage && (
-                          <>
-                            <button type="button" aria-label={`Actions for ${template.name}`} onClick={() => setMenuFor(menuFor === template.id ? null : template.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-[#65676b] hover:bg-[#e4e6eb] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={17} /></button>
-                            {menuFor === template.id && (
-                              <div className="absolute right-2 z-20 mt-1 w-44 rounded-xl border border-[#dadde1] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1">
-                                {template.status === 'APPROVED' && <MenuItem icon={BarChart3} label="View insights" onClick={() => { setMenuFor(null); setView({ kind: 'insights', template }) }} />}
-                                {editable && <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenuFor(null); startEdit(template) }} />}
-                                <MenuItem icon={Languages} label="Add language" onClick={() => { setMenuFor(null); startAddLanguage(template) }} />
-                                <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenuFor(null); startDuplicate(template) }} />
-                                <MenuItem icon={Trash2} label="Delete" danger onClick={() => { setMenuFor(null); setConfirmDelete(template) }} />
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Phones: one card per template */}
+            <ul className="md:hidden">
+              {filtered.map((template, index) => {
+                const row = rowInfo(template, index)
+                return (
+                  <li key={template.id} className={`relative px-3 sm:px-4 ${row.continued ? 'pb-3' : 'py-3 border-t first:border-t-0 border-[#ebedf0] dark:border-slate-800'}`}>
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">{rowTitle(template, row)}</div>
+                      {rowActions(template, row)}
+                    </div>
+                    <div className={`mt-2 flex flex-wrap items-start gap-x-3 gap-y-1 text-[12.5px] text-[#65676b] dark:text-slate-400 ${row.continued ? 'pl-6' : ''}`}>
+                      <StatusPill template={template} />
+                      <span className="pt-0.5">{CATEGORY_LABELS[template.category as TemplateCategory]?.title || template.category} · {languageLabel(template.language)}</span>
+                    </div>
+                    {rowNotes(template)}
+                  </li>
+                )
+              })}
+            </ul>
+
+            {/* Larger screens: the table, as in WhatsApp Manager */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left table-fixed min-w-[720px]">
+                <thead>
+                  <tr className="text-[12.5px] font-semibold text-[#65676b] dark:text-slate-400 bg-[#f5f6f7] dark:bg-slate-900/60">
+                    <th className="px-4 py-2.5">Template name</th>
+                    <th className="px-4 py-2.5 w-[130px]">Category</th>
+                    <th className="px-4 py-2.5 w-[150px]">Language</th>
+                    <th className="px-4 py-2.5 w-[170px]">Status</th>
+                    <th className="px-2 py-2.5 w-14"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((template, index) => {
+                    const row = rowInfo(template, index)
+                    return (
+                      <tr key={template.id} className={`${row.continued ? '' : 'border-t border-[#ebedf0] dark:border-slate-800'} hover:bg-[#f7f8fa] dark:hover:bg-slate-900/40 align-top`}>
+                        <td className="px-4 py-3 min-w-0">{rowTitle(template, row)}{rowNotes(template)}</td>
+                        <td className="px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-slate-200">{CATEGORY_LABELS[template.category as TemplateCategory]?.title || template.category}</td>
+                        <td className="px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-slate-200">{languageLabel(template.language)}</td>
+                        <td className="px-4 py-3"><StatusPill template={template} /></td>
+                        <td className="px-2 py-2.5 relative">{rowActions(template, row)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         {templates && templates.length > 0 && (
           <p className="px-4 py-2.5 text-[12.5px] text-[#65676b] dark:text-slate-400 border-t border-[#ebedf0] dark:border-slate-800 flex items-center gap-1.5">
