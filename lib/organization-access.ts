@@ -67,6 +67,8 @@ const AUTOMATION_FIELDS = [
   'commerce_default_shipping_fee', 'commerce_free_shipping_threshold', 'commerce_address_flow_id',
   // Exists after scripts/db-migration-v34-commerce.js; the store page only sends it when it does
   'commerce_express_fee',
+  // Exists after supabase/migrations/20261018_commerce_ai_assistant.sql; sent only when it does
+  'commerce_ai_assistant',
 ]
 
 /** Which permission a member needs to change each column. Columns not listed cannot be changed here. */

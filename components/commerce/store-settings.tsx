@@ -42,6 +42,8 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const alert = useAlert()
   // The express charge is a setting only after the optional database update; until then it is fixed
   const expressFeeEditable = 'commerce_express_fee' in orgData
+  // The AI assistant switch needs its column (supabase/migrations/20261018_commerce_ai_assistant.sql)
+  const assistantEditable = 'commerce_ai_assistant' in orgData
   // A store that was never set up is switched on by its first save; after that the switch decides
   const neverSetUp = !orgData.enable_commerce && !orgData.meta_catalog_id && !orgData.commerce_gateway_config_name && !orgData.commerce_address_flow_id
 
@@ -55,6 +57,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     commerce_free_shipping_threshold: String(orgData.commerce_free_shipping_threshold ?? '0'),
     commerce_express_fee: String(getExpressFee(orgData)),
     commerce_address_flow_id: orgData.commerce_address_flow_id || '',
+    commerce_ai_assistant: orgData.commerce_ai_assistant !== false,
   })
   const set = (changes: Partial<typeof form>) => setForm((current) => ({ ...current, ...changes }))
 
@@ -380,6 +383,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         commerce_free_shipping_threshold: freeAbove,
         commerce_address_flow_id: form.commerce_address_flow_id.trim() || null,
         ...(expressFeeEditable ? { commerce_express_fee: expressFee } : {}),
+        ...(assistantEditable ? { commerce_ai_assistant: form.commerce_ai_assistant } : {}),
       }
       const res = await fetch('/api/organization', {
         method: 'PATCH',
@@ -415,6 +419,25 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         <span className="relative shrink-0">
           <input type="checkbox" role="switch" checked={form.enable_commerce} onChange={(event) => set({ enable_commerce: event.target.checked })} className="peer sr-only" />
           <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#00a884] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40" />
+          <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+        </span>
+      </label>
+
+      {/* AI shopping assistant */}
+      <label className={`${cardClass} p-4 sm:p-5 flex items-center justify-between gap-4 ${assistantEditable ? 'cursor-pointer' : ''}`}>
+        <span>
+          <span className={`block ${heading}`}>AI shopping assistant</span>
+          <span className={`block ${subheading}`}>
+            {!assistantEditable
+              ? 'On. Answers product and order questions in the chat with your own products and the customer\'s orders. To be able to switch it off here, run the database update supabase/migrations/20261018_commerce_ai_assistant.sql.'
+              : form.commerce_ai_assistant
+                ? 'Answers “do you have…” and “where is my order?” in the chat: it searches your products, sends product cards and reads the customer\'s own orders. Other questions go to your FAQ chatbot. Needs the AI chatbot to be on.'
+                : 'Off: product and order questions go to your FAQ chatbot like any other message.'}
+          </span>
+        </span>
+        <span className="relative shrink-0">
+          <input type="checkbox" role="switch" checked={assistantEditable ? form.commerce_ai_assistant : true} disabled={!assistantEditable} onChange={(event) => set({ commerce_ai_assistant: event.target.checked })} className="peer sr-only" />
+          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#00a884] peer-disabled:opacity-60 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40" />
           <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
         </span>
       </label>

@@ -10,6 +10,8 @@ import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsu
 import { trackChatbotEvent } from '@/lib/ai-analytics'
 import { classifyGreeting } from '@/lib/greeting-classifier'
 import { describeCart } from '@/lib/chat-commerce'
+import { getMessagePreview } from '@/lib/chat-message-format'
+import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
   handleCheckoutButton,
@@ -803,6 +805,46 @@ async function processEvent(
     ) {
       console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
       const chatbotStartTime = Date.now()
+
+      // Product and order questions: the shopping assistant answers with the store's own products and
+      // the customer's own orders. Everything else falls through to the FAQ chatbot below.
+      // A redelivered message (Meta retries webhooks) was already answered the first time
+      if (shoppingAssistantEnabled(orgData) && !previousMessage) {
+        try {
+          const { data: recentForAssistant } = await supabase
+            .from('messages')
+            .select('sender_type, body, media_url')
+            .eq('conversation_id', conversation.id)
+            .order('created_at', { ascending: false })
+            .limit(9)
+          // The newest row is the message being answered; it is passed on its own
+          const history = (recentForAssistant || [])
+            .slice(1)
+            .reverse()
+            .map((m: any) => ({ role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const, content: getMessagePreview(m) }))
+            .filter((m: any) => m.content)
+          const assistant = await runShoppingAssistant({
+            supabase,
+            organization: orgData,
+            contact,
+            conversationId: conversation.id,
+            customerPhone: phoneNumber,
+            openAiKey,
+            message: messageBody,
+            history,
+          })
+          if (assistant.handled) {
+            await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            console.log(`[Facebook Webhook Chatbot] Shopping assistant answered (${assistant.productsSent} product cards) in ${Date.now() - chatbotStartTime}ms`)
+            return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'shopping_assistant' })
+          }
+          console.log(`[Facebook Webhook Chatbot] Shopping assistant passed to the FAQ chatbot: ${assistant.reason}`)
+        } catch (assistantErr: any) {
+          // The FAQ chatbot still answers
+          console.error('[Facebook Webhook Chatbot] Shopping assistant failed:', assistantErr?.message || assistantErr)
+        }
+      }
+
       try {
         // 0. Contextual Query Condensation — rewrite follow-up messages as standalone search queries
         //    This fixes context blindness where "how much is it?" loses the topic from earlier messages

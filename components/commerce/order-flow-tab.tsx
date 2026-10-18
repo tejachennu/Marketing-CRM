@@ -245,7 +245,9 @@ export function OrderFlowTab({
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">How an order flows</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">With your current settings, for a sample order of {sampleTotal}. These are the exact messages customers get.</p>
           <ol>
-            <FlowStep icon={ShoppingCart} title="1. Customer sends a cart" note="They open your catalog in the chat, add products and tap Send cart.">
+            <FlowStep icon={ShoppingCart} title="1. Customer sends a cart" note={orgData.enable_ai !== false && orgData.commerce_ai_assistant !== false
+              ? 'They open your catalog in the chat, or just ask (“do you have Premchand books?”) and the AI shopping assistant replies with product cards. They add products and tap Send cart.'
+              : 'They open your catalog in the chat, add products and tap Send cart.'}>
               <Bubble from="customer" text={`🛒 1 item · ${sampleTotal}`} />
             </FlowStep>
             <FlowStep icon={Package} title="2. The order is created and confirmed" note="An order appears in Orders straight away, and the customer is answered in seconds.">
