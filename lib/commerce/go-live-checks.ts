@@ -30,6 +30,16 @@ export interface MetaDetection {
   flowsError?: string | null
   commerceSettings?: { is_cart_enabled?: boolean; is_catalog_visible?: boolean } | null
   commerceSettingsError?: string | null
+  /**
+   * The linked catalog as GET /api/commerce/catalog reports it (what Store settings shows). Preferred
+   * over `catalogs`: Meta's list of the account's catalogs can be empty while one is connected.
+   */
+  catalogStatus?: {
+    linked: { name?: string; product_count?: number } | null
+    linkedError?: string | null
+    /** null when Meta would not say which catalog is connected */
+    connected: boolean | null
+  } | null
 }
 
 export function getGoLiveChecks(organization: Record<string, any> | null | undefined, meta: MetaDetection | null): GoLiveCheck[] {
@@ -53,13 +63,32 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
 
   // 3. Catalog
   const catalogId = String(organization?.meta_catalog_id || '').trim()
-  const catalog = meta?.catalogs?.find((item) => String(item.id) === catalogId)
+  const status = meta?.catalogStatus
+  const listed = meta?.catalogs?.find((item) => String(item.id) === catalogId)
+  const catalog = status?.linked || listed
+  // The cart and catalog buttons can only be on when a catalog is connected to the number
+  const cartShowsCatalog = meta?.commerceSettings?.is_catalog_visible === true
   if (!catalogId) {
     checks.push({ id: 'catalog', title: 'Catalog linked', state: 'error', required: true, fix: 'store_settings', detail: 'Link the Meta catalog customers shop from.' })
   } else if (!known) {
     checks.push({ id: 'catalog', title: 'Catalog linked', state: 'unknown', required: true, detail: 'Checking with Meta…' })
-  } else if (meta?.catalogsError) {
+  } else if (status) {
+    const name = status.linked?.name || catalogId
+    const count = typeof status.linked?.product_count === 'number' ? status.linked.product_count : null
+    if (!status.linked) {
+      checks.push({ id: 'catalog', title: 'Catalog linked', state: status.linkedError ? 'error' : 'warning', required: true, fix: 'store_settings', detail: status.linkedError ? `Meta could not read the linked catalog: ${status.linkedError}` : 'Meta did not return the linked catalog.' })
+    } else if (status.connected === false) {
+      checks.push({ id: 'catalog', title: 'Catalog linked', state: 'error', required: true, fix: 'store_settings', detail: `“${name}” is not the catalog connected to your WhatsApp account. Connect it in Store settings.` })
+    } else if (count === 0) {
+      checks.push({ id: 'catalog', title: 'Catalog linked', state: 'error', required: true, fix: 'store_settings', detail: `“${name}” has no products yet. Add products in the Products tab.` })
+    } else {
+      checks.push({ id: 'catalog', title: 'Catalog linked', state: 'ok', required: true, detail: `${name}${count !== null ? ` · ${count} product${count === 1 ? '' : 's'}` : ''}` })
+    }
+  } else if (meta?.catalogsError && !cartShowsCatalog) {
     checks.push({ id: 'catalog', title: 'Catalog linked', state: 'warning', required: true, fix: 'store_settings', detail: `Meta did not list your catalogs: ${meta.catalogsError}` })
+  } else if (!listed && !meta?.catalogs?.length) {
+    // Meta listed no catalog at all, which happens even when one is connected: nothing says it is wrong
+    checks.push({ id: 'catalog', title: 'Catalog linked', state: cartShowsCatalog ? 'ok' : 'warning', required: true, fix: cartShowsCatalog ? undefined : 'store_settings', detail: cartShowsCatalog ? 'Linked, and the catalog shows on your WhatsApp number.' : 'Meta did not list the catalog connected to your WhatsApp account, so this could not be confirmed. Check it in Store settings.' })
   } else if (!catalog) {
     checks.push({ id: 'catalog', title: 'Catalog linked', state: 'error', required: true, fix: 'store_settings', detail: 'The linked catalog is not connected to this WhatsApp account. Connect it in Commerce Manager, or pick another in Store settings.' })
   } else if (catalog.product_count === 0) {

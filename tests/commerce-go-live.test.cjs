@@ -72,3 +72,17 @@ test('Checkout: the payment step follows the settings', () => {
   assert.equal(getPaymentStep({ commerce_enable_cod: false }), 'acknowledged')
   assert.equal(CHECKOUT_TEXT.received('ORD-1', 2, '₹398'), 'Thank you! We received your order #ORD-1 for 2 items (Total: ₹398).')
 })
+
+test('Go live: a connected catalog missing from Meta\'s account list is not reported as disconnected', () => {
+  // What Store settings saw: the catalog lookup says it is linked with 5 products; Meta's account list is empty
+  const reported = meta({ catalogs: [], catalogStatus: { linked: { name: 'Catalogue_Products', product_count: 5 }, linkedError: null, connected: null } })
+  const catalog = byId(getGoLiveChecks(store(), reported)).catalog
+  assert.equal(catalog.state, 'ok')
+  assert.equal(catalog.detail, 'Catalogue_Products · 5 products')
+  // Without the catalog lookup, an empty list with the catalog showing on the number is fine too
+  assert.equal(byId(getGoLiveChecks(store(), meta({ catalogs: [] }))).catalog.state, 'ok')
+  // Only a definite "not connected" is an error
+  assert.equal(byId(getGoLiveChecks(store(), meta({ catalogStatus: { linked: { name: 'X', product_count: 5 }, connected: false } }))).catalog.state, 'error')
+  assert.equal(byId(getGoLiveChecks(store(), meta({ catalogStatus: { linked: null, linkedError: 'Unsupported get request', connected: null } }))).catalog.state, 'error')
+  assert.equal(byId(getGoLiveChecks(store(), meta({ catalogStatus: { linked: { name: 'X', product_count: 0 }, connected: true } }))).catalog.state, 'error')
+})

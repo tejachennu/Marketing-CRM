@@ -97,13 +97,19 @@ export function OrderFlowTab({
   const load = useCallback(async () => {
     setChecking(true)
     try {
-      const [metaRes, ordersRes] = await Promise.all([
+      const [metaRes, catalogRes, ordersRes] = await Promise.all([
         fetch(`/api/commerce/meta-detect?organizationId=${orgId}`),
+        // The same catalog lookup as Store settings, which knows Meta's catalog list can be incomplete
+        fetch(`/api/commerce/catalog?organizationId=${orgId}`),
         fetch(`/api/commerce/order-flow?organizationId=${orgId}`),
       ])
       const metaBody = await metaRes.json().catch(() => ({}))
+      const catalogBody = await catalogRes.json().catch(() => null)
+      const catalogStatus = catalogRes.ok && catalogBody
+        ? { linked: catalogBody.linked || null, linkedError: catalogBody.linkedError || null, connected: typeof catalogBody.connected === 'boolean' ? catalogBody.connected : null }
+        : null
       // A store without WhatsApp gets a 400 here; the checks then show "connect WhatsApp"
-      setMeta(metaRes.ok ? metaBody : { connectionError: metaBody.error || 'Meta could not be reached.' })
+      setMeta(metaRes.ok ? { ...metaBody, catalogStatus } : { connectionError: metaBody.error || 'Meta could not be reached.' })
       const ordersBody = await ordersRes.json().catch(() => ({}))
       setOrders(ordersRes.ok ? ordersBody.orders || [] : [])
     } catch {
