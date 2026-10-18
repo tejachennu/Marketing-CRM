@@ -18,6 +18,7 @@ import { useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
 import { formatBadgeCount, formatWindowRemaining, getAvatarTone, getMessagePreview, getMessageText, getServiceWindow, parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { MessageList } from '@/components/chat/message-list'
+import { collectProductRefs, parseCommerceMessage, type ChatOrderCard, type ChatProductCard } from '@/lib/chat-commerce'
 import { ConversationRow } from '@/components/chat/conversation-row'
 
 function ConversationsPageContent() {
@@ -1543,6 +1544,32 @@ function ConversationsPageContent() {
   // windowTick re-evaluates it every minute so the countdown and the cut-off stay current.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const serviceWindow = useMemo(() => getServiceWindow(messages), [messages, windowTick])
+
+  // Products sent and carts placed in the open chat, shown as cards. Fetched again only when
+  // the set of commerce messages changes, not on every new message.
+  const [chatCommerce, setChatCommerce] = useState<{ conversationId: string; orders: ChatOrderCard[]; products: ChatProductCard[] } | null>(null)
+  const commerceRefs = useMemo(() => {
+    const commerceMessages = messages.filter((message) => !message.media_url && parseCommerceMessage(message.body))
+    if (commerceMessages.length === 0) return null
+    return JSON.stringify({ ...collectProductRefs(commerceMessages), count: commerceMessages.length })
+  }, [messages])
+  useEffect(() => {
+    if (!selectedConversation || !commerceRefs) return
+    let cancelled = false
+    const { titles, skus } = JSON.parse(commerceRefs) as { titles: string[]; skus: string[] }
+    const params = new URLSearchParams({ conversationId: selectedConversation })
+    skus.forEach((sku) => params.append('sku', sku))
+    titles.forEach((title) => params.append('title', title))
+    fetch(`/api/commerce/chat-cards?${params}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setChatCommerce({ conversationId: selectedConversation, orders: data.orders || [], products: data.products || [] })
+      })
+      // Without the details the messages still show as plain cards
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedConversation, commerceRefs])
+  const openChatCommerce = chatCommerce && chatCommerce.conversationId === selectedConversation ? chatCommerce : undefined
   // Until the history has loaded there is nothing to judge the window by, so nothing is blocked
   const windowClosed = !loadingMessages && !messagesError && serviceWindow.state !== 'open'
   const chatbotActive = selectedConvData?.auto_reply_enabled !== false && features.enable_ai
@@ -2078,6 +2105,7 @@ function ConversationsPageContent() {
                   onRetry={readOnly ? undefined : handleRetryMessage}
                   onJumpToMessage={scrollToMessage}
                   onMediaLoad={handleMediaLoad}
+                  commerce={openChatCommerce}
                 />
               )}
               <div ref={messagesEndRef} className="h-px" />

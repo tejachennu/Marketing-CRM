@@ -15,6 +15,8 @@ import {
 } from '@/lib/chat-message-format'
 import { ChatDateSeparator } from '@/components/chat-date-separator'
 import { MessageText } from '@/components/chat/message-text'
+import { CommerceCard } from '@/components/chat/commerce-card'
+import { parseCommerceMessage, whatsappMessageId, type ChatOrderCard, type ChatProductCard } from '@/lib/chat-commerce'
 
 interface MessageListProps {
   messages: Message[]
@@ -31,6 +33,8 @@ interface MessageListProps {
   onJumpToMessage: (messageId: string) => void
   /** Called when a photo or video has its size, so the view can stay on the newest message. */
   onMediaLoad?: () => void
+  /** Orders placed and products sent in this chat, shown as cards on their messages. */
+  commerce?: { orders: ChatOrderCard[]; products: ChatProductCard[] }
 }
 
 function DeliveryStatus({ message }: { message: Message }) {
@@ -73,8 +77,14 @@ export const MessageList = memo(function MessageList({
   onRetry,
   onJumpToMessage,
   onMediaLoad,
+  commerce,
 }: MessageListProps) {
   const byId = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
+  const cards = useMemo(() => ({
+    ordersByMessage: new Map((commerce?.orders || []).filter((order) => order.meta_order_id).map((order) => [order.meta_order_id as string, order])),
+    productsBySku: new Map((commerce?.products || []).map((product) => [product.retailer_id, product])),
+    productsByTitle: new Map((commerce?.products || []).map((product) => [product.title.toLowerCase(), product])),
+  }), [commerce])
 
   return (
     <>
@@ -102,6 +112,11 @@ export const MessageList = memo(function MessageList({
         const quoted = replyToId ? byId.get(replyToId) : undefined
         const failed = message.status === 'failed' || message.status === 'undelivered'
         const isVisual = mediaType === 'image' || mediaType === 'video'
+        const commerceMessage = message.media_url ? null : parseCommerceMessage(message.body)
+        const order = commerceMessage?.kind === 'order' ? cards.ordersByMessage.get(whatsappMessageId(message.twilio_message_sid) || '') : undefined
+        const product = commerceMessage?.kind === 'product'
+          ? (commerceMessage.sku && cards.productsBySku.get(commerceMessage.sku)) || cards.productsByTitle.get(commerceMessage.title.toLowerCase())
+          : undefined
 
         return (
           <Fragment key={message.id}>
@@ -126,7 +141,7 @@ export const MessageList = memo(function MessageList({
               <div
                 id={`msg-${message.id}`}
                 className={`max-w-[85%] sm:max-w-[65%] lg:max-w-[520px] min-w-[84px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] relative overflow-hidden transition-[box-shadow,background-color] duration-300 ${
-                  isVisual ? 'p-1' : mediaType === 'document' ? 'p-1.5' : 'px-2.5 py-1.5'
+                  isVisual || commerceMessage ? 'p-1' : mediaType === 'document' ? 'p-1.5' : 'px-2.5 py-1.5'
                 } ${
                   isOutgoing
                     ? `bg-[#d9fdd3] dark:bg-[#005c4b] ${startsGroup ? 'rounded-tr-none' : ''}`
@@ -207,9 +222,13 @@ export const MessageList = memo(function MessageList({
                   </div>
                 )}
 
-                {text && <MessageText text={text} className={`text-[14.2px] leading-[19px] ${isVisual ? 'px-1.5 pt-1' : ''}`} />}
+                {commerceMessage ? (
+                  <CommerceCard parsed={commerceMessage} order={order} product={product || undefined} isOutgoing={isOutgoing} />
+                ) : (
+                  text && <MessageText text={text} className={`text-[14.2px] leading-[19px] ${isVisual ? 'px-1.5 pt-1' : ''}`} />
+                )}
 
-                <div className={`flex items-center justify-end gap-1 mt-0.5 text-[11px] leading-none select-none ${isVisual ? 'px-1.5 pb-0.5' : ''} ${isOutgoing ? 'text-[#667781] dark:text-[#e9edef]/60' : 'text-[#667781] dark:text-[#8696a0]'}`}>
+                <div className={`flex items-center justify-end gap-1 mt-0.5 text-[11px] leading-none select-none ${isVisual || commerceMessage ? 'px-1.5 pb-0.5' : ''} ${isOutgoing ? 'text-[#667781] dark:text-[#e9edef]/60' : 'text-[#667781] dark:text-[#8696a0]'}`}>
                   {failed && <span className="text-rose-600 dark:text-rose-400 font-medium mr-auto pr-2">Not delivered</span>}
                   <span>{formatChatTime(message.created_at)}</span>
                   {isOutgoing && <DeliveryStatus message={message} />}

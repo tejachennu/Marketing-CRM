@@ -9,6 +9,8 @@ import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
 import { classifyGreeting } from '@/lib/greeting-classifier'
+import { describeCart } from '@/lib/chat-commerce'
+import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
   handleCheckoutButton,
   handleInboundCommerceOrder,
@@ -375,9 +377,11 @@ async function processEvent(
       messageBody = message.text?.body || ''
     } else if (type === 'order') {
       const orderData = message.order
-      const itemCount = (orderData?.product_items || []).length
+      const cartItems = Array.isArray(orderData?.product_items) ? orderData.product_items : []
+      const cart = describeCart(cartItems)
+      const total = cart.total > 0 ? ` · ${formatMoney(cart.total, cart.currency)}` : ''
       const note = orderData?.text ? ` (Note: "${orderData.text}")` : ''
-      messageBody = `🛒 [WhatsApp Cart Order]: ${itemCount} item(s) selected${note}`
+      messageBody = `🛒 [WhatsApp Cart Order]: ${cartItems.length} item(s) selected${total}${note}`
     } else if (type === 'payment') {
       const payData = message.payment
       messageBody = `💳 [WhatsApp In-Chat Payment]: Reference ${payData?.reference_id || 'N/A'}, Status: ${payData?.status || 'success'}`

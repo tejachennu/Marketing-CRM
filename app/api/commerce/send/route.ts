@@ -12,6 +12,7 @@ import {
 import { sendWhatsAppMessage } from '@/lib/commerce/commerce-webhook-handler'
 import { explainCommerceError } from '@/lib/commerce/meta-catalog'
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
+import { formatSentProduct } from '@/lib/chat-commerce'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
           bodyText: text(payload.bodyText, 1024),
           footerText: text(payload.footerText, 60) || undefined,
         })
-        logSummary = `[Sent product: ${text(payload.productTitle, 80) || `SKU ${sku}`}]`
+        logSummary = formatSentProduct(text(payload.productTitle, 80), sku)
       } else if (type === 'multi_product') {
         const skus = [...new Set((Array.isArray(payload.productRetailerIds) ? payload.productRetailerIds : []).map((sku: unknown) => text(sku, 100)).filter(Boolean))] as string[]
         if (skus.length === 0) {

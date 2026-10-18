@@ -4,6 +4,8 @@
  * Pure functions, shared by the inbox, the campaign workspace and their tests.
  */
 
+import { describeCommerceMessage, parseCommerceMessage } from '@/lib/chat-commerce'
+
 export interface ChatMessageLike {
   id: string
   sender_type: string
@@ -117,6 +119,8 @@ export function getMessageText(message: Pick<ChatMessageLike, 'body' | 'media_ur
 /** One line describing a message, for the conversation list and quoted replies. */
 export function getMessagePreview(message: Pick<ChatMessageLike, 'body' | 'media_url'> | null | undefined): string {
   if (!message) return ''
+  const commerce = parseCommerceMessage(message.body)
+  if (commerce) return describeCommerceMessage(commerce)
   const text = getMessageText(message).replace(/\s+/g, ' ').trim()
   if (text) return text
   const kind = getMediaType(message.media_url)
