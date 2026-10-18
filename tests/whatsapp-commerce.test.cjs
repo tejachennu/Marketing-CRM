@@ -788,7 +788,7 @@ test('Commerce payments: only an explicit success is read as paid', () => {
   assert.equal(read(null), null)
 })
 
-test('Commerce payments: a captured status marks the order paid and sends one receipt', async () => {
+test('Commerce payments: a captured status marks the order paid and sends one receipt and a thank-you', async () => {
   const database = seeded({ meta_payment_reference: 'ORD-261013-AB12', conversation_id: 'conversation-9' })
 
   // The status webhook carries no conversation: the order's own conversation and phone are used
@@ -803,11 +803,17 @@ test('Commerce payments: a captured status marks the order paid and sends one re
   assert.equal(saved.meta_payment_reference, 'ORD-261013-AB12')
   assert.equal(database.tables.commerce_transactions.length, 1)
   assert.deepEqual([database.tables.commerce_transactions[0].amount, database.tables.commerce_transactions[0].transaction_id], [1040, 'pay_ABC123'])
-  assert.equal(sent.length, 1)
+  // Once only, despite the redelivery: the receipt card, then the thank-you
+  assert.equal(sent.length, 2)
   assert.equal(sent[0].interactive.type, 'order_status')
   assert.equal(sent[0].interactive.action.parameters.reference_id, 'ORD-261013-AB12')
   assert.equal(sent[0].to, '919876543210')
+  assert.equal(sent[1].type, 'text')
+  assert.equal(sent[1].to, '919876543210')
+  assert.match(sent[1].text.body, /^🎉 Thank you.*payment is successful and order #\S+ is confirmed/)
+  assert.match(sent[1].text.body, /message you here when it ships/)
   assert.equal(database.tables.messages[0].conversation_id, 'conversation-9')
+  assert.equal(database.tables.messages[1].body, sent[1].text.body)
 })
 
 test('Commerce payments: the order is found by any reference it was requested under', async () => {

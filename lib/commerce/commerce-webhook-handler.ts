@@ -899,6 +899,18 @@ export async function handleInboundPaymentConfirmation({
     if (!card.ok) {
       await sendAndLog(context, buildTextMessage(receiptPhone, text), `[Payment received for Order #${order.order_number} (${formatMoney(paidAmount, currency)}); receipt sent]`)
     }
+    // Then a warm thank-you, as a normal message the customer can reply to
+    if (order.status !== 'canceled') {
+      const items = await loadOrderItems(supabase, order.id)
+      const thanks = CHECKOUT_TEXT.thankYou({
+        name: String(order.shipping_address?.name || order.customer_name || '').trim().split(/\s+/)[0] || undefined,
+        store: String(organization.name || '').trim() || undefined,
+        orderNumber: order.order_number,
+        items: items.map((item) => ({ name: item.name, quantity: item.quantity })),
+        address: formatAddress(order.shipping_address),
+      })
+      await sendAndLog(context, buildTextMessage(receiptPhone, thanks), thanks)
+    }
   }
 
   return { ...order, status: isOpen(order.status) ? 'paid' : order.status, payment_status: 'paid', payment_method: 'whatsapp_pay' }

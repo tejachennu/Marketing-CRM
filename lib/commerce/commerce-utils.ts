@@ -204,6 +204,13 @@ export const CHECKOUT_TEXT = {
   acknowledge: 'Our team will contact you shortly to confirm payment and delivery.',
   codConfirmed: (orderNumber: string, total: string) => `Order #${orderNumber} is confirmed for Cash on Delivery. Please keep ${total} ready when it arrives.`,
   paid: (amount: string, orderNumber: string) => `Payment of ${amount} received. Order #${orderNumber} is confirmed and we are preparing it.`,
+  /** The thank-you that follows a successful payment. */
+  thankYou: ({ name, store, orderNumber, items, address }: { name?: string; store?: string; orderNumber: string; items: Array<{ name: string; quantity: number }>; address?: string }) => [
+    `🎉 Thank you${name ? `, ${name}` : ''}! Your payment is successful and order #${orderNumber} is confirmed.`,
+    items.length ? `🛍️ ${items.slice(0, 5).map((item) => `${item.name}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('\n🛍️ ')}${items.length > 5 ? `\n…and ${items.length - 5} more` : ''}` : '',
+    address ? `🚚 Delivering to: ${address}` : '',
+    `We'll message you here when it ships. Reply anytime if you need help.${store ? `\n\nThank you for shopping with ${store} 💚` : ''}`,
+  ].filter(Boolean).join('\n\n'),
 }
 
 export type PaymentStep = 'choice' | 'payment' | 'cod' | 'acknowledged'
