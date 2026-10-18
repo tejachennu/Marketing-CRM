@@ -721,6 +721,23 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                 ? 'No payment setup on your WhatsApp account yet. Add one in WhatsApp Manager → Payments (Razorpay, PayU, BillDesk or Zaakpay), then Refresh from Meta.'
                 : 'Payment setups on your WhatsApp account (WhatsApp Manager → Payments). In-chat payment is for businesses in India, in rupees.'}
           </p>
+          {(() => {
+            const chosen = paymentSetups.find((config) => config.configuration_name === form.commerce_gateway_config_name)
+            const status = String(chosen?.status || '')
+            if (!chosen || !status || status.toLowerCase() === 'active') return null
+            const provider = GATEWAY_LABELS[String(chosen.provider_name || '').toLowerCase()] || chosen.provider_name || 'your gateway'
+            return (
+              <p role="alert" className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={15} className="shrink-0 mt-px" />
+                <span>
+                  “{chosen.configuration_name}” is not ready on Meta ({status}). In WhatsApp Manager → Payments, open it and {/connect/i.test(status) ? `choose Connect, then sign in to ${provider} and approve WhatsApp` : 'finish the steps Meta shows'}. Then use Refresh from Meta. Until it is Active, online payment requests fail{form.commerce_enable_cod ? ' and customers can only use Cash on Delivery' : ''}.
+                </span>
+              </p>
+            )
+          })()}
+          {paymentSetups.some((config) => !(SUPPORTED_PAYMENT_GATEWAYS as readonly string[]).includes(String(config.provider_name || '').toLowerCase())) && (
+            <p className={hintClass}>Setups marked “not supported here” are not linked to Razorpay, PayU, BillDesk or Zaakpay (for example a plain UPI ID), so WAMACRM cannot request payment through them.</p>
+          )}
         </div>
         <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 cursor-pointer">
           <input type="checkbox" checked={form.commerce_enable_cod} onChange={(event) => set({ commerce_enable_cod: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#00a884]" />
