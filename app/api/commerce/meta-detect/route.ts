@@ -4,7 +4,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getMetaCredentials, metaRequest, uploadNativeFlow } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
 import { formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
-import { describeCatalogError, flattenPaymentConfigurations, getCatalogCredentials, setCommerceSettings } from '@/lib/commerce/meta-catalog'
+import { describeCatalogError, flattenPaymentConfigurations, setCommerceSettings } from '@/lib/commerce/meta-catalog'
 
 /**
  * The address form with this store's delivery options: the express choice shows what it costs,
@@ -97,8 +97,9 @@ export async function GET(request: NextRequest) {
     }
 
     const [catalogs, payments, flows, settings] = await Promise.all([
-      // Listing the account's catalog needs catalog access: the catalog connection when the store made one
-      attempt(async () => (await metaRequest(getCatalogCredentials(org), `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`))?.data || []),
+      // The catalog connected to the WhatsApp account, read with the WhatsApp connection (a catalog
+      // connection is granted catalogs only, not the account)
+      attempt(async () => (await metaRequest(credentials, `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`))?.data || []),
       attempt(async () => flattenPaymentConfigurations(await metaRequest(credentials, `${wabaId}/payment_configurations`))),
       attempt(async () => (await metaRequest(credentials, `${wabaId}/flows?fields=id,name,status,categories`))?.data || []),
       phoneNumberId

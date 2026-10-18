@@ -97,9 +97,9 @@ test('Store settings from Meta: one refusal is explained and does not hide the r
   assert.equal(data.flows.length, 1)
 })
 
-test('Store settings from Meta: catalogs are listed with the catalog connection when the store has one', async () => {
+test('Store settings from Meta: the account’s catalog is read with the WhatsApp connection, which has the account', async () => {
   reset({ meta_catalog_token: 'CATALOG_TOKEN' })
   await detect()
-  assert.equal(calls.find((call) => call.path.endsWith('/product_catalogs')).auth, 'Bearer CATALOG_TOKEN')
+  assert.equal(calls.find((call) => call.path.endsWith('/product_catalogs')).auth, 'Bearer WHATSAPP_TOKEN')
   assert.equal(calls.find((call) => call.path.endsWith('/payment_configurations')).auth, 'Bearer WHATSAPP_TOKEN')
 })

@@ -149,6 +149,33 @@ export async function deleteCatalog(credentials: MetaCredentials, catalogId: str
 }
 
 /**
+ * The WhatsApp connection alone. Calls on the WhatsApp Business account itself (which catalog is
+ * connected to it) need it: a catalog connection is granted catalogs only, not the account.
+ */
+export function getWhatsAppCredentials(organization: Record<string, any> | null | undefined): MetaCredentials {
+  return getCatalogCredentials({ ...(organization || {}), meta_catalog_token: null })
+}
+
+/**
+ * Connect a catalog to the WhatsApp Business account with whichever connection Meta accepts: the
+ * WhatsApp one has the account, the catalog one has the catalog. Throws the last refusal.
+ */
+export async function connectCatalogWithEither(organization: Record<string, any>, catalogId: string, fetcher: typeof fetch = fetch): Promise<void> {
+  const attempts = [getWhatsAppCredentials(organization)]
+  if (String(organization?.meta_catalog_token || '').trim()) attempts.push(getCatalogCredentials(organization))
+  let lastError: unknown = null
+  for (const credentials of attempts) {
+    try {
+      await connectCatalog(credentials, catalogId, fetcher)
+      return
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError
+}
+
+/**
  * Exchange the code from a Facebook Login for Business window for an access token. Server only:
  * it sends the app secret. The code is valid for 30 seconds.
  */

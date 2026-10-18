@@ -3,13 +3,14 @@ import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { forgetCatalog } from '@/lib/commerce/catalog-sync'
 import {
   canEditCatalog,
-  connectCatalog,
   createCatalog,
   deleteCatalog,
   describeCatalogError,
   getCatalog,
   getCatalogCredentials,
   getWabaOwnerId,
+  getWhatsAppCredentials,
+  connectCatalogWithEither,
   inspectToken,
   isGraphId,
   listOwnedCatalogs,
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
     let linkedError: string | null = null
     const [connected, linked, access] = await Promise.all([
       // null: Meta would not say which catalog is connected to the WhatsApp account
-      listWabaCatalogs(credentials).catch(() => null),
+      listWabaCatalogs(getWhatsAppCredentials(org)).catch(() => null),
       linkedId
         ? getCatalog(credentials, linkedId).catch((error) => {
             linkedError = describeCatalogError(error).message
@@ -168,9 +169,9 @@ export async function POST(request: NextRequest) {
       const catalogId = String(body.catalogId || '').trim()
       if (!isGraphId(catalogId)) return NextResponse.json({ error: 'Enter the catalog ID shown in Commerce Manager.' }, { status: 400 })
       try {
-        await connectCatalog(credentials, catalogId)
+        await connectCatalogWithEither(org, catalogId)
       } catch (error) {
-        return NextResponse.json({ error: describeCatalogError(error).message }, { status: 422 })
+        return NextResponse.json({ error: describeCatalogError(error).message + ' You can also connect it yourself in WhatsApp Manager → Account tools → Catalog.' }, { status: 422 })
       }
       await linkCatalog(catalogId)
       return NextResponse.json({ success: true, catalogId, connected: true })
@@ -203,10 +204,10 @@ export async function POST(request: NextRequest) {
     await linkCatalog(catalogId)
 
     try {
-      await connectCatalog(credentials, catalogId)
+      await connectCatalogWithEither(org, catalogId)
       return NextResponse.json({ success: true, catalogId, connected: true })
     } catch (error) {
-      return NextResponse.json({ success: true, catalogId, connected: false, connectError: describeCatalogError(error).message })
+      return NextResponse.json({ success: true, catalogId, connected: false, connectError: describeCatalogError(error).message + ' You can also connect it yourself in WhatsApp Manager → Account tools → Catalog.' })
     }
   } catch (err: any) {
     console.error('[API Commerce Catalog POST] Error:', err)

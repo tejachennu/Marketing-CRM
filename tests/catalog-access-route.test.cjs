@@ -46,7 +46,7 @@ process.env.NEXT_PUBLIC_META_APP_ID = '111'
 process.env.META_APP_SECRET = 'test-secret'
 console.error = () => {}
 
-const { getCatalogCredentials, exchangeLoginCode } = require(path.join(PROJECT, 'lib/commerce/meta-catalog.ts'))
+const { getCatalogCredentials, getWhatsAppCredentials, connectCatalogWithEither, exchangeLoginCode } = require(path.join(PROJECT, 'lib/commerce/meta-catalog.ts'))
 const route = require(path.join(PROJECT, 'app/api/commerce/catalog/access/route.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 const post = (body) => route.POST(new NextRequest('https://wamacrm.example.com/api/commerce/catalog/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: ORG, ...body }) }))
@@ -110,4 +110,26 @@ test('Catalog access: a bad code or a missing column is explained, and access ca
   const removed = await route.DELETE(new NextRequest(`https://wamacrm.example.com/api/commerce/catalog/access?organizationId=${ORG}`, { method: 'DELETE' }))
   assert.equal(removed.status, 200)
   assert.equal(row.meta_catalog_token, null)
+})
+
+test('Catalog access: the WhatsApp account is reached with the WhatsApp connection, connecting tries both', async () => {
+  const org = { whatsapp_api_token: 'WHATSAPP_TOKEN', meta_catalog_token: 'CATALOG_TOKEN', whatsapp_business_account_id: '200000000000001' }
+  assert.equal(getWhatsAppCredentials(org).token, 'WHATSAPP_TOKEN')
+
+  const tried = []
+  const meta = (acceptedToken) => async (url, init = {}) => {
+    const token = String(init.headers.Authorization).replace('Bearer ', '')
+    tried.push(token)
+    return new Response(JSON.stringify(token === acceptedToken ? { success: true } : { error: { code: 200, message: 'Permissions error' } }), { status: token === acceptedToken ? 200 : 400 })
+  }
+  await connectCatalogWithEither(org, '700600500400300', meta('CATALOG_TOKEN'))
+  assert.deepEqual(tried, ['WHATSAPP_TOKEN', 'CATALOG_TOKEN'])
+
+  tried.length = 0
+  await assert.rejects(() => connectCatalogWithEither(org, '700600500400300', meta('NOBODY')), /Permissions error/)
+  assert.deepEqual(tried, ['WHATSAPP_TOKEN', 'CATALOG_TOKEN'])
+
+  tried.length = 0
+  await connectCatalogWithEither({ ...org, meta_catalog_token: null }, '700600500400300', meta('WHATSAPP_TOKEN'))
+  assert.deepEqual(tried, ['WHATSAPP_TOKEN'])
 })
