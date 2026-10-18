@@ -9,7 +9,9 @@
 export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
 
 /** The kinds of template WhatsApp Manager offers under each category. */
-export type TemplateType = 'custom' | 'carousel' | 'catalog' | 'lto' | 'coupon' | 'flow' | 'otp'
+export type TemplateType =
+  | 'custom' | 'carousel' | 'catalog' | 'lto' | 'coupon' | 'flow' | 'otp'
+  | 'mpm' | 'spm' | 'product_carousel' | 'order_details' | 'call_permission'
 
 export type HeaderFormat = 'NONE' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'LOCATION'
 export type ParameterFormat = 'POSITIONAL' | 'NAMED'
@@ -21,6 +23,8 @@ export type ButtonDraft =
   | { type: 'PHONE_NUMBER'; text: string; phone_number: string }
   | { type: 'COPY_CODE'; example: string }
   | { type: 'FLOW'; text: string; flow_id: string; navigate_screen?: string }
+  /** WhatsApp Business Calling: starts a voice call to the business. */
+  | { type: 'VOICE_CALL'; text: string }
 
 export interface CardDraft {
   headerFormat: 'IMAGE' | 'VIDEO'
@@ -53,11 +57,17 @@ export interface TemplateDraft {
     type: OtpType
     buttonText: string
     autofillText: string
-    packageName: string
-    signatureHash: string
+    /** Android apps the code can be sent to (one-tap and zero-tap), up to 5. */
+    apps: Array<{ packageName: string; signatureHash: string }>
+    /** Zero-tap needs the business to accept WhatsApp's terms for it. */
+    zeroTapTermsAccepted: boolean
     addSecurityRecommendation: boolean
     codeExpirationMinutes: number | null
   }
+  /** Product card carousel: how many product cards (2 to 10); the products are chosen when sending. */
+  productCards: number
+  /** Message validity period: how long WhatsApp keeps trying to deliver. null = Meta's default. */
+  ttlSeconds: number | null
   /** Let Meta move the template to the right category instead of rejecting it. */
   allowCategoryChange: boolean
 }
@@ -69,13 +79,19 @@ export const TEMPLATE_TYPES: Record<TemplateCategory, Array<{ type: TemplateType
     { type: 'custom', title: 'Default', description: 'Send messages with media and customised buttons to engage your customers.' },
     { type: 'carousel', title: 'Media card carousel', description: 'Send up to 10 scrollable cards, each with an image or video and buttons.' },
     { type: 'catalog', title: 'Catalogue', description: 'Send messages that drive sales by connecting your product catalogue.' },
+    { type: 'mpm', title: 'Multi-product message', description: 'Send up to 30 products from your catalogue, in sections, in one message.' },
+    { type: 'spm', title: 'Single-product message', description: 'Feature one product from your catalogue, with its image, name and price.' },
+    { type: 'product_carousel', title: 'Product card carousel', description: 'Send 2 to 10 scrollable product cards from your catalogue.' },
     { type: 'lto', title: 'Limited-time offer', description: 'Send an offer with an expiry countdown and a copy-code button.' },
     { type: 'coupon', title: 'Coupon code', description: 'Send messages with a promo code customers can copy with one tap.' },
     { type: 'flow', title: 'Flows', description: 'Send a form to capture interests, appointment requests or run surveys.' },
+    { type: 'call_permission', title: 'Call permissions request', description: 'Ask customers for permission to call them on WhatsApp.' },
   ],
   UTILITY: [
     { type: 'custom', title: 'Default', description: 'Send messages about an existing order or account.' },
     { type: 'flow', title: 'Flows', description: 'Send a form to collect feedback, send reminders or manage orders.' },
+    { type: 'order_details', title: 'Order details', description: 'Send an order summary with a Review and pay button (payments in India).' },
+    { type: 'call_permission', title: 'Call permissions request', description: 'Ask customers for permission to call them on WhatsApp.' },
   ],
   AUTHENTICATION: [
     { type: 'otp', title: 'One-time passcode', description: 'Send codes to verify a transaction or login.' },
@@ -145,7 +161,26 @@ export const LIMITS = {
   cards: 10,
   minCards: 2,
   ltoText: 16,
+  otpApps: 5,
 }
+
+/** Message validity period Meta allows per category, in seconds (min, max, default). */
+export const TTL_LIMITS: Record<TemplateCategory, { min: number; max: number; default: number }> = {
+  AUTHENTICATION: { min: 30, max: 900, default: 600 },
+  UTILITY: { min: 30, max: 43200, default: 2592000 },
+  MARKETING: { min: 43200, max: 2592000, default: 2592000 },
+}
+
+/** "10 minutes", "12 hours", "30 days". */
+export function describeDuration(seconds: number): string {
+  if (seconds % 86400 === 0) return `${seconds / 86400} day${seconds === 86400 ? '' : 's'}`
+  if (seconds % 3600 === 0) return `${seconds / 3600} hour${seconds === 3600 ? '' : 's'}`
+  if (seconds % 60 === 0) return `${seconds / 60} minute${seconds === 60 ? '' : 's'}`
+  return `${seconds} seconds`
+}
+
+/** Types sent with products from the linked catalogue. */
+export const PRODUCT_TYPES: TemplateType[] = ['catalog', 'mpm', 'spm', 'product_carousel']
 
 // ── Variables ───────────────────────────────────────────────────────────────
 
@@ -213,10 +248,24 @@ export function validateDraft(draft: TemplateDraft): DraftProblem[] {
   else if (draft.name.length > LIMITS.name) add('name', `The name can be at most ${LIMITS.name} characters.`)
   if (!draft.language) add('language', 'Choose a language.')
 
+  if (draft.ttlSeconds !== null) {
+    const ttl = TTL_LIMITS[draft.category]
+    if (!Number.isFinite(draft.ttlSeconds) || draft.ttlSeconds < ttl.min || draft.ttlSeconds > ttl.max) {
+      add('ttl', `The validity period for ${draft.category.toLowerCase()} templates is ${describeDuration(ttl.min)} to ${describeDuration(ttl.max)}.`)
+    }
+  }
+  if (draft.type === 'order_details' && draft.category !== 'UTILITY') add('type', 'Order details templates are Utility templates.')
+
   if (draft.type === 'otp') {
     if (draft.otp.type !== 'COPY_CODE') {
-      if (!/^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/.test(draft.otp.packageName)) add('otp', 'Enter your Android app\'s package name, like com.example.app.')
-      if (!/^[A-Za-z0-9+/]{11}$/.test(draft.otp.signatureHash)) add('otp', 'Enter the app\'s 11-character signature hash.')
+      if (draft.otp.apps.length === 0) add('otp', 'Add the Android app the code is sent to.')
+      if (draft.otp.apps.length > LIMITS.otpApps) add('otp', `Add at most ${LIMITS.otpApps} apps.`)
+      draft.otp.apps.forEach((app, index) => {
+        const which = draft.otp.apps.length > 1 ? `App ${index + 1}: ` : ''
+        if (!/^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/.test(app.packageName)) add('otp', `${which}enter the Android package name, like com.example.app.`)
+        if (!/^[A-Za-z0-9+/]{11}$/.test(app.signatureHash)) add('otp', `${which}enter the app's 11-character signature hash.`)
+      })
+      if (draft.otp.type === 'ZERO_TAP' && !draft.otp.zeroTapTermsAccepted) add('otp', 'Accept the zero-tap terms to use zero-tap autofill.')
     }
     if (draft.otp.codeExpirationMinutes !== null && (draft.otp.codeExpirationMinutes < 1 || draft.otp.codeExpirationMinutes > 90)) add('otp', 'Code expiry must be between 1 and 90 minutes.')
     if (draft.otp.buttonText.length > LIMITS.buttonText) add('otp', `Button text can be at most ${LIMITS.buttonText} characters.`)
@@ -224,7 +273,8 @@ export function validateDraft(draft: TemplateDraft): DraftProblem[] {
   }
 
   // Header
-  if (draft.headerFormat === 'TEXT') {
+  if (draft.type === 'mpm' && draft.headerFormat !== 'TEXT') add('header', 'A multi-product message needs a text header.')
+  if (draft.headerFormat === 'TEXT' && draft.type !== 'spm' && draft.type !== 'product_carousel') {
     if (!draft.headerText.trim()) add('header', 'Enter the header text or choose no header.')
     if (draft.headerText.length > LIMITS.headerText) add('header', `The header can be at most ${LIMITS.headerText} characters.`)
     const headerVariables = extractVariables(draft.headerText)
@@ -232,7 +282,7 @@ export function validateDraft(draft: TemplateDraft): DraftProblem[] {
     if (/[\n*_~]/.test(draft.headerText) || /\p{Extended_Pictographic}/u.test(draft.headerText)) add('header', 'The header can\'t have new lines, formatting or emoji.')
     headerVariables.forEach((name) => { if (!draft.samples[`header:${name}`]?.trim()) add('samples', `Add a sample for the header variable {{${name}}}.`) })
   }
-  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(draft.headerFormat) && !draft.headerHandle) add('header', `Upload a sample ${draft.headerFormat.toLowerCase()} for the header.`)
+  if (!['spm', 'mpm', 'product_carousel'].includes(draft.type) && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(draft.headerFormat) && !draft.headerHandle) add('header', `Upload a sample ${draft.headerFormat.toLowerCase()} for the header.`)
 
   // Body
   const bodyLimit = LIMITS.body
@@ -260,6 +310,7 @@ export function validateDraft(draft: TemplateDraft): DraftProblem[] {
     if (!draft.buttons.some((button) => button.type === 'URL')) add('buttons', 'A limited-time offer needs a Visit website button.')
   }
   if (draft.type === 'flow' && !draft.buttons.some((button) => button.type === 'FLOW')) add('buttons', 'A Flows template needs a Complete flow button.')
+  if (draft.type === 'product_carousel' && (draft.productCards < LIMITS.minCards || draft.productCards > LIMITS.cards)) add('cards', `A product carousel has ${LIMITS.minCards} to ${LIMITS.cards} cards.`)
 
   // Carousel
   if (draft.type === 'carousel') {
@@ -287,6 +338,8 @@ function checkButtons(buttons: ButtonDraft[], field: string, add: (field: string
   if (count('PHONE_NUMBER') > LIMITS.phoneButtons) add(field, `${where}: at most one Call phone number button.`)
   if (count('COPY_CODE') > LIMITS.copyCodeButtons) add(field, `${where}: at most one Copy offer code button.`)
   if (count('FLOW') > 1) add(field, `${where}: at most one Complete flow button.`)
+  if (count('VOICE_CALL') > 1) add(field, `${where}: at most one Call on WhatsApp button.`)
+  if (count('VOICE_CALL') && count('PHONE_NUMBER')) add(field, `${where}: use either Call phone number or Call on WhatsApp, not both.`)
   const texts = new Set<string>()
   buttons.forEach((button, index) => {
     const label = `${where}, button ${index + 1}`
@@ -343,6 +396,7 @@ function buttonsComponent(buttons: ButtonDraft[]) {
         case 'PHONE_NUMBER': return { type: 'PHONE_NUMBER', text: button.text.trim(), phone_number: button.phone_number.replace(/[\s-]/g, '') }
         case 'COPY_CODE': return { type: 'COPY_CODE', example: button.example.trim() }
         case 'FLOW': return { type: 'FLOW', text: button.text.trim(), flow_id: button.flow_id, flow_action: 'navigate', ...(button.navigate_screen ? { navigate_screen: button.navigate_screen } : {}) }
+        case 'VOICE_CALL': return { type: 'VOICE_CALL', text: button.text.trim() }
       }
     }),
   }
@@ -358,16 +412,19 @@ export function buildComponents(draft: TemplateDraft): any[] {
     const otp: any = { type: 'OTP', otp_type: draft.otp.type }
     if (draft.otp.buttonText.trim()) otp.text = draft.otp.buttonText.trim()
     if (draft.otp.type !== 'COPY_CODE') {
-      otp.supported_apps = [{ package_name: draft.otp.packageName.trim(), signature_hash: draft.otp.signatureHash.trim() }]
-      if (draft.otp.type === 'ONE_TAP' && draft.otp.autofillText.trim()) otp.autofill_text = draft.otp.autofillText.trim()
-      if (draft.otp.type === 'ZERO_TAP') otp.zero_tap_terms_accepted = true
+      otp.supported_apps = draft.otp.apps.map((app) => ({ package_name: app.packageName.trim(), signature_hash: app.signatureHash.trim() }))
+      // Zero-tap falls back to one-tap, so both carry the autofill button text
+      if (draft.otp.autofillText.trim()) otp.autofill_text = draft.otp.autofillText.trim()
+      if (draft.otp.type === 'ZERO_TAP') otp.zero_tap_terms_accepted = draft.otp.zeroTapTermsAccepted
     }
     components.push({ type: 'BUTTONS', buttons: [otp] })
     return components
   }
 
   // Header
-  if (draft.type !== 'carousel') {
+  if (draft.type === 'spm') {
+    components.push({ type: 'HEADER', format: 'PRODUCT' })
+  } else if (draft.type !== 'carousel' && draft.type !== 'product_carousel') {
     if (draft.headerFormat === 'TEXT') {
       const example = textExample(draft.headerText, draft.samples, draft.parameterFormat, 'header:', 'header')
       components.push({ type: 'HEADER', format: 'TEXT', text: draft.headerText.trim(), ...(example ? { example } : {}) })
@@ -385,7 +442,19 @@ export function buildComponents(draft: TemplateDraft): any[] {
   const bodyExample = textExample(draft.body, draft.samples, draft.parameterFormat)
   components.push({ type: 'BODY', text: draft.body.trim(), ...(bodyExample ? { example: bodyExample } : {}) })
 
-  if (draft.footer.trim() && draft.type !== 'lto' && draft.type !== 'carousel') components.push({ type: 'FOOTER', text: draft.footer.trim() })
+  if (draft.footer.trim() && !['lto', 'carousel', 'product_carousel'].includes(draft.type)) components.push({ type: 'FOOTER', text: draft.footer.trim() })
+
+  if (draft.type === 'call_permission') components.push({ type: 'CALL_PERMISSION_REQUEST' })
+
+  if (draft.type === 'product_carousel') {
+    components.push({
+      type: 'CAROUSEL',
+      cards: Array.from({ length: draft.productCards }, () => ({
+        components: [{ type: 'HEADER', format: 'PRODUCT' }, { type: 'BUTTONS', buttons: [{ type: 'SPM', text: 'View' }] }],
+      })),
+    })
+    return components
+  }
 
   if (draft.type === 'carousel') {
     components.push({
@@ -404,7 +473,13 @@ export function buildComponents(draft: TemplateDraft): any[] {
     return components
   }
 
-  const buttons = draft.type === 'catalog' ? [{ type: 'CATALOG', text: 'View catalog' } as any] : null
+  const fixed: Partial<Record<TemplateType, any[]>> = {
+    catalog: [{ type: 'CATALOG', text: 'View catalog' }],
+    mpm: [{ type: 'MPM', text: 'View items' }],
+    spm: [{ type: 'SPM', text: 'View' }],
+    order_details: [{ type: 'ORDER_DETAILS', text: 'Review and pay' }],
+  }
+  const buttons = fixed[draft.type] || null
   const component = buttons ? { type: 'BUTTONS', buttons } : buttonsComponent(draft.buttons)
   if (component) components.push(component)
   return components
@@ -418,6 +493,7 @@ export function buildCreatePayload(draft: TemplateDraft) {
     category: draft.category,
     ...(draft.type !== 'otp' && draft.parameterFormat === 'NAMED' ? { parameter_format: 'NAMED' } : {}),
     ...(draft.allowCategoryChange && draft.category !== 'AUTHENTICATION' ? { allow_category_change: true } : {}),
+    ...(draft.ttlSeconds !== null ? { message_send_ttl_seconds: draft.ttlSeconds } : {}),
     components: buildComponents(draft),
   }
 }
@@ -431,7 +507,7 @@ export function emptyDraft(category: TemplateCategory = 'MARKETING', type: Templ
     category,
     type,
     parameterFormat: 'POSITIONAL',
-    headerFormat: 'NONE',
+    headerFormat: type === 'mpm' ? 'TEXT' : 'NONE',
     headerText: '',
     headerHandle: '',
     body: '',
@@ -440,7 +516,9 @@ export function emptyDraft(category: TemplateCategory = 'MARKETING', type: Templ
     samples: {},
     cards: type === 'carousel' ? [emptyCard(), emptyCard()] : [],
     lto: { text: 'Expiring offer!', hasExpiration: true },
-    otp: { type: 'COPY_CODE', buttonText: 'Copy code', autofillText: 'Autofill', packageName: '', signatureHash: '', addSecurityRecommendation: true, codeExpirationMinutes: 10 },
+    otp: { type: 'COPY_CODE', buttonText: 'Copy code', autofillText: 'Autofill', apps: [{ packageName: '', signatureHash: '' }], zeroTapTermsAccepted: false, addSecurityRecommendation: true, codeExpirationMinutes: 10 },
+    productCards: 3,
+    ttlSeconds: null,
     allowCategoryChange: true,
   }
 }
@@ -470,6 +548,7 @@ function buttonsFrom(component: any): ButtonDraft[] {
       case 'PHONE_NUMBER': return [{ type: 'PHONE_NUMBER', text: button.text || '', phone_number: button.phone_number || '' }]
       case 'COPY_CODE': return [{ type: 'COPY_CODE', example: Array.isArray(button.example) ? button.example[0] || '' : button.example || '' }]
       case 'FLOW': return [{ type: 'FLOW', text: button.text || '', flow_id: String(button.flow_id || ''), navigate_screen: button.navigate_screen }]
+      case 'VOICE_CALL': return [{ type: 'VOICE_CALL', text: button.text || '' }]
       default: return []
     }
   })
@@ -488,19 +567,25 @@ export function draftFromMeta(template: any): TemplateDraft {
   const category = (String(template?.category || 'MARKETING').toUpperCase() as TemplateCategory)
   const buttonTypes = (buttons?.buttons || []).map((button: any) => String(button.type).toUpperCase())
 
+  const cardHeaderFormat = String(carousel?.cards?.[0]?.components?.find((c: any) => String(c.type).toUpperCase() === 'HEADER')?.format || '').toUpperCase()
   const type: TemplateType = category === 'AUTHENTICATION' ? 'otp'
-    : carousel ? 'carousel'
+    : carousel ? (cardHeaderFormat === 'PRODUCT' ? 'product_carousel' : 'carousel')
       : lto ? 'lto'
-        : buttonTypes.includes('CATALOG') ? 'catalog'
-          : buttonTypes.includes('FLOW') ? 'flow'
-            : buttonTypes.includes('COPY_CODE') ? 'coupon'
-              : 'custom'
+        : String(header?.format || '').toUpperCase() === 'PRODUCT' || buttonTypes.includes('SPM') ? 'spm'
+          : buttonTypes.includes('MPM') ? 'mpm'
+            : buttonTypes.includes('CATALOG') ? 'catalog'
+              : buttonTypes.includes('ORDER_DETAILS') ? 'order_details'
+                : find('CALL_PERMISSION_REQUEST') ? 'call_permission'
+                  : buttonTypes.includes('FLOW') ? 'flow'
+                    : buttonTypes.includes('COPY_CODE') ? 'coupon'
+                      : 'custom'
 
   const draft = emptyDraft(category, type)
   draft.name = template?.name || ''
   draft.language = template?.language || 'en'
   draft.parameterFormat = String(template?.parameter_format || '').toUpperCase() === 'NAMED' ? 'NAMED' : 'POSITIONAL'
-  draft.headerFormat = header ? (String(header.format || 'TEXT').toUpperCase() as HeaderFormat) : 'NONE'
+  draft.headerFormat = header && String(header.format).toUpperCase() !== 'PRODUCT' ? (String(header.format || 'TEXT').toUpperCase() as HeaderFormat) : 'NONE'
+  if (typeof template?.message_send_ttl_seconds === 'number') draft.ttlSeconds = template.message_send_ttl_seconds
   draft.headerText = header?.text || ''
   draft.headerHandle = header?.example?.header_handle?.[0] || ''
   draft.headerPreview = draft.headerHandle.startsWith('http') ? draft.headerHandle : undefined
@@ -509,7 +594,8 @@ export function draftFromMeta(template: any): TemplateDraft {
   draft.buttons = buttonsFrom(buttons)
   draft.samples = { ...samplesFrom(body), ...samplesFrom(header, 'header:') }
   if (lto) draft.lto = { text: lto.limited_time_offer?.text || '', hasExpiration: lto.limited_time_offer?.has_expiration !== false }
-  if (carousel) {
+  if (carousel && type === 'product_carousel') draft.productCards = (carousel.cards || []).length || 2
+  if (carousel && type === 'carousel') {
     draft.cards = (carousel.cards || []).map((card: any): CardDraft => {
       const cardHeader = (card.components || []).find((c: any) => String(c.type).toUpperCase() === 'HEADER')
       const cardBody = (card.components || []).find((c: any) => String(c.type).toUpperCase() === 'BODY')
@@ -524,8 +610,9 @@ export function draftFromMeta(template: any): TemplateDraft {
       type: (String(otp.otp_type || 'COPY_CODE').toUpperCase() as OtpType),
       buttonText: otp.text || 'Copy code',
       autofillText: otp.autofill_text || 'Autofill',
-      packageName: otp.supported_apps?.[0]?.package_name || otp.package_name || '',
-      signatureHash: otp.supported_apps?.[0]?.signature_hash || otp.signature_hash || '',
+      apps: (otp.supported_apps?.length ? otp.supported_apps : otp.package_name ? [{ package_name: otp.package_name, signature_hash: otp.signature_hash }] : [{}])
+        .map((app: any) => ({ packageName: app.package_name || '', signatureHash: app.signature_hash || '' })),
+      zeroTapTermsAccepted: otp.zero_tap_terms_accepted === true,
       addSecurityRecommendation: body?.add_security_recommendation !== false,
       codeExpirationMinutes: footer?.code_expiration_minutes ?? null,
     }

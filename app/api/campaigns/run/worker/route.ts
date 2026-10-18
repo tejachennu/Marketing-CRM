@@ -4,6 +4,8 @@ import twilio from 'twilio'
 import nodemailer from 'nodemailer'
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { buildSendComponents } from '@/lib/whatsapp-templates/send-components'
+import { getPaymentGateway } from '@/lib/commerce/commerce-utils'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -210,6 +212,17 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       }
     }
 
+    // Product, catalogue and order details templates need the store's catalogue and payment gateway
+    const commerceSettings: { catalogId: string | null; paymentGateway: { type: string; configName: string } | null; currency: string } = { catalogId: null, paymentGateway: null, currency: 'INR' }
+    if (campaign.organization_id && metaTemplateComponents.length) {
+      const { data: storeOrg } = await supabase.from('organizations').select('*').eq('id', campaign.organization_id).maybeSingle()
+      if (storeOrg) {
+        commerceSettings.catalogId = String(storeOrg.meta_catalog_id || '').trim() || null
+        commerceSettings.paymentGateway = getPaymentGateway(storeOrg)
+        commerceSettings.currency = storeOrg.currency || 'INR'
+      }
+    }
+
     let _twilioClient: ReturnType<typeof twilio> | null = null
     function getTwilioClientForCampaign() {
       if (!_twilioClient) {
@@ -368,7 +381,6 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                   }
 
                   if (metaTemplateComponents && metaTemplateComponents.length > 0) {
-                    const reqComponents: any[] = []
                     const parseMediaParam = async (val: string) => {
                       const cleaned = String(val || '').trim();
                       if (cleaned.includes('scontent.whatsapp.net') || cleaned.includes('fbcdn.net')) {
@@ -379,80 +391,16 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                       return { id: cleaned };
                     };
 
-                    for (const comp of metaTemplateComponents) {
-                      if (comp.type === 'HEADER') {
-                        if (comp.format === 'IMAGE') {
-                          const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
-                          if (imgVal) {
-                            const mediaParam = await parseMediaParam(imgVal);
-                            reqComponents.push({ type: 'header', parameters: [{ type: 'image', image: mediaParam }] })
-                          }
-                        } else if (comp.format === 'VIDEO') {
-                          const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
-                          if (videoVal) {
-                            const mediaParam = await parseMediaParam(videoVal);
-                            reqComponents.push({ type: 'header', parameters: [{ type: 'video', video: mediaParam }] })
-                          }
-                        } else if (comp.format === 'DOCUMENT') {
-                          const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || campaign.media_url || comp.example?.header_handle?.[0] || '';
-                          if (docVal) {
-                            const filename = mappedVars['header_document_filename'] || docVal.split('/').pop()?.split('?')[0] || comp.example?.header_handle?.[0]?.split('/').pop()?.split('?')[0] || 'document.pdf';
-                            const mediaParam = await parseMediaParam(docVal);
-                            reqComponents.push({ type: 'header', parameters: [{ type: 'document', document: { ...mediaParam, filename } }] })
-                          }
-                        } else if (comp.format === 'TEXT') {
-                          const headerVal = mappedVars['header_text_1'] || mappedVars['header_1'] || comp.example?.header_text?.[0] || '';
-                          if (headerVal) {
-                            reqComponents.push({ type: 'header', parameters: [{ type: 'text', text: headerVal }] })
-                          }
-                        }
-                      } else if (comp.type === 'BODY') {
-                        const bodyText = comp.text || '';
-                        let uniqueKeys: string[] = [];
-                        const namedParams = comp.example?.body_text_named_params;
-                        if (Array.isArray(namedParams) && namedParams.length > 0) {
-                          uniqueKeys = namedParams.map((p: any) => p.param_name).filter(Boolean);
-                        } else {
-                          const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || [];
-                          const rawKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[];
-                          uniqueKeys = rawKeys.filter(k => /^[a-zA-Z0-9_]+$/.test(k));
-                          const isNumeric = uniqueKeys.every(k => !isNaN(Number(k)));
-                          if (isNumeric) uniqueKeys.sort((a, b) => Number(a) - Number(b));
-                        }
-
-                        const parameters = uniqueKeys.map((key, idx) => {
-                          const positionalKey = String(idx + 1);
-                          let val = mappedVars[key] !== undefined 
-                            ? mappedVars[key] 
-                            : (mappedVars[key.toLowerCase()] !== undefined 
-                                ? mappedVars[key.toLowerCase()] 
-                                : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''));
-                          let textVal = String(val ?? '').trim();
-                          if (!textVal) textVal = '-';
-                          const paramObj: any = { type: 'text', text: textVal };
-                          if (isNaN(Number(key))) paramObj.parameter_name = key;
-                          return paramObj;
-                        });
-
-                        if (parameters.length > 0) reqComponents.push({ type: 'body', parameters });
-                      } else if (comp.type === 'BUTTONS' && Array.isArray(comp.buttons)) {
-                        comp.buttons.forEach((btn: any, idx: number) => {
-                          if (btn.type === 'URL') {
-                            const hasVar = btn.url && btn.url.includes('{{1}}');
-                            if (hasVar) {
-                              const val = mappedVars[`button_url_${idx + 1}`] || mappedVars['button_url_1'] || '';
-                              reqComponents.push({ type: 'button', sub_type: 'url', index: String(idx), parameters: [{ type: 'text', text: val }] });
-                            }
-                          } else if (btn.type === 'COPY_CODE') {
-                            const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars[`coupon_code_${idx + 1}`] || mappedVars['button_copy_code'] || mappedVars['coupon_code'] || '';
-                            if (val) {
-                              reqComponents.push({ type: 'button', sub_type: 'copy_code', index: String(idx), parameters: [{ type: 'coupon_code', coupon_code: val }] });
-                            }
-                          }
-                        });
-                      }
-                    }
-
+                    const reqComponents = await buildSendComponents(metaTemplateComponents, {
+                      vars: mappedVars,
+                      mediaUrl: campaign.media_url,
+                      catalogId: commerceSettings.catalogId,
+                      paymentGateway: commerceSettings.paymentGateway,
+                      currency: commerceSettings.currency,
+                      flowToken: `campaign:${campaignId}:${log.id}`,
+                      orderReference: `C${String(campaignId).replace(/-/g, '').slice(0, 8)}${String(log.id).replace(/-/g, '').slice(0, 12)}`,
+                      resolveMedia: parseMediaParam,
+                    })
                     if (reqComponents.length > 0) payload.template.components = reqComponents
                   } else {
                     const placeholders = templateBody.match(/\{\{([^}]+)\}\}/g) || []

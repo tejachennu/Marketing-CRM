@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
+import { sendVariableLabel } from '@/lib/whatsapp-templates/send-variables'
 import { 
   Megaphone, 
   Plus, 
@@ -3327,7 +3328,7 @@ export default function CampaignsPage() {
                                 {"{{"}{v}{"}}"}
                               </span>
                               <span className="text-xs font-bold text-[#111b21] dark:text-white">
-                                {v.startsWith('header_image') ? 'Header Image' : v.startsWith('header_video') ? 'Header Video' : v.startsWith('header_document_filename') ? 'Document Name' : v.startsWith('header_document') ? 'Header Document' : v.startsWith('header_text') ? 'Header Text' : v.startsWith('button_url') ? 'Dynamic Button URL' : v.startsWith('button_copy_code') ? 'Button Coupon/OTP Code' : `Variable ${v}`}
+                                {sendVariableLabel(v)}
                               </span>
                             </div>
 

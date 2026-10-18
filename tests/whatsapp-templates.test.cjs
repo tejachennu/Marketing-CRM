@@ -66,10 +66,17 @@ test('Templates: authentication (one-time passcode) payloads', () => {
     { type: 'FOOTER', code_expiration_minutes: 10 },
     { type: 'BUTTONS', buttons: [{ type: 'OTP', otp_type: 'COPY_CODE', text: 'Copy code' }] },
   ])
-  const oneTap = { ...copy, otp: { ...copy.otp, type: 'ONE_TAP', packageName: 'in.magnetora.app', signatureHash: 'K8a/AINcGX7' } }
+  const oneTap = { ...copy, otp: { ...copy.otp, type: 'ONE_TAP', apps: [{ packageName: 'in.magnetora.app', signatureHash: 'K8a/AINcGX7' }] } }
   assert.deepEqual(messages(oneTap), [])
   assert.deepEqual(M.buildCreatePayload(oneTap).components[2].buttons[0], { type: 'OTP', otp_type: 'ONE_TAP', text: 'Copy code', supported_apps: [{ package_name: 'in.magnetora.app', signature_hash: 'K8a/AINcGX7' }], autofill_text: 'Autofill' })
-  assert.match(messages({ ...oneTap, otp: { ...oneTap.otp, signatureHash: 'short' } }).join(' '), /11-character signature hash/)
+  assert.match(messages({ ...oneTap, otp: { ...oneTap.otp, apps: [{ packageName: 'in.magnetora.app', signatureHash: 'short' }] } }).join(' '), /11-character signature hash/)
+  // Zero-tap: several apps, and the business must accept the terms itself
+  const zeroTap = { ...oneTap, otp: { ...oneTap.otp, type: 'ZERO_TAP', apps: [{ packageName: 'in.magnetora.app', signatureHash: 'K8a/AINcGX7' }, { packageName: 'in.magnetora.lite', signatureHash: 'Z9b/BJOdHY8' }] } }
+  assert.match(messages(zeroTap).join(' '), /Accept the zero-tap terms/)
+  zeroTap.otp.zeroTapTermsAccepted = true
+  assert.deepEqual(messages(zeroTap), [])
+  const zeroButton = M.buildCreatePayload(zeroTap).components[2].buttons[0]
+  assert.deepEqual([zeroButton.supported_apps.length, zeroButton.zero_tap_terms_accepted], [2, true])
   assert.equal(M.buildCreatePayload(copy).allow_category_change, undefined)
 })
 
@@ -128,4 +135,60 @@ test('Templates: a template read back from Meta becomes an editable draft', () =
   assert.deepEqual([otp.type, otp.otp.type, otp.otp.buttonText, otp.otp.codeExpirationMinutes], ['otp', 'COPY_CODE', 'Copy', null])
   assert.equal(M.fillSamples('Hi {{1}}!', { 1: 'Teja' }), 'Hi Teja!')
   assert.equal(M.STATUS_INFO.APPROVED.label, 'Active')
+})
+
+test('Templates: product, order, calling templates and the validity period', () => {
+  const base = (category, type, changes = {}) => ({ ...M.emptyDraft(category, type), name: 'tpl', body: 'Here are our newest books, picked just for you.', ...changes })
+
+  const mpm = base('MARKETING', 'mpm')
+  assert.match(messages(mpm).join(' '), /Enter the header text/)
+  mpm.headerText = 'New arrivals'
+  assert.deepEqual(messages(mpm), [])
+  assert.deepEqual(M.buildComponents(mpm), [
+    { type: 'HEADER', format: 'TEXT', text: 'New arrivals' },
+    { type: 'BODY', text: mpm.body },
+    { type: 'BUTTONS', buttons: [{ type: 'MPM', text: 'View items' }] },
+  ])
+
+  const spm = base('MARKETING', 'spm', { footer: 'Limited stock' })
+  assert.deepEqual(messages(spm), [])
+  assert.deepEqual(M.buildComponents(spm), [
+    { type: 'HEADER', format: 'PRODUCT' },
+    { type: 'BODY', text: spm.body },
+    { type: 'FOOTER', text: 'Limited stock' },
+    { type: 'BUTTONS', buttons: [{ type: 'SPM', text: 'View' }] },
+  ])
+
+  const productCarousel = base('MARKETING', 'product_carousel', { productCards: 2 })
+  assert.deepEqual(messages(productCarousel), [])
+  const built = M.buildComponents(productCarousel)
+  assert.deepEqual(built[1], { type: 'CAROUSEL', cards: [1, 2].map(() => ({ components: [{ type: 'HEADER', format: 'PRODUCT' }, { type: 'BUTTONS', buttons: [{ type: 'SPM', text: 'View' }] }] })) })
+
+  const order = base('UTILITY', 'order_details', { body: 'Your order is ready. Review it and pay securely in WhatsApp.' })
+  assert.deepEqual(messages(order), [])
+  assert.deepEqual(M.buildComponents(order).at(-1), { type: 'BUTTONS', buttons: [{ type: 'ORDER_DETAILS', text: 'Review and pay' }] })
+
+  const call = base('MARKETING', 'call_permission', { body: 'Can our book advisor call you on WhatsApp about your order?' })
+  assert.deepEqual(messages(call), [])
+  assert.deepEqual(M.buildComponents(call).map((c) => c.type), ['BODY', 'CALL_PERMISSION_REQUEST'])
+
+  const voice = base('MARKETING', 'custom', { buttons: [{ type: 'VOICE_CALL', text: 'Call us' }] })
+  assert.deepEqual(messages(voice), [])
+  assert.deepEqual(M.buildComponents(voice).at(-1), { type: 'BUTTONS', buttons: [{ type: 'VOICE_CALL', text: 'Call us' }] })
+  assert.match(messages({ ...voice, buttons: [...voice.buttons, { type: 'PHONE_NUMBER', text: 'Phone', phone_number: '+919876543210' }] }).join(' '), /not both/)
+
+  // Validity period: in range per category, sent as message_send_ttl_seconds
+  const otp = { ...M.emptyDraft('AUTHENTICATION', 'otp'), name: 'code', ttlSeconds: 300 }
+  assert.equal(M.buildCreatePayload(otp).message_send_ttl_seconds, 300)
+  assert.match(messages({ ...otp, ttlSeconds: 3600 }).join(' '), /30 seconds to 15 minutes/)
+  assert.match(messages({ ...base('MARKETING', 'custom'), ttlSeconds: 600 }).join(' '), /12 hours to 30 days/)
+  assert.equal(M.describeDuration(2592000), '30 days')
+
+  // Read back from Meta
+  assert.equal(M.draftFromMeta({ category: 'MARKETING', components: [{ type: 'HEADER', format: 'PRODUCT' }, { type: 'BODY', text: 'x' }, { type: 'BUTTONS', buttons: [{ type: 'SPM', text: 'View' }] }] }).type, 'spm')
+  assert.equal(M.draftFromMeta({ category: 'MARKETING', components: [{ type: 'BODY', text: 'x' }, { type: 'BUTTONS', buttons: [{ type: 'MPM', text: 'View items' }] }] }).type, 'mpm')
+  const pc = M.draftFromMeta({ category: 'MARKETING', components: [{ type: 'BODY', text: 'x' }, { type: 'CAROUSEL', cards: [1, 2, 3, 4].map(() => ({ components: [{ type: 'HEADER', format: 'PRODUCT' }] })) }] })
+  assert.deepEqual([pc.type, pc.productCards], ['product_carousel', 4])
+  assert.equal(M.draftFromMeta({ category: 'UTILITY', components: [{ type: 'BODY', text: 'x' }, { type: 'BUTTONS', buttons: [{ type: 'ORDER_DETAILS', text: 'Review and pay' }] }] }).type, 'order_details')
+  assert.equal(M.draftFromMeta({ category: 'MARKETING', components: [{ type: 'BODY', text: 'x' }, { type: 'CALL_PERMISSION_REQUEST' }] }).type, 'call_permission')
 })

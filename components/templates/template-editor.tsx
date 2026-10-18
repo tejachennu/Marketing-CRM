@@ -1,9 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Bold, Code, Copy, ExternalLink, Italic, ListChecks, Loader2, Phone, Plus, Reply, Strikethrough, Trash2, Upload, X } from 'lucide-react'
+import { Bold, Code, Copy, ExternalLink, Italic, ListChecks, Loader2, Phone, PhoneCall, Plus, Reply, Smile, Strikethrough, Trash2, Upload, X } from 'lucide-react'
 import {
-  LIMITS, emptyCard, extractVariables, nextVariable,
+  LIMITS, TTL_LIMITS, describeDuration, emptyCard, extractVariables, nextVariable,
   type ButtonDraft, type CardDraft, type DraftProblem, type HeaderFormat, type TemplateDraft,
 } from '@/lib/whatsapp-templates/template-model'
 
@@ -70,8 +70,11 @@ function MediaUpload({ orgId, accept, handle, preview, onUploaded }: { orgId: st
 }
 
 /** A textarea with WhatsApp formatting and "Add variable", like WhatsApp Manager's body field. */
+const EMOJIS = ['😀', '😊', '😍', '🥳', '😎', '🤩', '👍', '🙏', '👋', '🎉', '🎁', '🔥', '✨', '⭐', '💯', '✅', '❤️', '💚', '🛍️', '🛒', '📦', '🚚', '💳', '💰', '🏷️', '⏰', '📅', '📍', '📞', '💬', '📚', '🪔']
+
 function RichField({ value, onChange, max, rows, placeholder, addVariable, disabled }: { value: string; onChange: (value: string) => void; max: number; rows: number; placeholder: string; addVariable?: () => string; disabled?: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
   function wrap(before: string, after = before) {
     const el = ref.current
     if (!el) return
@@ -94,6 +97,16 @@ function RichField({ value, onChange, max, rows, placeholder, addVariable, disab
           {[{ icon: Bold, title: 'Bold', mark: '*' }, { icon: Italic, title: 'Italic', mark: '_' }, { icon: Strikethrough, title: 'Strikethrough', mark: '~' }, { icon: Code, title: 'Monospace', mark: '```' }].map(({ icon: Icon, title, mark }) => (
             <button key={title} type="button" title={title} aria-label={title} onClick={() => wrap(mark)} disabled={disabled} className="h-8 w-8 rounded-md flex items-center justify-center text-[#65676b] hover:bg-[#f2f3f5] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-40"><Icon size={15} /></button>
           ))}
+          <span className="relative">
+            <button type="button" title="Emoji" aria-label="Emoji" onClick={() => setEmojiOpen(!emojiOpen)} disabled={disabled} className="h-8 w-8 rounded-md flex items-center justify-center text-[#65676b] hover:bg-[#f2f3f5] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-40"><Smile size={15} /></button>
+            {emojiOpen && (
+              <span className="absolute z-30 left-0 top-9 w-64 p-2 grid grid-cols-8 gap-0.5 rounded-xl border border-[#dadde1] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">
+                {EMOJIS.map((emoji) => (
+                  <button key={emoji} type="button" onClick={() => { insert(emoji); setEmojiOpen(false) }} className="h-7 w-7 rounded hover:bg-[#f2f3f5] dark:hover:bg-slate-800 text-[17px] cursor-pointer">{emoji}</button>
+                ))}
+              </span>
+            )}
+          </span>
           {addVariable && (
             <button type="button" onClick={() => insert(addVariable())} disabled={disabled} className="ml-1 inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[13px] font-semibold text-[#0064e0] hover:bg-[#e7f0fd] dark:hover:bg-blue-950/40 cursor-pointer disabled:opacity-40">
               <Plus size={14} /> Add variable
@@ -112,6 +125,7 @@ const BUTTON_CHOICES: Array<{ type: ButtonDraft['type']; label: string; icon: an
   { type: 'PHONE_NUMBER', label: 'Call phone number', icon: Phone, group: 'Call-to-action buttons' },
   { type: 'COPY_CODE', label: 'Copy offer code', icon: Copy, group: 'Call-to-action buttons' },
   { type: 'FLOW', label: 'Complete flow', icon: ListChecks, group: 'Call-to-action buttons' },
+  { type: 'VOICE_CALL', label: 'Call on WhatsApp', icon: PhoneCall, group: 'Call-to-action buttons' },
 ]
 
 function newButton(type: ButtonDraft['type']): ButtonDraft {
@@ -121,6 +135,7 @@ function newButton(type: ButtonDraft['type']): ButtonDraft {
     case 'PHONE_NUMBER': return { type, text: 'Call us', phone_number: '+91' }
     case 'COPY_CODE': return { type, example: '' }
     case 'FLOW': return { type, text: 'Open form', flow_id: '' }
+    case 'VOICE_CALL': return { type, text: 'Call on WhatsApp' }
   }
 }
 
@@ -236,6 +251,35 @@ function SamplesEditor({ names, samples, onChange, prefix = '', label }: { names
   )
 }
 
+/** Message validity period: how long WhatsApp keeps trying to deliver the message. */
+function ValiditySection({ draft, set, error }: { draft: TemplateDraft; set: (changes: Partial<TemplateDraft>) => void; error: string[] }) {
+  const limits = TTL_LIMITS[draft.category]
+  const choices = [30, 60, 120, 180, 300, 600, 900, 1800, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 1209600, 2592000]
+    .filter((seconds) => seconds >= limits.min && seconds <= limits.max)
+  return (
+    <Section title="Message validity period" optional description="If a message can't be delivered within this time, WhatsApp stops trying. Useful for codes and time-sensitive offers." error={error}>
+      <label className="flex items-center gap-2.5 text-[14px] text-[#1c2b33] dark:text-slate-200 cursor-pointer">
+        <input type="checkbox" checked={draft.ttlSeconds !== null} onChange={(event) => set({ ttlSeconds: event.target.checked ? (choices.includes(limits.default) ? limits.default : choices[choices.length - 1]) : null })} className="h-4 w-4 accent-[#0064e0]" />
+        Set a custom validity period
+      </label>
+      {draft.ttlSeconds !== null && (
+        <select value={draft.ttlSeconds} onChange={(event) => set({ ttlSeconds: Number(event.target.value) })} className={`${input} mt-2 sm:w-64`}>
+          {choices.map((seconds) => <option key={seconds} value={seconds}>{describeDuration(seconds)}</option>)}
+        </select>
+      )}
+      {draft.ttlSeconds === null && <p className="text-[12.5px] text-[#65676b] mt-1.5">Meta's default: {describeDuration(limits.default)}.</p>}
+    </Section>
+  )
+}
+
+const FIXED_BUTTONS: Record<string, { label: string; note: string }> = {
+  catalog: { label: 'View catalog', note: 'Opens your WhatsApp catalogue. Link a catalogue in Commerce first.' },
+  mpm: { label: 'View items', note: 'Opens the products you pick when sending (up to 30, in sections).' },
+  spm: { label: 'View', note: 'Opens the product you pick when sending.' },
+  product_carousel: { label: 'View', note: 'Each card opens its product.' },
+  order_details: { label: 'Review and pay', note: 'Opens the order with the amount, items and payment options you set when sending. Needs a payment setup in WhatsApp Manager.' },
+}
+
 export function TemplateEditor({
   draft, onChange, problems, orgId, flows, mode, approved,
 }: {
@@ -249,8 +293,12 @@ export function TemplateEditor({
 }) {
   const set = (changes: Partial<TemplateDraft>) => onChange({ ...draft, ...changes })
   const errorsFor = (field: string) => problems.filter((problem) => problem.field === field).map((problem) => problem.message)
-  const headerFormats: HeaderFormat[] = draft.type === 'lto' ? ['NONE', 'IMAGE', 'VIDEO'] : ['NONE', 'TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT', 'LOCATION']
-  const allowedButtons: Array<ButtonDraft['type']> = draft.type === 'coupon' || draft.type === 'lto' ? ['QUICK_REPLY', 'URL', 'PHONE_NUMBER', 'COPY_CODE'] : draft.type === 'flow' ? ['FLOW'] : ['QUICK_REPLY', 'URL', 'PHONE_NUMBER', 'COPY_CODE']
+  const headerFormats: HeaderFormat[] = draft.type === 'lto' ? ['NONE', 'IMAGE', 'VIDEO'] : draft.type === 'mpm' ? ['TEXT'] : ['NONE', 'TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT', 'LOCATION']
+  const allowedButtons: Array<ButtonDraft['type']> = draft.type === 'coupon' || draft.type === 'lto' ? ['QUICK_REPLY', 'URL', 'PHONE_NUMBER', 'COPY_CODE']
+    : draft.type === 'flow' ? ['FLOW']
+      : ['QUICK_REPLY', 'URL', 'PHONE_NUMBER', 'COPY_CODE', 'VOICE_CALL']
+  const fixedButton = FIXED_BUTTONS[draft.type]
+  const hasHeaderSection = !['carousel', 'product_carousel', 'spm'].includes(draft.type)
   const setCard = (index: number, changes: Partial<CardDraft>) => set({ cards: draft.cards.map((card, i) => (i === index ? { ...card, ...changes } : card)) })
 
   if (draft.type === 'otp') {
@@ -270,9 +318,22 @@ export function TemplateEditor({
             ))}
           </div>
           {draft.otp.type !== 'COPY_CODE' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <label className="block"><span className="block text-[12px] font-semibold text-[#65676b] mb-1">Package name</span><input value={draft.otp.packageName} onChange={(event) => set({ otp: { ...draft.otp, packageName: event.target.value } })} placeholder="com.example.myapplication" className={input} /></label>
-              <label className="block"><span className="block text-[12px] font-semibold text-[#65676b] mb-1">App signature hash</span><input value={draft.otp.signatureHash} onChange={(event) => set({ otp: { ...draft.otp, signatureHash: event.target.value } })} placeholder="K8a/AINcGX7" maxLength={11} className={input} /></label>
+            <div className="mt-3 space-y-2.5">
+              <p className="text-[13px] font-semibold text-[#1c2b33] dark:text-slate-200">App setup</p>
+              {draft.otp.apps.map((app, index) => (
+                <div key={index} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                  <label className="block"><span className="block text-[12px] font-semibold text-[#65676b] mb-1">Package name</span><input value={app.packageName} onChange={(event) => set({ otp: { ...draft.otp, apps: draft.otp.apps.map((a, i) => (i === index ? { ...a, packageName: event.target.value } : a)) } })} placeholder="com.example.myapplication" className={input} /></label>
+                  <label className="block"><span className="block text-[12px] font-semibold text-[#65676b] mb-1">App signature hash</span><input value={app.signatureHash} onChange={(event) => set({ otp: { ...draft.otp, apps: draft.otp.apps.map((a, i) => (i === index ? { ...a, signatureHash: event.target.value } : a)) } })} placeholder="K8a/AINcGX7" maxLength={11} className={input} /></label>
+                  {draft.otp.apps.length > 1 && <button type="button" aria-label={`Remove app ${index + 1}`} onClick={() => set({ otp: { ...draft.otp, apps: draft.otp.apps.filter((_, i) => i !== index) } })} className="h-10 w-10 rounded-lg flex items-center justify-center text-[#65676b] hover:bg-[#e4e6eb] cursor-pointer"><Trash2 size={15} /></button>}
+                </div>
+              ))}
+              {draft.otp.apps.length < LIMITS.otpApps && <button type="button" onClick={() => set({ otp: { ...draft.otp, apps: [...draft.otp.apps, { packageName: '', signatureHash: '' }] } })} className={smallButton}><Plus size={14} /> Add another app</button>}
+              {draft.otp.type === 'ZERO_TAP' && (
+                <label className="flex items-start gap-2.5 p-3 rounded-lg bg-[#f7f8fa] dark:bg-slate-900/60 text-[13px] text-[#1c2b33] dark:text-slate-200 cursor-pointer">
+                  <input type="checkbox" checked={draft.otp.zeroTapTermsAccepted} onChange={(event) => set({ otp: { ...draft.otp, zeroTapTermsAccepted: event.target.checked } })} className="mt-0.5 h-4 w-4 accent-[#0064e0]" />
+                  <span>I understand that zero-tap autofill sends the code straight to my app, and I'm responsible for using it as WhatsApp's zero-tap terms describe (<a href="https://developers.facebook.com/docs/whatsapp/business-management-api/authentication-templates/zero-tap-authentication-templates" target="_blank" rel="noreferrer" className="text-[#0064e0] underline">terms</a>).</span>
+                </label>
+              )}
             </div>
           )}
         </Section>
@@ -293,9 +354,10 @@ export function TemplateEditor({
         <Section title="Buttons" description="The button the customer taps to copy or autofill the code." error={errorsFor('otp')}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block"><span className="flex justify-between text-[12px] font-semibold text-[#65676b] mb-1">Copy code button <Counter value={draft.otp.buttonText} max={LIMITS.buttonText} /></span><input value={draft.otp.buttonText} onChange={(event) => set({ otp: { ...draft.otp, buttonText: event.target.value } })} className={input} /></label>
-            {draft.otp.type === 'ONE_TAP' && <label className="block"><span className="flex justify-between text-[12px] font-semibold text-[#65676b] mb-1">Autofill button <Counter value={draft.otp.autofillText} max={LIMITS.buttonText} /></span><input value={draft.otp.autofillText} onChange={(event) => set({ otp: { ...draft.otp, autofillText: event.target.value } })} className={input} /></label>}
+            {draft.otp.type !== 'COPY_CODE' && <label className="block"><span className="flex justify-between text-[12px] font-semibold text-[#65676b] mb-1">Autofill button <Counter value={draft.otp.autofillText} max={LIMITS.buttonText} /></span><input value={draft.otp.autofillText} onChange={(event) => set({ otp: { ...draft.otp, autofillText: event.target.value } })} className={input} /></label>}
           </div>
         </Section>
+        <ValiditySection draft={draft} set={set} error={errorsFor('ttl')} />
       </div>
     )
   }
@@ -333,8 +395,14 @@ export function TemplateEditor({
         </Section>
       )}
 
-      {draft.type !== 'carousel' && (
-        <Section title="Header" optional description="Add a title, or choose the type of media you'll send with this header." error={errorsFor('header')}>
+      {draft.type === 'spm' && (
+        <Section title="Header" description="The product's image, name and price show at the top. You pick the product each time you send." >
+          <div className="h-9 inline-flex items-center px-3 rounded-lg bg-[#f2f3f5] dark:bg-slate-800 text-[13.5px] font-semibold text-[#1c2b33] dark:text-slate-200">Product</div>
+        </Section>
+      )}
+
+      {hasHeaderSection && (
+        <Section title="Header" optional={draft.type !== 'mpm'} description="Add a title, or choose the type of media you'll send with this header." error={errorsFor('header')}>
           <div className="flex flex-wrap gap-1.5 mb-3">
             {headerFormats.map((format) => (
               <button key={format} type="button" onClick={() => set({ headerFormat: format, headerHandle: '', headerPreview: undefined })} className={`h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer ${draft.headerFormat === format ? 'border-[#0064e0] bg-[#e7f0fd] text-[#0064e0] dark:bg-blue-950/40' : 'border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-slate-200 hover:bg-[#f5f6f7] dark:hover:bg-slate-800'}`}>
@@ -374,7 +442,24 @@ export function TemplateEditor({
         </Section>
       )}
 
-      {draft.type !== 'lto' && draft.type !== 'carousel' && (
+      {draft.type === 'product_carousel' && (
+        <Section title="Product cards" description="Each card shows a product from your catalogue, with a View button. You pick the products each time you send." error={errorsFor('cards')}>
+          <label className="flex items-center gap-2 text-[14px] text-[#1c2b33] dark:text-slate-200">
+            Number of cards
+            <select value={draft.productCards} onChange={(event) => set({ productCards: Number(event.target.value) })} className={input.replace('w-full', 'w-24')}>
+              {Array.from({ length: LIMITS.cards - LIMITS.minCards + 1 }, (_, i) => i + LIMITS.minCards).map((count) => <option key={count} value={count}>{count}</option>)}
+            </select>
+          </label>
+        </Section>
+      )}
+
+      {draft.type === 'call_permission' && (
+        <Section title="Call permission request" description="Below your message, customers see a request to allow calls from your business on WhatsApp, with Allow and Don't allow. Needs WhatsApp Business Calling on your number.">
+          <div className="h-9 inline-flex items-center gap-2 px-3 rounded-lg bg-[#f2f3f5] dark:bg-slate-800 text-[13.5px] font-semibold text-[#1c2b33] dark:text-slate-200"><PhoneCall size={14} /> Allow calls?</div>
+        </Section>
+      )}
+
+      {!['lto', 'carousel', 'product_carousel'].includes(draft.type) && (
         <Section title="Footer" optional description="Add a short line of text to the bottom of your message." error={errorsFor('footer')}>
           <input value={draft.footer} onChange={(event) => set({ footer: event.target.value })} placeholder="Enter text" className={input} />
           <div className="flex justify-end mt-1.5"><Counter value={draft.footer} max={LIMITS.footer} /></div>
@@ -413,15 +498,17 @@ export function TemplateEditor({
         </Section>
       )}
 
-      {draft.type === 'catalog' ? (
-        <Section title="Buttons" description="Catalogue templates have a View catalog button that opens your WhatsApp catalogue. Link a catalogue in Commerce first.">
-          <div className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-[#f2f3f5] dark:bg-slate-800 text-[13.5px] font-semibold text-[#1c2b33] dark:text-slate-200">View catalog</div>
+      {fixedButton ? (
+        <Section title="Buttons" description={fixedButton.note}>
+          <div className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-[#f2f3f5] dark:bg-slate-800 text-[13.5px] font-semibold text-[#1c2b33] dark:text-slate-200">{fixedButton.label}</div>
         </Section>
-      ) : draft.type !== 'carousel' && (
+      ) : !['carousel', 'call_permission'].includes(draft.type) && (
         <Section title="Buttons" optional={draft.type === 'custom'} description="Create buttons that let customers respond to your message or take action." error={errorsFor('buttons')}>
           <ButtonsEditor buttons={draft.buttons} onChange={(buttons) => set({ buttons })} allowed={allowedButtons} flows={flows} />
         </Section>
       )}
+
+      <ValiditySection draft={draft} set={set} error={errorsFor('ttl')} />
 
       {mode === 'create' && draft.category !== 'AUTHENTICATION' && (
         <label className="flex items-start gap-2.5 px-1 text-[13px] text-[#65676b] dark:text-slate-400 cursor-pointer">

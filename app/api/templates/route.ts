@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
+import { extraSendVariables } from '@/lib/whatsapp-templates/send-variables'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -224,6 +225,11 @@ async function fetchMetaTemplates(
             }
           })
         }
+
+        // 4. Products, locations, offers, carousel cards, orders and codes
+        const extra = extraSendVariables(components)
+        for (const key of extra.variables) if (!variables.includes(key)) variables.push(key)
+        Object.assign(sampleValues, { ...extra.sampleValues, ...sampleValues })
 
         allTemplates.push({
           sid: `META_${tpl.id}`,

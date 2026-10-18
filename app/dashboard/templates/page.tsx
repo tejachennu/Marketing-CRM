@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, Copy, FileText, KeyRound, Loader2, MoreHorizontal, Pencil,
-  Plus, RefreshCw, Search, ShieldCheck, Trash2, Wrench, X, Megaphone,
+  AlertCircle, ArrowLeft, Bell, CheckCircle2, ChevronRight, Copy, CornerDownRight, ExternalLink, FileText, KeyRound, Languages, Loader2, MoreHorizontal, Pencil,
+  Plus, RefreshCw, Search, ShieldCheck, Trash2, Wrench, X, Megaphone, BookOpen, BarChart3,
 } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -16,6 +16,8 @@ import {
 import type { MetaTemplate } from '@/lib/whatsapp-templates/meta-templates'
 import { TemplateEditor } from '@/components/templates/template-editor'
 import { TemplatePreview } from '@/components/templates/template-preview'
+import { TemplateLibrary } from '@/components/templates/template-library'
+import { TemplateInsights } from '@/components/templates/template-insights'
 
 const primary = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#0064e0] hover:bg-[#0058c7] text-white text-[14px] font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
 const secondary = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#e4e6eb] hover:bg-[#d8dadf] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#1c2b33] dark:text-slate-100 text-[14px] font-semibold transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap'
@@ -35,7 +37,7 @@ const QUALITY: Record<string, { label: string; dot: string }> = {
 }
 const CATEGORY_ICONS: Record<TemplateCategory, any> = { MARKETING: Megaphone, UTILITY: Wrench, AUTHENTICATION: KeyRound }
 
-type View = { kind: 'list' } | { kind: 'setup' } | { kind: 'edit'; template?: MetaTemplate }
+type View = { kind: 'list' } | { kind: 'setup' } | { kind: 'edit'; template?: MetaTemplate } | { kind: 'library' } | { kind: 'insights'; template: MetaTemplate }
 
 function StatusPill({ template }: { template: MetaTemplate }) {
   const info = STATUS_INFO[template.status] || { label: template.status, tone: 'gray', help: '' }
@@ -69,6 +71,11 @@ export default function TemplatesPage() {
   const [status, setStatus] = useState('')
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<MetaTemplate | null>(null)
+  // Adding a language to an existing template: its name and category are fixed
+  const [lockedName, setLockedName] = useState<string | null>(null)
+  // Status changes seen since the page opened (Meta approving, rejecting, pausing…)
+  const [updates, setUpdates] = useState<Array<{ id: string; name: string; language: string; from: string; to: string; at: string }>>([])
+  const lastStatuses = useRef<Map<string, string> | null>(null)
 
   // Create / edit
   const [draft, setDraft] = useState<TemplateDraft>(emptyDraft())
@@ -90,7 +97,22 @@ export default function TemplatesPage() {
       const res = await fetch(`/api/whatsapp-templates?organizationId=${organizationId}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Templates could not be loaded from Meta.')
-      setTemplates(data.templates || [])
+      const list: MetaTemplate[] = data.templates || []
+      // Report what changed since the last sync, like WhatsApp Manager's notifications
+      const previous = lastStatuses.current
+      if (previous) {
+        const changes = list
+          .filter((template) => previous.has(template.id) && previous.get(template.id) !== template.status)
+          .map((template) => ({ id: template.id, name: template.name, language: template.language, from: previous.get(template.id) || '', to: template.status, at: new Date().toISOString() }))
+        if (changes.length) {
+          setUpdates((current) => [...changes, ...current].slice(0, 10))
+          const first = changes[0]
+          const label = (STATUS_INFO[first.to]?.label || first.to).toLowerCase()
+          setToast({ kind: first.to === 'REJECTED' || first.to === 'DISABLED' ? 'error' : 'success', text: changes.length === 1 ? `“${first.name}” (${languageLabel(first.language)}) is now ${label}.` : `${changes.length} templates changed status.` })
+        }
+      }
+      lastStatuses.current = new Map(list.map((template) => [template.id, template.status]))
+      setTemplates(list)
       setSyncedAt(data.syncedAt || new Date().toISOString())
       setLoadError('')
     } catch (err: any) {
@@ -119,18 +141,30 @@ export default function TemplatesPage() {
     })()
   }, [sync])
 
+  // While a template is in review, check Meta every 20 seconds so approvals and rejections show up
+  // on their own; also check again when the tab comes back into view
+  const reviewing = (templates || []).some((template) => ['PENDING', 'IN_APPEAL'].includes(template.status))
+  useEffect(() => {
+    if (!orgId || view.kind !== 'list') return
+    const onFocus = () => { if (document.visibilityState === 'visible') sync(orgId) }
+    document.addEventListener('visibilitychange', onFocus)
+    const timer = reviewing ? setInterval(() => { if (document.visibilityState === 'visible') sync(orgId) }, 20000) : null
+    return () => { document.removeEventListener('visibilitychange', onFocus); if (timer) clearInterval(timer) }
+  }, [orgId, view.kind, reviewing, sync])
+
   const filtered = useMemo(() => (templates || []).filter((template) =>
     (!query || template.name.includes(query.trim().toLowerCase().replace(/\s+/g, '_')) || String(template.components?.find((component: any) => component.type === 'BODY')?.text || '').toLowerCase().includes(query.trim().toLowerCase())) &&
     (!category || template.category === category) &&
     (!language || template.language === language) &&
     (!status || template.status === status)
-  ), [templates, query, category, language, status])
+  ).sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language)), [templates, query, category, language, status])
 
   const problems = useMemo(() => validateDraft(draft), [draft])
   const editing = view.kind === 'edit' ? view.template : undefined
   const nameTaken = view.kind !== 'list' && !editing && (templates || []).some((template) => template.name === draft.name && template.language === draft.language)
 
   function startCreate() {
+    setLockedName(null)
     setDraft(emptyDraft('MARKETING', 'custom'))
     setSubmitError('')
     setShowProblems(false)
@@ -144,7 +178,22 @@ export default function TemplatesPage() {
     setView({ kind: 'edit', template })
   }
 
+  function startAddLanguage(template: MetaTemplate) {
+    const copy = draftFromMeta(template)
+    const used = new Set((templates || []).filter((item) => item.name === template.name).map((item) => item.language))
+    copy.language = TEMPLATE_LANGUAGES.find((item) => !used.has(item.code))?.code || copy.language
+    // The text is a starting point to translate; Meta-hosted samples must be uploaded again
+    copy.headerHandle = copy.headerHandle.startsWith('http') ? '' : copy.headerHandle
+    copy.cards = copy.cards.map((card) => ({ ...card, headerHandle: card.headerHandle.startsWith('http') ? '' : card.headerHandle }))
+    setLockedName(template.name)
+    setDraft(copy)
+    setSubmitError('')
+    setShowProblems(false)
+    setView({ kind: 'setup' })
+  }
+
   function startDuplicate(template: MetaTemplate) {
+    setLockedName(null)
     const copy = draftFromMeta(template)
     copy.name = `${template.name}_copy`.slice(0, 512)
     // Meta-hosted sample media can't be reused as a new sample: upload it again
@@ -197,7 +246,7 @@ export default function TemplatesPage() {
     const types = TEMPLATE_TYPES[draft.category]
     return (
       <Shell>
-        <Header title="Create template" onBack={() => setView({ kind: 'list' })} />
+        <Header title={lockedName ? `Add language to ${lockedName}` : 'Create template'} subtitle={lockedName ? 'Same name and category; choose the language, then translate the content.' : undefined} onBack={() => setView({ kind: 'list' })} />
         <div className="max-w-4xl space-y-4">
           <section className="bg-white dark:bg-[#111b21] rounded-xl border border-[#dadde1] dark:border-slate-800 p-4 sm:p-5">
             <h2 className="text-[17px] font-bold text-[#1c2b33] dark:text-white">Set up your template</h2>
@@ -207,7 +256,7 @@ export default function TemplatesPage() {
                 const Icon = CATEGORY_ICONS[value]
                 const active = draft.category === value
                 return (
-                  <button key={value} type="button" onClick={() => setDraft({ ...emptyDraft(value, TEMPLATE_TYPES[value][0].type), name: draft.name, language: draft.language })} className={`text-left p-3 rounded-xl border-2 transition-colors cursor-pointer ${active ? 'border-[#0064e0] bg-[#e7f0fd] dark:bg-blue-950/30' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
+                  <button key={value} type="button" disabled={Boolean(lockedName) && !active} onClick={() => setDraft({ ...emptyDraft(value, TEMPLATE_TYPES[value][0].type), name: draft.name, language: draft.language })} className={`text-left p-3 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl border-2 transition-colors cursor-pointer ${active ? 'border-[#0064e0] bg-[#e7f0fd] dark:bg-blue-950/30' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
                     <span className="flex items-center gap-2 text-[15px] font-bold text-[#1c2b33] dark:text-white"><Icon size={17} className={active ? 'text-[#0064e0]' : 'text-[#65676b]'} /> {CATEGORY_LABELS[value].title}</span>
                     <span className="block text-[12.5px] text-[#65676b] dark:text-slate-400 mt-1 leading-snug">{CATEGORY_LABELS[value].description}</span>
                   </button>
@@ -217,7 +266,7 @@ export default function TemplatesPage() {
             <div className="space-y-2">
               {types.map((option) => (
                 <label key={option.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${draft.type === option.type ? 'border-[#0064e0] bg-[#f5f9ff] dark:bg-blue-950/20' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
-                  <input type="radio" checked={draft.type === option.type} onChange={() => setDraft({ ...emptyDraft(draft.category, option.type as TemplateType), name: draft.name, language: draft.language })} className="mt-1 accent-[#0064e0]" />
+                  <input type="radio" disabled={Boolean(lockedName)} checked={draft.type === option.type} onChange={() => setDraft({ ...emptyDraft(draft.category, option.type as TemplateType), name: draft.name, language: draft.language })} className="mt-1 accent-[#0064e0]" />
                   <span>
                     <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white">{option.title}</span>
                     <span className="block text-[13px] text-[#65676b] dark:text-slate-400">{option.description}</span>
@@ -225,6 +274,12 @@ export default function TemplatesPage() {
                 </label>
               ))}
             </div>
+            {draft.category === 'UTILITY' && !lockedName && (
+              <div className="mt-3 rounded-lg bg-[#f5f9ff] dark:bg-blue-950/20 border border-[#cfe0fb] dark:border-blue-900 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-[13px] text-[#1c2b33] dark:text-slate-200"><strong>Skip the review.</strong> Meta's template library has ready-made utility templates that are approved as soon as you create them.</span>
+                <button type="button" onClick={() => setView({ kind: 'library' })} className={`${secondary} shrink-0`}><BookOpen size={15} /> Browse library</button>
+              </div>
+            )}
           </section>
 
           <section className="bg-white dark:bg-[#111b21] rounded-xl border border-[#dadde1] dark:border-slate-800 p-4 sm:p-5">
@@ -232,7 +287,7 @@ export default function TemplatesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 mt-3">
               <label className="block">
                 <span className="flex justify-between text-[13px] font-semibold text-[#1c2b33] dark:text-slate-200 mb-1">Name your template <span className="font-normal text-[#8a8d91]">{draft.name.length}/512</span></span>
-                <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })} placeholder="Enter a template name" className={`${select} w-full`} />
+                <input value={draft.name} disabled={Boolean(lockedName)} onChange={(event) => setDraft({ ...draft, name: event.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })} placeholder="Enter a template name" className={`${select} w-full disabled:bg-[#f5f6f7] dark:disabled:bg-slate-800`} />
                 <span className="block text-[12px] text-[#65676b] mt-1">Lowercase letters, numbers and underscores.</span>
               </label>
               <label className="block">
@@ -250,6 +305,43 @@ export default function TemplatesPage() {
             <button type="button" disabled={!draft.name || nameTaken} onClick={() => setView({ kind: 'edit' })} className={primary}>Next <ChevronRight size={16} /></button>
           </div>
         </div>
+      </Shell>
+    )
+  }
+
+  // ── Insights: one template's performance ─────────────────────────────────
+  if (view.kind === 'insights' && orgId) {
+    const template = view.template
+    return (
+      <Shell>
+        <Header title={template.name} subtitle={`${CATEGORY_LABELS[template.category as TemplateCategory]?.title || template.category} · ${languageLabel(template.language)} · Insights`} onBack={() => setView({ kind: 'list' })} />
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-5 items-start">
+          <TemplateInsights orgId={orgId} templateId={template.id} />
+          <div className="lg:sticky lg:top-4 space-y-3">
+            <p className="text-[15px] font-bold text-[#1c2b33] dark:text-white">Template preview</p>
+            <TemplatePreview draft={draftFromMeta(template)} />
+          </div>
+        </div>
+      </Shell>
+    )
+  }
+
+  // ── Template library: Meta's pre-approved utility templates ──────────────
+  if (view.kind === 'library' && orgId) {
+    return (
+      <Shell>
+        <Header title="Browse template library" subtitle="Pre-approved utility templates from Meta. Add your website or phone number and send them right away." onBack={() => setView({ kind: 'list' })} />
+        <TemplateLibrary
+          orgId={orgId}
+          existingNames={new Set((templates || []).map((template) => template.name))}
+          onCancel={() => setView({ kind: 'list' })}
+          onCreated={(name) => {
+            setToast({ kind: 'success', text: `“${name}” was created from the library and is ready to send.` })
+            setView({ kind: 'list' })
+            sync(orgId)
+          }}
+        />
+        {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
       </Shell>
     )
   }
@@ -309,6 +401,7 @@ export default function TemplatesPage() {
           <button type="button" onClick={() => orgId && sync(orgId)} disabled={syncing || !orgId} className={secondary} title={syncedAt ? `Last synced ${new Date(syncedAt).toLocaleTimeString()}` : 'Sync with Meta'}>
             <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} /> Sync
           </button>
+          {canManage && <button type="button" onClick={() => setView({ kind: 'library' })} disabled={!orgId} className={secondary}><BookOpen size={15} /> <span className="hidden sm:inline">Browse template library</span><span className="sm:hidden">Library</span></button>}
           {canManage && <button type="button" onClick={startCreate} className={primary}><Plus size={16} /> Create template</button>}
         </div>
       </div>
@@ -316,6 +409,23 @@ export default function TemplatesPage() {
       {loadError && (
         <div role="alert" className="mb-4 rounded-xl border border-[#f2b8c0] bg-[#fde8ea] dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-[13.5px] text-[#c11231] dark:text-rose-200 flex items-start gap-2">
           <AlertCircle size={17} className="shrink-0 mt-0.5" /> {loadError}
+        </div>
+      )}
+
+      {updates.length > 0 && (
+        <div className="mb-4 rounded-xl border border-[#dadde1] dark:border-slate-800 bg-white dark:bg-[#111b21] p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#1c2b33] dark:text-white"><Bell size={15} /> Status updates</p>
+            <button type="button" onClick={() => setUpdates([])} className="text-[12.5px] font-semibold text-[#0064e0] cursor-pointer">Clear</button>
+          </div>
+          <ul className="space-y-1">
+            {updates.map((update) => (
+              <li key={`${update.id}-${update.at}`} className="text-[13px] text-[#1c2b33] dark:text-slate-200">
+                <strong>{update.name}</strong> ({languageLabel(update.language)}): {STATUS_INFO[update.from]?.label || update.from} → <span className={update.to === 'APPROVED' ? 'text-[#1e7e34] font-semibold' : update.to === 'REJECTED' || update.to === 'DISABLED' ? 'text-[#c11231] font-semibold' : 'font-semibold'}>{STATUS_INFO[update.to]?.label || update.to}</span>
+                <span className="text-[#8a8d91]"> · {new Date(update.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -362,17 +472,28 @@ export default function TemplatesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((template) => {
+                {filtered.map((template, index) => {
                   const body = template.components?.find((component: any) => component.type === 'BODY')?.text || ''
                   const editable = !['PENDING', 'IN_APPEAL', 'DISABLED', 'PENDING_DELETION', 'DELETED'].includes(template.status)
+                  // Further languages of the same template sit under its first row, as in WhatsApp Manager
+                  const continued = index > 0 && filtered[index - 1].name === template.name
                   return (
-                    <tr key={template.id} className="border-t border-[#ebedf0] dark:border-slate-800 hover:bg-[#f7f8fa] dark:hover:bg-slate-900/40 align-top">
+                    <tr key={template.id} className={`${continued ? '' : 'border-t border-[#ebedf0] dark:border-slate-800'} hover:bg-[#f7f8fa] dark:hover:bg-slate-900/40 align-top`}>
                       <td className="px-4 py-3 max-w-[340px]">
                         <button type="button" onClick={() => (canManage && editable ? startEdit(template) : undefined)} className="text-left">
-                          <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white hover:underline">{template.name}</span>
-                          <span className="block text-[12.5px] text-[#65676b] dark:text-slate-400 truncate">{body || (template.category === 'AUTHENTICATION' ? 'One-time passcode' : '')}</span>
+                          {continued ? (
+                            <span className="flex items-center gap-1.5 pl-1 text-[13px] text-[#65676b] dark:text-slate-400"><CornerDownRight size={14} /> {languageLabel(template.language)} version</span>
+                          ) : (
+                            <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white hover:underline">{template.name}</span>
+                          )}
+                          <span className={`block text-[12.5px] text-[#65676b] dark:text-slate-400 truncate ${continued ? 'pl-6' : ''}`}>{body || (template.category === 'AUTHENTICATION' ? 'One-time passcode' : '')}</span>
                         </button>
-                        {template.status === 'REJECTED' && <span className="block text-[12px] text-[#c11231] mt-1">{REJECTION_REASONS[String(template.rejected_reason || 'NONE')] || template.rejected_reason}</span>}
+                        {template.status === 'REJECTED' && (
+                          <span className="block text-[12px] text-[#c11231] mt-1">
+                            {REJECTION_REASONS[String(template.rejected_reason || 'NONE')] || template.rejected_reason}{' '}
+                            <a href="https://business.facebook.com/business-support-home" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-semibold text-[#0064e0] hover:underline">Request review <ExternalLink size={11} /></a>
+                          </span>
+                        )}
                         {template.previous_category && <span className="block text-[12px] text-[#8a6100] mt-1">Category changed by Meta from {CATEGORY_LABELS[template.previous_category as TemplateCategory]?.title || template.previous_category}</span>}
                       </td>
                       <td className="px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-slate-200">{CATEGORY_LABELS[template.category as TemplateCategory]?.title || template.category}</td>
@@ -384,7 +505,9 @@ export default function TemplatesPage() {
                             <button type="button" aria-label={`Actions for ${template.name}`} onClick={() => setMenuFor(menuFor === template.id ? null : template.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-[#65676b] hover:bg-[#e4e6eb] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={17} /></button>
                             {menuFor === template.id && (
                               <div className="absolute right-2 z-20 mt-1 w-44 rounded-xl border border-[#dadde1] dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1">
+                                {template.status === 'APPROVED' && <MenuItem icon={BarChart3} label="View insights" onClick={() => { setMenuFor(null); setView({ kind: 'insights', template }) }} />}
                                 {editable && <MenuItem icon={Pencil} label="Edit" onClick={() => { setMenuFor(null); startEdit(template) }} />}
+                                <MenuItem icon={Languages} label="Add language" onClick={() => { setMenuFor(null); startAddLanguage(template) }} />
                                 <MenuItem icon={Copy} label="Duplicate" onClick={() => { setMenuFor(null); startDuplicate(template) }} />
                                 <MenuItem icon={Trash2} label="Delete" danger onClick={() => { setMenuFor(null); setConfirmDelete(template) }} />
                               </div>
@@ -401,7 +524,7 @@ export default function TemplatesPage() {
         )}
         {templates && templates.length > 0 && (
           <p className="px-4 py-2.5 text-[12.5px] text-[#65676b] dark:text-slate-400 border-t border-[#ebedf0] dark:border-slate-800 flex items-center gap-1.5">
-            <ShieldCheck size={13} /> {filtered.length} of {templates.length} templates{syncedAt ? ` · synced ${new Date(syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+            <ShieldCheck size={13} /> {filtered.length} of {templates.length} templates{syncedAt ? ` · synced ${new Date(syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}{reviewing ? ' · checking Meta for review results every 20 seconds' : ''}
           </p>
         )}
       </div>
