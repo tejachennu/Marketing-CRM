@@ -578,7 +578,11 @@ test('Commerce webhook: a message Meta rejects is not logged as sent', async () 
     step = (await handlers.handleInboundCommerceOrder({ organization: store({ commerce_enable_cod: false }), ...party, orderPayload: cart, messageId: 'm', database })).step
   }, () => rejected())
   assert.equal(step, 'not_sent')
-  assert.equal(database.tables.messages.length, 0)
+  // Nothing was sent, so the chat gets one "Not delivered" note with the reason, not a sent message
+  assert.equal(database.tables.messages.length, 1)
+  assert.equal(database.tables.messages[0].status, 'failed')
+  assert.match(database.tables.messages[0].body, /could not be sent/)
+  assert.ok(database.tables.messages[0].error_message)
   assert.equal(database.tables.commerce_orders.length, 1) // the order itself is still recorded
 })
 

@@ -188,6 +188,36 @@ export function getCommerceSetup(organization: Record<string, any> | null | unde
   }
 }
 
+// ── Checkout messages ───────────────────────────────────────────────────────
+
+/**
+ * What the customer is told at each checkout step. The webhook sends these and the dashboard's
+ * Order flow tab previews them, so the two cannot drift apart.
+ */
+export const CHECKOUT_TEXT = {
+  received: (orderNumber: string, itemCount: number, total: string) =>
+    `Thank you! We received your order #${orderNumber} for ${itemCount} item${itemCount === 1 ? '' : 's'} (Total: ${total}).`,
+  askAddress: 'Where should we deliver it? Tap below to add your address.',
+  askHowToPay: (total: string) => `How would you like to pay ${total}?`,
+  payOnline: 'Review your order and pay securely below.',
+  confirmCod: (total: string) => `Pay ${total} in cash when your order arrives. Tap below to confirm it.`,
+  acknowledge: 'Our team will contact you shortly to confirm payment and delivery.',
+  codConfirmed: (orderNumber: string, total: string) => `Order #${orderNumber} is confirmed for Cash on Delivery. Please keep ${total} ready when it arrives.`,
+  paid: (amount: string, orderNumber: string) => `Payment of ${amount} received. Order #${orderNumber} is confirmed and we are preparing it.`,
+}
+
+export type PaymentStep = 'choice' | 'payment' | 'cod' | 'acknowledged'
+
+/** Which payment step a customer gets, from the store's settings (mirrors the webhook's order). */
+export function getPaymentStep(organization: Record<string, any> | null | undefined): PaymentStep {
+  const online = Boolean(getPaymentGateway(organization))
+  const cod = organization?.commerce_enable_cod !== false
+  if (online && cod) return 'choice'
+  if (online) return 'payment'
+  if (cod) return 'cod'
+  return 'acknowledged'
+}
+
 // ── Money ───────────────────────────────────────────────────────────────────
 
 /** An amount in the currency's minor unit (paise, cents). WhatsApp payments are sent this way. */

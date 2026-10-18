@@ -21,6 +21,7 @@ import {
 import { calculateOrderTotals, fetchMetaProductsBySku } from './meta-commerce'
 import {
   ORDER_STATUS_LABELS,
+  CHECKOUT_TEXT,
   OPEN_CHECKOUT_STATUSES,
   describeWhatsAppError,
   formatAddress,
@@ -234,7 +235,7 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
       items,
       paymentGatewayType: gateway.type,
       paymentGatewayConfigName: gateway.configName,
-      bodyText: `${intro}\n\nReview your order and pay securely below.`,
+      bodyText: `${intro}\n\n${CHECKOUT_TEXT.payOnline}`,
     })
   } catch (err: any) {
     return { ok: false, error: err.message }
@@ -287,7 +288,7 @@ async function sendNextCheckoutStep(
         phone: customerPhone,
         flowId: organization.commerce_address_flow_id,
         orderId: order.id,
-        bodyText: `${intro}\n\nWhere should we deliver it? Tap below to add your address.`,
+        bodyText: `${intro}\n\n${CHECKOUT_TEXT.askAddress}`,
       }),
       `[Sent delivery address form for Order #${order.order_number}]`
     )
@@ -302,7 +303,7 @@ async function sendNextCheckoutStep(
   if (canPayOnline && offersCod && options.preferred !== 'payment') {
     const result = await sendAndLog(
       context,
-      buildButtonsMessage(customerPhone, `${intro}\n\nHow would you like to pay ${total}?`, [
+      buildButtonsMessage(customerPhone, `${intro}\n\n${CHECKOUT_TEXT.askHowToPay(total)}`, [
         { id: `pay_online_${order.id}`, title: 'Pay online' },
         { id: `cod_confirm_${order.id}`, title: 'Cash on Delivery' },
       ]),
@@ -321,7 +322,7 @@ async function sendNextCheckoutStep(
   if (offersCod) {
     const result = await sendAndLog(
       context,
-      buildButtonsMessage(customerPhone, `${intro}\n\nPay ${total} in cash when your order arrives. Tap below to confirm it.`, [
+      buildButtonsMessage(customerPhone, `${intro}\n\n${CHECKOUT_TEXT.confirmCod(total)}`, [
         { id: `cod_confirm_${order.id}`, title: 'Confirm order' },
       ]),
       `[Sent Cash on Delivery confirmation for Order #${order.order_number} (${total})]`
@@ -332,10 +333,25 @@ async function sendNextCheckoutStep(
 
   const result = await sendAndLog(
     context,
-    buildTextMessage(customerPhone, `${intro}\n\nOur team will contact you shortly to confirm payment and delivery.`),
+    buildTextMessage(customerPhone, `${intro}\n\n${CHECKOUT_TEXT.acknowledge}`),
     `[Sent order acknowledgement for Order #${order.order_number} (${total})]`
   )
-  return result.ok ? { step: 'acknowledged' } : { step: 'not_sent', error: result.error || lastError }
+  if (result.ok) return { step: 'acknowledged' }
+
+  // Nothing reached the customer. Say so in the chat, with WhatsApp's reason, so the team sees a
+  // stalled checkout instead of what looks like no reply at all.
+  const error = result.error || lastError || 'WhatsApp did not accept the checkout messages.'
+  if (context.conversationId) {
+    await context.supabase.from('messages').insert({
+      organization_id: organization.id,
+      conversation_id: context.conversationId,
+      sender_type: 'user',
+      body: `[Checkout message for Order #${order.order_number} (${total}) could not be sent]`,
+      status: 'failed',
+      error_message: error,
+    })
+  }
+  return { step: 'not_sent', error }
 }
 
 // ── 1. A cart arrives ───────────────────────────────────────────────────────
@@ -505,7 +521,7 @@ export async function handleInboundCommerceOrder({
     { supabase, organization, conversationId: conversation.id, customerPhone },
     newOrder,
     items,
-    `Thank you! We received your order #${newOrder.order_number} for ${itemCount} item${itemCount === 1 ? '' : 's'} (Total: ${formatMoney(totals.grandTotal, currency)}).`
+    CHECKOUT_TEXT.received(newOrder.order_number, itemCount, formatMoney(totals.grandTotal, currency))
   )
 
   return { order: newOrder, items, step }
@@ -738,7 +754,7 @@ export async function handleCheckoutButton({
 
   const address = formatAddress(order.shipping_address)
   await reply(
-    `Order #${order.order_number} is confirmed for Cash on Delivery. Please keep ${total} ready when it arrives.${address ? `\n\nDelivering to: ${address}` : ''}`,
+    `${CHECKOUT_TEXT.codConfirmed(order.order_number, total)}${address ? `\n\nDelivering to: ${address}` : ''}`,
     `[Order #${order.order_number} confirmed for Cash on Delivery (${total})]`
   )
   return { handled: true, outcome: 'cod_confirmed', order: { ...order, status: 'cod_confirmed', payment_method: 'cod' } }
@@ -873,7 +889,7 @@ export async function handleInboundPaymentConfirmation({
   if (receiptPhone) {
     const text = order.status === 'canceled'
       ? `We received ${formatMoney(paidAmount, currency)} for order #${order.order_number}, but this order was canceled. Our team will contact you about your refund.`
-      : `Payment of ${formatMoney(paidAmount, currency)} received. Order #${order.order_number} is confirmed and we are preparing it.`
+      : CHECKOUT_TEXT.paid(formatMoney(paidAmount, currency), order.order_number)
     // The receipt card belongs to the payment request that was paid
     const card = await sendAndLog(
       context,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertCircle, CheckCircle2, Circle, Clock, Loader2, Package, PauseCircle, Settings, ShoppingBag, Truck, Wallet, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Circle, Clock, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Truck, Wallet, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -10,11 +10,12 @@ import { can, type RoleSubject } from '@/lib/rbac'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
 import { formatMoney, getCommerceSetup } from '@/lib/commerce/commerce-utils'
 import { OrdersTab } from '@/components/commerce/orders-tab'
+import { OrderFlowTab } from '@/components/commerce/order-flow-tab'
 import { ProductsTab } from '@/components/commerce/products-tab'
 import { StoreSettings } from '@/components/commerce/store-settings'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
-type Tab = 'orders' | 'products' | 'settings'
+type Tab = 'orders' | 'products' | 'flow' | 'settings'
 
 export default function CommercePage() {
   const [activeTab, setActiveTab] = useState<Tab>('orders')
@@ -102,7 +103,7 @@ export default function CommercePage() {
   const tabs: Array<{ id: Tab; label: string; icon: LucideIcon; count?: number | null }> = [
     { id: 'orders', label: 'Orders', icon: Package, count: summary?.total },
     { id: 'products', label: 'Products', icon: ShoppingBag, count: productCount },
-    ...(canManageStore ? [{ id: 'settings' as Tab, label: 'Store settings', icon: Settings }] : []),
+    ...(canManageStore ? [{ id: 'flow' as Tab, label: 'Order flow', icon: Rocket }, { id: 'settings' as Tab, label: 'Store settings', icon: Settings }] : []),
   ]
 
   const revenue = summary?.revenue || []
@@ -174,9 +175,9 @@ export default function CommercePage() {
                   Customers can order once the first three steps are done.{!canManageStore && ' An admin or manager can complete them.'}
                 </p>
               </div>
-              {activeTab !== 'settings' && canManageStore && (
-                <button type="button" onClick={() => setActiveTab('settings')} className={secondaryButton}>
-                  <Settings size={14} /> Open store settings
+              {activeTab !== 'flow' && canManageStore && (
+                <button type="button" onClick={() => setActiveTab('flow')} className={secondaryButton}>
+                  <Rocket size={14} /> Check what is missing
                 </button>
               )}
             </div>
@@ -224,6 +225,17 @@ export default function CommercePage() {
 
         {orgId && activeTab === 'products' && (
           <ProductsTab orgId={orgId} currency={currency} canEdit={canEdit} canManageStore={canManageStore} catalogLinked={setup.catalogLinked && setup.whatsappConnected} onCount={setProductCount} showToast={showToast} />
+        )}
+
+        {orgId && orgData && activeTab === 'flow' && canManageStore && (
+          <OrderFlowTab
+            orgId={orgId}
+            orgData={orgData}
+            onOpenSettings={() => setActiveTab('settings')}
+            onOpenOrders={() => setActiveTab('orders')}
+            onSaved={(changes) => setOrgData((current) => (current ? { ...current, ...changes } : current))}
+            showToast={showToast}
+          />
         )}
 
         {orgId && orgData && activeTab === 'settings' && canManageStore && (
