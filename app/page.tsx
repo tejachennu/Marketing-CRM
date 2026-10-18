@@ -44,6 +44,18 @@ export default function LandingPage() {
 
   const faqs = [
     {
+      q: "Can customers buy and pay without leaving WhatsApp?",
+      a: "Yes. Connect your Meta catalogue and customers browse products, send a cart, add their delivery address in a WhatsApp form and tap Review and pay (Razorpay, PayU, BillDesk or Zaakpay through WhatsApp Pay) or choose Cash on Delivery. They get the receipt, a thank-you and every order update in the same chat, and your team sees each order in the CRM."
+    },
+    {
+      q: "Does the AI understand Telugu, Hindi, Tenglish and Hinglish?",
+      a: "Yes. The AI assistant replies in the language and style the customer writes in: English, Telugu, Hindi, or mixed messages like “me degara Radhakrishnan books unnaya?” and “kitne ka hai bhai?”. It searches your products, sends product cards and answers questions about the customer's own orders."
+    },
+    {
+      q: "Which WhatsApp template types can I create?",
+      a: "All of the types WhatsApp Manager offers: standard text and media, carousels, limited-time offers, coupon codes, catalogue, multi-product and single-product messages, Flows, order details, call permission requests and one-time passwords. You also get Meta's pre-approved template library, live approval status with rejection reasons, multiple languages per template and insights on sends, reads and clicks."
+    },
+    {
       q: "How does the WhatsApp AI Chatbot help increase sales?",
       a: "Most customers message when your team is offline. If you don't reply within 2 minutes, they buy elsewhere. Our AI Chatbot connects to your store catalog, answers product questions in under 2 seconds, qualifies buyer intent, and sends 1-tap checkout or appointment links 24/7."
     },
@@ -96,8 +108,8 @@ export default function LandingPage() {
             Now an official Meta Tech Provider
           </a>
           <span className="text-white/85">
-            <span className="sm:hidden">First 1,000 conversations free every month.</span>
-            <span className="hidden sm:inline">First 1,000 monthly WhatsApp conversations free, with 0% markup on Meta rates.</span>
+            <span className="sm:hidden">New: sell &amp; get paid inside WhatsApp.</span>
+            <span className="hidden sm:inline">New: sell and take payment inside WhatsApp, with an AI assistant that speaks Tenglish &amp; Hinglish.</span>
           </span>
           <a href="#demo" className="text-[#27d34b] font-bold hover:underline inline-flex items-center gap-1">
             Book a demo <ArrowRight size={12} />
@@ -127,29 +139,34 @@ export default function LandingPage() {
           </Link>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-6 text-[13.5px] font-semibold text-[#4a5852]">
+          <nav className="hidden lg:flex items-center gap-4 xl:gap-5 whitespace-nowrap text-[13.5px] font-semibold text-[#4a5852]">
             <a href="#showcase" className="hover:text-[#008069] transition flex items-center gap-1.5">
               <Zap size={14} className="text-[#008069]" />
               <span>Broadcasts</span>
             </a>
-            <a href="#features-pipeline" className="hover:text-[#008069] transition flex items-center gap-1.5">
+            <a href="#features-commerce" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <ShoppingBag size={14} className="text-[#008069]" />
+              <span>Commerce</span>
+            </a>
+            <a href="#features-templates" className="hover:text-[#008069] transition flex items-center gap-1.5">
+              <Layers size={14} className="text-[#008069]" />
+              <span>Templates</span>
+            </a>
+            <a href="#features-pipeline" className="hover:text-[#008069] transition hidden xl:flex items-center gap-1.5">
               <Kanban size={14} className="text-[#008069]" />
               <span>Sales Pipeline</span>
             </a>
-            <a href="#features-ai" className="hover:text-[#008069] transition flex items-center gap-1.5">
+            <a href="#features-ai" className="hover:text-[#008069] transition hidden xl:flex items-center gap-1.5">
               <Bot size={14} className="text-[#008069]" />
               <span>AI Chatbot</span>
             </a>
-            <a href="#features-ticketing" className="hover:text-[#008069] transition flex items-center gap-1.5">
+            <a href="#features-ticketing" className="hover:text-[#008069] transition hidden 2xl:flex items-center gap-1.5">
               <Ticket size={14} className="text-[#008069]" />
               <span>Ticketing</span>
             </a>
-            <a href="#features-team" className="hover:text-[#008069] transition flex items-center gap-1.5">
+            <a href="#features-team" className="hover:text-[#008069] transition hidden 2xl:flex items-center gap-1.5">
               <Users size={14} className="text-[#008069]" />
               <span>Team Inbox</span>
-            </a>
-            <a href="#why-whatsapp" className="hover:text-[#008069] transition">
-              Why WhatsApp?
             </a>
             <a href="#faq" className="hover:text-[#008069] transition">
               FAQ
@@ -157,7 +174,7 @@ export default function LandingPage() {
           </nav>
 
           {/* Header Action Buttons */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-3 whitespace-nowrap">
             <Link 
               href="/login" 
               className="text-xs sm:text-sm font-semibold text-[#4a5852] hover:text-[#0c2014] px-3.5 py-2 transition"
@@ -197,6 +214,20 @@ export default function LandingPage() {
               className="block text-sm font-semibold text-slate-800"
             >
               ⚡ Bulk WhatsApp Broadcasts
+            </a>
+            <a 
+              href="#features-commerce" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              🛍️ WhatsApp Commerce &amp; Payments
+            </a>
+            <a 
+              href="#features-templates" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              🧩 Message Templates
             </a>
             <a 
               href="#features-pipeline" 
@@ -296,7 +327,7 @@ export default function LandingPage() {
 
               {/* Punchy Subheadline (Less Content, Clear Meaning) */}
               <p className="text-[15px] sm:text-lg text-[#52635b] max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed font-normal text-pretty">
-                Deploy a <strong className="text-[#0c2014]">24/7 WhatsApp AI Chatbot</strong> that qualifies buyers and closes sales, and blast <strong className="text-[#0c2014]">personalized bulk broadcasts</strong> from Excel with <span className="text-[#008069] font-bold underline decoration-[#27d34b] decoration-2">98% open rates</span> at wholesale Meta rates.
+                Deploy a <strong className="text-[#0c2014]">24/7 WhatsApp AI assistant</strong> that answers in your customer&apos;s language, <strong className="text-[#0c2014]">sells and takes payment inside the chat</strong>, and blast <strong className="text-[#0c2014]">personalized broadcasts</strong> with <span className="text-[#008069] font-bold underline decoration-[#27d34b] decoration-2">98% open rates</span> at Meta&apos;s own rates.
               </p>
 
               {/* CTA Pill Buttons */}
@@ -565,8 +596,21 @@ export default function LandingPage() {
               Everything you need to turn conversations into revenue.
             </h2>
             <p className="text-base sm:text-lg text-[#5d6b67] font-normal leading-relaxed">
-              One platform to run broadcasts, automate journeys, and support customers across WhatsApp.
+              One platform to run broadcasts, automate journeys, sell in the chat, and support customers across WhatsApp.
             </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#5d6b67] mr-1">What&apos;s new</span>
+              {[
+                { href: '#features-commerce', label: 'WhatsApp Commerce & Pay', icon: ShoppingBag },
+                { href: '#features-commerce', label: 'AI shopping assistant', icon: Bot },
+                { href: '#features-commerce', label: 'Tenglish · Hinglish · తెలుగు', icon: Globe },
+                { href: '#features-templates', label: 'Template studio & insights', icon: Layers },
+              ].map(({ href, label, icon: Icon }) => (
+                <a key={label} href={href} className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-[12px] font-semibold text-[#0c2014] hover:border-[#27d34b] hover:text-[#008069] transition">
+                  <Icon size={13} className="text-[#008069]" /> {label}
+                </a>
+              ))}
+            </div>
           </div>
 
           {/* STACKED CARDS CONTAINER */}
@@ -1570,6 +1614,195 @@ export default function LandingPage() {
                       </div>
 
                     </div>
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD: WHATSAPP COMMERCE + AI SHOPPING ASSISTANT ━━━ */}
+            <article id="features-commerce" className="rounded-[24px] sm:rounded-[32px] bg-[#FCE7EF] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-pink-200/60 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#D6336C] flex items-center justify-center text-white shadow-xs">
+                      <ShoppingBag size={15} />
+                    </span>
+                    <span>WhatsApp Commerce</span>
+                    <span className="rounded-full bg-[#D6336C] text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5">New</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    Sell, take payment &amp; deliver — inside the chat.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    Your Meta catalogue becomes a shop in WhatsApp. An AI shopping assistant finds products, sends product cards and answers “where is my order?”. Customers add their address and pay with WhatsApp Pay or Cash on Delivery, without leaving the chat.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#D6336C] mt-0.5 flex-shrink-0" />
+                      <span>Product cards, catalogue and cart orders synced with Meta Commerce</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#D6336C] mt-0.5 flex-shrink-0" />
+                      <span>Delivery address form, then <strong>Review and pay</strong> with Razorpay, PayU, BillDesk or Zaakpay, or COD</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#D6336C] mt-0.5 flex-shrink-0" />
+                      <span>Order status updates, payment receipts and a thank-you sent automatically</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#D6336C] mt-0.5 flex-shrink-0" />
+                      <span>Speaks your customer&apos;s language: English, తెలుగు, हिंदी, Tenglish and Hinglish</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#D6336C] mt-0.5 flex-shrink-0" />
+                      <span>Go-live checklist that tells you exactly what is left to connect</span>
+                    </li>
+                  </ul>
+
+                  <Link href="/signup" className="inline-flex items-center gap-2 rounded-full bg-[#0c2014] hover:bg-black text-white text-sm font-bold px-6 py-3 transition">
+                    Open your WhatsApp store <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right: the shopping conversation */}
+                <div className="lg:col-span-7">
+                  <div className="mx-auto max-w-[420px] rounded-[28px] bg-white p-2.5 shadow-[0_24px_60px_-24px_rgba(120,20,60,0.35)] border border-pink-100">
+                    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-t-[20px] bg-[#008069] text-white">
+                      <span className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-[11px] font-black">BS</span>
+                      <div className="leading-tight">
+                        <div className="text-[13px] font-bold">BooksStore</div>
+                        <div className="text-[10px] text-white/75">AI shopping assistant • online</div>
+                      </div>
+                    </div>
+                    <div className="rounded-b-[20px] bg-[#efeae2] p-3 space-y-2 text-[12px] leading-snug">
+                      <div className="ml-auto max-w-[78%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2.5 py-1.5 text-[#111b21]">
+                        Me degara Radhakrishnan books unnaya? 📚
+                        <div className="text-right text-[9px] text-[#667781]">12:51 ✓✓</div>
+                      </div>
+                      <div className="max-w-[82%] rounded-lg rounded-tl-none bg-white px-2.5 py-1.5 text-[#111b21] shadow-xs">
+                        Unnayi andi! Ee books chudandi 👇
+                        <div className="mt-1.5 flex items-center gap-2 rounded-md bg-[#f0f2f5] p-1.5">
+                          <span className="h-10 w-10 rounded bg-gradient-to-br from-amber-200 to-rose-200 flex items-center justify-center"><BookOpen size={16} className="text-rose-700" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold truncate">The Hindu View of Life</span>
+                            <span className="block text-[10.5px] text-[#667781]">₹299 · In stock</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 text-center text-[11.5px] font-semibold text-[#0a7cff]">View items</div>
+                      </div>
+                      <div className="ml-auto max-w-[70%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2.5 py-1.5 text-[#111b21]">
+                        <span className="flex items-center gap-1.5 font-semibold"><ShoppingBag size={13} /> 2 items · ₹598</span>
+                        <span className="text-[10.5px] text-[#667781]">Order sent</span>
+                      </div>
+                      <div className="max-w-[86%] rounded-lg rounded-tl-none bg-white text-[#111b21] shadow-xs overflow-hidden">
+                        <div className="m-1.5 rounded-md bg-[#f5f5f4] p-2">
+                          <div className="flex justify-between text-[9.5px] font-semibold tracking-wider text-[#667781]"><span>ORDER #ORD-261018-DE82</span><span className="text-[#008069]">✓ Paid</span></div>
+                          <div className="mt-1 flex justify-between font-semibold"><span>Total</span><span>₹598.00</span></div>
+                        </div>
+                        <div className="px-2.5 pb-1.5">🎉 Thank you, Teja! Your payment is successful and the order is confirmed. We&apos;ll message you here when it ships.</div>
+                        <div className="border-t border-black/5 py-1.5 text-center text-[11.5px] font-semibold text-[#008069]">View details</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] font-bold text-[#7a1f45]">
+                    {['WhatsApp Pay', 'Cash on Delivery', 'Address form', 'Order tracking', 'Tenglish & Hinglish'].map((chip) => (
+                      <span key={chip} className="rounded-full bg-white/80 border border-pink-200 px-3 py-1">{chip}</span>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </article>
+
+            {/* ━━━ CARD: MESSAGE TEMPLATES, MANAGED LIKE WHATSAPP MANAGER ━━━ */}
+            <article id="features-templates" className="rounded-[24px] sm:rounded-[32px] bg-[#E7ECFD] p-5 sm:p-8 lg:p-12 scroll-mt-24 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.08)] border border-indigo-200/60 transition-all">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+
+                {/* Left Text Column */}
+                <div className="lg:col-span-5">
+                  <div className="inline-flex items-center gap-2.5 mb-5 text-[13px] font-bold text-[#141c18]">
+                    <span className="h-7 w-7 rounded-lg bg-[#0866FF] flex items-center justify-center text-white shadow-xs">
+                      <Layers size={15} />
+                    </span>
+                    <span>Message Templates</span>
+                    <span className="rounded-full bg-[#0866FF] text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5">New</span>
+                  </div>
+
+                  <h3 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#0c2014] leading-[1.14] tracking-tight mb-4">
+                    Every Meta template type, approved in minutes.
+                  </h3>
+
+                  <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-6">
+                    As an official Meta Tech Provider, we built WhatsApp Manager&apos;s template studio right into your CRM. Create, edit, translate and delete templates with a live phone preview, and see Meta&apos;s approval the moment it happens.
+                  </p>
+
+                  <ul className="space-y-2.5 text-[13px] text-[#3d4a44] font-medium mb-8">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0866FF] mt-0.5 flex-shrink-0" />
+                      <span>Carousels, limited-time offers, coupon codes, catalogue &amp; product messages, Flows, order details and OTPs</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0866FF] mt-0.5 flex-shrink-0" />
+                      <span>Meta&apos;s pre-approved template library: create and send right away</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0866FF] mt-0.5 flex-shrink-0" />
+                      <span>Live approval status, rejection reasons and quality rating, synced with Meta</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-[#0866FF] mt-0.5 flex-shrink-0" />
+                      <span>Template insights: sent, delivered, read and button clicks</span>
+                    </li>
+                  </ul>
+
+                  <Link href="/signup" className="inline-flex items-center gap-2 rounded-full bg-[#0c2014] hover:bg-black text-white text-sm font-bold px-6 py-3 transition">
+                    Create your first template <ArrowRight size={15} />
+                  </Link>
+                </div>
+
+                {/* Right: template list + insights */}
+                <div className="lg:col-span-7 space-y-3">
+                  <div className="rounded-2xl bg-white border border-indigo-100 shadow-[0_24px_60px_-28px_rgba(8,102,255,0.35)] overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                      <span className="text-[13px] font-extrabold text-[#1c2b33]">Message templates</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#0064e0] px-2.5 py-1 text-[11px] font-bold text-white">+ Create template</span>
+                    </div>
+                    {[
+                      { name: 'diwali_book_sale', type: 'Carousel · Marketing', status: 'Active', tone: 'bg-[#e6f4ea] text-[#1e7e34]', note: '● High quality', noteTone: 'text-[#31a24c]' },
+                      { name: 'order_shipped', type: 'Order details · Utility', status: 'In review', tone: 'bg-[#fef4d6] text-[#8a6100]', note: 'Usually minutes', noteTone: 'text-slate-400' },
+                      { name: 'flash_offer_50', type: 'Limited-time offer · Marketing', status: 'Rejected', tone: 'bg-[#fde8ea] text-[#c11231]', note: 'Request review →', noteTone: 'text-[#0064e0]' },
+                      { name: 'login_code', type: 'One-time password · Authentication', status: 'Active', tone: 'bg-[#e6f4ea] text-[#1e7e34]', note: '● High quality', noteTone: 'text-[#31a24c]' },
+                    ].map((row) => (
+                      <div key={row.name} className="flex items-center justify-between gap-3 px-4 py-2.5 border-b last:border-b-0 border-slate-100">
+                        <div className="min-w-0">
+                          <div className="text-[12.5px] font-bold text-[#1c2b33] truncate">{row.name}</div>
+                          <div className="text-[10.5px] text-slate-500 truncate">{row.type}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`inline-block rounded-md px-2 py-0.5 text-[10.5px] font-bold ${row.tone}`}>{row.status}</span>
+                          <div className={`text-[9.5px] font-semibold mt-0.5 ${row.noteTone}`}>{row.note}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[['Sent', '12.4k'], ['Delivered', '96%'], ['Read', '71%'], ['Clicks', '18%']].map(([label, value]) => (
+                      <div key={label} className="rounded-xl bg-white border border-indigo-100 px-2 py-2.5 text-center">
+                        <div className="text-base sm:text-lg font-black text-[#0c2014]">{value}</div>
+                        <div className="text-[10px] font-semibold text-slate-500">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2 text-[11px] font-bold text-[#1d3a8a]">
+                    {['Carousel', 'Limited-time offer', 'Coupon code', 'Catalogue', 'Multi-product', 'Flows', 'Order details', 'OTP', 'Call permission'].map((chip) => (
+                      <span key={chip} className="rounded-full bg-white/80 border border-indigo-200 px-3 py-1">{chip}</span>
+                    ))}
                   </div>
                 </div>
 
