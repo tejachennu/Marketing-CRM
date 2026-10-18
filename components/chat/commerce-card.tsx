@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { ExternalLink, LayoutGrid, Package, ShoppingCart } from 'lucide-react'
-import type { ChatOrderCard, ChatProductCard, CommerceMessage } from '@/lib/chat-commerce'
+import { AlertTriangle, BadgeCheck, Banknote, ClipboardList, CreditCard, ExternalLink, Info, LayoutGrid, MapPin, Package, Receipt, ShoppingCart, Truck, Zap } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { CHECKOUT_EVENT_LABELS, formFieldLabel, type ChatOrderCard, type ChatProductCard, type CheckoutEvent, type CommerceMessage } from '@/lib/chat-commerce'
 import { ORDER_STATUS_LABELS, formatMoney, type OrderStatus } from '@/lib/commerce/commerce-utils'
 
 /** The picture of a product, or a tile with its name when it has none (as WhatsApp shows it). */
@@ -25,6 +26,20 @@ const STATUS_TONES: Record<string, string> = {
   shipped: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
   delivered: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
   canceled: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+}
+
+const CHECKOUT_EVENT_STYLE: Record<CheckoutEvent, { icon: LucideIcon; tone: string }> = {
+  address_requested: { icon: MapPin, tone: 'bg-[#107569] text-white' },
+  payment_choice: { icon: Receipt, tone: 'bg-[#107569] text-white' },
+  payment_requested: { icon: CreditCard, tone: 'bg-[#107569] text-white' },
+  cod_requested: { icon: Banknote, tone: 'bg-[#107569] text-white' },
+  acknowledged: { icon: Receipt, tone: 'bg-[#107569] text-white' },
+  cod_confirmed: { icon: BadgeCheck, tone: 'bg-emerald-500 text-white' },
+  paid: { icon: BadgeCheck, tone: 'bg-emerald-500 text-white' },
+  payment_failed: { icon: AlertTriangle, tone: 'bg-rose-500 text-white' },
+  not_sent: { icon: AlertTriangle, tone: 'bg-rose-500 text-white' },
+  online_failed: { icon: AlertTriangle, tone: 'bg-rose-500 text-white' },
+  told: { icon: Info, tone: 'bg-slate-500 text-white' },
 }
 
 export function CommerceCard({
@@ -108,6 +123,69 @@ export function CommerceCard({
           <ExternalLink size={13} />
           View order
         </Link>
+      </div>
+    )
+  }
+
+  if (parsed.kind === 'checkout') {
+    const { icon: EventIcon, tone } = CHECKOUT_EVENT_STYLE[parsed.event]
+    const title = parsed.event === 'told' && parsed.detail ? `Customer was told the order is ${parsed.detail}` : CHECKOUT_EVENT_LABELS[parsed.event]
+    return (
+      <div className={`flex items-start gap-2.5 rounded-md px-2.5 py-2 min-w-[220px] max-w-[320px] ${panel}`}>
+        <span className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${tone}`}>
+          <EventIcon size={15} />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13.5px] font-semibold leading-snug">{title}</span>
+          <span className="block text-[12px] text-[#667781] dark:text-[#8696a0] mt-0.5">
+            #{parsed.orderNumber}{parsed.amount ? ` · ${parsed.amount}` : ''}
+          </span>
+          {parsed.event === 'online_failed' && parsed.detail && <span className="block text-[12px] text-rose-700 dark:text-rose-300 mt-1">{parsed.detail}</span>}
+        </span>
+      </div>
+    )
+  }
+
+  if (parsed.kind === 'form') {
+    const field = (key: string) => parsed.fields.find(([name]) => name === key)?.[1] || ''
+    if (parsed.isAddress) {
+      const express = field('delivery_speed').toLowerCase() === 'express'
+      const cityLine = [field('city'), [field('state'), field('pincode')].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+      return (
+        <div className="w-[250px] sm:w-[290px] max-w-full">
+          <div className={`rounded-md px-3 py-2.5 ${panel}`}>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#008069] dark:text-[#00a884] mb-1.5">
+              <MapPin size={13} /> Delivery address
+            </div>
+            {field('full_name') && <div className="text-[14px] font-semibold">{field('full_name')}</div>}
+            <div className="text-[13px] leading-snug text-[#3b4a54] dark:text-[#d1d7db]">
+              {[field('address_line_1'), field('address_line_2')].filter(Boolean).map((line, index) => <div key={index}>{line}</div>)}
+              {cityLine && <div>{cityLine}</div>}
+              {field('phone_number') && <div className="mt-1 text-[#667781] dark:text-[#8696a0]">📞 {field('phone_number')}</div>}
+            </div>
+          </div>
+          <div className="mt-1.5 px-1 flex flex-wrap items-center gap-1.5">
+            <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${express ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-black/[0.06] text-[#3b4a54] dark:bg-white/10 dark:text-[#d1d7db]'}`}>
+              {express ? <Zap size={11} /> : <Truck size={11} />} {express ? 'Express delivery' : 'Standard delivery'}
+            </span>
+          </div>
+          {field('instructions') && <p className="mt-1.5 px-1 text-[12.5px] italic text-[#3b4a54] dark:text-[#d1d7db]">“{field('instructions')}”</p>}
+        </div>
+      )
+    }
+    return (
+      <div className={`rounded-md px-3 py-2.5 min-w-[220px] max-w-[320px] ${panel}`}>
+        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#008069] dark:text-[#00a884] mb-1.5">
+          <ClipboardList size={13} /> Form submitted
+        </div>
+        <dl className="space-y-1 text-[12.5px]">
+          {parsed.fields.slice(0, 12).map(([key, value]) => (
+            <div key={key} className="flex gap-2">
+              <dt className="shrink-0 text-[#667781] dark:text-[#8696a0]">{formFieldLabel(key)}</dt>
+              <dd className="min-w-0 break-words font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     )
   }

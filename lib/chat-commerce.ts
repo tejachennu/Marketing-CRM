@@ -13,6 +13,33 @@ export type CommerceMessage =
   | { kind: 'catalog' }
   | { kind: 'website'; title: string }
   | { kind: 'order'; itemCount: number; note: string | null }
+  | { kind: 'checkout'; event: CheckoutEvent; orderNumber: string; amount: string | null; detail: string | null }
+  | { kind: 'form'; fields: Array<[string, string]>; isAddress: boolean }
+
+/** A step of the WhatsApp checkout, as the webhook notes it in the chat. */
+export type CheckoutEvent =
+  | 'address_requested' | 'payment_choice' | 'payment_requested' | 'cod_requested' | 'acknowledged'
+  | 'cod_confirmed' | 'paid' | 'payment_failed' | 'not_sent' | 'online_failed' | 'told'
+
+// The lines commerce-webhook-handler writes; each names its order as "Order #<number>"
+const CHECKOUT_LINES: Array<[CheckoutEvent, RegExp]> = [
+  ['address_requested', /^\[Sent delivery address form for Order #(\S+)\]$/],
+  ['payment_choice', /^\[Asked how to pay for Order #(\S+) \(([^)]+)\): online or Cash on Delivery\]$/],
+  ['payment_requested', /^\[Sent payment request for Order #(\S+) \(([^)]+)\)\]$/],
+  ['cod_requested', /^\[Sent Cash on Delivery confirmation for Order #(\S+) \(([^)]+)\)\]$/],
+  ['acknowledged', /^\[Sent order acknowledgement for Order #(\S+) \(([^)]+)\)\]$/],
+  ['cod_confirmed', /^\[Order #(\S+) confirmed for Cash on Delivery \(([^)]+)\)\]$/],
+  ['paid', /^\[Payment received for Order #(\S+) \(([^)]+)\); receipt sent\]$/],
+  ['payment_failed', /^\[Payment failed for Order #(\S+); customer was told\]$/],
+  ['not_sent', /^\[Checkout message for Order #(\S+) \(([^)]+)\) could not be sent\]$/],
+  ['online_failed', /^\[Online payment for Order #(\S+) could not be started: ()([\s\S]+)\]$/],
+  ['told', /^\[Told customer Order #(\S+) is ()([\s\S]+)\]$/],
+]
+
+// A completed WhatsApp form (the delivery address form, or any other flow)
+const FORM_SUBMISSION = /^\[Completed Native Form\]: (\{[\s\S]*\})$/
+// Field order for an address, so the card reads like an address label
+const ADDRESS_FIELDS = ['full_name', 'phone_number', 'address_line_1', 'address_line_2', 'city', 'state', 'pincode', 'delivery_speed', 'instructions']
 
 const SKU_SEPARATOR = ' · SKU '
 
@@ -49,7 +76,51 @@ export function parseCommerceMessage(body: string | null | undefined): CommerceM
   if (match) return { kind: 'website', title: match[1].trim() }
   match = text.match(CART_ORDER)
   if (match) return { kind: 'order', itemCount: parseInt(match[1], 10), note: match[2] ?? null }
+
+  for (const [event, pattern] of CHECKOUT_LINES) {
+    match = text.match(pattern)
+    if (match) return { kind: 'checkout', event, orderNumber: match[1], amount: match[2] || null, detail: match[3]?.trim() || null }
+  }
+
+  match = text.match(FORM_SUBMISSION)
+  if (match) {
+    let data: unknown
+    try {
+      data = JSON.parse(match[1])
+    } catch {
+      return null
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+    const entries = Object.entries(data as Record<string, unknown>)
+      .filter(([key, value]) => key !== 'flow_token' && value !== null && value !== undefined && String(value).trim() !== '')
+      .map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value).trim()] as [string, string])
+    const isAddress = entries.some(([key]) => key === 'address_line_1')
+    if (isAddress) entries.sort(([a], [b]) => (ADDRESS_FIELDS.indexOf(a) + 1 || 99) - (ADDRESS_FIELDS.indexOf(b) + 1 || 99))
+    return { kind: 'form', fields: entries, isAddress }
+  }
   return null
+}
+
+/** "delivery_speed" → "Delivery speed", for form fields without a nicer label. */
+export function formFieldLabel(key: string): string {
+  const labels: Record<string, string> = { full_name: 'Name', phone_number: 'Phone', address_line_1: 'Address', address_line_2: 'Address line 2', pincode: 'PIN code' }
+  if (labels[key]) return labels[key]
+  const words = key.replace(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+export const CHECKOUT_EVENT_LABELS: Record<CheckoutEvent, string> = {
+  address_requested: 'Delivery address form sent',
+  payment_choice: 'Asked to choose: pay online or Cash on Delivery',
+  payment_requested: 'Payment request sent',
+  cod_requested: 'Asked to confirm Cash on Delivery',
+  acknowledged: 'Order acknowledged; team to follow up',
+  cod_confirmed: 'Confirmed for Cash on Delivery',
+  paid: 'Payment received · receipt sent',
+  payment_failed: 'Payment failed · customer was told',
+  not_sent: 'Checkout message could not be sent',
+  online_failed: 'Online payment could not be started',
+  told: 'Customer was told about the order',
 }
 
 /** One line for the chat list and quoted replies. */
@@ -60,6 +131,8 @@ export function describeCommerceMessage(parsed: CommerceMessage): string {
     case 'catalog': return '🛍️ Catalog'
     case 'website': return `🔗 ${parsed.title}`
     case 'order': return `🛒 Cart order · ${parsed.itemCount} ${parsed.itemCount === 1 ? 'item' : 'items'}`
+    case 'checkout': return `${parsed.event === 'cod_confirmed' || parsed.event === 'paid' ? '✅' : parsed.event === 'not_sent' || parsed.event === 'payment_failed' || parsed.event === 'online_failed' ? '⚠️' : '🧾'} ${CHECKOUT_EVENT_LABELS[parsed.event]}`
+    case 'form': return parsed.isAddress ? '📍 Delivery address submitted' : '📝 Form submitted'
   }
 }
 
