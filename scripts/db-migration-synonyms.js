@@ -1,4 +1,4 @@
-/**
+e/**
  * Migration: Add service_synonyms column to organizations table
  * using PostgreSQL client and pre-seed Consularhelpdesk org with synonym dictionary.
  * 

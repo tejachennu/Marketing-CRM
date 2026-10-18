@@ -46,7 +46,7 @@ process.env.NEXT_PUBLIC_META_APP_ID = '111'
 process.env.META_APP_SECRET = 'test-secret'
 console.error = () => {}
 
-const { getCatalogCredentials, getWhatsAppCredentials, connectCatalogWithEither, exchangeLoginCode } = require(path.join(PROJECT, 'lib/commerce/meta-catalog.ts'))
+const { getCatalogCredentials, getWhatsAppCredentials, connectCatalogWithEither, whatsappHasCatalog, explainCommerceError, exchangeLoginCode } = require(path.join(PROJECT, 'lib/commerce/meta-catalog.ts'))
 const route = require(path.join(PROJECT, 'app/api/commerce/catalog/access/route.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 const post = (body) => route.POST(new NextRequest('https://wamacrm.example.com/api/commerce/catalog/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: ORG, ...body }) }))
@@ -116,11 +116,22 @@ test('Catalog access: the WhatsApp account is reached with the WhatsApp connecti
   const org = { whatsapp_api_token: 'WHATSAPP_TOKEN', meta_catalog_token: 'CATALOG_TOKEN', whatsapp_business_account_id: '200000000000001' }
   assert.equal(getWhatsAppCredentials(org).token, 'WHATSAPP_TOKEN')
 
+  // A fake Meta: connecting works for one token, and the account then lists the catalog (or, if
+  // `silent`, says "success" without connecting anything, as Meta has been seen to do)
   const tried = []
-  const meta = (acceptedToken) => async (url, init = {}) => {
-    const token = String(init.headers.Authorization).replace('Bearer ', '')
-    tried.push(token)
-    return new Response(JSON.stringify(token === acceptedToken ? { success: true } : { error: { code: 200, message: 'Permissions error' } }), { status: token === acceptedToken ? 200 : 400 })
+  const meta = (acceptedToken, { silent = false, listingFails = false } = {}) => {
+    let connected = false
+    return async (url, init = {}) => {
+      const token = String(init.headers.Authorization).replace('Bearer ', '')
+      if ((init.method || 'GET') === 'GET') {
+        if (listingFails) return new Response(JSON.stringify({ error: { code: 100, message: 'Not approved' } }), { status: 400 })
+        return new Response(JSON.stringify({ data: connected ? [{ id: '700600500400300', name: 'Books' }] : [] }))
+      }
+      tried.push(token)
+      const ok = token === acceptedToken
+      if (ok && !silent) connected = true
+      return new Response(JSON.stringify(ok ? { success: true } : { error: { code: 200, message: 'Permissions error' } }), { status: ok ? 200 : 400 })
+    }
   }
   await connectCatalogWithEither(org, '700600500400300', meta('CATALOG_TOKEN'))
   assert.deepEqual(tried, ['WHATSAPP_TOKEN', 'CATALOG_TOKEN'])
@@ -132,4 +143,40 @@ test('Catalog access: the WhatsApp account is reached with the WhatsApp connecti
   tried.length = 0
   await connectCatalogWithEither({ ...org, meta_catalog_token: null }, '700600500400300', meta('WHATSAPP_TOKEN'))
   assert.deepEqual(tried, ['WHATSAPP_TOKEN'])
+})
+
+test('Catalog access: a "success" that connects nothing is not reported as connected', async () => {
+  const org = { whatsapp_api_token: 'WHATSAPP_TOKEN', whatsapp_business_account_id: '200000000000001' }
+  const reply = (body, status = 200) => new Response(JSON.stringify(body), { status })
+  // Meta says success, but the account still lists no catalog
+  const silent = async (url, init = {}) => ((init.method || 'GET') === 'GET' ? reply({ data: [] }) : reply({ success: true }))
+  await assert.rejects(() => connectCatalogWithEither(org, '700600500400300', silent), /WhatsApp Manager → Account tools → Catalog/)
+  // When the account's catalog cannot be read, Meta's answer is taken as it is
+  const unreadable = async (url, init = {}) => ((init.method || 'GET') === 'GET' ? reply({ error: { code: 100, message: 'Not approved' } }, 400) : reply({ success: true }))
+  await connectCatalogWithEither(org, '700600500400300', unreadable)
+})
+
+test('Catalog access: a catalog connected in WhatsApp Manager counts, even when Meta does not list it', async () => {
+  const org = { whatsapp_api_token: 'WHATSAPP_TOKEN', whatsapp_business_account_id: '200000000000001', whatsapp_phone_number_id: '300000000000001' }
+  const reply = (body, status = 200) => new Response(JSON.stringify(body), { status })
+  // The account's catalog list stays empty, but the number has cart settings, which need a connected catalog
+  const managerConnected = async (url, init = {}) => {
+    if ((init.method || 'GET') !== 'GET') return reply({ success: true })
+    return String(url).includes('/whatsapp_commerce_settings') ? reply({ data: [{ is_cart_enabled: true, is_catalog_visible: true }] }) : reply({ data: [] })
+  }
+  await connectCatalogWithEither(org, '700600500400300', managerConnected)
+  assert.equal(await whatsappHasCatalog(org, '700600500400300', managerConnected), true)
+  // Nothing anywhere: not connected
+  const nothing = async () => reply({ data: [] })
+  assert.equal(await whatsappHasCatalog(org, '700600500400300', nothing), false)
+  await assert.rejects(() => connectCatalogWithEither(org, '700600500400300', async (url, init = {}) => ((init.method || 'GET') === 'GET' ? reply({ data: [] }) : reply({ success: true }))), /WhatsApp Manager/)
+})
+
+test('Catalog access: WhatsApp commerce errors are explained, keeping Meta’s words', () => {
+  const notFound = explainCommerceError('product not found for product_retailer_id, BOOK-GITANJALI, in catalog_id, 4180627298902553')
+  assert.match(notFound, /connected to your WhatsApp account/)
+  assert.match(notFound, /approved/)
+  assert.match(notFound, /BOOK-GITANJALI/)
+  assert.match(explainCommerceError('(#10) Application does not have permission for this action'), /only be switched on once a catalog is connected/)
+  assert.equal(explainCommerceError('Something else'), 'Something else')
 })

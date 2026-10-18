@@ -167,12 +167,57 @@ export async function connectCatalogWithEither(organization: Record<string, any>
   for (const credentials of attempts) {
     try {
       await connectCatalog(credentials, catalogId, fetcher)
-      return
     } catch (error) {
       lastError = error
+      continue
     }
+    // Meta can answer "success" without connecting anything, so the answer is checked
+    if ((await whatsappHasCatalog(organization, catalogId, fetcher)) !== false) return
+    throw new Error(CONNECT_IN_WHATSAPP_MANAGER)
   }
   throw lastError
+}
+
+/**
+ * Whether the WhatsApp account has a catalog connected: true, false, or null when Meta will not say.
+ * Meta's list of the account's catalogs can stay empty for one connected in WhatsApp Manager, so the
+ * number's cart settings count too: they exist only once a catalog is connected.
+ */
+export async function whatsappHasCatalog(organization: Record<string, any>, catalogId: string | null, fetcher: typeof fetch = fetch): Promise<boolean | null> {
+  const credentials = getWhatsAppCredentials(organization)
+  let listed: MetaCatalog[] | null = null
+  try {
+    listed = await listWabaCatalogs(credentials, fetcher)
+  } catch {
+    listed = null
+  }
+  if (listed?.some((catalog) => !catalogId || String(catalog.id) === String(catalogId))) return true
+  if (credentials.phoneNumberId) {
+    try {
+      if (await getCommerceSettings(credentials, fetcher)) return true
+    } catch {
+      // Not readable either
+    }
+  }
+  return listed ? false : null
+}
+
+/** What a business does when Meta will not connect its catalog through the API. */
+export const CONNECT_IN_WHATSAPP_MANAGER =
+  'Meta did not connect the catalog to your WhatsApp account from here. Connect it in WhatsApp Manager → Account tools → Catalog, then press Refresh from Meta.'
+
+/**
+ * A WhatsApp commerce error in terms a store owner can act on, keeping Meta's own words after it.
+ */
+export function explainCommerceError(message: string | null | undefined): string {
+  const raw = String(message || 'WhatsApp did not accept the message.')
+  if (/product not found|catalog.*not found|131009/i.test(raw)) {
+    return `WhatsApp cannot find this product yet. Products can be sent once your catalog is connected to your WhatsApp account (WhatsApp Manager → Account tools → Catalog) and WhatsApp has approved them (see each product's status in Products). Meta said: ${raw}`
+  }
+  if (/\(#10\)|does not have permission/i.test(raw)) {
+    return `The cart and catalog buttons can only be switched on once a catalog is connected to your WhatsApp account. Connect it in WhatsApp Manager → Account tools → Catalog, then try again. Meta said: ${raw}`
+  }
+  return raw
 }
 
 /**

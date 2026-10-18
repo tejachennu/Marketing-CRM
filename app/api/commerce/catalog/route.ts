@@ -11,6 +11,7 @@ import {
   getWabaOwnerId,
   getWhatsAppCredentials,
   connectCatalogWithEither,
+  whatsappHasCatalog,
   inspectToken,
   isGraphId,
   listOwnedCatalogs,
@@ -69,6 +70,9 @@ export async function GET(request: NextRequest) {
     const owned = businessId ? await listOwnedCatalogs(credentials, businessId).catch(() => []) : []
 
     const connectedIds = new Set((connected || []).map((catalog) => String(catalog.id)))
+    // An empty list is not proof: a catalog connected in WhatsApp Manager can be missing from it, while
+    // the number's cart settings (which need a connected catalog) show one is there
+    const connectionUnknown = connected !== null && connected.length === 0 && (await whatsappHasCatalog(org, null)) === true
     const catalogs = new Map<string, { id: string; name: string; product_count: number; connected: boolean }>()
     for (const catalog of [...(connected || []), ...owned, ...(linked ? [linked] : [])]) {
       const id = String(catalog.id)
@@ -80,9 +84,9 @@ export async function GET(request: NextRequest) {
       linked: linked ? { id: String(linked.id), name: linked.name || 'Catalog', product_count: linked.product_count || 0 } : null,
       linkedError,
       // Whether the linked catalog is the one connected to the WhatsApp account
-      connected: linkedId && connected ? connectedIds.has(linkedId) : null,
+      connected: linkedId && connected && !connectionUnknown ? connectedIds.has(linkedId) : null,
       // false: Meta would not list the account's catalog, so `connected` on each catalog is unknown
-      connectionKnown: connected !== null,
+      connectionKnown: connected !== null && !connectionUnknown,
       catalogs: [...catalogs.values()],
       businessId,
       canEdit: canEditCatalog(access, linkedId),

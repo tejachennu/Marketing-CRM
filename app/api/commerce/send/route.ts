@@ -10,6 +10,7 @@ import {
   buildWebsiteRedirectUrl,
 } from '@/lib/commerce/commerce-messages'
 import { sendWhatsAppMessage } from '@/lib/commerce/commerce-webhook-handler'
+import { explainCommerceError } from '@/lib/commerce/meta-catalog'
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 
 function getSupabase() {
@@ -222,7 +223,7 @@ export async function POST(request: NextRequest) {
     // ── Send ──
     const result = await sendWhatsAppMessage(org, metaPayload)
     if (!result.ok) {
-      return NextResponse.json({ error: result.error || 'WhatsApp did not accept the message.' }, { status: 422 })
+      return NextResponse.json({ error: explainCommerceError(result.error) }, { status: 422 })
     }
 
     const messageId = result.messageId ? `FB_${result.messageId}` : null
