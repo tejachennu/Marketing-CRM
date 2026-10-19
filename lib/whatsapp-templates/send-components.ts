@@ -203,7 +203,9 @@ export async function buildSendComponents(templateComponents: any[], context: Se
           if (!otpCode) throw new Error('Authentication templates send a code: add an otp_code column.')
           components.push({ type: 'button', sub_type: 'url', index: String(index), parameters: [{ type: 'text', text: otpCode }] })
         } else if (button.type === 'FLOW') {
-          components.push({ type: 'button', sub_type: 'flow', index: String(index), parameters: [{ type: 'action', action: { flow_token: context.flowToken || 'unused' } }] })
+          // The token names the form too, so the answers can be filed under it when they come back
+          const token = context.flowToken ? [context.flowToken, button.flow_id].filter(Boolean).join(':') : 'unused'
+          components.push({ type: 'button', sub_type: 'flow', index: String(index), parameters: [{ type: 'action', action: { flow_token: token } }] })
         } else if (button.type === 'CATALOG') {
           const thumbnail = lookup(vars, 'thumbnail_product_id') || productIds(vars)[0] || ''
           if (thumbnail) components.push({ type: 'button', sub_type: 'catalog', index: index, parameters: [{ type: 'action', action: { thumbnail_product_retailer_id: thumbnail } }] })

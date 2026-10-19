@@ -5,7 +5,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } from '@/lib/meta-webhook'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
-import { executeFlowRuntime } from '@/lib/flows/flow-executor'
+import { executeFlowRuntime, saveUnownedSubmission } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
@@ -635,7 +635,9 @@ async function processEvent(
       //    address or PIN code are left to the flow engine.
       if (flowSubmissionData) {
         const flowToken = String(flowSubmissionData.flow_token || message.interactive?.nfm_reply?.flow_token || '')
-        const looksLikeAddress = Boolean(orderIdFromFlowToken(flowToken)) || (!flowToken.startsWith('order_') && Boolean(flowSubmissionData.address_line_1))
+        // Forms from a workflow (a bare id) or a campaign button belong to the flow engine, even when they ask for an address
+        const workflowForm = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(flowToken) || flowToken.startsWith('campaign:')
+        const looksLikeAddress = Boolean(orderIdFromFlowToken(flowToken)) || (!flowToken.startsWith('order_') && !workflowForm && Boolean(flowSubmissionData.address_line_1))
         if (looksLikeAddress) {
           try {
             const addressOrder = await handleInboundAddressSubmission({
@@ -696,6 +698,14 @@ async function processEvent(
     }
 
     // Step 4.5: Execute and deliver every automatic step in order.
+    // With automation off (an agent has the chat) a submitted form is still saved, just not acted on
+    if (conversation.auto_reply_enabled === false && flowSubmissionData) {
+      try {
+        await saveUnownedSubmission({ organizationId: orgId, contactPhone: phoneNumber, conversationId: conversation.id, flowSubmissionData, messageId: messageSid })
+      } catch (error: any) {
+        console.error('[Facebook Webhook Flow] Could not save the form answers:', error.message)
+      }
+    }
     if (conversation.auto_reply_enabled !== false) {
       try {
         const { count: inboundCount, error: countError } = await supabase.from('messages').select('id', { count: 'exact', head: true })

@@ -54,10 +54,21 @@ export function matchesTrigger(workflow: WhatsAppWorkflow, input: string, isFirs
   if (type !== 'keyword') return false
   const mode = readNodeField(data, 'matchType', 'match_mode') || 'contains'
   if (!['exact', 'contains', 'fuzzy'].includes(mode)) return false
-  return (data.keywords || []).some((keyword: string) => {
-    const key = keyword.trim().toLowerCase()
-    return key && (mode === 'exact' ? input.trim().toLowerCase() === key : input.toLowerCase().includes(key))
-  })
+  return (data.keywords || []).some((keyword: string) => keywordMatches(input, keyword, mode))
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/**
+ * Whether a message matches one trigger keyword. "contains" matches whole words or phrases, so
+ * "hi" fires on "Hi there" but not on "Which size?" or "Do you ship?"; "fuzzy" matches anywhere.
+ */
+export function keywordMatches(input: string, keyword: string, mode = 'contains'): boolean {
+  const key = String(keyword || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const text = String(input || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!key || !text) return false
+  if (mode === 'exact') return text === key
+  if (mode === 'fuzzy') return text.includes(key)
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(key)}($|[^\\p{L}\\p{N}])`, 'u').test(text)
 }
 
 /** Node types the runtime can execute. The builder only offers these; anything else fails validation. */
@@ -133,11 +144,21 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       const max = node.type === 'interactive_buttons' ? 3 : 10
       if (!choices.length || choices.length > max) fail(`provide between 1 and ${max} choices`)
       if (new Set(choices.map(choice => choice.id)).size !== choices.length) fail('choice IDs must be unique')
+      if (new Set(choices.map(choice => String(choice.title || '').trim().toLowerCase())).size !== choices.length) fail('choice titles must be different from each other')
       for (const choice of choices) {
         if (!choice.id || !choice.title || choice.title.length > (max === 3 ? 20 : 24)) fail('a choice has an empty ID or an invalid title length')
+        // Titles are sent as written: a {{variable}} could push one past WhatsApp's limit at send time
+        if (/\{\{/.test(String(choice.title || ''))) fail(`"${choice.title}": choice titles can't contain {{variables}}`)
+        if (node.type === 'list_menu' && String((choice as any).description || '').length > 72) fail(`"${choice.title}": descriptions must be at most 72 characters`)
         if (choice.targetNodeId ? !ids.has(choice.targetNodeId) : !getNextNode(nodes, edges, node.id, choice.id)) fail(`connect the "${choice.title}" choice`)
       }
       if (node.type === 'list_menu' && (readNodeField(data, 'buttonText', 'button_text') || 'Choose').length > 20) fail('list button label must be at most 20 characters')
+      if (node.type === 'list_menu') {
+        const sections = Array.isArray(data.sections) ? data.sections : []
+        if (sections.length > 10) fail('use at most 10 sections')
+        if (sections.some((section: any) => String(section?.title || '').length > 24)) fail('section titles must be at most 24 characters')
+        if (sections.length > 1 && sections.some((section: any) => !String(section?.title || '').trim())) fail('give every section a title when there is more than one')
+      }
     }
     if (node.type === 'native_flow_trigger') {
       if (!readNodeField(data, 'flowId', 'native_flow_id', 'flow_id')) fail('select a published native form')
@@ -146,9 +167,10 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     if (node.type === 'condition_branch') {
       if (!readNodeField(data, 'variableName', 'variable_name', 'variable')) fail('select a variable')
       if (!['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].includes(data.operator)) fail('select a condition operator')
+      // Each outcome needs its own connection; one plain connection would send both outcomes to the same block
       for (const branch of ['true', 'false']) {
         const target = data[`${branch}TargetNodeId`]
-        if (target ? !ids.has(target) : !getNextNode(nodes, edges, node.id, branch)) fail(`connect the ${branch} branch`)
+        if (target ? !ids.has(target) : !getOutgoingEdges(edges, node.id).some(edge => edge.sourceHandle === branch)) fail(`connect the "${branch === 'true' ? 'If it matches' : 'Otherwise'}" branch`)
       }
     }
     if (node.type === 'set_variable') {
@@ -176,6 +198,28 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     visiting.delete(node.id); visited.add(node.id); return false
   }
   if (nodes.some(walk)) errors.push('Remove the automatic loop; it would run without waiting for a customer')
+  // A block nothing leads to never runs; say so instead of silently skipping it
+  const trigger = nodes.find(node => node.type === 'trigger')
+  if (trigger) {
+    const reached = new Set<string>([trigger.id])
+    const queue = [trigger]
+    while (queue.length) {
+      const node = queue.shift()!
+      const data = node.data || {}
+      const targets = [
+        ...getOutgoingEdges(edges, node.id).map(edge => edge.target),
+        data.trueTargetNodeId, data.falseTargetNodeId, data.onSuccessNodeId,
+        ...getChoices(node).map(choice => choice.targetNodeId),
+      ].filter(Boolean)
+      for (const id of targets) {
+        const next = nodes.find(item => item.id === id)
+        if (next && !reached.has(next.id)) { reached.add(next.id); queue.push(next) }
+      }
+    }
+    for (const node of nodes) {
+      if (!reached.has(node.id)) issues.push({ nodeId: node.id, message: 'connect this block to the flow, or delete it', text: `${node.data?.title || node.id}: connect this block to the flow, or delete it` })
+    }
+  }
   const seen = new Set<string>()
   return issues.filter(issue => !seen.has(issue.text) && Boolean(seen.add(issue.text)))
 }

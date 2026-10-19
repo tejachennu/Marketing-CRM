@@ -186,9 +186,14 @@ test('ordinary text and mismatched tokens never complete a waiting form', async 
 test('cannot send a native form belonging to another organization', async () => {
   const db = database()
   db.tables.whatsapp_native_flows[0].organization_id = 'other-org'
-  await assert.rejects(executeFlowRuntime(input, db), /Publish the selected form/)
+  const sent = []
+  const result = await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(result.actionTaken, 'failed')
   assert.equal(db.tables.flow_sessions[0].status, 'FAILED')
   assert.equal(db.tables.flow_sessions[0].current_node_id, 'form')
+  assert.match(db.tables.flow_sessions[0].state_data._last_error, /Publish the selected form/)
+  // The customer is told instead of left waiting
+  assert.match(sent.at(-1).body, /something went wrong/)
 })
 test('handles action-only workflows without a second chatbot reply', async () => {
   const db = database({ whatsapp_workflows: [workflow([baseNodes[0], node('ticket', 'ticket_action', { subject: 'Help' })], [edge('trigger', 'ticket')])] })
@@ -239,7 +244,8 @@ test('two native forms in one session retain separate submissions and tokens', a
 })
 test('a provider send error is visible on the session and not silently rerun on retry', async () => {
   const db = database()
-  await assert.rejects(executeFlowRuntime({ ...input, sendReply: async () => { throw new Error('Meta rejected delivery') } }, db), /Meta rejected delivery/)
+  const failed = await executeFlowRuntime({ ...input, sendReply: async () => { throw new Error('Meta rejected delivery') } }, db)
+  assert.equal(failed.actionTaken, 'failed')
   assert.equal(db.tables.flow_sessions[0].status, 'FAILED')
   assert.equal(db.tables.flow_sessions[0].state_data._last_error, 'Meta rejected delivery')
   const result = await executeFlowRuntime(input, db)
@@ -328,4 +334,80 @@ test('blocks without a runtime are rejected instead of silently handing the chat
     assert.match(validateWorkflow([baseNodes[0], node('x', type)], [edge('trigger', 'x')]).join(), /not supported/)
     await assert.rejects(runFlow([node('x', type)], [], node('x', type), {}, { send: async () => {}, nativeFlow: async () => {}, action: async () => ({}) }), /Unsupported workflow action/)
   }
+})
+
+// ── End-to-end review fixes ──────────────────────────────────────────────────
+const { keywordMatches } = require('../lib/flows/flow-graph.ts')
+const menuFlow = (buttons, extraNodes = [], extraEdges = []) => workflow(
+  [node('trigger', 'trigger', { keywords: ['hi'], trigger_type: 'keyword' }), node('menu', 'interactive_buttons', { body: 'Choose', buttons }), ...extraNodes],
+  [edge('trigger', 'menu'), ...extraEdges])
+
+test('"contains" keywords match whole words, not parts of other words', () => {
+  for (const text of ['Hi there', 'hi', 'HI!', 'namaste hi', 'hi, do you have books?']) assert.equal(keywordMatches(text, 'hi'), true, text)
+  for (const text of ['Which size fits?', 'Do you ship to Delhi?', 'this', 'high price']) assert.equal(keywordMatches(text, 'hi'), false, text)
+  assert.equal(keywordMatches('send me the price list', 'price list'), true)
+  assert.equal(keywordMatches('నమస్తే అండి', 'నమస్తే'), true)
+  assert.equal(keywordMatches('Which size?', 'hi', 'fuzzy'), true, 'fuzzy still matches anywhere')
+  assert.equal(keywordMatches('hi there', 'hi', 'exact'), false)
+})
+test('flows nothing can trigger skip the lock and leave the message to the assistants', async () => {
+  const db = database({ whatsapp_workflows: [] })
+  let locked = false
+  db.rpc = async () => { locked = true; return { data: true, error: null } }
+  const result = await executeFlowRuntime(input, db)
+  assert.equal(result.handled, false)
+  assert.equal(locked, false)
+})
+test('a tapped "Cancel" button follows its own branch; a typed "cancel" still leaves the flow', async () => {
+  const flow = menuFlow([{ id: 'confirm', title: 'Confirm' }, { id: 'cancel', title: 'Cancel' }],
+    [node('ok', 'message', { body: 'Booked!' }), node('no', 'message', { body: 'No problem, booking cancelled.' })],
+    [edge('menu', 'ok', 'confirm'), edge('menu', 'no', 'cancel')])
+  let db = database({ whatsapp_workflows: [flow] })
+  await executeFlowRuntime(input, db)
+  let result = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'Cancel', buttonId: 'cancel' }, db)
+  assert.equal(result.replyMessage.body, 'No problem, booking cancelled.')
+  db = database({ whatsapp_workflows: [menuFlow([{ id: 'confirm', title: 'Confirm' }], [node('ok', 'message', { body: 'Booked!' })], [edge('menu', 'ok', 'confirm')])] })
+  await executeFlowRuntime(input, db)
+  result = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'cancel' }, db)
+  assert.match(result.replyMessage.body, /cancelled/)
+})
+test('choosing "Ask a question" asks for the question, then the AI answers the next message', async () => {
+  const flow = menuFlow([{ id: 'ask', title: 'Ask a question' }], [node('ai', 'ai_rag_node', { title: 'Assistant' })], [edge('menu', 'ai', 'ask')])
+  const db = database({ whatsapp_workflows: [flow] })
+  await executeFlowRuntime(input, db)
+  const asked = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'Ask a question', buttonId: 'ask' }, db)
+  assert.equal(asked.handled, true)
+  assert.match(asked.replyMessage.body, /Type your question/)
+  assert.equal(db.tables.flow_sessions[0].status, 'PAUSED_RAG')
+  // "Which…" contains "hi" but is the question, not a new start
+  const question = await executeFlowRuntime({ ...input, messageId: 'in-3', userInput: 'Which plan is cheapest?' }, db)
+  assert.equal(question.handled, false)
+  assert.equal(question.isRagFallback, true)
+  assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
+})
+test('form answers that arrive outside a running flow are saved under their form', async () => {
+  const db = database()
+  const result = await executeFlowRuntime({ ...input, userInput: '[form]', flowSubmissionData: { flow_token: 'campaign:c1:log9:123456', full_name: 'Ravi' } }, db)
+  assert.equal(result.actionTaken, 'saved_submission')
+  assert.equal(db.tables.flow_submissions.length, 1)
+  assert.equal(db.tables.flow_submissions[0].flow_id, 'native')
+  assert.equal(db.tables.flow_submissions[0].response_payload.full_name, 'Ravi')
+  // The same submission redelivered is stored once
+  await executeFlowRuntime({ ...input, userInput: '[form]', flowSubmissionData: { flow_token: 'campaign:c1:log9:123456', full_name: 'Ravi' } }, db)
+  assert.equal(db.tables.flow_submissions.length, 1)
+})
+test('validation catches what WhatsApp would reject at send time, and blocks that never run', () => {
+  const trigger = node('trigger', 'trigger', { keywords: ['hi'] })
+  const titled = title => validateWorkflow([trigger, node('m', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'a', title }] }), node('x', 'message', { body: 'x' })], [edge('trigger', 'm'), edge('m', 'x', 'a')]).join()
+  assert.match(titled('Hi {{name}}'), /can't contain \{\{variables\}\}/)
+  assert.equal(titled('Yes'), '')
+  const twins = validateWorkflow([trigger, node('m', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'a', title: 'Yes' }, { id: 'b', title: 'yes' }] }), node('x', 'message', { body: 'x' })], [edge('trigger', 'm'), edge('m', 'x', 'a'), edge('m', 'x', 'b')]).join()
+  assert.match(twins, /titles must be different/)
+  const list = node('l', 'list_menu', { body: 'Pick', sections: [{ title: '', rows: [{ id: 'r1', title: 'One', description: 'x'.repeat(73) }] }, { title: 'B', rows: [{ id: 'r2', title: 'Two' }] }] })
+  const listIssues = validateWorkflow([trigger, list, node('x', 'message', { body: 'x' })], [edge('trigger', 'l'), edge('l', 'x', 'r1'), edge('l', 'x', 'r2')]).join()
+  assert.match(listIssues, /at most 72 characters/)
+  assert.match(listIssues, /every section a title/)
+  const condition = node('c', 'condition_branch', { variableName: 'score', operator: 'is_set' })
+  assert.match(validateWorkflow([trigger, condition, node('x', 'message', { body: 'x' })], [edge('trigger', 'c'), edge('c', 'x')]).join(), /"If it matches" branch/)
+  assert.match(validateWorkflow([trigger, node('a', 'message', { body: 'A' }), node('lonely', 'message', { title: 'Lonely', body: 'B' })], [edge('trigger', 'a')]).join(), /Lonely: connect this block to the flow/)
 })

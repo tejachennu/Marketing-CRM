@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import type { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
-import { getNextNode, resolveReply, validateWorkflow, readNodeField, normalizeTags } from '@/lib/flows/flow-graph'
+import { getNextNode, getChoices, resolveReply, validateWorkflow, readNodeField, normalizeTags, interpolateVariables } from '@/lib/flows/flow-graph'
 import { runFlow, type FlowReply } from '@/lib/flows/flow-runner'
 
 export async function POST(request: NextRequest) {
@@ -14,14 +14,21 @@ export async function POST(request: NextRequest) {
     const edgeList: WorkflowEdge[] = edges
     let state = { name: 'Test Customer', phone: '+10000000000', contact: { id: 'simulation', name: 'Test Customer', phone: '+10000000000' }, ...simulatedState, last_input: userInput }
     let next: WorkflowNode | undefined
+    let answeredChoice = false
     if (!currentNodeId) next = nodeList.find(node => node.type === 'trigger')
     else {
       const current = nodeList.find(node => node.id === currentNodeId)
       if (!current) throw new Error('The current step no longer exists; restart the simulator')
-      if (['stop', 'cancel', 'exit'].includes(userInput.trim().toLowerCase())) return NextResponse.json({ reply: 'Flow cancelled.', isCompleted: true, currentNodeId: null, simulatedState: state })
-      if (['interactive_buttons', 'list_menu'].includes(current.type)) {
-        const result = resolveReply(current, nodes, edges, userInput, buttonId)
-        if (!result.matched) return NextResponse.json({ reply: 'Please choose an option above, or reply “cancel”.', currentNodeId, simulatedState: state })
+      // Like live: the customer's next message after "type your question" goes to the knowledge assistant
+      if (current.type === 'ai_rag_node') return NextResponse.json({ reply: 'Live, your knowledge assistant answers this question. No AI answer is generated in simulation.', isCompleted: true, currentNodeId: null, simulatedState: state })
+      const isChoice = ['interactive_buttons', 'list_menu'].includes(current.type)
+      const choice = isChoice ? resolveReply(current, nodes, edges, userInput, buttonId) : undefined
+      // A tapped "Cancel" button follows its own branch; only a typed exit word leaves the flow
+      if (!choice?.matched && ['stop', 'cancel', 'exit'].includes(userInput.trim().toLowerCase())) return NextResponse.json({ reply: 'Flow cancelled.', isCompleted: true, currentNodeId: null, simulatedState: state })
+      if (isChoice) {
+        const result = choice!
+        if (!result.matched) return NextResponse.json({ reply: 'Please choose an option above, or reply “cancel”.', buttons: getChoices(current).map(item => ({ id: item.id, title: item.title })), currentNodeId, simulatedState: state })
+        answeredChoice = true
         state.last_choice = result.choice!.id
         state.last_choice_title = result.choice!.title
         if (current.data.variableName || current.data.variable_name) state[current.data.variableName || current.data.variable_name] = result.choice!.id
@@ -47,6 +54,12 @@ export async function POST(request: NextRequest) {
         return { handed_off: true, simulated_actions: [...(state.simulated_actions || []), 'Would assign the conversation and pause automation'] }
       },
     })
+    if (result.isRagFallback && answeredChoice) {
+      // A menu choice is not the question itself: ask for it, as the live runtime does
+      const node = nodeList.find(item => item.id === result.currentNodeId)
+      replies.push({ type: 'text', body: interpolateVariables(readNodeField(node?.data || {}, 'promptText', 'prompt', 'description') || 'Sure! Type your question and I’ll answer it right here.', result.state) })
+      return NextResponse.json({ reply: replies.map(reply => reply.body).join('\n\n'), replies, currentNodeId: result.currentNodeId, simulatedState: result.state, isCompleted: false })
+    }
     const last = replies.at(-1)
     return NextResponse.json({
       reply: replies.map(reply => reply.body).join('\n\n') || (result.isRagFallback ? 'Live execution delegates this message to your knowledge assistant. No AI answer is generated in simulation.' : 'Flow completed.'),

@@ -1343,7 +1343,7 @@ export default function DashboardLayout({
               {!isMinimized && (
                 <div className="mt-3 space-y-3 animate-in fade-in zoom-in-95 duration-200">
                   <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-relaxed">
-                    Welcome to ByokCRM! To enable communication features in your isolated workspace, configure the respective gateways.
+                    Welcome to WAMACRM! To turn on messaging, email and AI features for your workspace, connect each service below.
                   </p>
 
                   <div className="bg-white dark:bg-[#111b21] rounded-xl p-3 border border-[#e9edef] dark:border-[#2a3942] space-y-3">

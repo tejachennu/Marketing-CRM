@@ -39,6 +39,16 @@ async function checked(query: any): Promise<any> {
 
 export async function executeFlowRuntime(input: FlowRuntimeInput, database?: any): Promise<FlowExecutionResult> {
   const supabase = database || createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  // Most messages have nothing to do with flows: without an active flow or an open session there is
+  // nothing to lock, and the message goes straight on to the assistants
+  const [activeFlows, openSessions] = await Promise.all([
+    checked(supabase.from('whatsapp_workflows').select('id').eq('organization_id', input.organizationId).eq('is_active', true).limit(1)),
+    checked(supabase.from('flow_sessions').select('id').eq('organization_id', input.organizationId).eq('contact_phone', input.contactPhone).in('status', ['IN_PROGRESS', 'PAUSED_RAG']).limit(1)),
+  ])
+  if (!activeFlows?.length && !openSessions?.length) {
+    if (input.flowSubmissionData) return saveUnownedSubmission(input, supabase)
+    return { handled: false }
+  }
   const owner = randomUUID()
   const acquired = await checked(supabase.rpc('acquire_flow_lock', { p_org: input.organizationId, p_phone: input.contactPhone, p_owner: owner }))
   if (!acquired) throw new Error('Another message for this customer is being processed; retry shortly')
@@ -68,6 +78,7 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
   let workflow: WhatsAppWorkflow | undefined
   let target: WorkflowNode | undefined
   let state: Record<string, any> = { ...input.contactData, last_input: text }
+  let answeredChoice = false
   const waitForReply = async (reply: FlowReply, nodeId: string, actionTaken = 'waiting_for_choice'): Promise<FlowExecutionResult> => {
     await input.sendReply?.(reply)
     if (session) await checked(supabase.from('flow_sessions').update({
@@ -86,7 +97,17 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
       state = { ...session.state_data, ...input.contactData, last_input: text }
       const current = workflow!.canvas_nodes.find(node => node.id === session!.current_node_id)
       if (!current) throw new Error('The active workflow step is missing')
-      if (['stop', 'cancel', 'exit'].includes(text.trim().toLowerCase())) {
+      // The flow asked the customer to type their question: this message is it, for the AI to answer
+      if (session.status === 'PAUSED_RAG' && current.type === 'ai_rag_node') {
+        await checked(supabase.from('flow_sessions').update({ status: 'COMPLETED', last_interaction_at: new Date().toISOString(),
+          state_data: { ...state, _processed_messages: [...(state._processed_messages || []), input.messageId].filter(Boolean).slice(-100) } })
+          .eq('id', session.id).eq('organization_id', organizationId))
+        return { handled: false, isRagFallback: true, executedWorkflowId: workflow!.id, workflowName: workflow!.name, currentNodeId: current.id, actionTaken: 'ai_answers_question' }
+      }
+      // A button the customer tapped wins over the exit words, so a "Cancel" choice follows its own branch
+      const choiceMatched = (current.type === 'interactive_buttons' || current.type === 'list_menu') &&
+        resolveReply(current, workflow!.canvas_nodes, workflow!.canvas_edges, text, button).matched
+      if (!choiceMatched && ['stop', 'cancel', 'exit'].includes(text.trim().toLowerCase())) {
         await checked(supabase.from('flow_sessions').update({ status: 'COMPLETED', state_data: { ...state, _processed_messages: [...(state._processed_messages || []), input.messageId].filter(Boolean) } }).eq('id', session.id).eq('organization_id', organizationId))
         const reply: FlowReply = { type: 'text', body: 'This flow has been cancelled. Send a new message when you are ready.' }
         await input.sendReply?.(reply)
@@ -98,6 +119,7 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           const reply: FlowReply = { type: 'text', body: 'Please choose one of the options above, or reply “cancel” to leave this flow.' }
           return waitForReply(reply, current.id)
         }
+        answeredChoice = true
         state.last_choice = resolution.choice!.id
         state.last_choice_title = resolution.choice!.title
         if (current.data.variableName || current.data.variable_name) state[current.data.variableName || current.data.variable_name] = resolution.choice!.id
@@ -122,7 +144,7 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
   }
   if (!session) {
     // Old, cancelled or replayed forms must never trigger another workflow.
-    if (flowSubmissionData) return { handled: true, actionTaken: 'ignored_stale_submission' }
+    if (flowSubmissionData) return saveUnownedSubmission(input, supabase)
     const workflows: WhatsAppWorkflow[] = await checked(supabase.from('whatsapp_workflows').select('*').eq('organization_id', organizationId).eq('is_active', true).order('created_at', { ascending: true }))
     // Explicit keywords take precedence over the welcome catch-all.
     workflows.sort((a, b) => Number((getStartNode(a)?.data.trigger_type || a.trigger_type) === 'first_message') - Number((getStartNode(b)?.data.trigger_type || b.trigger_type) === 'first_message'))
@@ -207,12 +229,43 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
       },
     }) : { currentNodeId: activeSession.current_node_id, state, status: 'COMPLETED' as const, replies: [], isRagFallback: false }
     const finalState = { ...result.state, _processed_messages: [...(state._processed_messages || []), input.messageId].filter(Boolean).slice(-100) }
+    if (result.isRagFallback && answeredChoice) {
+      // "Ask a question" was a menu choice, not the question: ask for it, and let the AI answer the next message
+      const node = activeWorkflow.canvas_nodes.find(item => item.id === result.currentNodeId)
+      const prompt: FlowReply = { type: 'text', body: interpolateVariables(readNodeField(node?.data || {}, 'promptText', 'prompt', 'description') || 'Sure! Type your question and I’ll answer it right here.', finalState) }
+      await input.sendReply?.(prompt)
+      await checkpoint(result.currentNodeId, finalState, 'PAUSED_RAG')
+      return { handled: true, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name, currentNodeId: result.currentNodeId,
+        replyMessages: [...result.replies, prompt], replyMessage: prompt, actionTaken: 'waiting_for_question' }
+    }
     // AI nodes delegate to the existing real knowledge assistant and finish this graph.
     await checkpoint(result.currentNodeId, finalState, result.isRagFallback ? 'COMPLETED' : result.status)
     return { handled: !result.isRagFallback, isRagFallback: result.isRagFallback, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name,
       currentNodeId: result.currentNodeId, replyMessages: result.replies, replyMessage: result.replies.at(-1), dealCreatedId: state.deal_id, ticketCreatedId: state.ticket_id }
   } catch (error: any) {
+    console.error(`[Flow] ${activeWorkflow.name}: ${error.message}`)
     await checkpoint(checkpointNode, { ...state, _last_error: error.message, _failed_message: input.messageId }, 'FAILED')
-    throw error
+    // Meta's retry would only be skipped as a duplicate, so answer now instead of failing the webhook
+    try { await input.sendReply?.({ type: 'text', body: 'Sorry, something went wrong on our side. Our team has been notified and will get back to you here.' }) } catch {}
+    return { handled: true, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name, currentNodeId: checkpointNode, actionTaken: 'failed' }
   }
+}
+
+/**
+ * A form answered outside a running flow: sent from a template's flow button, after a hand-off to an
+ * agent, or after the flow ended. The answers are still saved, so they show up under Form submissions.
+ */
+export async function saveUnownedSubmission(input: FlowRuntimeInput, database?: any): Promise<FlowExecutionResult> {
+  const supabase = database || createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { flow_token, ...answers } = input.flowSubmissionData || {}
+  const token = String(flow_token || '')
+  if (!token) return { handled: true, actionTaken: 'ignored_submission_without_token' }
+  const safeAnswers = Object.fromEntries(Object.entries(answers).filter(([key]) => !['__proto__', 'constructor', 'prototype'].includes(key)))
+  // Campaign flow buttons name the form: campaign:<campaign>:<recipient>:<Meta flow id>
+  const metaFlowId = token.startsWith('campaign:') ? token.split(':')[3] : undefined
+  const form = metaFlowId ? await checked(supabase.from('whatsapp_native_flows').select('id').eq('organization_id', input.organizationId).eq('flow_id_meta', metaFlowId).maybeSingle()) : null
+  await checked(supabase.from('flow_submissions').upsert({ organization_id: input.organizationId, flow_id: form?.id || null, flow_token: token,
+    conversation_id: input.conversationId, contact_phone: input.contactPhone, response_payload: { ...safeAnswers, flow_token: token } },
+  { onConflict: 'organization_id,flow_token', ignoreDuplicates: true }))
+  return { handled: true, actionTaken: 'saved_submission' }
 }

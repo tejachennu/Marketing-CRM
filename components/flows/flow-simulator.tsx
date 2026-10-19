@@ -41,7 +41,17 @@ export function FlowSimulator({
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, busy])
 
+  // The latest choices stay tappable while the flow still waits on them, e.g. after a reply it didn't understand
   const lastIndex = messages.length - 1
+  const activeChoicesIndex = (() => {
+    for (let index = lastIndex; index >= 0; index--) {
+      const message = messages[index]
+      if (message.sender !== 'bot') continue
+      if ((message.buttons && message.buttons.length) || message.isNativeFlow) return index
+      if (!/^Please choose an option above/.test(message.text)) return -1
+    }
+    return -1
+  })()
 
   return (
     <aside className="w-[340px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-[#0b141a] flex flex-col z-10">
@@ -88,7 +98,7 @@ export function FlowSimulator({
                           key={button.id}
                           type="button"
                           // Only the latest question can still be answered
-                          disabled={busy || completed || index !== lastIndex}
+                          disabled={busy || completed || index !== activeChoicesIndex}
                           onClick={() => onSend(button.title, button.id)}
                           className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-sky-300 font-medium text-xs transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                         >
@@ -102,7 +112,7 @@ export function FlowSimulator({
                     <div className="mt-2 pt-2 border-t border-white/10">
                       <button
                         type="button"
-                        disabled={busy || completed || index !== lastIndex}
+                        disabled={busy || completed || index !== activeChoicesIndex}
                         onClick={onSubmitForm}
                         className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-sky-300 font-medium text-xs flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                       >
