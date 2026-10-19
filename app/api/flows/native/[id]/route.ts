@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { can } from '@/lib/rbac'
 import { getMetaCredentials, metaRequest, uploadNativeFlow, MetaFlowError } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON } from '@/lib/flows/meta-flows-spec'
 
@@ -37,7 +38,8 @@ export async function GET(
 
     if (error) throw error
 
-    // Fetch submissions for this native flow
+    // Submissions hold customers' phones and answers, so they need the same permission as /api/flows/submissions
+    if (!can(authResult.user, 'records.view_all')) return NextResponse.json({ flow, submissions: [] })
     const { data: submissions, error: submissionsError } = await supabase
       .from('flow_submissions')
       .select('*')
@@ -101,7 +103,8 @@ export async function PUT(
         if (remote.status === 'PUBLISHED') {
           const result = await supabase.from('whatsapp_native_flows').update({ status: 'PUBLISHED' }).eq('id', id).select().single()
           if (result.error) throw result.error
-          return NextResponse.json({ flow: result.data, validated: true })
+          // The status is kept in sync, but the edits in this request were not saved
+          return NextResponse.json({ error: "This form is published on Meta, so it can't be edited. Duplicate it to make changes.", flow: result.data }, { status: 409 })
         }
         if (remote.status !== 'DRAFT') return NextResponse.json({ error: 'This form is no longer editable on Meta. Create a new form.' }, { status: 409 })
       }

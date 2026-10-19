@@ -114,7 +114,12 @@ export async function POST(request: NextRequest) {
       ]
     }
 
-    const flowJson = compileMetaFlowJSON(flowScreens)
+    const allowed = ['SIGN_UP', 'SIGN_IN', 'APPOINTMENT_BOOKING', 'LEAD_GENERATION', 'CONTACT_US', 'CUSTOMER_SUPPORT', 'SURVEY', 'OTHER']
+    if (!Array.isArray(flowCategories) || !flowCategories.length || flowCategories.some(category => !allowed.includes(category))) return NextResponse.json({ error: 'Select a valid form category' }, { status: 400 })
+    // A form Meta would reject is the caller's mistake, not a server error
+    let flowJson
+    try { flowJson = compileMetaFlowJSON(flowScreens) }
+    catch (error: any) { return NextResponse.json({ error: error.message }, { status: 400 }) }
 
     const { data: newFlow, error } = await supabase
       .from('whatsapp_native_flows')

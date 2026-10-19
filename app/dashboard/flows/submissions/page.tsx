@@ -7,6 +7,8 @@ import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { formAnswerText, formSubmissionsCsv } from '@/lib/flows/meta-flows-spec'
+import { useAlert } from '@/lib/dialog-context'
 import {
   ArrowLeft,
   FileSpreadsheet,
@@ -120,6 +122,7 @@ const OPERATORS_BY_TYPE: Record<string, { value: string; label: string }[]> = {
 
 export default function SubmittedResponsesPage() {
   const router = useRouter()
+  const alert = useAlert()
   const searchParams = useSearchParams()
   const workflowId = searchParams.get('workflowId')
   const flowId = searchParams.get('flowId')
@@ -138,6 +141,8 @@ export default function SubmittedResponsesPage() {
   const [filters, setFilters] = useState<FilterCondition[]>([])
   const [availableFields, setAvailableFields] = useState<FilterField[]>([])
   const [globalSearch, setGlobalSearch] = useState('')
+
+  const [exporting, setExporting] = useState(false)
 
   // Detail modal
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
@@ -196,29 +201,33 @@ export default function SubmittedResponsesPage() {
     }
   }, [workflowId, flowId])
 
+  // Query string shared by the table and the export
+  const submissionParams = useCallback((organizationId: string, activeFilters: FilterCondition[]) => {
+    const params = new URLSearchParams({ organizationId })
+
+    if (workflowId) params.set('workflowId', workflowId)
+    if (flowId) params.set('flowId', flowId)
+
+    const validFilters = activeFilters.filter(f => f.field && f.operator)
+    if (validFilters.length > 0) {
+      params.set('filters', JSON.stringify(
+        validFilters.map(f => ({
+          field: f.field,
+          operator: f.operator,
+          value: f.value,
+        }))
+      ))
+    }
+    return params
+  }, [workflowId, flowId])
+
   // Fetch submissions
   const fetchSubmissions = useCallback(async (organizationId: string, currentPage: number, activeFilters: FilterCondition[]) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        organizationId,
-        page: String(currentPage),
-        pageSize: String(pageSize),
-      })
-
-      if (workflowId) params.set('workflowId', workflowId)
-      if (flowId) params.set('flowId', flowId)
-
-      const validFilters = activeFilters.filter(f => f.field && f.operator)
-      if (validFilters.length > 0) {
-        params.set('filters', JSON.stringify(
-          validFilters.map(f => ({
-            field: f.field,
-            operator: f.operator,
-            value: f.value,
-          }))
-        ))
-      }
+      const params = submissionParams(organizationId, activeFilters)
+      params.set('page', String(currentPage))
+      params.set('pageSize', String(pageSize))
 
       const res = await fetch(`/api/flows/submissions?${params}`)
       if (res.ok) {
@@ -232,7 +241,7 @@ export default function SubmittedResponsesPage() {
     } finally {
       setLoading(false)
     }
-  }, [workflowId, flowId, pageSize])
+  }, [submissionParams, pageSize])
 
   useEffect(() => {
     if (orgId) {
@@ -357,6 +366,15 @@ export default function SubmittedResponsesPage() {
   }
 
   // Format cell value for Excel-like rendering
+  // Choice answers come back as option ids (tier_2); show the option titles the customer saw
+  const optionTitlesByKey = useMemo(() => Object.fromEntries(availableFields.map(f => [f.key, Object.fromEntries((f.options || []).map(o => [o.value, o.label]))])) as Record<string, Record<string, string>>, [availableFields])
+  const withOptionTitles = (key: string, val: any) => {
+    const titles = optionTitlesByKey[key]
+    if (!titles) return val
+    const title = (item: any) => (typeof item === 'string' && Object.prototype.hasOwnProperty.call(titles, item) ? titles[item] : item)
+    return Array.isArray(val) ? val.map(title) : title(val)
+  }
+
   const renderCellValue = (val: any) => {
     if (val === undefined || val === null || val === '') {
       return <span className="text-slate-300 dark:text-slate-600 font-mono select-none">—</span>
@@ -391,54 +409,75 @@ export default function SubmittedResponsesPage() {
     )
   }
 
-  const exportCSV = () => {
-    if (!submissions.length) return
+  // Export every submission matching the current filters, not just the page on screen
+  const exportCSV = async () => {
+    if (!orgId || exporting) return
+    setExporting(true)
+    try {
+      const params = submissionParams(orgId, filters)
+      params.set('export', '1')
+      const res = await fetch(`/api/flows/submissions?${params}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load the submissions to export')
+      const rows: Submission[] = data.submissions || []
+      if (!rows.length) {
+        await alert({ title: 'Nothing to export', message: 'No submissions match the current filters.' })
+        return
+      }
 
-    const headers = [
-      'Row',
-      'Contact Name',
-      'Phone Number',
-      'Email',
-      'Flow Name',
-      'Workflow Name',
-      'Submission Date',
-      'Status',
-      'Lead ID',
-      ...allResponseKeys.map(k => {
-        const label = submissions[0]?.question_labels?.[k] || k.replace(/_/g, ' ')
-        return `${label} (${k})`
-      }),
-    ]
+      // Columns: the form's questions, plus any other answers found in the exported rows
+      const keys = new Set(allResponseKeys)
+      rows.forEach(s => Object.keys(s.response_payload || {}).forEach(k => {
+        if (k !== 'flow_token' && !k.startsWith('_')) keys.add(k)
+      }))
+      const responseKeys = Array.from(keys)
+      // Choice answers are stored as option IDs; show the titles the customer picked from
+      const optionTitles = Object.fromEntries(availableFields.map(f => [f.key, Object.fromEntries((f.options || []).map(o => [o.value, o.label]))]))
+      const labelOf = (k: string) => rows.find(s => s.question_labels?.[k])?.question_labels[k] || k.replace(/_/g, ' ')
 
-    const rows = submissions.map((s, idx) => [
-      idx + 1,
-      s.contact_name || '',
-      s.contact_phone,
-      s.contact_email || '',
-      s.flow_name || '',
-      s.workflow_name || '',
-      formatDate(s.created_at),
-      s.lead_id ? 'Lead Created' : 'Submitted',
-      s.lead_id || '',
-      ...allResponseKeys.map(k => {
-        const val = s.response_payload?.[k]
-        if (typeof val === 'object' && val !== null) return JSON.stringify(val)
-        return String(val ?? '')
-      }),
-    ])
+      const headers = [
+        'Row',
+        'Contact Name',
+        'Phone Number',
+        'Email',
+        'Flow Name',
+        'Workflow Name',
+        'Submission Date',
+        'Status',
+        'Lead ID',
+        ...responseKeys.map(k => `${labelOf(k)} (${k})`),
+      ]
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n')
+      const csvRows = rows.map((s, idx) => [
+        idx + 1,
+        s.contact_name || '',
+        s.contact_phone,
+        s.contact_email || '',
+        s.flow_name || '',
+        s.workflow_name || '',
+        formatDate(s.created_at),
+        s.lead_id ? 'Lead Created' : 'Submitted',
+        s.lead_id || '',
+        ...responseKeys.map(k => formAnswerText(s.response_payload, k, optionTitles[k])),
+      ])
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `flow-responses-${workflowId || flowId || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+      // The byte order mark lets Excel read ₹, emoji and other non-ASCII answers correctly
+      const blob = new Blob(['﻿' + formSubmissionsCsv(headers, csvRows)], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `flow-responses-${workflowId || flowId || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+
+      if (data.truncated) {
+        await alert({ title: 'Export limited', message: `Exported the ${rows.length.toLocaleString()} most recent matching submissions. Narrow the filters to export older ones.` })
+      }
+    } catch (err: any) {
+      await alert({ title: 'Export failed', message: err.message || 'Could not export submissions.' })
+    } finally {
+      setExporting(false)
+    }
   }
 
   // Categorized fields for filter dropdown
@@ -483,11 +522,11 @@ export default function SubmittedResponsesPage() {
             </button>
             <button
               onClick={exportCSV}
-              disabled={submissions.length === 0}
+              disabled={submissions.length === 0 || exporting}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-40 shadow-xs transition-all"
             >
-              <Download className="w-4 h-4" />
-              <span>Export Excel / CSV</span>
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              <span>{exporting ? 'Exporting…' : 'Export Excel / CSV'}</span>
             </button>
           </div>
         </div>
@@ -874,7 +913,7 @@ export default function SubmittedResponsesPage() {
                               key={key}
                               className="px-3.5 py-2 border-r border-slate-200 dark:border-slate-800 min-w-[200px] max-w-[280px]"
                             >
-                              {renderCellValue(val)}
+                              {renderCellValue(withOptionTitles(key, val))}
                             </td>
                           )
                         })}
@@ -1067,7 +1106,8 @@ export default function SubmittedResponsesPage() {
                   {selectedSubmission.response_payload &&
                     Object.entries(selectedSubmission.response_payload)
                       .filter(([key]) => key !== 'flow_token' && !key.startsWith('_'))
-                      .map(([key, value]) => {
+                      .map(([key, raw]) => {
+                        const value = withOptionTitles(key, raw)
                         const question = selectedSubmission.question_labels?.[key] || key.replace(/_/g, ' ')
                         return (
                           <div

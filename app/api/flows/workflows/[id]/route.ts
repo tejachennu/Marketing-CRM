@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getWorkflowReadiness } from '@/lib/flows/flow-readiness'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { can } from '@/lib/rbac'
 import { getTriggerSummary } from '@/lib/flows/flow-templates'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 
@@ -47,10 +48,12 @@ export async function GET(
 
     if (error) throw error
 
-    // Fetch related active sessions & submissions count
+    // Fetch related active sessions & submissions count. Customers' phones and answers need the
+    // same permission as /api/flows/submissions; without it only run failures are shown.
+    const canViewResponses = can(authResult.user, 'records.view_all')
     const [sessionsRes, submissionsRes, stagesRes] = await Promise.all([
       supabase.from('flow_sessions').select('id, status, created_at, last_interaction_at, contact_phone, current_node_id, state_data').eq('workflow_id', id).order('last_interaction_at', { ascending: false }).limit(20),
-      supabase.from('flow_submissions').select('id, created_at, contact_phone, response_payload').eq('workflow_id', id).order('created_at', { ascending: false }).limit(20),
+      canViewResponses ? supabase.from('flow_submissions').select('id, created_at, contact_phone, response_payload').eq('workflow_id', id).order('created_at', { ascending: false }).limit(20) : { data: [], error: null },
       supabase.from('pipeline_stages').select('id,name').eq('organization_id', workflow.organization_id).order('position'),
     ])
 
@@ -63,7 +66,7 @@ export async function GET(
       readinessErrors,
       environmentErrors: withoutGraphErrors(readinessErrors, workflow),
       pipelineStages: stagesRes.data || [],
-      recentSessions: sessionsRes.data || [],
+      recentSessions: canViewResponses ? sessionsRes.data || [] : (sessionsRes.data || []).map(({ contact_phone, state_data, ...session }) => ({ ...session, state_data: { _last_error: state_data?._last_error } })),
       recentSubmissions: submissionsRes.data || [],
     })
   } catch (error: any) {

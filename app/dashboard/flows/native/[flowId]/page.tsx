@@ -122,6 +122,11 @@ export default function NativeFlowDesignerPage() {
       })
 
       const data = await res.json()
+      // Published on Meta in the meantime: show it as published even though these edits weren't saved
+      if (res.status === 409 && data.flow) {
+        setNativeFlow(data.flow)
+        setStatus(data.flow.status)
+      }
       if (!res.ok) throw new Error([data.error, ...(data.validationErrors || []).map((error: any) => typeof error === 'string' ? error : error.message)].filter(Boolean).join('\n'))
       setNativeFlow(data.flow)
       setStatus(data.flow.status)
