@@ -591,7 +591,16 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                 {isConnectingAccess ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />} Connect catalog with Meta
               </button>
             </div>
-          ) : null
+          ) : (
+            // The WhatsApp connection already manages the catalog; a separate catalog connection is
+            // still offered, so it keeps working if that connection changes (and Meta's reviewers can see it)
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-700 dark:text-slate-200">
+              <span>Your WhatsApp connection can manage this catalog. You can also give WAMACRM its own access to your catalog in Meta&apos;s window.</span>
+              <button type="button" onClick={connectCatalogAccess} disabled={isConnectingAccess} className={`${secondaryButton} shrink-0`}>
+                {isConnectingAccess ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />} Connect catalog with Meta
+              </button>
+            </div>
+          )
         )}
 
         {/* A store with no catalog can make one here */}
