@@ -681,12 +681,12 @@ export default function DashboardLayout({
 
   // Commerce and the Flow Builder are still being tested, so the menu lists them only on a
   // developer's machine (`next dev`), or where NEXT_PUBLIC_SHOW_PREVIEW_MODULES is "true".
-  // Commerce is also listed for the Magnetora AI Solutions workspace, which tests it on the live site.
+  // Both are also listed for the Magnetora AI Solutions workspace, which tests them on the live site.
   // Only the menu entry is hidden: the pages keep their usual role and feature rules.
   const previewPages = ['/dashboard/commerce', '/dashboard/flows']
   const showPreviewPages = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PREVIEW_MODULES === 'true'
   const isListedInMenu = (href: string) =>
-    showPreviewPages || !previewPages.includes(href) || (href === '/dashboard/commerce' && orgId === MAGNETORA_ORG_ID)
+    showPreviewPages || !previewPages.includes(href) || orgId === MAGNETORA_ORG_ID
 
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
   const filteredNavItems = profileLoaded
