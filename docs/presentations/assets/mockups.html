@@ -48,6 +48,15 @@
   .col h4 { font-size: 12.5px; color: #4a5874; margin-bottom: 8px; }
   .lead { background: #fff; border-radius: 9px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06); font-size: 12.5px; }
   .lead small { color: #667781; display: block; }
+  .list { flex: 1; background: #fff; overflow: hidden; }
+  .row { display: flex; gap: 11px; align-items: center; padding: 11px 14px; border-bottom: 1px solid #f0f2f5; }
+  .row .av { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px; flex: none; }
+  .row .mid { flex: 1; min-width: 0; }
+  .row .who { font-weight: 700; font-size: 15px; color: #111b21; }
+  .row .last { font-size: 13.5px; color: #54656f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .right { text-align: right; flex: none; }
+  .row .when { font-size: 11.5px; color: #25d366; font-weight: 600; }
+  .row .count { display: inline-block; margin-top: 4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #25d366; color: #fff; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; }
 </style>
 </head>
 <body>
@@ -179,6 +188,24 @@
       <div class="msg in">Here it is! ₹3,999 → <b>₹3,199</b> with NEW20 🎉<div class="btn">Add to cart</div></div>
     </div>
     <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 8. Unanswered chats piling up -->
+<div class="shot" id="phone-problem">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar" style="justify-content:space-between"><div><div class="name">WhatsApp Business</div><div class="status">128 unread messages</div></div><span class="pill" style="background:#e5484d;color:#fff">128</span></div>
+    <div class="list">
+      <div class="row"><div class="av" style="background:#f97316">R</div><div class="mid"><div class="who">Ravi</div><div class="last">Price entha? Reply please</div></div><div class="right"><div class="when">11:48 PM</div><span class="count">3</span></div></div>
+      <div class="row"><div class="av" style="background:#ec4899">A</div><div class="mid"><div class="who">Anita</div><div class="last">Hello?? Anyone there? 😞</div></div><div class="right"><div class="when">11:20 PM</div><span class="count">5</span></div></div>
+      <div class="row"><div class="av" style="background:#1d5bea">S</div><div class="mid"><div class="who">Suresh</div><div class="last">Is the red saree available?</div></div><div class="right"><div class="when">10:55 PM</div><span class="count">2</span></div></div>
+      <div class="row"><div class="av" style="background:#7c3aed">M</div><div class="mid"><div class="who">Meena</div><div class="last">What is your timing?</div></div><div class="right"><div class="when">9:30 PM</div><span class="count">1</span></div></div>
+      <div class="row"><div class="av" style="background:#00a884">K</div><div class="mid"><div class="who">Kiran</div><div class="last">Any Diwali offer?</div></div><div class="right"><div class="when">8:12 PM</div><span class="count">2</span></div></div>
+      <div class="row"><div class="av" style="background:#e5484d">P</div><div class="mid"><div class="who">Priya</div><div class="last">Still waiting for reply…</div></div><div class="right"><div class="when">7:45 PM</div><span class="count">4</span></div></div>
+      <div class="row"><div class="av" style="background:#0ea5e9">A</div><div class="mid"><div class="who">Arjun</div><div class="last">Kitne ka hai bhai?</div></div><div class="right"><div class="when">Yesterday</div><span class="count">3</span></div></div>
+      <div class="row"><div class="av" style="background:#f59e0b">L</div><div class="mid"><div class="who">Lakshmi</div><div class="last">Delivery Vijayawada ki untunda?</div></div><div class="right"><div class="when">Yesterday</div><span class="count">2</span></div></div>
+      <div class="row"><div class="av" style="background:#6366f1">R</div><div class="mid"><div class="who">Rahul</div><div class="last">Ok, I will buy from another shop</div></div><div class="right"><div class="when">Yesterday</div><span class="count">1</span></div></div>
+    </div>
   </div></div>
 </div>
 

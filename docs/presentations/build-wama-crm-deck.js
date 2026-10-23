@@ -69,7 +69,7 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
     background: { color: C.background1 },
     objects: [
       { placeholder: { options: { name: 'title', type: 'title', x: 0.6, y: 0.4, w: 12.1, h: 0.9, fontSize: 36, bold: true, color: C.text1, valign: 'middle', align: 'left', margin: 0 }, text: '' } },
-      { image: { path: BRAND + 'wamacrm-logo-horizontal.png', x: 0.6, y: 6.98, w: 1.4, h: 0.4 } },
+      { image: { path: BRAND + 'wamacrm-logo-horizontal.png', x: 0.6, y: 6.98, w: 1.5, h: 0.4 } },
     ],
     slideNumber: { x: 12.2, y: 7.0, w: 0.5, h: 0.35, fontSize: 10, color: '8A96B0', align: 'right' },
   })
@@ -103,7 +103,7 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
   pres.addSection({ title: 'Introduction' })
   let s = pres.addSlide({ masterName: 'DARK', sectionTitle: 'Introduction' })
   s.background = { path: IMG + 'bg-cover.png' }
-  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 3.85, h: 1.1, objectName: 'WAMA CRM logo' })
+  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 4.125, h: 1.1, objectName: 'WAMA CRM logo' })
   s.addText('Turn WhatsApp chats into sales', { placeholder: 'title' })
   s.addText('AI replies · Launches and offers · Shop in chat · Support', { placeholder: 'body' })
   badge(s, 0.7, 5.35, 3.8, C.accent2, C.background1)
@@ -116,45 +116,25 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
   pres.addSection({ title: 'The problem' })
   s = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'The problem' })
   s.addText('Where businesses lose customers', { placeholder: 'title' })
+  halo(s, 0.45, 1.4, 4.6, RED_TINT)
+  phone(s, 'phone-problem.png', 0.75, 1.3, 5.6, 'unread chats phone')
   const pains = [
     [I.clock, 'Late replies', 'They buy from someone else'],
     [I.phone, 'Leads lost', 'Chats stuck in staff phones'],
     [I.forgot, 'No follow-up', 'Interested buyers forgotten'],
     [I.repeat, 'Same questions', '“Price? Timing? Address?”'],
-    [I.box, 'New product launched', 'How do customers find out?'],
-    [I.tag, 'Offers go unseen', 'Posts and SMS don’t reach them'],
+    [I.box, 'Launches missed', 'Customers never find out'],
+    [I.tag, 'Offers unseen', 'Posts and SMS get ignored'],
   ]
   pains.forEach(([img, head, body], i) => {
-    const x = 0.6 + (i % 3) * 4.1, y = 1.55 + Math.floor(i / 3) * 2.6
-    const isNew = i >= 4
-    tile(s, x, y, 3.85, 2.35, isNew ? 'FFF7E8' : RED_TINT, `problem ${i + 1}`)
-    circleIcon(s, img, x + 0.3, y + 0.35, 0.8, isNew ? C.accent4 : C.accent6, `problem ${i + 1} icon`)
-    say(s, head, { x: x + 0.3, y: y + 1.3, w: 3.3, h: 0.45, fontSize: 21, bold: true, color: C.text1 })
-    say(s, body, { x: x + 0.3, y: y + 1.78, w: 3.3, h: 0.4, fontSize: 16 })
+    const x = 5.7 + (i % 2) * 3.55, y = 1.6 + Math.floor(i / 2) * 1.68
+    const growth = i >= 4
+    tile(s, x, y, 3.35, 1.45, growth ? 'FFF7E8' : RED_TINT, `problem ${i + 1}`)
+    circleIcon(s, img, x + 0.22, y + 0.36, 0.72, growth ? C.accent4 : C.accent6, `problem ${i + 1} icon`)
+    say(s, head, { x: x + 1.08, y: y + 0.28, w: 2.17, h: 0.45, fontSize: 18, bold: true, color: C.text1 })
+    say(s, body, { x: x + 1.08, y: y + 0.74, w: 2.17, h: 0.5, fontSize: 14 })
   })
-  s.addNotes('Ask: which of these happen in your business? The last two are about growth: when you launch a new product or run an offer, how do you tell all your existing customers today?')
-
-  // ── 3. Cost ────────────────────────────────────────────────────────────────
-  s = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'The problem' })
-  s.addText('What it costs you', { placeholder: 'title' })
-  tile(s, 0.6, 1.55, 6.3, 4.95, C.text1, 'loss panel')
-  say(s, 'You may be losing', { x: 1.0, y: 1.95, w: 5.5, h: 0.5, fontSize: 22, color: 'B9C7EC' })
-  say(s, '₹6.7 lakh', { x: 1.0, y: 2.5, w: 5.5, h: 1.4, fontSize: 80, bold: true, color: 'FF8A8F' })
-  say(s, 'every year', { x: 1.0, y: 3.95, w: 5.5, h: 0.6, fontSize: 30, bold: true, color: C.background1 })
-  say(s, 'Example: 300 enquiries a month, ₹2,000 average sale', { x: 1.0, y: 5.75, w: 5.6, h: 0.4, fontSize: 13, italic: true, color: 'B9C7EC' })
-  const leaks = [
-    [I.clock, '90', 'enquiries a month get no quick reply'],
-    [I.forgot, '60', 'interested leads never followed up'],
-    [I.stopwatch, '52 hrs', 'staff time on the same questions'],
-  ]
-  leaks.forEach(([img, big, small], i) => {
-    const y = 1.55 + i * 1.7
-    tile(s, 7.3, y, 5.4, 1.5, C.background2, `leak ${i + 1}`)
-    circleIcon(s, img, 7.55, y + 0.3, 0.9, C.accent6, `leak ${i + 1} icon`)
-    say(s, big, { x: 8.7, y: y + 0.18, w: 3.8, h: 0.65, fontSize: 32, bold: true, color: C.text1 })
-    say(s, small, { x: 8.7, y: y + 0.85, w: 3.8, h: 0.45, fontSize: 16 })
-  })
-  s.addNotes('Missed replies cost about 36,000 rupees a month, no follow-up about 12,000, and staff time about 7,800: about 6.7 lakh a year. This does not even count the sales from launches and offers that never reached customers. Redo it with the client’s numbers.')
+  s.addNotes('This is what most business WhatsApp numbers look like: 128 unread messages, customers asking price and timing late at night, and one saying they will buy from another shop. Ask: does your WhatsApp look like this? The last two problems are about growth: new launches and offers never reach existing customers.')
 
   // ── 4. Magnetora ───────────────────────────────────────────────────────────
   pres.addSection({ title: 'Who we are' })
@@ -176,7 +156,7 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
   // ── 5. Meet WAMA CRM ───────────────────────────────────────────────────────
   pres.addSection({ title: 'The solution' })
   s = pres.addSlide({ masterName: 'DARK', sectionTitle: 'The solution' })
-  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 3.85, h: 1.1, objectName: 'WAMA CRM logo' })
+  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 4.125, h: 1.1, objectName: 'WAMA CRM logo' })
   s.addText('One app for every WhatsApp customer', { placeholder: 'title' })
   const four = [[I.robot, 'Reply'], [I.bullhorn, 'Launch'], [I.cart, 'Sell'], [I.headset, 'Support']]
   four.forEach(([img, label], i) => {
@@ -310,7 +290,7 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
     circleIcon(s, I.check, 7.25, 2.62 + i * 0.78, 0.5, C.accent2, `after ${i + 1}`)
     say(s, item, { x: 7.95, y: 2.62 + i * 0.78, w: 4.6, h: 0.5, fontSize: 19, bold: true, color: C.text1, valign: 'middle' })
   })
-  s.addNotes('Read the left side, then the right. In our example, even saving half the loss is about 3.3 lakh rupees a year, before counting extra sales from launches and offers.')
+  s.addNotes('Read the left side, then the right. Ask which change matters most to them.')
 
   // ── 13. Customers ──────────────────────────────────────────────────────────
   pres.addSection({ title: 'Trusted by' })
@@ -352,7 +332,7 @@ const ratio = async path => { const m = await sharp(path).metadata(); return m.w
   pres.addSection({ title: 'Next steps' })
   s = pres.addSlide({ masterName: 'DARK', sectionTitle: 'Next steps' })
   s.background = { path: IMG + 'bg-cover.png' }
-  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 3.85, h: 1.1, objectName: 'WAMA CRM logo' })
+  s.addImage({ path: BRAND + 'wamacrm-logo-horizontal-light.png', x: 0.7, y: 0.55, w: 4.125, h: 1.1, objectName: 'WAMA CRM logo' })
   s.addText('Let’s grow your business on WhatsApp', { placeholder: 'title' })
   s.addText('14-day free trial · wamacrm.magnetora.in', { placeholder: 'body' })
   ;[[I.calendar, 'Free demo'], [I.plug, 'Connect WhatsApp'], [I.rocket, 'Go live']].forEach(([img, label], i) => {

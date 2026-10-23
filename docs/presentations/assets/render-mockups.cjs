@@ -5,7 +5,7 @@ const D = __dirname
   const page = await browser.newPage({ viewport: { width: 1000, height: 1000 }, deviceScaleFactor: 2.5 })
   await page.goto('file://' + D + '/mockups.html')
   await page.waitForTimeout(800)
-  for (const id of ['phone-ai', 'phone-shop', 'phone-pay', 'phone-campaign', 'phone-support', 'phone-launch', 'dashboard']) {
+  for (const id of ['phone-ai', 'phone-shop', 'phone-pay', 'phone-campaign', 'phone-support', 'phone-launch', 'phone-problem', 'dashboard']) {
     await (await page.$('#' + id)).screenshot({ path: `${D}/img/${id}.png`, omitBackground: true })
   }
   // Colourful backgrounds for the dark slides
