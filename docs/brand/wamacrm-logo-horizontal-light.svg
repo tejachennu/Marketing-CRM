@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="400" viewBox="0 0 1400 400">
+  <g transform="translate(20,40) scale(0.86)">
+  <defs>
+    <linearGradient id="legL" gradientUnits="userSpaceOnUse" x1="0" y1="80" x2="0" y2="300"><stop offset="0" stop-color="#1D4ED8"/><stop offset="1" stop-color="#0B2F8F"/></linearGradient>
+    <linearGradient id="diagL" gradientUnits="userSpaceOnUse" x1="90" y1="262" x2="250" y2="140"><stop offset="0" stop-color="#1E5BEF"/><stop offset="1" stop-color="#3FA2FF"/></linearGradient>
+    <linearGradient id="diagR" gradientUnits="userSpaceOnUse" x1="250" y1="140" x2="410" y2="262"><stop offset="0" stop-color="#2A7DF6"/><stop offset="1" stop-color="#1748C9"/></linearGradient>
+    <linearGradient id="legR" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="60"><stop offset="0" stop-color="#1B6FF0"/><stop offset="1" stop-color="#19C6F5"/></linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3BE07A"/><stop offset="1" stop-color="#00A884"/></linearGradient>
+    <filter id="soft" filterUnits="userSpaceOnUse" x="-60" y="-40" width="620" height="420"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0B2F8F" flood-opacity="0.18"/></filter>
+  </defs>
+  <g filter="url(#soft)" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="78">
+    <!-- Magnetora's folded ribbon "M", turned over into a "W" -->
+    <path d="M90 92 L90 262" stroke="url(#legL)"/>
+    <path d="M90 262 L250 140" stroke="url(#diagL)"/>
+    <path d="M410 262 L410 92" stroke="url(#legR)"/>
+    <path d="M250 140 L410 262" stroke="url(#diagR)"/>
+  </g>
+  <!-- the conversation: a WhatsApp-green chat bubble rising from the fold -->
+  <g filter="url(#soft)">
+    <path d="M250 18 c-36 0 -62 22 -62 52 c0 17 9 32 23 41 l-5 24 l24 -14 c6 1 13 2 20 2 c36 0 62 -22 62 -53 c0 -30 -26 -52 -62 -52 z" fill="url(#bubble)"/>
+    <circle cx="226" cy="70" r="7.5" fill="#fff"/><circle cx="250" cy="70" r="7.5" fill="#fff"/><circle cx="274" cy="70" r="7.5" fill="#fff"/>
+  </g>
+  </g>
+  <text x="470" y="215" font-family="Inter Display, Inter" font-weight="800" font-size="150" letter-spacing="-3" fill="#FFFFFF">WAMA<tspan fill="#5FB4FF">CRM</tspan></text>
+  <text x="476" y="290" font-family="Inter" font-weight="600" font-size="40" letter-spacing="6" fill="#C9D6F2">WHATSAPP AI CRM · BY MAGNETORA AI SOLUTIONS</text>
+</svg>

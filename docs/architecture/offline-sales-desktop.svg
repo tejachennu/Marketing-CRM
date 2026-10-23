@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1290" viewBox="0 0 1600 1290" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5852"/></marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#008069"/></marker>
+    <marker id="arrO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2620a"/></marker>
+    <style>
+      .t{fill:#0c2014}.m{fill:#52635b}.w{fill:#fff}
+      .h1{font-size:30px;font-weight:800}.h2{font-size:19px;font-weight:800}.h3{font-size:15px;font-weight:700}.s{font-size:12.5px}.xs{font-size:11.5px}
+      .card{fill:#fff;stroke:#d5ded9;stroke-width:1.5}
+    </style>
+  </defs>
+  <rect width="1600" height="1290" fill="#f6f8f7"/>
+
+  <!-- Title -->
+  <text x="40" y="52" class="t h1">WAMACRM Retail — Offline Sales Desktop App · Architecture</text>
+  <text x="40" y="80" class="m" font-size="15">Many godowns (warehouses) → one store with many selling branches · works offline, syncs to the cloud, shares stock with WhatsApp online sales</text>
+
+  <!-- ===== CLOUD ===== -->
+  <rect x="40" y="105" width="1220" height="290" rx="20" fill="#e7f6ea" stroke="#9fd8ad" stroke-width="2"/>
+  <text x="64" y="137" class="t h2">☁  Cloud — WAMACRM platform (Next.js + Supabase)</text>
+  <text x="64" y="158" class="m s">Single source of truth for products, prices, stock and customers across every location and channel</text>
+
+  <g>
+    <rect x="64" y="175" width="215" height="92" rx="12" class="card"/>
+    <text x="80" y="200" class="t h3">Central API &amp; Auth</text>
+    <text x="80" y="221" class="m s">Users, roles (owner, manager,</text>
+    <text x="80" y="238" class="m s">cashier, storekeeper), devices,</text>
+    <text x="80" y="255" class="m s">location permissions</text>
+
+    <rect x="293" y="175" width="215" height="92" rx="12" class="card"/>
+    <text x="309" y="200" class="t h3">Product &amp; price master</text>
+    <text x="309" y="221" class="m s">SKUs, barcodes, variants,</text>
+    <text x="309" y="238" class="m s">GST/HSN, branch price lists,</text>
+    <text x="309" y="255" class="m s">offers &amp; coupons</text>
+
+    <rect x="522" y="175" width="215" height="92" rx="12" class="card"/>
+    <text x="538" y="200" class="t h3">Stock ledger</text>
+    <text x="538" y="221" class="m s">Per location: on hand, reserved,</text>
+    <text x="538" y="238" class="m s">in transit · batch / expiry ·</text>
+    <text x="538" y="255" class="m s">every movement is an entry</text>
+
+    <rect x="751" y="175" width="215" height="92" rx="12" class="card"/>
+    <text x="767" y="200" class="t h3">Orders, customers &amp; CRM</text>
+    <text x="767" y="221" class="m s">Offline bills + online orders,</text>
+    <text x="767" y="238" class="m s">one customer profile, loyalty,</text>
+    <text x="767" y="255" class="m s">returns &amp; refunds</text>
+
+    <rect x="980" y="175" width="258" height="92" rx="12" class="card"/>
+    <text x="996" y="200" class="t h3">WhatsApp Commerce</text>
+    <text x="996" y="221" class="m s">Meta catalog sync, cart orders,</text>
+    <text x="996" y="238" class="m s">WhatsApp Pay / COD, e-receipts</text>
+    <text x="996" y="255" class="m s">&amp; order updates on WhatsApp</text>
+
+    <rect x="64" y="281" width="444" height="92" rx="12" class="card"/>
+    <text x="80" y="306" class="t h3">Reports &amp; admin dashboard (web)</text>
+    <text x="80" y="327" class="m s">Sales by branch / cashier / hour, stock value per godown,</text>
+    <text x="80" y="344" class="m s">low-stock &amp; reorder alerts, transfers, day-close &amp; cash</text>
+    <text x="80" y="361" class="m s">reconciliation, GST reports (GSTR-1 export)</text>
+
+    <rect x="522" y="281" width="444" height="92" rx="12" class="card"/>
+    <text x="538" y="306" class="t h3">Order routing &amp; reservations</text>
+    <text x="538" y="327" class="m s">Online WhatsApp orders reserve stock at the nearest branch</text>
+    <text x="538" y="344" class="m s">or godown · pick &amp; pack task sent to that desktop ·</text>
+    <text x="538" y="361" class="m s">no overselling between counter and online</text>
+
+    <!-- DB cylinder -->
+    <g transform="translate(1010,285)">
+      <path d="M0,16 v58 a99,16 0 0 0 198,0 v-58" fill="#fff" stroke="#9fd8ad" stroke-width="2"/>
+      <ellipse cx="99" cy="16" rx="99" ry="16" fill="#d9f2df" stroke="#9fd8ad" stroke-width="2"/>
+      <text x="99" y="52" text-anchor="middle" class="t h3">Postgres (Supabase)</text>
+      <text x="99" y="71" text-anchor="middle" class="m xs">row-level security per org</text>
+    </g>
+  </g>
+
+  <!-- Online customers -->
+  <rect x="1290" y="105" width="270" height="290" rx="20" fill="#fff" stroke="#bfe3c8" stroke-width="2"/>
+  <circle cx="1425" cy="162" r="30" fill="#25d366"/>
+  <text x="1425" y="170" text-anchor="middle" font-size="24" class="w" font-weight="800">✆</text>
+  <text x="1425" y="222" text-anchor="middle" class="t h3">Online customers</text>
+  <text x="1425" y="244" text-anchor="middle" class="m s">WhatsApp shop, AI assistant,</text>
+  <text x="1425" y="261" text-anchor="middle" class="m s">catalog, cart &amp; payments</text>
+  <text x="1425" y="292" text-anchor="middle" class="m s">Walk-in buyers also get</text>
+  <text x="1425" y="309" text-anchor="middle" class="m s">bills, offers &amp; loyalty</text>
+  <text x="1425" y="326" text-anchor="middle" class="m s">points on WhatsApp</text>
+  <line x1="1290" y1="221" x2="1242" y2="221" stroke="#008069" stroke-width="2.5" marker-start="url(#arrG)" marker-end="url(#arrG)"/>
+
+  <!-- ===== SYNC ===== -->
+  <line x1="420" y1="397" x2="420" y2="433" stroke="#4a5852" stroke-width="2.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <line x1="1100" y1="397" x2="1100" y2="433" stroke="#4a5852" stroke-width="2.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <rect x="40" y="435" width="1520" height="86" rx="18" fill="#0c2014"/>
+  <text x="66" y="468" class="w h2">⇅  Sync service (offline-first)</text>
+  <text x="66" y="496" fill="#cfe9d6" class="s">Each desktop keeps working without internet. Changes wait in a local outbox and sync when online: push bills, returns, receipts &amp; transfers · pull products, prices &amp; stock deltas.</text>
+  <text x="1534" y="468" text-anchor="end" fill="#9ff0b0" class="s" font-weight="700">Idempotent event IDs · per-device sequence · server is the stock authority</text>
+  <text x="1534" y="496" text-anchor="end" fill="#cfe9d6" class="s">Conflicts: sales always accepted → negative stock flagged for review</text>
+
+  <line x1="300" y1="523" x2="300" y2="566" stroke="#4a5852" stroke-width="2.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <line x1="1060" y1="523" x2="1060" y2="566" stroke="#4a5852" stroke-width="2.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <!-- ===== GODOWNS ===== -->
+  <rect x="40" y="568" width="560" height="430" rx="20" fill="#fff4e5" stroke="#f3c78b" stroke-width="2"/>
+  <text x="64" y="601" class="t h2">🏭  Godowns (material keeping places)</text>
+  <text x="64" y="623" class="m s">Desktop app in “Warehouse” mode · one or more PCs per godown</text>
+
+  <g>
+    <rect x="64" y="640" width="250" height="250" rx="14" class="card"/>
+    <text x="80" y="666" class="t h3">Godown 1 — Main</text>
+    <text x="80" y="690" class="m s">• Goods receipt (GRN) from</text>
+    <text x="80" y="707" class="m s">   suppliers, with purchase bills</text>
+    <text x="80" y="728" class="m s">• Barcode / label printing</text>
+    <text x="80" y="749" class="m s">• Racks &amp; bins, batch / expiry</text>
+    <text x="80" y="770" class="m s">• Dispatch transfers to branches</text>
+    <text x="80" y="791" class="m s">• Pick &amp; pack online orders</text>
+    <text x="80" y="812" class="m s">• Stock audit / cycle count</text>
+    <text x="80" y="833" class="m s">• Damage &amp; adjustment notes</text>
+    <rect x="80" y="848" width="218" height="28" rx="8" fill="#fff4e5"/>
+    <text x="189" y="867" text-anchor="middle" fill="#8a4a05" class="xs" font-weight="700">Local DB · scanner · label printer</text>
+
+    <rect x="328" y="640" width="250" height="250" rx="14" class="card"/>
+    <text x="344" y="666" class="t h3">Godown 2 — City</text>
+    <text x="344" y="690" class="m s">Same features, its own stock</text>
+    <text x="344" y="707" class="m s">ledger location</text>
+    <text x="344" y="738" class="m s">• Godown ↔ godown transfers</text>
+    <text x="344" y="759" class="m s">• Reorder suggestions from</text>
+    <text x="344" y="776" class="m s">   branch sales velocity</text>
+    <text x="344" y="807" class="m s">Add more godowns anytime —</text>
+    <text x="344" y="824" class="m s">each is just a location</text>
+    <rect x="344" y="848" width="218" height="28" rx="8" fill="#fff4e5"/>
+    <text x="453" y="867" text-anchor="middle" fill="#8a4a05" class="xs" font-weight="700">Local DB · scanner · label printer</text>
+
+    <line x1="314" y1="760" x2="328" y2="760" stroke="#c2620a" stroke-width="2" marker-start="url(#arrO)" marker-end="url(#arrO)"/>
+  </g>
+  <text x="64" y="930" class="t h3">Suppliers → Godown</text>
+  <text x="64" y="951" class="m s">Purchase order → GRN → stock in. Supplier bills &amp; payments</text>
+  <text x="64" y="968" class="m s">recorded against the purchase.</text>
+
+  <!-- Transfer arrow -->
+  <line x1="602" y1="760" x2="676" y2="760" stroke="#c2620a" stroke-width="3" marker-end="url(#arrO)"/>
+  <rect x="603" y="772" width="74" height="74" rx="8" fill="#fff" stroke="#f3c78b"/>
+  <text x="640" y="791" text-anchor="middle" fill="#8a4a05" class="xs" font-weight="700">Transfer</text>
+  <text x="640" y="807" text-anchor="middle" fill="#8a4a05" class="xs">dispatch</text>
+  <text x="640" y="822" text-anchor="middle" fill="#8a4a05" class="xs">in transit</text>
+  <text x="640" y="837" text-anchor="middle" fill="#8a4a05" class="xs">received</text>
+
+  <!-- ===== STORE / BRANCHES ===== -->
+  <rect x="680" y="568" width="880" height="430" rx="20" fill="#e7f0fd" stroke="#a9c8f5" stroke-width="2"/>
+  <text x="704" y="601" class="t h2">🏬  Store — selling branches</text>
+  <text x="704" y="623" class="m s">Desktop app in “POS” mode · many counters per branch · each branch is a stock location</text>
+
+  <g>
+    <rect x="704" y="640" width="270" height="250" rx="14" class="card"/>
+    <text x="720" y="666" class="t h3">Branch A</text>
+    <text x="720" y="690" class="m s">• Fast billing: scan, search, weigh</text>
+    <text x="720" y="711" class="m s">• Cash, UPI, card, split payment</text>
+    <text x="720" y="732" class="m s">• GST invoice, print or WhatsApp</text>
+    <text x="720" y="753" class="m s">• Returns, exchanges, credit notes</text>
+    <text x="720" y="774" class="m s">• Hold / recall bills</text>
+    <text x="720" y="795" class="m s">• Receive transfers from godown</text>
+    <text x="720" y="816" class="m s">• Shift open / close, cash count</text>
+    <rect x="720" y="848" width="238" height="28" rx="8" fill="#e7f0fd"/>
+    <text x="839" y="867" text-anchor="middle" fill="#1d3a8a" class="xs" font-weight="700">Counter 1 · Counter 2 · Counter 3</text>
+
+    <rect x="988" y="640" width="270" height="250" rx="14" class="card"/>
+    <text x="1004" y="666" class="t h3">Branch B</text>
+    <text x="1004" y="690" class="m s">Same POS, own price list</text>
+    <text x="1004" y="707" class="m s">&amp; offers if needed</text>
+    <text x="1004" y="738" class="m s">• Branch ↔ branch transfers</text>
+    <text x="1004" y="759" class="m s">• See stock in other branches</text>
+    <text x="1004" y="776" class="m s">   &amp; godowns (when online)</text>
+    <text x="1004" y="807" class="m s">• Fulfil online orders: pick-up</text>
+    <text x="1004" y="824" class="m s">   at store or local delivery</text>
+    <rect x="1004" y="848" width="238" height="28" rx="8" fill="#e7f0fd"/>
+    <text x="1123" y="867" text-anchor="middle" fill="#1d3a8a" class="xs" font-weight="700">Counter 1 · Counter 2</text>
+
+    <rect x="1272" y="640" width="264" height="250" rx="14" class="card"/>
+    <text x="1288" y="666" class="t h3">Branch C … N</text>
+    <text x="1288" y="690" class="m s">Add branches anytime</text>
+    <text x="1288" y="721" class="m s">Manager tools on the desktop:</text>
+    <text x="1288" y="742" class="m s">• Day-end report &amp; cash</text>
+    <text x="1288" y="759" class="m s">   reconciliation</text>
+    <text x="1288" y="780" class="m s">• Stock request to godown</text>
+    <text x="1288" y="801" class="m s">• Discounts need manager PIN</text>
+    <text x="1288" y="822" class="m s">• Expense &amp; petty cash</text>
+    <rect x="1288" y="848" width="232" height="28" rx="8" fill="#e7f0fd"/>
+    <text x="1404" y="867" text-anchor="middle" fill="#1d3a8a" class="xs" font-weight="700">Counters as needed</text>
+  </g>
+  <text x="704" y="930" class="t h3">Walk-in customer → Counter</text>
+  <text x="704" y="951" class="m s">Phone number at billing links the sale to the same customer profile as WhatsApp —</text>
+  <text x="704" y="968" class="m s">bill on WhatsApp, loyalty points, follow-up offers and campaigns from WAMACRM.</text>
+
+  <!-- ===== DESKTOP APP INTERNALS ===== -->
+  <rect x="40" y="1030" width="1520" height="230" rx="20" fill="#fff" stroke="#d5ded9" stroke-width="2"/>
+  <text x="64" y="1063" class="t h2">🖥  Inside the desktop app (one installer for Windows; role chosen per device: Warehouse or POS)</text>
+
+  <g>
+    <rect x="64" y="1082" width="280" height="150" rx="14" fill="#f3f6f5" stroke="#d5ded9"/>
+    <text x="80" y="1108" class="t h3">App shell</text>
+    <text x="80" y="1130" class="m s">Electron or Tauri · auto-update</text>
+    <text x="80" y="1150" class="m s">React UI shared with WAMACRM</text>
+    <text x="80" y="1170" class="m s">keyboard-first billing screens</text>
+    <text x="80" y="1190" class="m s">English / తెలుగు / हिंदी</text>
+
+    <rect x="358" y="1082" width="280" height="150" rx="14" fill="#f3f6f5" stroke="#d5ded9"/>
+    <text x="374" y="1108" class="t h3">Local database</text>
+    <text x="374" y="1130" class="m s">SQLite (encrypted)</text>
+    <text x="374" y="1150" class="m s">products, prices, local stock,</text>
+    <text x="374" y="1170" class="m s">bills, outbox of unsynced events</text>
+    <text x="374" y="1190" class="m s">works for days fully offline</text>
+
+    <rect x="652" y="1082" width="280" height="150" rx="14" fill="#f3f6f5" stroke="#d5ded9"/>
+    <text x="668" y="1108" class="t h3">Sync engine</text>
+    <text x="668" y="1130" class="m s">background push / pull</text>
+    <text x="668" y="1150" class="m s">retry with back-off</text>
+    <text x="668" y="1170" class="m s">“Last synced” status on screen</text>
+    <text x="668" y="1190" class="m s">offline invoice number series</text>
+    <text x="668" y="1210" class="m s">per device (no clashes)</text>
+
+    <rect x="946" y="1082" width="280" height="150" rx="14" fill="#f3f6f5" stroke="#d5ded9"/>
+    <text x="962" y="1108" class="t h3">Hardware adapters</text>
+    <text x="962" y="1130" class="m s">barcode scanner (USB/HID)</text>
+    <text x="962" y="1150" class="m s">thermal receipt &amp; label printers</text>
+    <text x="962" y="1170" class="m s">cash drawer · weighing scale</text>
+    <text x="962" y="1190" class="m s">customer display (optional)</text>
+
+    <rect x="1240" y="1082" width="296" height="150" rx="14" fill="#f3f6f5" stroke="#d5ded9"/>
+    <text x="1256" y="1108" class="t h3">Security</text>
+    <text x="1256" y="1130" class="m s">device registered to a location</text>
+    <text x="1256" y="1150" class="m s">staff PIN login (works offline)</text>
+    <text x="1256" y="1170" class="m s">role-based screens &amp; limits</text>
+    <text x="1256" y="1190" class="m s">audit log of every edit &amp; void</text>
+  </g>
+</svg>
