@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: transparent; font-family: Inter, 'Noto Color Emoji', sans-serif; }
+  .shot { display: inline-block; padding: 30px; }
+  .phone { width: 360px; height: 740px; border-radius: 46px; background: #0f172a; padding: 12px; box-shadow: 0 30px 60px -20px rgba(15,23,42,.45); position: relative; }
+  .screen { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; background: #efeae2; display: flex; flex-direction: column; }
+  .notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 26px; background: #0f172a; border-radius: 0 0 16px 16px; z-index: 2; }
+  .bar { background: #008069; color: #fff; padding: 40px 16px 12px; display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; color: #fff; }
+  .name { font-weight: 700; font-size: 16px; }
+  .status { font-size: 12px; opacity: .8; }
+  .chat { flex: 1; padding: 14px 12px; display: flex; flex-direction: column; gap: 9px; overflow: hidden;
+    background-image: radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px); background-size: 14px 14px; }
+  .msg { max-width: 82%; padding: 8px 11px 6px; border-radius: 10px; font-size: 14.5px; line-height: 1.38; color: #111b21; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
+  .in { background: #fff; align-self: flex-start; border-top-left-radius: 2px; }
+  .out { background: #d9fdd3; align-self: flex-end; border-top-right-radius: 2px; }
+  .time { font-size: 10.5px; color: #667781; text-align: right; margin-top: 2px; }
+  .ticks { color: #53bdeb; }
+  .btn { border-top: 1px solid #e9edef; margin: 7px -11px -6px; padding: 9px; text-align: center; color: #0a7cff; font-weight: 600; font-size: 14px; }
+  .prod { display: flex; gap: 8px; margin-top: 7px; }
+  .pcard { flex: 1; background: #f0f2f5; border-radius: 8px; padding: 6px; }
+  .pimg { height: 74px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .pname { font-size: 12px; font-weight: 700; margin-top: 5px; line-height: 1.2; }
+  .pprice { font-size: 12px; color: #008069; font-weight: 700; }
+  .order { background: #f5f5f4; border-radius: 8px; padding: 9px; margin: 2px -4px 4px; }
+  .orow { display: flex; justify-content: space-between; font-size: 13px; }
+  .omuted { color: #667781; font-size: 11px; letter-spacing: .06em; font-weight: 600; }
+  .paid { color: #008069; font-weight: 700; }
+  .banner { height: 150px; border-radius: 8px; margin: -3px -6px 8px; display: flex; flex-direction: column; justify-content: center; padding: 16px; color: #fff; }
+  .ticket { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 9px; margin-top: 6px; }
+  .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .input { background: #f0f2f5; padding: 10px 12px 16px; display: flex; gap: 8px; align-items: center; }
+  .field { flex: 1; background: #fff; border-radius: 22px; padding: 10px 14px; color: #8696a0; font-size: 14px; }
+  .mic { width: 42px; height: 42px; border-radius: 50%; background: #00a884; }
+  /* dashboard card */
+  .dash { width: 760px; background: #fff; border-radius: 22px; box-shadow: 0 30px 60px -24px rgba(15,23,42,.35); overflow: hidden; }
+  .dhead { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #eef1f6; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 18px 20px 6px; }
+  .kpi { border-radius: 14px; padding: 14px; color: #fff; }
+  .kpi b { display: block; font-size: 26px; }
+  .kpi span { font-size: 12.5px; opacity: .9; }
+  .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px 20px 20px; }
+  .col { background: #f4f6fb; border-radius: 12px; padding: 10px; }
+  .col h4 { font-size: 12.5px; color: #4a5874; margin-bottom: 8px; }
+  .lead { background: #fff; border-radius: 9px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06); font-size: 12.5px; }
+  .lead small { color: #667781; display: block; }
+</style>
+</head>
+<body>
+
+<!-- 1. AI chat in Tenglish / Hinglish -->
+<div class="shot" id="phone-ai">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar"><div class="avatar" style="background:#1d5bea">BS</div><div><div class="name">BooksStore</div><div class="status">AI assistant · online</div></div></div>
+    <div class="chat">
+      <div class="msg out">Me degara Radhakrishnan books unnaya? 📚<div class="time">9:41 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in">Unnayi andi! Ivi chudandi 👇
+        <div class="prod">
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#fde68a,#fb7185)">📕</div><div class="pname">The Hindu View of Life</div><div class="pprice">₹299</div></div>
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#a5f3fc,#818cf8)">📘</div><div class="pname">An Idealist View of Life</div><div class="pprice">₹349</div></div>
+        </div>
+        <div class="btn">View items</div>
+      </div>
+      <div class="msg out">Kitne ka total? 2 copies chahiye<div class="time">9:43 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in">2 × ₹299 = <b>₹598</b>. Order confirm karu? ✅<div class="time">9:43 PM</div></div>
+    </div>
+    <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 2. Shop: catalog and cart -->
+<div class="shot" id="phone-shop">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar"><div class="avatar" style="background:#ec4899">SS</div><div><div class="name">Sri Sarees</div><div class="status">Shop on WhatsApp</div></div></div>
+    <div class="chat">
+      <div class="msg in">🎉 New Diwali collection is here!
+        <div class="prod">
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#f472b6,#a855f7)">🥻</div><div class="pname">Silk Saree</div><div class="pprice">₹2,499</div></div>
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#fbbf24,#f97316)">👗</div><div class="pname">Party Kurti</div><div class="pprice">₹899</div></div>
+        </div>
+        <div class="prod">
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#34d399,#0ea5e9)">💍</div><div class="pname">Jhumka Set</div><div class="pprice">₹499</div></div>
+          <div class="pcard"><div class="pimg" style="background:linear-gradient(135deg,#60a5fa,#6366f1)">👜</div><div class="pname">Potli Bag</div><div class="pprice">₹399</div></div>
+        </div>
+        <div class="btn">🛍️ View catalog</div>
+      </div>
+      <div class="msg out"><b>🛒 Cart · 2 items</b><br>Silk Saree, Jhumka Set<br><b>₹2,998</b><div class="time">7:15 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in">Thank you! Please add your delivery address 👇<div class="btn">📍 Add address</div></div>
+    </div>
+    <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 3. Pay and thank you -->
+<div class="shot" id="phone-pay">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar"><div class="avatar" style="background:#ec4899">SS</div><div><div class="name">Sri Sarees</div><div class="status">Shop on WhatsApp</div></div></div>
+    <div class="chat">
+      <div class="msg in" style="max-width:88%">
+        <div class="order"><div class="orow"><span class="omuted">ORDER #SS-2611</span><span class="omuted">2 ITEMS</span></div>
+          <div class="orow" style="margin-top:6px"><span>Silk Saree</span><span>₹2,499</span></div>
+          <div class="orow"><span>Jhumka Set</span><span>₹499</span></div>
+          <div class="orow" style="margin-top:6px;font-weight:700"><span>Total</span><span>₹2,998</span></div></div>
+        Review your order and pay securely 🔒
+        <div class="btn">💳 Review and pay</div>
+      </div>
+      <div class="msg out">Paid with UPI ✅<div class="time">7:18 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in" style="max-width:88%">
+        <div class="order"><div class="orow"><span class="omuted">ORDER #SS-2611</span><span class="paid">✓ Paid</span></div><div class="orow" style="margin-top:6px;font-weight:700"><span>Total</span><span>₹2,998</span></div></div>
+        🎉 Thank you, Lakshmi! Your order is confirmed. We'll message you when it ships.
+      </div>
+      <div class="msg in">🚚 Shipped! Arriving Friday.<div class="btn">Track order</div></div>
+    </div>
+    <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 4. Campaign -->
+<div class="shot" id="phone-campaign">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar"><div class="avatar" style="background:#f97316">FC</div><div><div class="name">FitCare Clinic</div><div class="status">Business account</div></div></div>
+    <div class="chat">
+      <div class="msg in" style="max-width:90%">
+        <div class="banner" style="background:linear-gradient(135deg,#f97316,#ec4899 55%,#8b5cf6)">
+          <div style="font-size:13px;font-weight:700;opacity:.9">FREE HEALTH CAMP</div>
+          <div style="font-size:30px;font-weight:900;line-height:1.05">Sugar &amp; BP<br>check-up</div>
+          <div style="font-size:13px;margin-top:4px">Sunday · 9 AM – 1 PM</div>
+        </div>
+        Hi Ravi 👋 Free check-up for your family this Sunday at our Ameerpet centre.
+        <div class="btn">📅 Book my slot</div>
+        <div class="btn" style="margin-top:0">📞 Call us</div>
+      </div>
+      <div class="msg out">Book for 2 people please<div class="time">10:02 AM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in">Done ✅ 2 slots booked for Sunday 10 AM. See you!<div class="time">10:02 AM</div></div>
+    </div>
+    <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 5. Support and ticket -->
+<div class="shot" id="phone-support">
+  <div class="phone"><div class="notch"></div><div class="screen">
+    <div class="bar"><div class="avatar" style="background:#7c3aed">HD</div><div><div class="name">Help Desk</div><div class="status">AI support · 24/7</div></div></div>
+    <div class="chat">
+      <div class="msg out">My passport application status?<div class="time">11:20 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in">Sure! Please share your file number 📄<div class="time">11:20 PM</div></div>
+      <div class="msg out">HYD0012345<div class="time">11:21 PM <span class="ticks">✓✓</span></div></div>
+      <div class="msg in" style="max-width:88%">I have created a request for our team.
+        <div class="ticket"><div class="orow"><b>Ticket #1042</b><span class="pill" style="background:#fde68a;color:#92400e">Open</span></div>
+          <div style="font-size:12.5px;color:#667781;margin-top:3px">Reply within 2 hours · Assigned to Priya</div></div>
+        <div class="time">11:21 PM</div>
+      </div>
+      <div class="msg in">✅ Priya here. Your file is approved and will be sent tomorrow.<div class="time">9:05 AM</div></div>
+    </div>
+    <div class="input"><div class="field">Message</div><div class="mic"></div></div>
+  </div></div>
+</div>
+
+<!-- 6. Dashboard -->
+<div class="shot" id="dashboard">
+  <div class="dash">
+    <div class="dhead"><b style="font-size:17px;color:#0e1b3d">Today in WAMA CRM</b><span class="pill" style="background:#dcfce7;color:#166534">● Live</span></div>
+    <div class="kpis">
+      <div class="kpi" style="background:linear-gradient(135deg,#1d5bea,#19c6f5)"><b>248</b><span>Chats</span></div>
+      <div class="kpi" style="background:linear-gradient(135deg,#00a884,#3be07a)"><b>64</b><span>New leads</span></div>
+      <div class="kpi" style="background:linear-gradient(135deg,#f97316,#facc15)"><b>31</b><span>Orders</span></div>
+      <div class="kpi" style="background:linear-gradient(135deg,#ec4899,#8b5cf6)"><b>₹48k</b><span>Sales</span></div>
+    </div>
+    <div class="cols">
+      <div class="col"><h4>NEW</h4><div class="lead">Ravi Kumar<small>Health camp · 2 slots</small></div><div class="lead">Anita S<small>Saree enquiry</small></div></div>
+      <div class="col"><h4>INTERESTED 🔥</h4><div class="lead">Lakshmi<small>₹2,998 cart</small></div><div class="lead">Arjun<small>Bulk order</small></div></div>
+      <div class="col"><h4>PAID ✅</h4><div class="lead">Teja<small>₹598 · UPI</small></div><div class="lead">Meena<small>₹1,120 · COD</small></div></div>
+      <div class="col"><h4>SUPPORT</h4><div class="lead">Ticket #1042<small>Open · Priya</small></div><div class="lead">Ticket #1039<small>Solved</small></div></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
