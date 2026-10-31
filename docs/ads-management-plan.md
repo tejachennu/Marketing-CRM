@@ -27,7 +27,7 @@ The plan covers:
 **What we recommend.** Build **WAMA Ads** in four phases. Click-to-WhatsApp comes first because it ties directly into our inbox, chatbots and WhatsApp Commerce. Google follows.
 
 1. **Phase 0 — make the platform safe for ad accounts** (about 3 weeks)
-   - Fix the critical issues in [the application audit](application-audit-2026-10.md). Today, tenant data and credentials may be readable with the public key, and several webhooks are unauthenticated. We should not ask Meta or Google for ad-account access, or hold tenants' ad tokens, until that is fixed.
+   - Fix the critical items from the October 2026 security review first; it is shared privately with the team, not in this repository. We should not ask Meta or Google for ad-account access, or hold tenants' ad tokens, until those fixes are live.
    - Add an encrypted credential store, a real job scheduler and server-side feature flags.
    - Start capturing click-to-WhatsApp referral data now. The webhook currently discards it, so attribution for tenants who already run these ads is lost.
 2. **Phase 1 — Measure** (about 6 weeks)
@@ -63,8 +63,8 @@ The reason for these rules: in August 2026 Meta disabled the Business Managers o
 
 | Product | Ads inside the product | Account and billing | Notes |
 |---|---|---|---|
-| **AiSensy** | Full Meta ad builder: CTWA, website and lead-form ads. Also AI creatives, reporting, an "AI Ads Agent", and conversion events from chatbot flows. | Customer's own Meta ad account. Spend is paid with prepaid **ad credits bought inside AiSensy** (UPI or card). | Free ad-credit offers in 2026 (₹1,000) (confirm). WhatsApp "CTWA Partner of the Year 2024". |
-| **Interakt** | CTWA ad launcher: copy, creative, targeting and budget are set inside Interakt. ROAS dashboard and conversion events. | Customer's own Meta ad account, which Interakt **creates automatically if the customer has none** (confirm). Spend is charged to that account's payment method. | |
+| **AiSensy** | Full Meta ad builder: CTWA, website and lead-form ads, plus WhatsApp Status ads (recent). Also AI creatives, reporting, an "AI Ads Agent", and conversion events from chatbot flows. | Customer's own Meta ad account. Spend is paid with prepaid **ad credits bought inside AiSensy** (UPI, card or wallet). Ad credits are separate from WhatsApp message credits. | ₹1,000 free ad credits (July 2026 offer; older pages say ₹500). WhatsApp "CTWA Partner of the Year 2024". |
+| **Interakt** | CTWA ad launcher: copy, creative, targeting and budget are set inside Interakt. ROAS dashboard and conversion events. | Customer's own Meta ad account, which Interakt's guide says it **creates in the background if the customer has none**. Spend is charged to that account's payment method. | Its Conversions API guide still says ads must be created in Ads Manager to send conversion events. |
 | **WATI** | No ad builder; ads are made in Ads Manager. Tracks CTWA, Google click-to-message and TikTok messaging ads, and sends conversion events. | Customer's own. | Conversion tracking is on higher plans or an add-on. |
 | **Gallabox** | Analytics only: daily spend and results, the ad ID on each conversation, and conversion events with order value. | Customer's own. | |
 | **DoubleTick** | Ads are built in Meta; CTWA leads are captured. Conversion events are a paid add-on; audiences are exported by hand. | Customer's own. | |
@@ -171,12 +171,12 @@ The same data model serves both modes. Each ad account belongs to **exactly one 
 |---|---|
 | **Permissions** | **To run ads:** `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`.<br>**For CTWA ads and lead forms:** `pages_manage_ads`.<br>**For lead webhooks:** `leads_retrieval`, `pages_manage_metadata`.<br>**For WhatsApp conversion events:** `whatsapp_business_manage_events`. It is reported to be granted automatically once we hold Advanced `whatsapp_business_messaging` (confirm).<br>Our app currently requests none of the ads or Page permissions. |
 | **Advanced access through App Review** | Required for ad accounts we don't own. This covers every tenant in both modes.<br>We must make a successful call for each permission within 30 days before submitting.<br>Review usually takes days, sometimes weeks. |
-| **Business Verification and Tech Provider Access Verification** | Both are needed for apps that serve other businesses with the ads permissions. Verification can take up to about 14 business days; Access Verification about 5. We already hold Tech Provider status; confirm it covers the new permissions. |
-| **Marketing API access tier** | Reportedly renamed from "Ads Management Standard Access" to "Marketing API Access Tier" in May 2026 (confirm).<br>The Full tier, needed for production rate limits, reportedly requires App Review, at least 500 Marketing API calls in the past 15 days, and an error rate under 15% (confirm). |
+| **Business Verification and Tech Provider status** | Business Verification is required for advanced access (it can take up to about 14 business days).<br>Separate "Access Verification" for these permissions was reportedly retired in October 2026. Apps are now classed as Tech Providers when they request advanced permissions, but Meta's pages conflict (confirm). We are already a Tech Provider. |
+| **Marketing API access tier** | On 4 May 2026 "Ads Management Standard Access" became the **Marketing API Access Tier**: Standard became *Limited* (the default) and Advanced became *Full*.<br>Full is needed for production rate limits and is granted through App Review. Meta's changelog describes at least 500 Marketing API calls in 15 days with under 15% errors as the auto-approval threshold. |
 | **Rate limits** | Counted per ad account per hour and scaled by the number of active ads. Small tenants get small quotas, so batch and cache our insights requests. |
 | **Tokens** | **Self-serve:** a business-integration system-user token, which does not expire by default; tenants can revoke it at any time.<br>**Managed:** a system user in our agency business portfolio. A system user only has roles on assets its own business owns or has been shared as a partner. |
 | **Click-to-WhatsApp ads** | **Ad set:** `destination_type=WHATSAPP`, `optimization_goal=CONVERSATIONS`, and a `promoted_object` with the Page (and optionally the WhatsApp number).<br>**Campaign objectives:** reported as Engagement, Leads, Sales or Traffic, but Meta's own tables conflict on Leads and Sales (confirm). Test those in a sandbox first.<br>**Linking:** the WhatsApp number must be linked to the Page, and the token user needs the advertise task on that Page. |
-| **Free messaging window** | Chats that start from a CTWA ad or a Page button open a free window for all message types, provided we reply within 24 hours.<br>It has been 72 hours. Late-September and October 2026 reports say it is being extended to up to 7 days, account by account (confirm).<br>From 1 Oct 2026, service messages beyond 1,000 a month per number are reportedly charged, which makes this window more valuable (confirm). |
+| **Free messaging window** | Chats that start from a CTWA ad or a Page button open a free window, provided we reply within 24 hours. Since August 2026 the only charge inside it is for Meta Business Agent messages.<br>The window used to be 72 hours. Meta's pricing page now says it "may remain open for up to 7 days"; that is a maximum, and vendors report rollout dates between 28 September and 7 October 2026.<br>Since 1 October 2026, service messages beyond 1,000 a month per number are charged, and so are utility messages sent inside the 24-hour window. That makes the ad-driven free window more valuable. |
 | **Ad attribution in webhooks** | Inbound messages from ads carry a `referral` object: `source_id` (the ad), `source_type`, `source_url`, `headline`, `body` and `ctwa_clid`.<br>`ctwa_clid` is missing for ads shown in WhatsApp Status.<br>**Our webhook currently ignores `referral`.** |
 | **Conversion events for chats** | `POST /{dataset_id}/events` with `action_source=business_messaging`, `messaging_channel=whatsapp`, `user_data.ctwa_clid`, `event_name` (e.g. `LeadSubmitted`, `Purchase` with value and currency) and `event_time`.<br>The dataset is found through the WhatsApp Business Account. |
 | **Lead Ads** | Subscribe each Page to `leadgen` with a Page token, then fetch each lead by ID.<br>If the Page restricts lead access, both our app and the token's user must be assigned in Leads Access Manager. |
@@ -185,21 +185,21 @@ The same data model serves both modes. Each ad account belongs to **exactly one 
 | **Ad campaign structure** | Legacy Advantage+ Shopping and App campaign creation is blocked. Build on the unified Advantage+ structure.<br>Detailed-targeting exclusions are gone; use excluded custom audiences instead. |
 | **India and special categories** | Securities and investment ads must name a SEBI-verified beneficiary and payer (since July 2025).<br>Credit, loan and insurance ads must target 18+.<br>Online gambling ads are not supported in India.<br>The special ad category fields must be sent on every campaign. |
 | **India billing** | Meta sells in INR with GST and accepts card, UPI, netbanking and Paytm.<br>Adding funds manually turns an account into a permanently prepaid one.<br>Recurring card charges must follow RBI e-mandate rules. |
-| **Embedded Signup** | v2 and v3 were reportedly retired in October 2026 (confirm). Our signup defaults to v4, so make sure `NEXT_PUBLIC_META_ES_VERSION` is not set to v2 or v3 in production.<br>v4 can onboard a business to the Cloud API, CTWA ads and conversion events in one flow. |
+| **Embedded Signup** | v4 was released on 8 October 2025, and Meta has scheduled v2 and v3 for retirement (confirm the date). Our signup defaults to v4, so make sure `NEXT_PUBLIC_META_ES_VERSION` is not set to v2 or v3 in production.<br>v4 can onboard a business to the Cloud API, Marketing Messages, CTWA ads and conversion events in one flow, chosen in the Facebook Login for Business configuration. |
 
 ### 4.2 Google
 
 | Requirement | What it means for us |
 |---|---|
-| **API access** | Reported (confirm): from September 2026 developer tokens are retired, and the API access level belongs to the Google Cloud project that owns our OAuth client.<br>**Access levels:** Test; Explorer (~2,880 operations a day, cannot create accounts or touch billing); Basic (15,000 a day); Standard (unlimited, with RMF rules). |
+| **API access** | Developer tokens were retired on 9 September 2026. API access now belongs to the Google Cloud project that owns our OAuth client, and we apply on the Google Ads API page in Cloud Console.<br>**Access levels:**<br>• Test<br>• Explorer: 2,880 operations a day on real accounts; cannot create accounts, touch billing or manage users<br>• Basic: 15,000 operations a day<br>• Standard: unlimited, with RMF rules |
 | **OAuth verification** | `adwords` is a sensitive scope. Allow about 10 business days for verification. We need a verified domain, privacy policy, terms and a demo video. |
 | **Manager account (MCC)** | Needed for managed mode: link existing tenant accounts, or create new ones under the MCC. |
 | **Required Minimum Functionality (RMF)** | Applies only to Standard access. Full-service tools must cover creation, management and reporting. Non-compliance fees can apply. Stay on Basic until we need more than 15,000 operations a day. |
 | **Developer policy (August 2026)** | Bans "programmatic proxies": no wrapper API or MCP server that just re-exposes Google Ads, and no shared proxy serving many businesses to skip approval. Requires a dedicated Cloud project for each integration. Our in-app product is fine; don't publish a pass-through API for tenants. |
 | **Third-party policy** | Managed mode only: fee disclosure, exact cost reporting, customer IDs on request, one account per advertiser. |
-| **Conversions and Customer Match** | New API projects reportedly must use the **Data Manager API** for Customer Match (from April 2026) and offline or lead conversions (from June 2026) (confirm).<br>Data Manager needs its own OAuth scope verification.<br>Customer Match *targeting* needs 90 days of history and more than USD 50,000 lifetime spend, so most small tenants can use lists only for observation and exclusion. |
+| **Conversions and Customer Match** | Integrations with no earlier usage must use the **Data Manager API**, not the Google Ads API: for Customer Match since 1 April 2026, and for offline click conversions and enhanced conversions for leads since 15 June 2026. That includes us.<br>Data Manager needs its own OAuth scope verification.<br>Customer Match *targeting* needs 90 days of history and more than USD 50,000 lifetime spend, so most small tenants can use lists only for observation and exclusion. |
 | **Lead form webhooks** | Each form posts JSON to our URL with a secret `google_key`, a `lead_id` for de-duplication, and the user's fields. Google keeps leads for 60 days. |
-| **Campaign types through the API** | Search, Display, Performance Max and Demand Gen can be created. New Smart campaigns can no longer be created (ended 2026; confirm exact date). |
+| **Campaign types through the API** | Search, Display, Performance Max and Demand Gen can be created. New Smart campaigns can no longer be created through the API (since 23 September 2026). |
 | **Billing** | Card or UPI billing is set up by the account owner in the Google Ads interface. API billing setup works only for monthly-invoicing accounts. |
 
 ---
@@ -262,8 +262,8 @@ flowchart LR
 
 - No ads code, ads permissions or Page code.
 - No background job runner. Campaign scheduling is a browser timer.
-- No encrypted credential storage. Tokens sit in plain text columns on `organizations`.
-- Server-side feature entitlements: today's beta gating is client-side and keyed to org name or ID.
+- No dedicated encrypted credential store. Ad tokens must not be added as more columns on `organizations` (see 6.2).
+- No server-side feature entitlements. Today's beta gating lives in the dashboard menu and is keyed to org name or ID.
 
 ### 6.1 New tables
 
@@ -328,7 +328,7 @@ Further tables:
 
 ### 6.3 Background jobs
 
-The audit found there is no scheduler: broadcast campaigns only progress while a browser tab is open. Ads needs one too, so build a single job system and move broadcasts onto it as well.
+There is no scheduler today: broadcast campaigns only progress while someone has the Campaigns page open. Ads needs one too, so build a single job system and move broadcasts onto it as well.
 
 - **Options:**
   - **Supabase `pg_cron` + `pgmq` + Edge Functions:** stays inside the stack we already use.
@@ -358,7 +358,7 @@ The audit found there is no scheduler: broadcast campaigns only progress while a
 | `POST /api/ads/approvals/:id` | Approve or reject a change in managed mode. |
 | `GET/POST /api/ads/audiences` | List and sync audiences (Phase 2). |
 | `POST /api/webhooks/google-leads/[formKey]` | Receive Google lead forms. Check `google_key` in constant time and de-duplicate on `lead_id`. |
-| Existing Meta webhook | Add `leadgen` handling (Page subscription) and save `referral` on inbound messages. Only process events with a valid signature; unsigned events must stop being accepted (see the audit). |
+| Existing Meta webhook | Add `leadgen` handling (Page subscription) and save `referral` on inbound messages. Process only events with a valid Meta signature. |
 
 ### 6.5 Permissions
 
@@ -374,7 +374,7 @@ The audit found there is no scheduler: broadcast campaigns only progress while a
 - **Timeline:** the DPDP Rules were notified on 13–14 November 2025. Most duties (notice, consent, security safeguards, breach reporting) apply about 18 months later, around May 2027. Rules for consent managers may start around November 2026 (confirm against the Gazette).
 - **Roles:** tenants decide why their customers' data is processed (they are the "data fiduciaries"); WAMA processes it for them. We need a data processing agreement with each tenant.
 - **Audiences:** uploading a tenant's customer phone numbers to Meta or Google is a separate purpose that needs a lawful basis or consent. Add a per-contact marketing-consent flag, and exclude opted-out contacts from audiences and from WhatsApp marketing.
-  - The audit found there is currently **no opt-out handling at all**.
+  - There is no opt-out (STOP) handling or suppression list yet, so this has to be built first.
 - **Lead-form data:** minimise and encrypt personal data, and set how long it is kept.
 
 ---
@@ -385,7 +385,7 @@ Estimates assume 2 full-stack engineers, a part-time designer, and one ads speci
 
 | Phase | Weeks | Engineering | Approvals, legal and operations running in parallel |
 |---|---|---|---|
-| **0. Make it safe** | 0–3 | • Fix the audit's critical items: RLS and anon grants, webhook signatures, platform-credential fallbacks, the media proxy, export-env, XSS<br>• Encrypted credential store<br>• Job runner<br>• `organization_features`<br>• **Save CTWA `referral` on every inbound message (1–2 days, do first)** | • Confirm Business Verification and Tech Provider Access Verification<br>• Add the ads and Page permissions to the Meta app<br>• Create the Google Cloud project and do brand verification<br>• Start Google OAuth verification<br>• Draft the managed-ads agreement and a DPA template<br>• Decide the billing model (section 3.3) and set up the separate agency business portfolio |
+| **0. Make it safe** | 0–3 | • Fix the critical items from the private security review<br>• Encrypted credential store<br>• Job runner<br>• `organization_features`<br>• Opt-out (STOP) handling and a suppression list<br>• **Save CTWA `referral` on every inbound message (1–2 days, do first)** | • Confirm Business Verification and Tech Provider Access Verification<br>• Add the ads and Page permissions to the Meta app<br>• Create the Google Cloud project and do brand verification<br>• Start Google OAuth verification<br>• Draft the managed-ads agreement and a DPA template<br>• Decide the billing model (section 3.3) and set up the separate agency business portfolio |
 | **1. Measure** | 3–9 | • Meta connect, both modes (Login for Business config; partner-access flow)<br>• Google OAuth and MCC link<br>• Insights sync and the Ads overview<br>• Meta lead-form webhook into CRM leads<br>• Google lead-form webhook<br>• Ad attribution in the inbox and on leads<br>• Agency desk v1<br>• Monthly report | • Record App Review screencasts and submit Meta App Review for Advanced access<br>• Apply for Google Explorer, then Basic<br>• Pilot with 3–5 tenants (self-serve and managed) |
 | **2. Launch** | 9–17 | • Click-to-WhatsApp campaign builder (Advantage+ structure), templates, budget caps, pause and resume<br>• Managed-mode approvals<br>• Conversion events for chats: `LeadSubmitted`, `QualifiedLead`, and `Purchase` from WhatsApp Commerce orders<br>• Audience sync with consent<br>• Alerts<br>• "Came from ad X" Flow Builder trigger | • Apply for Meta's Full Marketing API access tier once usage qualifies<br>• Pricing launch<br>• Optional free ad-credit promotion (AiSensy-style) |
 | **3. Google and automation** | 17–26 | • Google Search and Performance Max builder with WhatsApp message assets<br>• Conversions and Customer Match through the Data Manager API<br>• AI ad copy and creative suggestions<br>• Automatic rules (pause poor ads, budget pacing)<br>• Optional prepaid wallet with GST invoicing (A2/G2) | • Data Manager API OAuth verification<br>• Google Standard access only above 15,000 operations a day (RMF applies)<br>• CA sign-off on re-billing |
@@ -434,19 +434,26 @@ These follow market norms found in the research. Validate them with pilot tenant
 
 ## 11. Facts to confirm before relying on them
 
-Each of these was reported by search extracts or secondary sources, not read on the official page:
+A second research pass cross-checked the important claims in this plan against several search queries per claim. Most were confirmed:
 
-- **Free messaging window:** extended from 72 hours to up to 7 days from 28 September 2026, rolling out account by account.
-- **India service messages:** chargeable from 1 October 2026 beyond 1,000 a month per number.
-- **Meta access tier:** the "Marketing API Access Tier" rename and its Full-tier thresholds (500 calls in 15 days, under 15% errors).
-- **Click-to-WhatsApp objectives:** which campaign objectives accept `destination_type=WHATSAPP` (Leads and Sales conflict between Meta pages).
-- **Conversion events:** whether `whatsapp_business_manage_events` is granted automatically, and whether a WhatsApp event needs `page_id` or `whatsapp_business_account_id`.
-- **Embedded Signup:** the exact retirement date for v2 and v3.
-- **Google access levels:** developer tokens retired in September 2026 and access tied to the Cloud project; Explorer access limits.
-- **Google Data Manager API:** required for new projects for Customer Match (April 2026) and offline or lead conversions (June 2026).
+- the access-tier rename;
+- Google's developer-token sunset and Data Manager API cutoffs;
+- API versions and the Advantage+ Shopping/App deprecation;
+- the 1 October 2026 WhatsApp pricing change;
+- Google's third-party policy;
+- Blink Digital;
+- the competitor features.
+
+Official pages were still only read through search extracts, so these remain open:
+
+- **Free messaging window:** the exact start date of "up to 7 days" (vendors report 28 September to 7 October 2026), and whether Page CTA chats get it too.
+- **Click-to-WhatsApp objectives:** which campaign objectives accept `destination_type=WHATSAPP` (Meta's pages conflict on Leads and Sales). Test in a sandbox.
+- **Conversion events:** whether `whatsapp_business_manage_events` must be requested separately, and whether a WhatsApp event needs `page_id` or `whatsapp_business_account_id`.
+- **Tech Provider "Access Verification":** reported as retired in October 2026, but Meta's pages conflict.
+- **Embedded Signup:** the retirement date for v2 and v3.
 - **Google billing:** whether consolidated billing is available to agencies in India, and the monthly-invoicing criteria.
-- **Competitors:** AiSensy's ad-credit mechanics and Interakt creating ad accounts automatically.
-- **GST:** how re-billed ad spend is treated (get a CA's opinion).
+- **Competitors:** how AiSensy settles prepaid ad credits with Meta. Competitor facts come from the vendors' own pages.
+- **GST:** how re-billed ad spend is treated, and whether Meta India invoices state 18% explicitly. Get a CA's opinion.
 
 ---
 
