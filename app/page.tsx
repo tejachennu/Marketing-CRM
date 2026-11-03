@@ -87,14 +87,36 @@ export default function LandingPage() {
     objective: 'Both AI Chatbot & Bulk Marketing'
   })
 
-  const handleDemoSubmit = (e: React.FormEvent) => {
+  const [demoError, setDemoError] = useState('')
+  // Hidden from people; a bot that fills it is ignored
+  const [demoTrap, setDemoTrap] = useState('')
+
+  const handleDemoSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setDemoLoading(true)
-    setTimeout(() => {
-      setDemoLoading(false)
+    setDemoError('')
+    try {
+      // Where the visitor came from (ads add these to the link), so the lead shows its source
+      const params = new URLSearchParams(window.location.search)
+      const source: Record<string, string> = { page: window.location.pathname }
+      for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid']) {
+        const value = params.get(key)
+        if (value) source[key] = value
+      }
+      const res = await fetch('/api/public/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: demoForm.name, email: demoForm.email, phone: demoForm.phone, goal: demoForm.objective, website: demoTrap, source }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'We could not send your request. Please try again.')
       setDemoSubmitted(true)
-      setTimeout(() => setDemoSubmitted(false), 5000)
-    }, 800)
+      setDemoForm({ name: '', email: '', phone: '', objective: demoForm.objective })
+    } catch (err: any) {
+      setDemoError(err.message)
+    } finally {
+      setDemoLoading(false)
+    }
   }
 
   return (
@@ -2164,7 +2186,7 @@ export default function LandingPage() {
                       required
                       value={demoForm.name}
                       onChange={(e) => setDemoForm({ ...demoForm, name: e.target.value })}
-                      placeholder="Alex Morgan"
+                      placeholder="Ravi Kumar"
                       className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#008069] bg-white"
                     />
                   </div>
@@ -2179,7 +2201,7 @@ export default function LandingPage() {
                         required
                         value={demoForm.email}
                         onChange={(e) => setDemoForm({ ...demoForm, email: e.target.value })}
-                        placeholder="alex@company.com"
+                        placeholder="ravi@yourbusiness.in"
                         className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#008069] bg-white"
                       />
                     </div>
@@ -2193,7 +2215,7 @@ export default function LandingPage() {
                         required
                         value={demoForm.phone}
                         onChange={(e) => setDemoForm({ ...demoForm, phone: e.target.value })}
-                        placeholder="+1 (555) 019-2834"
+                        placeholder="98765 43210"
                         className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#008069] bg-white"
                       />
                     </div>
@@ -2214,6 +2236,22 @@ export default function LandingPage() {
                       <option>Wholesale Cost Savings Migration</option>
                     </select>
                   </div>
+
+                  {/* Honeypot: hidden from people, filled only by bots */}
+                  <input
+                    type="text"
+                    name="website"
+                    value={demoTrap}
+                    onChange={(e) => setDemoTrap(e.target.value)}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    className="absolute -left-[9999px] h-0 w-0 opacity-0"
+                  />
+
+                  {demoError && (
+                    <p role="alert" className="text-xs font-semibold text-rose-600">{demoError}</p>
+                  )}
 
                   <button
                     type="submit"
