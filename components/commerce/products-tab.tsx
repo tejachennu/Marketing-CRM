@@ -89,6 +89,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [isSyncing, setIsSyncing] = useState(false)
+  // The quiet catalog pull when the list opens; like a Sync, the status poller waits for it
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false)
   const [isPushing, setIsPushing] = useState(false)
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>('all')
   // Store-wide: how many products are outside the catalog, need a look, or are still being processed by Meta
@@ -158,7 +160,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       setPollTimedOut(false)
       return
     }
-    if (isPushing) return
+    // Paused while products are being sent or the catalog is being read: a refresh confirming a product
+    // in the middle of a read is how one could be taken for deleted in the catalog (the server guards too)
+    if (isPushing || isSyncing || isAutoSyncing) return
     if (pollStartRef.current === null) pollStartRef.current = Date.now()
     if (Date.now() - pollStartRef.current >= POLL_FOR_MS) {
       setPollTimedOut(true)
@@ -186,7 +190,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       clearTimeout(timer)
       round.abort()
     }
-  }, [canManageStore, catalogLinked, catalogCounts.sending, isPushing, orgId, load, page, pollRound])
+  }, [canManageStore, catalogLinked, catalogCounts.sending, isPushing, isSyncing, isAutoSyncing, orgId, load, page, pollRound])
 
   // A "send all" run still going when the tab closes stops there
   useEffect(() => () => pushRef.current?.abort(), [])
@@ -210,6 +214,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     } catch {
       // Storage unavailable (private window): pull this time
     }
+    setIsAutoSyncing(true)
     fetch('/api/commerce/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -224,6 +229,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       .catch(() => {
         // Store settings show why the catalog cannot be read
       })
+      .finally(() => setIsAutoSyncing(false))
   }, [canManageStore, catalogLinked, orgId, load])
 
   useEffect(() => {

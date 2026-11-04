@@ -578,6 +578,62 @@ test('Shopping assistant: "offer" as a verb is not an offer, unless something pr
   assert.equal(unverifiedClaim('Free returns within 7 days.', []), 'offer "Free"')
 })
 
+test('Shopping assistant: prices without a currency sign and deal wording are checked too', async () => {
+  const prices = [249, 199]
+  // A whole number next to a price word is an amount, in English and in mixed languages
+  assert.equal(unverifiedClaim('Godaan is just 179 today, hurry!', prices), 'amount 179')
+  assert.equal(unverifiedClaim('Godaan costs 300.', prices), 'amount 300')
+  assert.equal(unverifiedClaim('Godaan @ 150', prices), 'amount 150')
+  assert.equal(unverifiedClaim('Godaan is only 1,500', prices, ['Godaan']), 'amount 1500')
+  assert.equal(unverifiedClaim('Godaan 99 ki vastundi', prices), 'amount 99')
+  assert.equal(unverifiedClaim('Godaan 99 mein milega', prices), 'amount 99')
+  assert.equal(unverifiedClaim('Godaan is 120 only', prices, ['Godaan']), 'amount 120')
+  assert.equal(unverifiedClaim('You can get it for only 120.', prices), 'amount 120')
+  assert.equal(unverifiedClaim('Just 179 only, hurry!', prices), 'amount 179')
+  assert.equal(unverifiedClaim('Godaan is just 249 today and Gitanjali costs 199.', prices), null)
+  // Quantities, times and counts are not prices
+  assert.equal(unverifiedClaim('Only 3 left in stock, and only 2 in the blue cover.', prices), null)
+  assert.equal(unverifiedClaim('Just 2 days for delivery. We have only 10 colours.', prices), null)
+  // Stock and quantity answers: "only N" with no product or price word in the sentence, "N each", "N ki/ku"
+  assert.equal(unverifiedClaim('How many? Only 2.', prices), null)
+  assert.equal(unverifiedClaim('Yes, only 1.', prices), null)
+  assert.equal(unverifiedClaim('Order 2 only, stock is limited', prices), null)
+  assert.equal(unverifiedClaim('We have 5 each in S, M and L.', prices), null)
+  assert.equal(unverifiedClaim('Size 8 ki chappal available hai', prices), null)
+  assert.equal(unverifiedClaim('Mee order 2 ki update ivvali', prices), null)
+  assert.equal(unverifiedClaim('Rendu books 2 ku pampistham', prices), null)
+  assert.equal(unverifiedClaim('Godaan is in stock. How many? Only 2.', prices, ['Godaan']), null)
+  // A no-break space the model wrote is not taken for a product name
+  assert.equal(unverifiedClaim('Yes,\u00a0only 1.', prices), null)
+  // Deals in any wording
+  assert.equal(unverifiedClaim('Flat 50 off on Godaan, now 199 only', prices), 'offer "Flat 50"')
+  assert.equal(unverifiedClaim('Buy 2 get 1 on all books this week!', prices), 'offer "Buy 2 get 1"')
+  assert.equal(unverifiedClaim('BOGO on all books', prices), 'offer "BOGO"')
+  assert.equal(unverifiedClaim('Great deals on all books', prices), 'offer "deals"')
+  assert.equal(unverifiedClaim('Get Godaan at half price today', prices), 'offer "half price"')
+  assert.equal(unverifiedClaim('Save ₹50 on Godaan', prices), 'offer "Save ₹50"')
+  assert.equal(unverifiedClaim('50 off on Godaan', prices), 'offer "50 off"')
+  // Everyday words that are not deals
+  assert.equal(unverifiedClaim('We deal in old and rare books. You can save it to your cart.', prices), null)
+  assert.equal(unverifiedClaim('Yes, Godaan is for sale at ₹249.', prices), null)
+  assert.equal(unverifiedClaim('After-sale support is available for every order, and pre-sales questions are welcome.', prices), null)
+  // A sale only when a product the tools returned is on sale in the catalog
+  assert.equal(unverifiedClaim('Ee roju sale lo Godaan', prices), 'offer "sale"')
+  assert.equal(unverifiedClaim('Malgudi Days is on sale: ₹199 (was ₹299)', [199, 299]), 'offer "on sale"')
+  assert.equal(unverifiedClaim('Malgudi Days is on sale: ₹199 (was ₹299)', [199, 299], [], { onSale: true }), null)
+
+  // The assistant tells the check when a product it found is on sale
+  const openai = scriptedOpenAI([
+    [['search_products', { query: 'malgudi' }]],
+    [['reply_to_customer', { message: 'Malgudi Days is on sale: ₹199 (was ₹299).', product_ids: ['BK-MALGUDI'] }]],
+  ])
+  let result
+  const sent = await withWhatsApp(async () => { result = await runShoppingAssistant(input(fakeDb({ products: [SALE_PRODUCT] }), openai.fetcher, 'malgudi days?')) })
+  assert.deepEqual(result, { handled: true, productsSent: 1 })
+  assert.equal(openai.requests.length, 2)
+  assert.match(JSON.stringify(sent[0]), /on sale/)
+})
+
 test('Shopping assistant: a store that ships free above a threshold may say so; nothing else free gets through', async () => {
   const store = { freeShippingThreshold: 500 }
   assert.equal(unverifiedClaim('Godaan is ₹249. Free delivery on orders above ₹500!', [249], [], store), null)

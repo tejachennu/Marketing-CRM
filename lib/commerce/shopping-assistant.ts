@@ -384,12 +384,28 @@ async function getMyOrders(supabase: any, organization: any, contactId: string):
 
 /** Amounts: "₹249", "Rs. 1,121/-", "INR 500", "$12.50", "249 rupees", "499/-", "199.00". */
 const AMOUNT = /(?:₹|\$|\b(?:rs\.?|inr)\s*)\s*(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:\/-|₹|rup(?:ees?|iya|iye|aya|aye|ay|ayalu)\b|rs\b|inr\b)|\b(\d[\d,]*\.\d{1,2})\b(?![.\d])/gi
+/**
+ * Whole numbers written without a currency that can only be prices: "costs 249", "price is 199",
+ * "@ 150", "just 199 only", "199 onwards", "99 ki vastundi", "99 mein milega". The number has to end
+ * the phrase or be followed by such a word, so times and counts ("at 5pm", "price list of 3 pages") are not.
+ */
+const PRICED_NUMBER = /(?:\b(?:costs?|price[sd]?(?:\s+(?:is|at|of))?)|@)\s*:?\s*(\d[\d,]*)(?![\d,.]*\d)(?=\s*(?:$|[.!?,;:)]|(?:only|today|now|each|per|onwards|hurry)\b))|\b(?:just|only)\s+(\d[\d,]*)\s+(?:only|onwards|hurry)\b|\b(\d[\d,]*)\s+(?:onwards|(?:ki|ku|me|mein)\s+(?:vastundi|vasthundi|vastadi|dorukutundi|padutundi|milega|milegi|milenge|milta|milti|mil\s+jayega|mil\s+jaegi))\b/gi
+/**
+ * Numbers a price word only may be about: "just 179", "only 1,500 today", "120 only". These are as
+ * often stock answers ("How many? Only 2.", "Yes, only 1.", "Order 2 only, stock is limited"), so they
+ * count as amounts only when the same sentence also names a product or carries a price word (see PRICE_CONTEXT).
+ */
+const MAYBE_PRICED_NUMBER = /\b(?:just|only)\s*:?\s*(\d[\d,]*)(?![\d,.]*\d)(?=\s*(?:$|[.!?,;:)]|(?:today|now)\b))|\b(\d[\d,]*)\s+only\b/gi
+/** Where product and item names were taken out of the reply: a no-break space, which `\s` and `\b` read as a space. */
+const NAME_MARK = '\u00a0'
+const PRICE_CONTEXT = /\u00a0|\b(?:price[sd]?|pricing|costs?|rate|mrp|for|at|pay|charges?|hurry|grab)\b|@/i
 const PERCENT = /\d\s*%|\bpercent(?:age)?\b/i
 /**
  * Everyday phrases that happen to contain an offer word: "feel free", the codes on orders and
- * parcels, what a product is free of, a free-size garment. Taken out before the check.
+ * parcels, what a product is free of, a free-size garment, "we deal in", "for sale", "after-sale
+ * support". Taken out before the check.
  */
-const NOT_OFFERS = /\bfeel\s+free\b|\b(?:tracking|pin|postal|zip|area|country|otp|product|order|qr|verification|security|hsn|sku|item|isbn|courier|reference)\s+codes?\b|\b(?:sugar|gluten|dairy|lactose|nut|alcohol|bpa|lead|paraben|chemical|cruelty|toll|hassle|worry|tension|hands)[\s-]?free\b|\bfree[\s-]?size\b/gi
+const NOT_OFFERS = /\bfeel\s+free\b|\bdeals?\s+(?:in|with)\b|\b(?:for|up\s+for)\s+sale\b|\b(?:after|pre)[\s-]?sales?\b|\b(?:tracking|pin|postal|zip|area|country|otp|product|order|qr|verification|security|hsn|sku|item|isbn|courier|reference)\s+codes?\b|\b(?:sugar|gluten|dairy|lactose|nut|alcohol|bpa|lead|paraben|chemical|cruelty|toll|hassle|worry|tension|hands)[\s-]?free\b|\bfree[\s-]?size\b/gi
 /** Shipping the store makes free above its threshold, which a reply may name, in either word order. */
 const FREE_SHIPPING = /\bfree\s+(?:home\s+)?(?:delivery|shipping)\b|\b(?:delivery|shipping)\s+(?:is\s+|will\s+be\s+|would\s+be\s+)?free\b/gi
 /** "we offer two sizes", "the shop also offers gift wrapping": offer as a verb, after its subject. */
@@ -398,17 +414,37 @@ const OFFER_VERB = /\b(?:we|i|you|they|it|store|shop)\s+(?:(?:also|can|could|wil
  * Talk of deals: in English, in Hindi, Telugu and Tamil written in English letters ("chhoot",
  * "muft", "tagginpu", "offer hai"), and in Hindi and Telugu script.
  */
-const OFFER_WORDS = /\b(?:discounts?|coupons?|promos?|promocodes?|offers?|cashback|freebies?|free|complimentary|codes?|chh?oot|muft|mufat|tagg?inpu|taggimpu|uchith?am|uchitanga|thallupadi|ilavasam)\b|छूट|ऑफ़?र|मुफ़?्त|कूपन|తగ్గింపు|ఆఫర్|ఉచితం|కూపన్/i
+const OFFER_WORDS = /\b(?:discounts?|coupons?|promos?|promocodes?|offers?|cashback|freebies?|free|complimentary|codes?|deals?|bogo|chh?oot|muft|mufat|tagg?inpu|taggimpu|uchith?am|uchitanga|thallupadi|ilavasam)\b|\bbuy\s+\d+\s+get\s+\d+\b|\bhalf[\s-]?price\b|\bflat\s+(?:₹|rs\.?\s*|inr\s*)?\d[\d,]*|\bsave\s+(?:(?:₹|rs\.?|inr)\s*\d[\d,]*|\d[\d,]*|up\s+to|big|more|extra)|छूट|ऑफ़?र|मुफ़?्त|कूपन|తగ్గింపు|ఆఫర్|ఉచితం|కూపన్/i
+/**
+ * A sale or an amount off. The catalog can put a product on sale (its full price comes with it, as
+ * list_price), and a reply may then say so; with no such product found, a sale was made up.
+ */
+const SALE_WORDS = /\b(?:on\s+)?sale\b|\b\d[\d,]*\s*(?:₹|rs\.?|rupees)?\s*off\b|\boff\s+on\b/i
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Whole numbers written as prices without a currency sign. A number a price word only may be about
+ * counts when its sentence names a product (NAME_MARK) or carries a price word.
+ */
+function pricedNumbers(text: string): string[] {
+  const found = [...text.matchAll(PRICED_NUMBER)].map((match) => match[1] || match[2] || match[3] || '')
+  for (const match of text.matchAll(MAYBE_PRICED_NUMBER)) {
+    const at = match.index || 0
+    const start = Math.max(text.lastIndexOf('.', at - 1), text.lastIndexOf('!', at - 1), text.lastIndexOf('?', at - 1), text.lastIndexOf('\n', at - 1)) + 1
+    const sentence = text.slice(start).split(/[.!?\n]/)[0]
+    if (PRICE_CONTEXT.test(sentence)) found.push(match[1] || match[2] || '')
+  }
+  return found.filter(Boolean)
 }
 
 /** The text without "offer" as a verb, unless something priced follows it in the same sentence. */
 function withoutOfferVerbs(text: string): string {
   return text.replace(OFFER_VERB, (phrase: string, offset: number) => {
     const rest = text.slice(offset + phrase.length).split(/[.!?\n]/)[0]
-    return PERCENT.test(rest) || rest.search(AMOUNT) >= 0 ? phrase : ' '
+    return PERCENT.test(rest) || rest.search(AMOUNT) >= 0 || pricedNumbers(rest).length > 0 ? phrase : ' '
   })
 }
 
@@ -417,23 +453,36 @@ function withoutOfferVerbs(text: string): string {
  * amount the tools never returned (beyond ±1 for rounding), a percentage, or talks of offers.
  * Product and item names are quoted as they are, so numbers and words inside them do not count.
  * A store that ships for free above a threshold may be quoted on that: the phrase and the amount.
+ * `onSale`: a product the tools returned is on sale in the catalog, so a reply may speak of the sale.
  */
-export function unverifiedClaim(message: string, allowedAmounts: number[], quotedNames: string[] = [], store: { freeShippingThreshold?: number | null } = {}): string | null {
+export function unverifiedClaim(
+  message: string,
+  allowedAmounts: number[],
+  quotedNames: string[] = [],
+  store: { freeShippingThreshold?: number | null; onSale?: boolean } = {}
+): string | null {
   const freeShippingAbove = Number(store.freeShippingThreshold) || 0
-  let text = message
+  // A no-break space in the reply itself is an ordinary space; it marks the names taken out below
+  let text = message.replace(/\u00a0/g, ' ')
   // Longest first, so a name inside another ("DL123" in its tracking link) cannot cut that one up
   for (const name of [...quotedNames].sort((a, b) => b.length - a.length)) {
-    if (name.trim()) text = text.replace(new RegExp(escapeRegExp(name.trim()), 'gi'), ' ')
+    if (name.trim()) text = text.replace(new RegExp(escapeRegExp(name.trim()), 'gi'), NAME_MARK)
   }
   text = withoutOfferVerbs(text.replace(NOT_OFFERS, ' '))
   if (freeShippingAbove > 0) text = text.replace(FREE_SHIPPING, ' ')
   if (PERCENT.test(text)) return 'percentage'
   const offer = text.match(OFFER_WORDS)
   if (offer) return `offer "${offer[0]}"`
+  const sale = store.onSale ? null : text.match(SALE_WORDS)
+  if (sale) return `offer "${sale[0].trim()}"`
   const allowed = freeShippingAbove > 0 ? [...allowedAmounts, freeShippingAbove] : allowedAmounts
-  for (const match of text.matchAll(AMOUNT)) {
-    const amount = Number((match[1] || match[2] || match[3] || '').replace(/,/g, ''))
-    if (Number.isFinite(amount) && !allowed.some((value) => Math.abs(value - amount) <= 1)) return `amount ${amount}`
+  const amounts = [
+    ...[...text.matchAll(AMOUNT)].map((match) => match[1] || match[2] || match[3] || ''),
+    ...pricedNumbers(text),
+  ]
+  for (const written of amounts) {
+    const amount = Number(written.replace(/,/g, ''))
+    if (written && Number.isFinite(amount) && !allowed.some((value) => Math.abs(value - amount) <= 1)) return `amount ${amount}`
   }
   return null
 }
@@ -588,7 +637,7 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
           message,
           [...orderAmounts, ...found.flatMap((product) => (product.list_price ? [product.price, product.list_price] : [product.price]))],
           [...orderQuoted, ...found.map((product) => product.title)],
-          store
+          { ...store, onSale: found.some((product) => Boolean(product.list_price)) }
         )
         if (!claim) {
           const productsSent = await sendReply(input, message, products)

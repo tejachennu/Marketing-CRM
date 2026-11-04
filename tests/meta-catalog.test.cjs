@@ -38,10 +38,8 @@ function graph(...handlers) {
 /** A stand-in for the Supabase client over in-memory product rows. */
 function fakeDb(rows) {
   const table = rows.map((row) => ({ ...row }))
-  const read = (row, column) => {
-    if (column === 'metadata->catalog->>state') return row.metadata?.catalog?.state ?? null
-    return row[column]
-  }
+  // A column, or a JSON path such as `metadata->catalog->>synced_at` (missing reads as null, as in SQL)
+  const read = (row, column) => (column.includes('->') ? column.split(/->>?/).reduce((value, key) => (value == null ? null : value[key] ?? null), row) : row[column])
   return {
     rows: table,
     from() {
@@ -76,6 +74,7 @@ function fakeDb(rows) {
         delete: () => { operation = { type: 'delete' }; return query },
         upsert: (incoming) => { operation = { type: 'upsert', rows: incoming }; return query },
         eq: (column, value) => { filters.push((row) => read(row, column) === value); return query },
+        is: (column, value) => { filters.push((row) => (value === null ? read(row, column) == null : read(row, column) === value)); return query },
         gt: (column, value) => { filters.push((row) => String(read(row, column)) > String(value)); return query },
         in: (column, values) => { filters.push((row) => values.includes(row[column])); return query },
         order: () => query,
@@ -665,6 +664,88 @@ test('Catalog sync: a change saved while the catalog is being read is kept', asy
   const summary = await sync.pullCatalogToDatabase(db, ORG, fetcher)
   assert.deepEqual([summary.synced, summary.skipped, summary.removed], [1, 1, 0])
   assert.deepEqual(Object.fromEntries(db.rows.map((row) => [row.retailer_id, row.title])), { P1: 'New P1', P2: 'My edit' })
+})
+
+test('Catalog sync: a product a refresh confirms while the catalog is being read is not taken for deleted', async () => {
+  const longAgo = { source: 'meta', catalog: { state: 'synced', catalog_id: CATALOG, synced_at: '2026-10-01T10:00:00.000Z' } }
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'P1', title: 'Listed', metadata: longAgo },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'GONE', title: 'Deleted in Commerce Manager', metadata: longAgo },
+    { id: 'c', organization_id: 'org-1', retailer_id: 'NEW', title: 'Just saved', metadata: { catalog: { state: 'pending', handle: 'H1', catalog_id: CATALOG, synced_at: new Date().toISOString() } } },
+  ])
+  const page = (sku, next) => ({ data: [{ retailer_id: sku, name: sku, price: '100 INR' }], ...(next ? { paging: { cursors: { after: next }, next: 'https://graph.facebook.com/next' } } : {}) })
+  let refreshed = null
+  const fetcher = graph(page('P1', 'C1'), () => page('P2'))
+  // The dashboard's status poller, between the two pages: Meta has finished NEW, which the listing has passed
+  const reading = async (url, init) => {
+    if (fetcher.calls.length === 1 && !refreshed) {
+      refreshed = await sync.refreshCatalogStatus(db, ORG, { fetcher: graph({ data: [{ status: 'finished', errors: [], ids_of_invalid_requests: [] }] }) })
+    }
+    return fetcher(url, init)
+  }
+  const summary = await sync.pullCatalogToDatabase(db, ORG, reading)
+  assert.deepEqual(refreshed, { accepted: 1, rejected: 0, pending: 0 })
+  assert.equal(summary.removed, 1)
+  assert.deepEqual(db.rows.map((row) => row.retailer_id).sort(), ['NEW', 'P1', 'P2'])
+  assert.equal(db.rows.find((row) => row.retailer_id === 'NEW').metadata.catalog.state, 'synced')
+
+  // Confirmed before the read began: missing from a complete listing means it left the catalog
+  const confirmed = { catalog: { state: 'synced', catalog_id: CATALOG, synced_at: '2026-11-04T10:00:00.000Z' } }
+  assert.equal(sync.wasDeletedInCatalog({ metadata: confirmed }, CATALOG, Date.parse('2026-11-04T10:00:01.000Z')), true)
+  assert.equal(sync.wasDeletedInCatalog({ metadata: confirmed }, CATALOG, Date.parse('2026-11-04T10:00:00.000Z')), false)
+})
+
+test('Catalog sync: an answer is recorded only over the product as it was read', async () => {
+  // "Send all" read the product before it was sent; the owner saved it while Meta took the batch in
+  const db = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { attributes: { brand: 'Old brand' } } }])
+  const snapshot = JSON.parse(JSON.stringify(db.rows[0]))
+  const edited = { attributes: { brand: 'New brand' }, catalog: { state: 'pending', synced_at: '2026-11-04T10:00:00.000Z', catalog_id: CATALOG, handle: 'H2' } }
+  const fetcher = graph(() => {
+    db.rows[0].metadata = edited
+    return { handles: ['H1'], validation_status: [] }
+  })
+  const summary = await sync.pushProductsToCatalog(db, ORG, [snapshot], { fetcher })
+  assert.equal(summary.sent, 1)
+  assert.deepEqual(db.rows[0].metadata, edited)
+
+  // Nothing changed in the meantime: the answer is recorded
+  const unchanged = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { catalog: { state: 'error', synced_at: '2026-11-03T10:00:00.000Z', catalog_id: CATALOG, errors: ['Bad image'] } } }])
+  await sync.pushProductsToCatalog(unchanged, ORG, [JSON.parse(JSON.stringify(unchanged.rows[0]))], { fetcher: graph({ handles: ['H3'], validation_status: [] }) })
+  assert.deepEqual([unchanged.rows[0].metadata.catalog.state, unchanged.rows[0].metadata.catalog.handle], ['pending', 'H3'])
+})
+
+test('Catalog sync: a product just saved, whose send is still on its way, is not reported as lost', async () => {
+  // The save marked the row pending with no batch yet; the poller reads it while the send waits on Meta
+  const savedAt = new Date(Date.now() - 1000).toISOString()
+  const db = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { catalog: { state: 'pending', synced_at: savedAt, catalog_id: CATALOG } } }])
+  const snapshot = JSON.parse(JSON.stringify(db.rows[0]))
+  const idle = graph({ data: [] })
+  assert.deepEqual(await sync.refreshCatalogStatus(db, ORG, { fetcher: idle }), { accepted: 0, rejected: 0, pending: 1 })
+  assert.equal(idle.calls.length, 0)
+  assert.equal(db.rows[0].metadata.catalog.state, 'pending')
+
+  // The send then records Meta's batch over the row it read
+  await sync.pushProductsToCatalog(db, ORG, [snapshot], { fetcher: graph({ handles: ['H2'], validation_status: [] }) })
+  assert.deepEqual([db.rows[0].metadata.catalog.state, db.rows[0].metadata.catalog.handle], ['pending', 'H2'])
+
+  // A save that stopped before sending is reported once the grace period has passed
+  const stuck = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { catalog: { state: 'pending', synced_at: savedAt, catalog_id: CATALOG } } }])
+  assert.deepEqual(await sync.refreshCatalogStatus(stuck, ORG, { fetcher: idle, now: Date.parse(savedAt) + 3 * 60 * 1000 }), { accepted: 0, rejected: 1, pending: 0 })
+  assert.match(stuck.rows[0].metadata.catalog.errors[0], /Send it to the catalog again/)
+  const unstamped = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { catalog: { state: 'pending' } } }])
+  assert.deepEqual(await sync.refreshCatalogStatus(unstamped, ORG, { fetcher: idle }), { accepted: 0, rejected: 1, pending: 0 })
+})
+
+test('Catalog sync: a refresh stamps each answer when it writes it, not when it started', async () => {
+  const db = fakeDb([{ ...product(), organization_id: 'org-1', metadata: { catalog: { state: 'pending', handle: 'H1', synced_at: '2026-10-13T10:00:00.000Z', catalog_id: CATALOG } } }])
+  // The refresh began a minute ago (a slow Meta, many batches): the answer is still recent for a catalog read
+  const startedAt = Date.now() - 60 * 1000
+  const before = Date.now()
+  await sync.refreshCatalogStatus(db, ORG, { fetcher: graph({ data: [{ status: 'finished', errors: [], ids_of_invalid_requests: [] }] }), now: startedAt })
+  const catalog = db.rows[0].metadata.catalog
+  assert.equal(catalog.state, 'synced')
+  assert.ok(Date.parse(catalog.synced_at) >= before)
+  assert.equal(sync.wasDeletedInCatalog(db.rows[0], CATALOG, before - 30 * 1000), false)
 })
 
 test('Catalog sync: a refresh works through every waiting product, asking Meta once per batch', async () => {

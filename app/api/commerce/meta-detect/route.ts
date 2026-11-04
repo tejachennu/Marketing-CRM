@@ -142,7 +142,8 @@ export async function GET(request: NextRequest) {
       // connection is granted catalogs only, not the account)
       attempt(async () => (await metaRequest(credentials, `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`))?.data || []),
       attempt(async () => flattenPaymentConfigurations(await metaRequest(credentials, `${wabaId}/payment_configurations`))),
-      attempt(async () => (await metaRequest(credentials, `${wabaId}/flows?fields=id,name,status,categories`))?.data || []),
+      // Every page of forms: the saved address form, and older published ones to choose from, can be past the first
+      attempt(() => listFlows(credentials)),
       phoneNumberId
         ? attempt(async () => (await metaRequest(credentials, `${phoneNumberId}/whatsapp_commerce_settings`))?.data?.[0] || null)
         : Promise.resolve({ value: null, error: 'No WhatsApp number is connected.' }),

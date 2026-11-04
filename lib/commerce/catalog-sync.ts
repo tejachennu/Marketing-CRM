@@ -20,6 +20,12 @@ import { checkBatch, describeCatalogError, fetchCatalogItems, getCatalogCredenti
 
 /** Long enough for Meta to process a batch; after this an unanswered one is treated as lost. */
 const BATCH_TIMEOUT_MS = 30 * 60 * 1000
+/**
+ * A product save marks the row pending before Meta has answered, so for a moment it has no batch
+ * handle; the send that follows within seconds records one. Until this much time has passed such a
+ * row is still being sent, not lost (a save that stopped before sending is reported after it).
+ */
+const SEND_GRACE_MS = 2 * 60 * 1000
 const WRITE_CONCURRENCY = 20
 /** Waiting products read at a time while asking Meta how their batches went. */
 const REFRESH_PAGE = 500
@@ -30,6 +36,13 @@ const REFRESH_PAGE = 500
  */
 const REFRESH_BUDGET_MS = 20 * 1000
 const PULL_READ_BUDGET_MS = 70 * 1000
+/**
+ * A product whose catalog state was written this soon before a catalog read began, or during it, is
+ * not taken for deleted when the listing lacks it: a refresh running alongside may have confirmed it
+ * after the read passed its place. A refresh stamps each answer with the time it writes it; the
+ * margin also covers clock differences between servers.
+ */
+const RECENT_CHANGE_MS = REFRESH_BUDGET_MS + 10 * 1000
 const PULL_WRITE_CHUNK = 200
 
 interface StoredProduct {
@@ -71,10 +84,18 @@ async function inChunks<T>(items: T[], size: number, run: (item: T) => Promise<v
   }
 }
 
+/**
+ * Record how a product stands in the catalog, over the row as it was read and only if it is still so.
+ * `product.metadata` is a snapshot: a save in the meantime (which stamps a new catalog.synced_at) has
+ * newer attributes and its own batch handle, which this older answer must not replace. When the row
+ * has moved on, nothing is written and the next refresh deals with it as it is then.
+ */
 async function saveCatalogSync(supabase: any, organizationId: string, product: StoredProduct, sync: CatalogSync): Promise<void> {
+  const readAt = product.metadata?.catalog?.synced_at
   const metadata = { ...(product.metadata || {}), catalog: sync }
   product.metadata = metadata
-  await supabase.from('commerce_products').update({ metadata }).eq('id', product.id).eq('organization_id', organizationId)
+  const query = supabase.from('commerce_products').update({ metadata }).eq('id', product.id).eq('organization_id', organizationId)
+  await (typeof readAt === 'string' && readAt ? query.eq('metadata->catalog->>synced_at', readAt) : query.is('metadata->catalog->>synced_at', null))
 }
 
 /**
@@ -194,8 +215,10 @@ export async function refreshCatalogStatus(
   const summary: RefreshSummary = { accepted: 0, rejected: 0, pending: 0 }
   const catalogId = linkedCatalogId(organization)
   const credentials = getCatalogCredentials(organization)
+  // `now` decides which batches have timed out; each answer is stamped when it is written, so a
+  // catalog read running alongside sees it as recent however long this refresh has taken (see RECENT_CHANGE_MS)
   const now = options.now ?? Date.now()
-  const stamp = new Date(now).toISOString()
+  const stamp = () => new Date().toISOString()
   const pageSize = options.limit || REFRESH_PAGE
   const startedAt = Date.now()
   const checked = new Map<string, BatchStatus | null>()
@@ -234,21 +257,24 @@ export async function refreshCatalogStatus(
             await saveCatalogSync(supabase, organization.id, product, {
               state: 'error',
               errors: status.errors.get(product.retailer_id) || ['Meta did not accept this item.'],
-              synced_at: stamp,
+              synced_at: stamp(),
               catalog_id: previous?.catalog_id || catalogId,
               ...(warnings.length ? { warnings } : {}),
             })
           } else {
             summary.accepted++
-            await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp, catalog_id: previous?.catalog_id || catalogId, ...(warnings.length ? { warnings } : {}) })
+            await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp(), catalog_id: previous?.catalog_id || catalogId, ...(warnings.length ? { warnings } : {}) })
           }
           return
         }
 
         const sentAt = Date.parse(previous?.synced_at || '')
-        if (!handle || (Number.isFinite(sentAt) && now - sentAt > BATCH_TIMEOUT_MS)) {
+        const age = Number.isFinite(sentAt) ? now - sentAt : null
+        // No handle: a save whose send is still on its way (see SEND_GRACE_MS), or one that never sent
+        const lost = handle ? age !== null && age > BATCH_TIMEOUT_MS : age === null || age >= SEND_GRACE_MS
+        if (lost) {
           summary.rejected++
-          await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp, catalog_id: previous?.catalog_id || catalogId })
+          await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp(), catalog_id: previous?.catalog_id || catalogId })
           return
         }
         summary.pending++
@@ -279,9 +305,11 @@ export interface PullSummary {
  * Whether a product missing from the catalog's listing was deleted there: it had been confirmed in
  * this same catalog (or came from it), and no change made here is still waiting on Meta.
  */
-export function wasDeletedInCatalog(product: { metadata?: Record<string, any> | null }, catalogId: string): boolean {
+export function wasDeletedInCatalog(product: { metadata?: Record<string, any> | null }, catalogId: string, changedSince?: number): boolean {
   const sync = product.metadata?.catalog
   if (sync?.state === 'pending' || sync?.state === 'error') return false
+  // Confirmed while the listing was being read: its absence from the listing proves nothing
+  if (changedSince !== undefined && Date.parse(sync?.synced_at || '') >= changedSince) return false
   if (sync?.catalog_id) return sync.catalog_id === catalogId && sync.state === 'synced'
   // Copies made before the catalog was recorded: only those that came from the catalog itself
   return product.metadata?.source === 'meta'
@@ -354,6 +382,7 @@ export async function pullCatalogToDatabase(
     }
   }
 
+  const readStartedAt = Date.now()
   const listing = await fetchCatalogItems(credentials, catalogId, fetcher, {
     onPage: writePage,
     budgetMs: options.budgetMs ?? PULL_READ_BUDGET_MS,
@@ -362,7 +391,8 @@ export async function pullCatalogToDatabase(
   const incomplete = !listing.complete
 
   // Only after a complete, error-free read, so a partial sync can never empty the product list. The
-  // rows are read now, after the catalog, so a product sent while it was being read is not taken for one that left it
+  // rows are read now, after the catalog, so a product sent while it was being read is not taken for one that left it,
+  // and one a refresh confirmed while it was being read (see RECENT_CHANGE_MS) is kept until a later sync
   let removed = 0
   if (!firstError && !incomplete && seen.size > 0) {
     const stale: string[] = []
@@ -378,7 +408,7 @@ export async function pullCatalogToDatabase(
         break
       }
       for (const product of data || []) {
-        if (!seen.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId)) stale.push(product.id)
+        if (!seen.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId, readStartedAt - RECENT_CHANGE_MS)) stale.push(product.id)
       }
       if (!data || data.length < 1000) break
     }

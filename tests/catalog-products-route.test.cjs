@@ -47,8 +47,11 @@ function parseFilter(text) {
   }
 }
 
-/** A stand-in for the Supabase client over in-memory tables: the part of the query builder these routes use. */
-function fakeDb(tables) {
+/**
+ * A stand-in for the Supabase client over in-memory tables: the part of the query builder these routes use.
+ * `missingColumns` plays a database a migration has not reached: selecting one of them fails as PostgREST does.
+ */
+function fakeDb(tables, { missingColumns = {} } = {}) {
   const data = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, rows.map((row) => ({ ...row }))]))
   let inserted = 0
   return {
@@ -59,8 +62,11 @@ function fakeDb(tables) {
       let operation = { type: 'select' }
       let window = null
       let one = null
+      let columns = '*'
       const matching = () => rows.filter((row) => filters.every((filter) => filter(row)))
       const run = () => {
+        const missing = operation.type === 'select' && (missingColumns[table] || []).find((column) => columns.split(',').map((name) => name.trim()).includes(column))
+        if (missing) return { data: null, error: { code: '42703', message: `column ${table}.${missing} does not exist` } }
         let result
         if (operation.type === 'update') {
           result = matching()
@@ -82,19 +88,21 @@ function fakeDb(tables) {
           result = matching().sort((a, b) => String(a.id).localeCompare(String(b.id)))
           if (window) result = result.slice(window[0], window[1] + 1)
         }
-        // Rows come back as copies, as they do from PostgREST
-        const copy = (row) => JSON.parse(JSON.stringify(row))
+        // Rows come back as copies with the columns asked for, as they do from PostgREST
+        const names = operation.type === 'select' && columns !== '*' ? columns.split(',').map((name) => name.trim()) : null
+        const copy = (row) => JSON.parse(JSON.stringify(names ? Object.fromEntries(names.filter((name) => name in row).map((name) => [name, row[name]])) : row))
         if (one === 'single') return { data: result[0] ? copy(result[0]) : null, error: result[0] ? null : { code: 'PGRST116', message: 'no rows' } }
         if (one === 'maybeSingle') return { data: result[0] ? copy(result[0]) : null, error: null }
         return { data: result.map(copy), error: null, count: result.length }
       }
       const query = {
-        select: () => query,
+        select: (selected) => { if (operation.type === 'select' && selected) columns = selected; return query },
         update: (values) => { operation = { type: 'update', values }; return query },
         insert: (values) => { operation = { type: 'insert', rows: [].concat(values) }; return query },
         upsert: (values) => { operation = { type: 'upsert', rows: [].concat(values) }; return query },
         delete: () => { operation = { type: 'delete' }; return query },
         eq: (column, value) => { filters.push((row) => read(row, column) === value); return query },
+        is: (column, value) => { filters.push((row) => (value === null ? read(row, column) == null : read(row, column) === value)); return query },
         neq: (column, value) => { filters.push((row) => read(row, column) !== value); return query },
         gt: (column, value) => { filters.push((row) => String(read(row, column)) > String(value)); return query },
         in: (column, values) => { filters.push((row) => values.includes(read(row, column))); return query },
@@ -125,7 +133,7 @@ global.fetch = async (input, init = {}) => {
   const url = new URL(String(input))
   const body = init.body instanceof URLSearchParams ? Object.fromEntries(init.body) : {}
   const requests = body.requests ? JSON.parse(body.requests) : []
-  meta.calls.push({ path: url.pathname, requests })
+  meta.calls.push({ path: url.pathname, requests, auth: String((init.headers || {}).Authorization || '') })
   const reply = (payload, status = 200) => new Response(JSON.stringify(payload), { status })
   if (url.pathname.endsWith('/check_batch_request_status')) return reply({ data: [{ handle: url.searchParams.get('handle'), status: 'finished', errors: [], ids_of_invalid_requests: [] }] })
   if (!url.pathname.endsWith('/items_batch')) throw new Error('Unexpected Meta call: ' + url.pathname)
@@ -160,8 +168,8 @@ const shirt = (overrides = {}) => ({
 /** The shirt as the dashboard form submits it. */
 const form = (overrides = {}) => ({ id: P1, title: 'White linen shirt', retailer_id: 'SHIRT-001', price: 1499, currency: 'INR', image_url: 'https://cdn.example.com/shirt.jpg', website_url: 'https://shop.example.com/shirt', inventory_count: 12, is_available: true, ...overrides })
 
-function reset(products = [shirt()], organization = org()) {
-  db = fakeDb({ organizations: [organization], commerce_products: products })
+function reset(products = [shirt()], organization = org(), options = {}) {
+  db = fakeDb({ organizations: [organization], commerce_products: products }, options)
   meta.refuseDelete = false
   meta.onBatch = null
   meta.calls.length = 0
@@ -294,6 +302,51 @@ test('Products: a refresh settles the batches Meta has finished', async () => {
   assert.deepEqual(await res.json(), { success: true, accepted: 2, rejected: 0, pending: 0 })
   assert.deepEqual(meta.calls.map((call) => call.path), [`/v25.0/${CATALOG}/check_batch_request_status`])
   assert.deepEqual(db.tables.commerce_products.map((row) => row.metadata.catalog.state), ['synced', 'synced'])
+})
+
+test('Products: every catalog call uses the catalog connection the store made, not the WhatsApp token', async () => {
+  const P2 = '11111111-1111-4111-8111-222222222222'
+  const sending = { catalog: { state: 'pending', handle: 'H0', synced_at: new Date().toISOString(), catalog_id: CATALOG } }
+  const connected = { ...org(), meta_catalog_token: 'CATALOG_TOKEN' }
+  reset([shirt(), shirt({ id: P2, retailer_id: 'SHIRT-002', metadata: sending })], connected)
+  assert.equal((await post({ action: 'refresh_catalog' })).status, 200)
+  assert.equal((await post({ action: 'push_meta', productIds: [P1] })).status, 200)
+  assert.equal((await save(form({ retailer_id: 'SHIRT-009' }))).status, 200)    // the old SKU leaves, the new one is sent
+  assert.equal((await remove(P2)).status, 200)
+  assert.deepEqual(meta.calls.map((call) => call.path.split('/').pop()), ['check_batch_request_status', 'items_batch', 'items_batch', 'items_batch', 'items_batch'])
+  assert.deepEqual([...new Set(meta.calls.map((call) => call.auth))], ['Bearer CATALOG_TOKEN'])
+})
+
+test('Products: a database without the catalog connection column still reaches the catalog, with the WhatsApp token', async () => {
+  reset([shirt()], org(), { missingColumns: { organizations: ['meta_catalog_token'] } })
+  assert.equal((await post({ action: 'push_meta', productIds: [P1] })).status, 200)
+  assert.equal((await remove(P1)).status, 200)
+  assert.equal(db.tables.commerce_products.length, 0)
+  assert.deepEqual(meta.calls.map((call) => [call.path.split('/').pop(), call.auth]), [['items_batch', 'Bearer TOKEN'], ['items_batch', 'Bearer TOKEN']])
+})
+
+test('Products: a status answer about an older send does not overwrite a newer save of the product', async () => {
+  // A refresh read the product while it waited under H0; the owner saved it again before the answer came
+  const read = new Date(Date.now() - 60000).toISOString()
+  reset([shirt({ metadata: { attributes: { brand: 'Old brand' }, catalog: { state: 'pending', handle: 'H0', synced_at: read, catalog_id: CATALOG } } })])
+  const original = global.fetch
+  global.fetch = async (input, init) => {
+    if (String(input).includes('/check_batch_request_status') && !meta.saved) {
+      meta.saved = true
+      assert.equal((await save(form({ brand: 'New brand' }))).status, 200)
+    }
+    return original(input, init)
+  }
+  try {
+    assert.deepEqual(await (await post({ action: 'refresh_catalog' })).json(), { success: true, accepted: 1, rejected: 0, pending: 0 })
+  } finally {
+    global.fetch = original
+    delete meta.saved
+  }
+  const [row] = db.tables.commerce_products
+  // The newer save and its own send are what the product records; the next refresh asks Meta about that one
+  assert.equal(row.metadata.attributes.brand, 'New brand')
+  assert.deepEqual([row.metadata.catalog.state, row.metadata.catalog.handle], ['pending', 'H1'])
 })
 
 test('Products: the route declares the two minutes a full catalog sync may take', () => {

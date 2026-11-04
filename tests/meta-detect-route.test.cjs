@@ -52,7 +52,12 @@ global.fetch = async (input, init = {}) => {
       meta.flows.push(flow)
       return reply({ id: flow.id })
     }
-    return reply({ data: meta.flows.map(({ id, name, status }) => ({ id, name, status })) })
+    // Paged as Meta pages it: 25 a page unless a limit is asked for, newest first, with an `after` cursor
+    const limit = Number(url.searchParams.get('limit')) || 25
+    const start = Number(url.searchParams.get('after') || 0)
+    const listed = [...meta.flows].reverse().slice(start, start + limit).map(({ id, name, status }) => ({ id, name, status }))
+    const more = start + limit < meta.flows.length
+    return reply({ data: listed, ...(more ? { paging: { cursors: { after: String(start + limit) }, next: 'https://graph.facebook.com/next' } } : {}) })
   }
   if (p.endsWith('/whatsapp_commerce_settings')) return reply({ data: [{ is_cart_enabled: true, is_catalog_visible: false }] })
   // One form: its record, its assets, its file upload and its publishing
@@ -178,6 +183,17 @@ test('Address form: what the form in use says for express delivery is read back 
   assert.equal(gone.addressForm.collectsAddress, null)
   assert.match(gone.addressForm.error, /does not exist/)
   assert.equal(gone.flows.length, 1)
+})
+
+test('Address form: every page of the account’s forms is read, so an older saved form is still found', async () => {
+  // The saved form was published first; 140 forms of the Flow Builder came after it
+  reset({ commerce_address_flow_id: FORM })
+  for (let index = 0; index < 140; index++) meta.flows.push({ id: String(900000000100000 + index), name: `Flow ${index}`, status: 'PUBLISHED', json: null })
+  const data = await detect()
+  assert.equal(data.flowsError, null)
+  assert.equal(data.flows.length, 141)
+  assert.deepEqual(data.flows.find((flow) => flow.id === FORM), { id: FORM, name: 'Delivery address', status: 'PUBLISHED' })
+  assert.equal(calls.filter((call) => call.method === 'GET' && call.path.endsWith(`/${WABA}/flows`)).length, 2)
 })
 
 test('Address form: whether a form collects an address is read from Meta, for choosing one', async () => {

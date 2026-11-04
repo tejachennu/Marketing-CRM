@@ -7,6 +7,7 @@ import { getCatalogState, getProductAttributes, isInCatalog, parseProductAttribu
 import { describeCatalogError, isGraphId } from '@/lib/commerce/meta-catalog'
 import { pullCatalogToDatabase, pushProductsToCatalog, refreshCatalogStatus, removeFromCatalog } from '@/lib/commerce/catalog-sync'
 import { isUuid } from '@/lib/record-visibility'
+import { isMissingColumn } from '@/lib/scheduler/schema-errors'
 
 /** A full catalog sync reads up to 200 pages from Meta before it is done. Vercel honours this on Pro; Hobby caps it lower. */
 export const maxDuration = 120
@@ -23,6 +24,19 @@ const NOT_LINKED = 'Link your Meta catalog in Store settings and connect WhatsAp
 /** A catalog is linked and there is a WhatsApp connection to reach it with. */
 function hasCatalog(org: Record<string, any> | null | undefined): org is Record<string, any> {
   return Boolean(org && isGraphId(String(org.meta_catalog_id || '').trim()) && org.whatsapp_api_token)
+}
+
+/**
+ * The organization as catalog calls need it, with the catalog connection ("Connect catalog with Meta")
+ * that getCatalogCredentials prefers over the WhatsApp token: a store whose WhatsApp token has no
+ * catalog access depends on it for every send, refresh, sync and removal. A database without
+ * 20261017_meta_catalog_token.sql has no such column, and those stores use the WhatsApp token.
+ */
+async function loadCatalogOrganization(supabase: any, organizationId: string): Promise<Record<string, any> | null> {
+  const withToken = await supabase.from('organizations').select(`${CATALOG_ORG_COLUMNS}, meta_catalog_token`).eq('id', organizationId).single()
+  if (!isMissingColumn(withToken.error, ['meta_catalog_token'])) return (withToken.data as Record<string, any> | null) || null
+  const { data } = await supabase.from('organizations').select(CATALOG_ORG_COLUMNS).eq('id', organizationId).single()
+  return (data as Record<string, any> | null) || null
 }
 
 function getSupabase() {
@@ -129,10 +143,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabase()
 
-    const loadOrg = async () => {
-      const { data } = await supabase.from('organizations').select(CATALOG_ORG_COLUMNS).eq('id', organizationId).single()
-      return data as Record<string, any> | null
-    }
+    const loadOrg = () => loadCatalogOrganization(supabase, organizationId)
 
     // Action 1: Bring the dashboard up to date with the Meta catalog
     if (action === 'sync_meta') {
@@ -335,7 +346,7 @@ export async function DELETE(request: NextRequest) {
     // An item that is in the Meta catalog is taken out of it too, or customers could still order it
     let catalog: { removed: boolean; error?: string } = { removed: false }
     if (isInCatalog(product)) {
-      const { data: org } = await supabase.from('organizations').select(CATALOG_ORG_COLUMNS).eq('id', orgId).single()
+      const org = await loadCatalogOrganization(supabase, orgId)
       if (hasCatalog(org)) catalog = await removeFromCatalog(org, [product.retailer_id])
       // Still orderable in WhatsApp, so it stays here too, unless the caller chose to remove it here regardless
       if (catalog.error && searchParams.get('force') !== 'true') {
