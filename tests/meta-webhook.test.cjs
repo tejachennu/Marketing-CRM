@@ -3,7 +3,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHmac } = require('node:crypto')
 
-const { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } = require('../lib/meta-webhook.ts')
+const {
+  verifyMetaSignature, verifyMetaSignatureWith, ownsWhatsAppEvent, pickEventOwner,
+  isStatusProgress, describeStatusError, messageSentAt, isMissingColumnError, isMissingUniqueIndexError,
+} = require('../lib/meta-webhook.ts')
 const { getPublicBaseUrl, getWebhookOverride, describeIncompleteSignup } = require('../lib/whatsapp-onboarding.ts')
 
 const ORG = '99999999-9999-4999-8999-999999999999'
@@ -33,6 +36,75 @@ test('Webhook: a live site without the app secret refuses everything', () => {
   assert.match(optedOut.note, /not checked/)
   // The opt-out never weakens a site that does have the secret
   assert.equal(verifyMetaSignature(BODY, 'sha256=bad', { secret: SECRET, production: true, allowUnsigned: true }).valid, false)
+})
+
+test("Webhook: a workspace's own app secret checks a signature the same way", () => {
+  assert.equal(verifyMetaSignatureWith('their-secret', BODY, sign(BODY, 'their-secret')), true)
+  assert.equal(verifyMetaSignatureWith('their-secret', BODY, sign(BODY)), false)            // signed by another app
+  assert.equal(verifyMetaSignatureWith('their-secret', BODY + ' ', sign(BODY, 'their-secret')), false)
+  assert.equal(verifyMetaSignatureWith('their-secret', BODY, 'sha256=abc'), false)          // wrong length must not throw
+  assert.equal(verifyMetaSignatureWith('their-secret', BODY, null), false)
+  // Nothing can be checked without a secret: never "valid"
+  assert.equal(verifyMetaSignatureWith('', BODY, sign(BODY, '')), false)
+  assert.equal(verifyMetaSignatureWith(null, BODY, sign(BODY, 'their-secret')), false)
+})
+
+test('Status callbacks: a delivery status only moves forward', () => {
+  for (const [from, to] of [[null, 'sent'], ['', 'delivered'], ['sent', 'delivered'], ['delivered', 'read'], ['sent', 'read'], ['PENDING', 'sent'], ['queued', 'delivered']]) {
+    assert.equal(isStatusProgress(from, to), true, `${from} → ${to}`)
+  }
+  // Out-of-order and redelivered callbacks never take a status back
+  for (const [from, to] of [['read', 'delivered'], ['read', 'sent'], ['delivered', 'sent'], ['read', 'read'], ['sent', 'sent'], ['DELIVERED', 'delivered']]) {
+    assert.equal(isStatusProgress(from, to), false, `${from} → ${to}`)
+  }
+  // Failed only from sent or delivered (or nothing yet), and it is final
+  assert.equal(isStatusProgress('sent', 'failed'), true)
+  assert.equal(isStatusProgress('delivered', 'failed'), true)
+  assert.equal(isStatusProgress(null, 'failed'), true)
+  assert.equal(isStatusProgress('read', 'failed'), false)
+  assert.equal(isStatusProgress('failed', 'failed'), false)
+  assert.equal(isStatusProgress('failed', 'delivered'), false)
+  assert.equal(isStatusProgress('FAILED', 'read'), false)
+  // Statuses the CRM does not track (deleted, warning) change nothing
+  assert.equal(isStatusProgress('sent', 'deleted'), false)
+  assert.equal(isStatusProgress(null, 'warning'), false)
+  assert.equal(isStatusProgress(null, ''), false)
+})
+
+test("Status callbacks: Meta's error is kept with its code and title", () => {
+  assert.equal(describeStatusError({ code: 131047, title: 'Re-engagement message', message: 'Re-engagement message', error_data: { details: 'More than 24 hours have passed since the customer last replied.' } }),
+    'Meta error 131047: Re-engagement message: More than 24 hours have passed since the customer last replied.')
+  assert.equal(describeStatusError({ code: 131026, message: 'Message undeliverable' }), 'Meta error 131026: Message undeliverable')
+  assert.equal(describeStatusError({ title: 'Unknown' }), 'Unknown')
+  assert.equal(describeStatusError(undefined), null)
+  assert.equal(describeStatusError({}), null)
+})
+
+test('Messages: the time the customer sent it is used when it is recent', () => {
+  const now = Date.parse('2026-11-04T10:00:00Z')
+  const sentAt = (ago) => String(Math.floor((now - ago) / 1000))
+  assert.equal(messageSentAt(sentAt(90 * 1000), now), '2026-11-04T09:58:30.000Z')
+  assert.equal(messageSentAt(sentAt(6 * 24 * 60 * 60 * 1000), now), '2026-10-29T10:00:00.000Z')
+  assert.equal(messageSentAt(Number(sentAt(0)), now), '2026-11-04T10:00:00.000Z')
+  // Older than Meta's 7-day retry window, from the future, or not a time: the clock is used instead
+  assert.equal(messageSentAt(sentAt(8 * 24 * 60 * 60 * 1000), now), null)
+  assert.equal(messageSentAt(sentAt(-5 * 60 * 1000), now), null)
+  assert.equal(messageSentAt(undefined, now), null)
+  assert.equal(messageSentAt('', now), null)
+  assert.equal(messageSentAt('soon', now), null)
+  assert.equal(messageSentAt('0', now), null)
+})
+
+test('Migrations not applied yet are told apart from other database errors', () => {
+  assert.equal(isMissingColumnError({ code: '42703', message: 'column organizations.whatsapp_app_secret does not exist' }, 'whatsapp_app_secret'), true)
+  assert.equal(isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'whatsapp_app_secret' column" }, 'whatsapp_app_secret'), true)
+  assert.equal(isMissingColumnError({ message: 'whatsapp_app_secret does not exist' }, 'whatsapp_app_secret'), true)
+  assert.equal(isMissingColumnError({ code: '08006', message: 'connection failure' }, 'whatsapp_app_secret'), false)
+  assert.equal(isMissingColumnError(null, 'whatsapp_app_secret'), false)
+  assert.equal(isMissingUniqueIndexError({ code: '42P10', message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification' }), true)
+  assert.equal(isMissingUniqueIndexError({ message: 'no unique constraint matching the ON CONFLICT specification' }), true)
+  assert.equal(isMissingUniqueIndexError({ code: '23505', message: 'duplicate key value violates unique constraint' }), false)
+  assert.equal(isMissingUniqueIndexError(undefined), false)
 })
 
 const request = (url, headers = {}) => ({ url, headers: { get: (name) => headers[name.toLowerCase()] ?? null } })

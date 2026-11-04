@@ -3,7 +3,17 @@ import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } from '@/lib/meta-webhook'
+import {
+  verifyMetaSignature,
+  verifyMetaSignatureWith,
+  ownsWhatsAppEvent,
+  pickEventOwner,
+  isStatusProgress,
+  describeStatusError,
+  messageSentAt,
+  isMissingColumnError,
+  isMissingUniqueIndexError,
+} from '@/lib/meta-webhook'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime, saveUnownedSubmission } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
@@ -46,6 +56,10 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
+// Meta expects a quick answer to a webhook: a call that hangs is given up on, logged, and its reply skipped
+const GRAPH_TIMEOUT_MS = 15_000
+const OPENAI_TIMEOUT_MS = 25_000
+
 async function downloadFacebookMedia(
   mediaId: string,
   whatsappApiToken: string,
@@ -57,7 +71,8 @@ async function downloadFacebookMedia(
     const res = await fetch(metaUrl, {
       headers: {
         'Authorization': `Bearer ${whatsappApiToken}`
-      }
+      },
+      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
     })
     if (!res.ok) {
       console.error('[Facebook Media] Failed to get media URL:', res.statusText)
@@ -76,7 +91,8 @@ async function downloadFacebookMedia(
     const mediaRes = await fetch(downloadUrl, {
       headers: {
         'Authorization': `Bearer ${whatsappApiToken}`
-      }
+      },
+      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
     })
     if (!mediaRes.ok) {
       console.error('[Facebook Media] Failed to download binary:', mediaRes.statusText)
@@ -155,20 +171,23 @@ const tokenAppCache = new Map<string, { appId: string | null; at: number }>()
 const TOKEN_APP_CACHE_MS = 60 * 60 * 1000
 
 /**
- * The Meta app ID when the workspace in the URL is connected to WhatsApp through its own Meta app
- * (not this one), otherwise null. Meta signs that app's webhooks with that app's secret.
+ * The workspace in the URL when it is connected to WhatsApp through its own Meta app (not this one):
+ * that app's ID, and the app secret saved in Settings → WhatsApp (empty when none is), with which
+ * Meta signs that app's webhooks. Null for a workspace connected through this app.
  */
-async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }): Promise<string | null> {
+async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }): Promise<{ id: string; secret: string } | null> {
   try {
     const resolvedParams = await (context.params as any)
     const orgId = String(resolvedParams?.orgIdAndSlug || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]
     if (!orgId) return null
 
-    const { data: org } = await getSupabaseClient()
-      .from('organizations')
-      .select('whatsapp_provider, whatsapp_api_token')
-      .eq('id', orgId)
-      .maybeSingle()
+    const supabase = getSupabaseClient()
+    const select = (columns: string) => supabase.from('organizations').select(columns).eq('id', orgId).maybeSingle()
+    let result = await select('whatsapp_provider, whatsapp_api_token, whatsapp_app_secret')
+    // Until supabase/migrations/20261104_whatsapp_app_secret.sql is applied there is no secret to check
+    if (result.error && isMissingColumnError(result.error, 'whatsapp_app_secret')) result = await select('whatsapp_provider, whatsapp_api_token')
+    if (result.error) throw result.error
+    const org: any = result.data
     const token = String(org?.whatsapp_api_token || '')
     if (org?.whatsapp_provider !== 'facebook' || !token) return null
 
@@ -176,14 +195,14 @@ async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: st
     const cached = tokenAppCache.get(cacheKey)
     let appId = cached && Date.now() - cached.at < TOKEN_APP_CACHE_MS ? cached.appId : undefined
     if (appId === undefined) {
-      const res = await fetch('https://graph.facebook.com/v25.0/app?fields=id', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      const res = await fetch('https://graph.facebook.com/v25.0/app?fields=id', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.id) return null // Not known: refused, and Meta retries
       appId = String(data.id)
       tokenAppCache.set(cacheKey, { appId, at: Date.now() })
     }
     const thisApp = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
-    return appId && appId !== thisApp ? appId : null
+    return appId && appId !== thisApp ? { id: appId, secret: String(org?.whatsapp_app_secret || '').trim() } : null
   } catch (err) {
     console.error('[Facebook Webhook POST] Could not tell which Meta app this workspace uses:', err)
     return null
@@ -212,7 +231,7 @@ async function findEventOwner(supabase: ReturnType<typeof getSupabaseClient>, wa
 async function processEvent(
   request: NextRequest,
   { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } },
-  options: { signed: boolean }
+  options: { signed: boolean; verified: boolean }
 ) {
   try {
     // Resolve dynamic path params and extract organization UUID
@@ -264,7 +283,7 @@ async function processEvent(
       return NextResponse.json({ success: true, ignored: true, reason: `Active provider is ${provider}` })
     }
 
-    console.log('[Facebook Webhook POST] Event received for organization:', orgId)
+    console.log(`[Facebook Webhook POST] Event received for organization: ${orgId}${options.verified ? '' : ' (signature not verified)'}`)
 
     // If it's a status callback, acknowledge and exit
     if (value?.statuses) {
@@ -294,50 +313,75 @@ async function processEvent(
         const statusObj = value.statuses[0]
         if (statusObj && statusObj.type !== 'payment') {
           const messageSid = statusObj.id
-          const status = statusObj.status // 'sent' | 'delivered' | 'read' | 'failed'
-          const errorDetail = statusObj.errors?.[0]?.error_data?.details || statusObj.errors?.[0]?.message || null
-          const timestamp = statusObj.timestamp 
-            ? new Date(Number(statusObj.timestamp) * 1000).toISOString() 
+          const status = String(statusObj.status || '').toLowerCase() // 'sent' | 'delivered' | 'read' | 'failed'
+          const errorDetail = describeStatusError(statusObj.errors?.[0])
+          const timestamp = statusObj.timestamp
+            ? new Date(Number(statusObj.timestamp) * 1000).toISOString()
             : new Date().toISOString()
-          
+
           console.log('[Facebook Webhook POST] Updating message status:', { messageSid, status, timestamp, errorDetail })
-          
+
           // Match either FB_ prefixed SID or raw SID
           const sidsToMatch = [`FB_${messageSid}`, messageSid]
-          
-          // 1. Update messages table
-          const updateMsgData: any = {
-            status: status,
-            error_message: errorDetail,
-          }
-          if (status === 'read') {
-            updateMsgData.read_at = timestamp
-          }
 
-          const { error: msgErr } = await supabase
+          // 1. Update messages table. Callbacks arrive out of order and again, so a status only moves forward
+          const { data: messageRows, error: msgReadErr } = await supabase
             .from('messages')
-            .update(updateMsgData)
+            .select('id, status')
             .in('twilio_message_sid', sidsToMatch)
             .eq('organization_id', orgId)
+          if (msgReadErr) {
+            console.warn('[Facebook Webhook POST] Error reading messages:', msgReadErr)
+          }
+          const messageIds = (messageRows || []).filter((row: any) => isStatusProgress(row.status, status)).map((row: any) => row.id)
+          if (messageIds.length > 0) {
+            const updateMsgData: any = {
+              status: status,
+              error_message: errorDetail,
+            }
+            if (status === 'read') {
+              updateMsgData.read_at = timestamp
+            }
 
-          if (msgErr) {
-            console.warn('[Facebook Webhook POST] Error updating messages:', msgErr)
+            const { error: msgErr } = await supabase
+              .from('messages')
+              .update(updateMsgData)
+              .in('id', messageIds)
+              .eq('organization_id', orgId)
+
+            if (msgErr) {
+              console.warn('[Facebook Webhook POST] Error updating messages:', msgErr)
+            }
           }
 
-          // 2. Update campaign_logs table
-          const campaignLogStatus = 
+          // 2. Update campaign_logs table. A log has no organization_id of its own; its campaign has,
+          //    and only a log of this workspace's campaign is touched, forward only as above
+          const campaignLogStatus =
             status === 'read' ? 'READ' :
             status === 'delivered' ? 'DELIVERED' :
             status === 'failed' ? 'FAILED' : 'SENT'
 
-          await supabase
+          const { data: campaignLogs, error: logReadErr } = await supabase
             .from('campaign_logs')
-            .update({
-              status: campaignLogStatus,
-              error_message: errorDetail,
-            })
+            .select('id, status, campaign:campaigns(organization_id)')
             .in('message_sid', sidsToMatch)
-            .eq('organization_id', orgId)
+          if (logReadErr) {
+            console.warn('[Facebook Webhook POST] Error reading campaign logs:', logReadErr)
+          }
+          for (const log of campaignLogs || []) {
+            const campaign = Array.isArray(log.campaign) ? log.campaign[0] : log.campaign
+            if (campaign?.organization_id !== orgId || !isStatusProgress(log.status, status)) continue
+            const { error: logErr } = await supabase
+              .from('campaign_logs')
+              .update({
+                status: campaignLogStatus,
+                error_message: errorDetail,
+              })
+              .eq('id', log.id)
+            if (logErr) {
+              console.warn('[Facebook Webhook POST] Error updating campaign log:', logErr)
+            }
+          }
         }
       } catch (err) {
         console.error('[Facebook Webhook POST] Error processing status callback:', err)
@@ -569,41 +613,65 @@ async function processEvent(
       console.log('[Facebook Webhook] Auto-created new conversation:', conversation.id)
     }
 
-    // Step 3: Store incoming message
-    const { data: previousMessage } = await supabase.from('messages').select('id').eq('organization_id', orgId).eq('twilio_message_sid', `FB_${messageSid}`).limit(1).maybeSingle()
-    const { data: savedMessage, error: messageError } = previousMessage ? { data: previousMessage, error: null } : await supabase
-      .from('messages')
-      .insert([
-        {
-          organization_id: orgId,
-          conversation_id: conversation.id,
-          sender_type: 'contact',
-          body: messageBody,
-          media_url: finalMediaUrl,
-          twilio_message_sid: `FB_${messageSid}`,
-        },
-      ])
-      .select()
-      .single()
+    // Step 3: Store incoming message. Meta delivers a webhook again when the answer was slow or
+    // failed, so the message is stored once per provider id: a row already there means a redelivery
+    const inboundMessage: Record<string, any> = {
+      organization_id: orgId,
+      conversation_id: conversation.id,
+      sender_type: 'contact',
+      body: messageBody,
+      media_url: finalMediaUrl,
+      twilio_message_sid: `FB_${messageSid}`,
+    }
+    // Placed in the chat by when the customer sent it, not by when Meta managed to deliver it
+    const sentAt = messageSentAt(message.timestamp)
+    if (sentAt) inboundMessage.created_at = sentAt
 
-    if (messageError) {
-      console.error('[Facebook Webhook] Error storing message:', messageError)
-      throw messageError
+    let savedMessage: any = null
+    let redelivered = false
+    const stored = await supabase
+      .from('messages')
+      .upsert([inboundMessage], { onConflict: 'organization_id,twilio_message_sid', ignoreDuplicates: true })
+      .select()
+    if (stored.error && isMissingUniqueIndexError(stored.error)) {
+      // Until supabase/migrations/20261104_messages_provider_sid_unique.sql is applied: read, then insert
+      const { data: previousMessage } = await supabase.from('messages').select('id').eq('organization_id', orgId).eq('twilio_message_sid', `FB_${messageSid}`).limit(1).maybeSingle()
+      if (previousMessage) {
+        savedMessage = previousMessage
+        redelivered = true
+      } else {
+        const { data: inserted, error: messageError } = await supabase.from('messages').insert([inboundMessage]).select().single()
+        if (messageError) {
+          console.error('[Facebook Webhook] Error storing message:', messageError)
+          throw messageError
+        }
+        savedMessage = inserted
+      }
+    } else if (stored.error) {
+      console.error('[Facebook Webhook] Error storing message:', stored.error)
+      throw stored.error
+    } else if (stored.data && stored.data.length > 0) {
+      savedMessage = stored.data[0]
+    } else {
+      redelivered = true
     }
 
-    console.log('[Facebook Webhook] Message stored:', savedMessage.id)
+    if (redelivered) console.log('[Facebook Webhook] Message already stored, delivered again by Meta:', `FB_${messageSid}`)
+    else console.log('[Facebook Webhook] Message stored:', savedMessage.id)
 
-    // Step 4: Update conversation metadata
-    const { error: updateError } = await supabase
-      .from('conversations')
-      .update({
-        last_message_at: new Date().toISOString(),
-        unread_count: (existingConv?.unread_count || 0) + (previousMessage ? 0 : 1),
-      })
-      .eq('id', conversation.id)
+    // Step 4: Update conversation metadata (a redelivery is not a new message for the agent)
+    if (!redelivered) {
+      const { error: updateError } = await supabase
+        .from('conversations')
+        .update({
+          last_message_at: new Date().toISOString(),
+          unread_count: (existingConv?.unread_count || 0) + 1,
+        })
+        .eq('id', conversation.id)
 
-    if (updateError) {
-      console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+      if (updateError) {
+        console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+      }
     }
 
     // ── Commerce Wing: Process in-chat e-commerce events ───────────────
@@ -724,7 +792,7 @@ async function processEvent(
               if (!whatsappPhoneNumberId || !whatsappApiToken) throw new Error('WhatsApp Cloud API credentials are missing in Settings')
               const response = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${whatsappApiToken}` },
-                body: JSON.stringify(buildWhatsAppFlowMessage(phoneNumber, reply)), signal: AbortSignal.timeout(20000),
+                body: JSON.stringify(buildWhatsAppFlowMessage(phoneNumber, reply)), signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
               })
               const data = await response.json()
               if (!response.ok || data.error || !data.messages?.[0]?.id) throw new Error(data.error?.message || 'Meta did not accept the flow message')
@@ -742,6 +810,11 @@ async function processEvent(
         return NextResponse.json({ error: 'Workflow execution failed', details: error.message }, { status: 503 })
       }
     }
+
+    // A redelivery was answered the first time. The commerce and flow engines above keep their own
+    // record of handled messages (and a retry after a 5xx from them must still reach them); the
+    // assistants below keep none, so this is where a redelivery stops
+    if (redelivered) return NextResponse.json({ success: true, redelivered: true })
 
     if (
       orgData.enable_ai !== false &&
@@ -770,7 +843,8 @@ async function processEvent(
                 text: {
                   body: greetingResult.suggestedReply
                 }
-              })
+              }),
+              signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
             })
 
             if (fbRes.ok) {
@@ -819,8 +893,7 @@ async function processEvent(
 
       // Product and order questions: the shopping assistant answers with the store's own products and
       // the customer's own orders. Everything else falls through to the FAQ chatbot below.
-      // A redelivered message (Meta retries webhooks) was already answered the first time
-      if (shoppingAssistantEnabled(orgData) && !previousMessage) {
+      if (shoppingAssistantEnabled(orgData)) {
         try {
           const { data: recentForAssistant } = await supabase
             .from('messages')
@@ -903,7 +976,8 @@ Rewritten standalone query:`
                 messages: [{ role: 'user', content: condensationPrompt }],
                 temperature: 0,
                 max_tokens: 80
-              })
+              }),
+              signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
             })
 
             if (condensationRes.ok) {
@@ -938,7 +1012,8 @@ Rewritten standalone query:`
           body: JSON.stringify({
             model: 'text-embedding-3-small',
             input: vectorQuery.substring(0, 8000)
-          })
+          }),
+          signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
         })
 
         if (embedRes.ok) {
@@ -1078,7 +1153,8 @@ ${LANGUAGE_RULES}
                 response_format: { type: 'json_object' },
                 temperature: 0.3,
                 max_tokens: 300
-              })
+              }),
+              signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
             })
 
             if (gptResponse.ok) {
@@ -1145,7 +1221,8 @@ ${LANGUAGE_RULES}
                         text: {
                           body: botReply
                         }
-                      })
+                      }),
+                      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
                     })
 
                     if (fbRes.ok) {
@@ -1356,24 +1433,35 @@ async function fallbackKeywordSearch(
 export async function POST(request: NextRequest, context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }) {
   // Read raw body for signature verification
   const rawBody = await request.text()
+  const signatureHeader = request.headers.get('x-hub-signature-256')
 
   // Verify X-Hub-Signature-256 HMAC (Meta signs every webhook POST)
-  const signature = verifyMetaSignature(rawBody, request.headers.get('x-hub-signature-256'))
+  const signature = verifyMetaSignature(rawBody, signatureHeader)
+  // Checked against a secret (this app's, or the workspace's own app's), as opposed to let through unchecked
+  let verified = signature.valid && !signature.note
   if (!signature.valid) {
-    // A workspace connected with its own Meta app gets that app's webhooks, signed with a secret this
-    // server does not have. Those are taken for that workspace's own account only, as before signing
-    // was checked; everything else must be signed with this app's secret.
+    // A workspace connected with its own Meta app gets that app's webhooks, signed with that app's
+    // secret, which the workspace saves in Settings → WhatsApp. They are taken for that workspace's
+    // own account only; everything else must be signed with this app's secret.
     const ownApp = await workspaceOwnMetaApp(context)
     if (!ownApp) {
       console.error('[Facebook Webhook POST] Rejected:', signature.note)
       return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
     }
-    console.warn(`[Facebook Webhook POST] ${signature.note}; accepted for this workspace only, which is connected through its own Meta app ${ownApp}`)
+    if (verifyMetaSignatureWith(ownApp.secret, rawBody, signatureHeader)) {
+      verified = true
+      console.log(`[Facebook Webhook POST] Signed by the workspace's own Meta app ${ownApp.id}; accepted for this workspace only`)
+    } else if (process.env.META_WEBHOOK_ALLOW_UNSIGNED === 'true') {
+      console.warn(`[Facebook Webhook POST] ${signature.note}; META_WEBHOOK_ALLOW_UNSIGNED is set, so it is accepted unverified for this workspace only (own Meta app ${ownApp.id})`)
+    } else {
+      console.error(`[Facebook Webhook POST] Rejected: ${ownApp.secret ? 'the signature does not match the app secret saved for this workspace' : 'no app secret is saved for this workspace'} (own Meta app ${ownApp.id}). Add the Meta app secret in Settings → WhatsApp for workspaces connected through their own Meta app`)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
   } else if (signature.note) {
     console.warn('[Facebook Webhook POST]', signature.note)
   }
-  // Signed by Meta with this app's secret, as opposed to unchecked (a developer's machine, or a
-  // workspace's own Meta app): only a signed event may be delivered to another workspace
+  // Signed by Meta with this app's secret, as opposed to a workspace's own app or unchecked (a
+  // developer's machine): only a signed event may be delivered to another workspace
   const signed = signature.valid && !signature.note
 
   let payload: any
@@ -1388,7 +1476,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
       ]
       for (const event of events) {
         const response = await processEvent(new NextRequest(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context, { signed })
+          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context, { signed, verified })
         if (!response.ok) return response
       }
     }
