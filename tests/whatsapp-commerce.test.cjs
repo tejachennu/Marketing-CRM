@@ -836,7 +836,7 @@ test('Checkout buttons: choosing Cash on Delivery withdraws the live payment req
   const paid = await withWhatsApp(async () => { await pay(database, captured()) })
   assert.deepEqual([order().status, order().payment_status, order().payment_method], ['cod_confirmed', 'paid', 'whatsapp_pay'])
   assert.match(order().customer_note, /Paid online after Cash on Delivery was chosen; do not collect cash\./)
-  assert.ok(bodies(database).includes('[Paid online after Cash on Delivery was chosen; do not collect cash]'))
+  assert.ok(bodies(database).includes(`[Order #${order().order_number} was paid online after Cash on Delivery was chosen; do not collect cash]`))
   assert.equal(paid[0].interactive.type, 'order_status')
   assert.match(paid[0].interactive.body.text, /Nothing is due on delivery any more/)
 })
@@ -1575,9 +1575,9 @@ test('Commerce webhook: products the dashboard has not synced are looked up with
   const original = globalThis.fetch
   globalThis.fetch = async (url, init) => {
     if (init?.body) return accepted()
-    const filter = JSON.parse(decodeURIComponent(String(url).match(/filter=([^&]+)/)[1]))
-    lookups.push({ sku: filter.retailer_id.eq, token: init.headers.Authorization, version: String(url).match(/graph\.facebook\.com\/(v[\d.]+)\//)[1] })
-    return { ok: true, status: 200, json: async () => ({ data: [{ id: `meta-${filter.retailer_id.eq}`, retailer_id: filter.retailer_id.eq, name: `Product ${filter.retailer_id.eq}`, price: '₹100.00', currency: 'INR', availability: 'in stock' }] }) }
+    const chunk = JSON.parse(decodeURIComponent(String(url).match(/filter=([^&]+)/)[1])).retailer_id.is_any
+    lookups.push({ skus: chunk, token: init.headers.Authorization, version: String(url).match(/graph\.facebook\.com\/(v[\d.]+)\//)[1] })
+    return { ok: true, status: 200, json: async () => ({ data: chunk.map(sku => ({ id: `meta-${sku}`, retailer_id: sku, name: `Product ${sku}`, price: '₹100.00', currency: 'INR', availability: 'in stock' })) }) }
   }
   const database = commerceDb()
   try {
@@ -1589,7 +1589,8 @@ test('Commerce webhook: products the dashboard has not synced are looked up with
   } finally {
     globalThis.fetch = original
   }
-  assert.deepEqual(lookups.map(lookup => lookup.sku), skus) // all twelve, in two chunks of ten and two
+  assert.deepEqual(lookups.map(lookup => lookup.skus.length).sort((a, b) => b - a), [10, 2]) // all twelve, in a chunk of ten and one of two
+  assert.deepEqual(lookups.flatMap(lookup => lookup.skus).sort(), [...skus].sort())
   assert.ok(lookups.every(lookup => lookup.token === 'Bearer catalog-token' && lookup.version === 'v23.0'))
   assert.deepEqual(database.tables.commerce_order_items.map(line => line.title).slice(0, 2), ['Product SKU-1', 'Product SKU-2'])
   assert.equal(database.tables.commerce_order_items.filter(line => line.title.startsWith('Item #')).length, 0)

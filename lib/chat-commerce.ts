@@ -21,6 +21,7 @@ export type CheckoutEvent =
   | 'address_requested' | 'payment_choice' | 'payment_requested' | 'cod_requested' | 'acknowledged'
   | 'cod_confirmed' | 'paid' | 'payment_failed' | 'not_sent' | 'online_failed' | 'told'
   | 'payment_review' | 'second_payment' | 'earlier_request_paid' | 'status_changed' | 'payment_status_changed'
+  | 'address_updated' | 'address_unreadable' | 'paid_after_cod'
 
 // Which capture group holds what; the default is (order, amount, detail)
 type LineGroups = { order: number; amount?: number; detail?: number }
@@ -38,6 +39,9 @@ const CHECKOUT_LINES: Array<[CheckoutEvent, RegExp, LineGroups?]> = [
   ['not_sent', /^\[Checkout message for Order #(\S+) \(([^)]+)\) could not be sent\]$/],
   ['online_failed', /^\[Online payment for Order #(\S+) could not be started: ()([\s\S]+)\]$/],
   ['told', /^\[Told customer Order #(\S+) is ()([\s\S]+)\]$/],
+  ['address_updated', /^\[Delivery address updated for Order #(\S+)\]$/],
+  ['address_unreadable', /^\[Address form for Order #(\S+) could not be read; ()([\s\S]+)\]$/],
+  ['paid_after_cod', /^\[Order #(\S+) was paid online after Cash on Delivery was chosen; do not collect cash\]$/],
   // Payment review lines put the amount before the order number
   ['payment_review', /^\[Payment of (.+?) received for Order #(\S+) but the order total is (.+?); team to review\]$/, { amount: 1, order: 2, detail: 3 }],
   ['second_payment', /^\[Second payment of (.+?) received for Order #(\S+); refund due\]$/, { amount: 1, order: 2 }],
@@ -159,6 +163,9 @@ export const CHECKOUT_EVENT_LABELS: Record<CheckoutEvent, string> = {
   earlier_request_paid: 'An earlier payment request was paid · total updated',
   status_changed: 'Order status changed by the team',
   payment_status_changed: 'Payment status changed by the team',
+  address_updated: 'Delivery address updated · confirmed to the customer',
+  address_unreadable: 'Address form could not be read · payment step sent',
+  paid_after_cod: 'Paid online after choosing Cash on Delivery · do not collect cash',
 }
 
 /** One line for the chat list and quoted replies. */
@@ -169,7 +176,7 @@ export function describeCommerceMessage(parsed: CommerceMessage): string {
     case 'catalog': return '🛍️ Catalog'
     case 'website': return `🔗 ${parsed.title}`
     case 'order': return `🛒 Cart order · ${parsed.itemCount} ${parsed.itemCount === 1 ? 'item' : 'items'}`
-    case 'checkout': return `${parsed.event === 'cod_confirmed' || parsed.event === 'paid' || parsed.event === 'earlier_request_paid' ? '✅' : ['not_sent', 'payment_failed', 'online_failed', 'payment_review', 'second_payment'].includes(parsed.event) ? '⚠️' : '🧾'} ${CHECKOUT_EVENT_LABELS[parsed.event]}`
+    case 'checkout': return `${parsed.event === 'cod_confirmed' || parsed.event === 'paid' || parsed.event === 'earlier_request_paid' ? '✅' : ['not_sent', 'payment_failed', 'online_failed', 'payment_review', 'second_payment', 'address_unreadable', 'paid_after_cod'].includes(parsed.event) ? '⚠️' : '🧾'} ${CHECKOUT_EVENT_LABELS[parsed.event]}`
     case 'form': return parsed.isAddress ? '📍 Delivery address submitted' : '📝 Form submitted'
   }
 }

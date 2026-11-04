@@ -308,7 +308,13 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           if (!user) throw new Error('Select an agent in this organization')
           userId = user.id
         }
-        await checked(supabase.from('conversations').update({ assigned_to: userId, auto_reply_enabled: false }).eq('id', conversationId).eq('organization_id', organizationId))
+        // Only a chat left for the team waits in the hand-off queue (lib/handoff.ts); a chat given to someone does not
+        const handOff = { assigned_to: userId, auto_reply_enabled: false, handed_off_at: userId ? null : new Date().toISOString() }
+        const written = await supabase.from('conversations').update(handOff).eq('id', conversationId).eq('organization_id', organizationId)
+        if (isMissingColumnError(written.error, 'handed_off_at')) {
+          warnOnce('handed_off_at', '[flows] conversations.handed_off_at is missing: apply supabase/migrations/20261104_handoff_state.sql. Hand-offs are inferred from the chatbot being off until then.')
+          await checked(supabase.from('conversations').update({ assigned_to: userId, auto_reply_enabled: false }).eq('id', conversationId).eq('organization_id', organizationId))
+        } else if (written.error) throw new Error(written.error.message)
         // The round-robin pointer lives in this session's state, where the next hand-off looks for it
         return { handed_off: true, assigned_user_id: userId, ...(assignment === 'round_robin' && userId ? { _round_robin_user: userId } : {}) }
       },

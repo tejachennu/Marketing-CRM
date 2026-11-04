@@ -1523,7 +1523,7 @@ export async function handleInboundPaymentConfirmation({
   if (paidAfterCod) {
     const note = 'Paid online after Cash on Delivery was chosen; do not collect cash'
     await noteOnOrder(supabase, order, `${note}.`)
-    await logSystemLine(context, `[${note}]`)
+    await logSystemLine(context, `[Order #${order.order_number} was paid online after Cash on Delivery was chosen; do not collect cash]`)
   }
   // The items leave stock once, whichever way the order was settled
   if (order.status !== 'canceled') await adjustOrderStock({ organization, order, action: 'take', database: supabase })

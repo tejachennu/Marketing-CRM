@@ -100,37 +100,26 @@ test('Store summary: counted once per 30 seconds per organization, and again as 
 
 test('Catalog lookups: a large cart is looked up ten SKUs at a time, and every row comes back', async () => {
   const skus = Array.from({ length: 23 }, (_, index) => `SKU-${index + 1}`)
-  const waiting = []
+  const asked = []
   const fetcher = async (url, init) => {
-    const sku = JSON.parse(decodeURIComponent(String(url).match(/filter=([^&]+)/)[1])).retailer_id.eq
+    const chunk = JSON.parse(decodeURIComponent(String(url).match(/filter=([^&]+)/)[1])).retailer_id.is_any
+    asked.push(chunk)
     assert.equal(init.headers.Authorization, 'Bearer token')
     assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v25\.0\/123456789\/products\?/)
-    return new Promise(resolve => {
-      waiting.push(() => resolve({ ok: true, status: 200, json: async () => ({ data: [{ id: `m-${sku}`, retailer_id: sku, name: `Product ${sku}`, price: '₹10.00', currency: 'INR', availability: 'in stock' }] }) }))
-    })
+    return { ok: true, status: 200, json: async () => ({ data: chunk.map(sku => ({ id: `m-${sku}`, retailer_id: sku, name: `Product ${sku}`, price: '₹10.00', currency: 'INR', availability: 'in stock' })) }) }
   }
-  const settle = () => new Promise(resolve => setImmediate(resolve))
-  const answer = async () => { const batch = waiting.splice(0); batch.forEach(resolve => resolve()); await settle() }
 
-  const lookup = meta.fetchMetaProductsBySku('123456789', 'token', [...skus, 'SKU-1', ' ', ''], 'not-a-version', fetcher)
-  await settle()
-  assert.equal(waiting.length, meta.SKU_LOOKUP_CHUNK) // the first ten are asked for together; the rest wait
-  await answer()
-  assert.equal(waiting.length, 10)
-  await answer()
-  assert.equal(waiting.length, 3) // duplicates and blanks were dropped
-  await answer()
-  const rows = await lookup
+  const rows = await meta.fetchMetaProductsBySku('123456789', 'token', [...skus, 'SKU-1', ' ', ''], 'not-a-version', fetcher)
+  // Ten per request; duplicates and blanks dropped
+  assert.deepEqual(asked.map(chunk => chunk.length).sort((a, b) => b - a), [10, 10, 3])
   assert.deepEqual(rows.map(row => row.retailer_id), skus)
   assert.deepEqual([rows[0].title, rows[0].price, rows[0].is_available], ['Product SKU-1', 10, true])
   assert.equal(meta.SKU_LOOKUP_CHUNK, 10)
 
-  // A failing lookup returns what it has, and never throws
-  const flaky = async url => (String(url).includes('SKU-2') ? { ok: false, status: 500, json: async () => ({}) } : fetcher(url, { headers: { Authorization: 'Bearer token' } }))
-  const partial = meta.fetchMetaProductsBySku('123456789', 'token', ['SKU-1', 'SKU-2', 'SKU-3'], 'v25.0', flaky)
-  await settle()
-  await answer()
-  assert.deepEqual((await partial).map(row => row.retailer_id), ['SKU-1', 'SKU-3'])
+  // A failing request loses only its own SKUs, and the lookup never throws
+  const flaky = async (url, init) => (decodeURIComponent(String(url)).includes('"SKU-11"') ? { ok: false, status: 500, json: async () => ({}) } : fetcher(url, init))
+  const partial = await meta.fetchMetaProductsBySku('123456789', 'token', skus.slice(0, 12), 'v25.0', flaky)
+  assert.deepEqual(partial.map(row => row.retailer_id), skus.slice(0, 10))
   // A catalog id that is not Meta's numeric id is never asked
   assert.deepEqual(await meta.fetchMetaProductsBySku('my-catalog', 'token', ['SKU-1'], 'v25.0', async () => { throw new Error('should not be called') }), [])
 })

@@ -971,3 +971,25 @@ test('the builder catalog offers no ticket priority and gives the assistant a pr
   assert.match(getNodeDefinition('ai_rag_node').createData({}).promptText, /Type your question/)
   assert.equal(createStarterWorkflow().canvas_nodes.find(item => item.type === 'ticket_action').data.priority, undefined)
 })
+
+test('agent handoff: only a chat left for the team waits in the hand-off queue', async () => {
+  const toTeam = database({ whatsapp_workflows: [workflow([baseNodes[0], node('handoff', 'assign_agent_action', { assignmentType: 'team_queue' })], [edge('trigger', 'handoff')])] })
+  await executeFlowRuntime(input, toTeam)
+  assert.equal(toTeam.tables.conversations[0].assigned_to, null)
+  assert.ok(Date.parse(toTeam.tables.conversations[0].handed_off_at) > 0, 'the hand-off time is recorded')
+
+  const users = [{ id: 'u-asha', organization_id: 'org', role: 'sales_employee', created_at: '2026-01-02' }]
+  const toAgent = database({ users, conversations: [{ id: 'conversation', organization_id: 'org', handed_off_at: '2026-11-01T00:00:00Z' }],
+    whatsapp_workflows: [workflow([baseNodes[0], node('handoff', 'assign_agent_action', { assignmentType: 'specific_user', assignedUserId: 'u-asha' })], [edge('trigger', 'handoff')])] })
+  await executeFlowRuntime(input, toAgent)
+  assert.equal(toAgent.tables.conversations[0].assigned_to, 'u-asha')
+  assert.equal(toAgent.tables.conversations[0].handed_off_at, null) // given to someone: not the queue's
+
+  // Before the migration the hand-off still happens, without the column
+  const old = database({ whatsapp_workflows: [workflow([baseNodes[0], node('handoff', 'assign_agent_action', { assignmentType: 'team_queue' })], [edge('trigger', 'handoff')])] })
+  old.rejectColumns.add('handed_off_at')
+  await executeFlowRuntime(input, old)
+  assert.equal(old.tables.conversations[0].auto_reply_enabled, false)
+  assert.equal(old.tables.conversations[0].handed_off_at, undefined)
+  assert.equal(old.tables.flow_sessions[0].status, 'COMPLETED')
+})

@@ -45,10 +45,13 @@ const CHECKOUT_EVENT_STYLE: Record<CheckoutEvent, { icon: LucideIcon; tone: stri
   earlier_request_paid: { icon: BadgeCheck, tone: 'bg-emerald-500 text-white' },
   status_changed: { icon: Info, tone: 'bg-slate-500 text-white' },
   payment_status_changed: { icon: Info, tone: 'bg-slate-500 text-white' },
+  address_updated: { icon: MapPin, tone: 'bg-[#107569] text-white' },
+  address_unreadable: { icon: AlertTriangle, tone: 'bg-amber-500 text-white' },
+  paid_after_cod: { icon: AlertTriangle, tone: 'bg-amber-500 text-white' },
 }
 
 // Events whose detail (an amount, a status, who changed it) is worth a second line on the card
-const DETAIL_EVENTS = new Set<CheckoutEvent>(['online_failed', 'payment_review', 'earlier_request_paid', 'status_changed', 'payment_status_changed'])
+const DETAIL_EVENTS = new Set<CheckoutEvent>(['online_failed', 'payment_review', 'earlier_request_paid', 'status_changed', 'payment_status_changed', 'address_unreadable'])
 
 export function CommerceCard({
   parsed,

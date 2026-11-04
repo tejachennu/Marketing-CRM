@@ -140,3 +140,15 @@ test('Chat commerce: the conversation preview ignores commerce lines a customer 
   assert.equal(getMessagePreview({ body, media_url: null, sender_type: 'user' }), '✅ Payment received · receipt sent')
   assert.equal(getMessagePreview({ body, media_url: null, sender_type: 'contact' }), body)
 })
+
+test('Chat commerce: address updates, unreadable address forms and paid-after-COD lines become events', () => {
+  assert.deepEqual(parseCommerceMessage('[Delivery address updated for Order #ORD-1]', 'user'),
+    { kind: 'checkout', event: 'address_updated', orderNumber: 'ORD-1', amount: null, detail: null })
+  assert.deepEqual(parseCommerceMessage('[Address form for Order #ORD-1 could not be read; the form in Store settings is not an address form]', 'user'),
+    { kind: 'checkout', event: 'address_unreadable', orderNumber: 'ORD-1', amount: null, detail: 'the form in Store settings is not an address form' })
+  const paid = parseCommerceMessage('[Order #ORD-1 was paid online after Cash on Delivery was chosen; do not collect cash]', 'user')
+  assert.equal(paid.event, 'paid_after_cod')
+  assert.equal(describeCommerceMessage(paid), '⚠️ Paid online after choosing Cash on Delivery · do not collect cash')
+  // Not 'status_changed': the line is matched by its own pattern first
+  assert.equal(parseCommerceMessage('[Order #ORD-1 was paid online after Cash on Delivery was chosen; do not collect cash]', 'contact'), null)
+})

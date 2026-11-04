@@ -231,6 +231,8 @@ export interface CommerceOrder {
     notes?: string
     // Fulfilment details are kept with the address
     tracking_number?: string
+    /** A tracking page link the team entered (http/https). */
+    tracking_url?: string
     carrier?: string
     shipped_at?: string
     delivered_at?: string
@@ -241,6 +243,8 @@ export interface CommerceOrder {
   items?: CommerceOrderItem[]
   contact?: Contact
   created_at: string
+  /** When this order's items left stock (after the 20261104_commerce_stock migration). */
+  stock_adjusted_at?: string | null
   updated_at: string
 }
 
