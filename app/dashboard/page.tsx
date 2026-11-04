@@ -13,6 +13,7 @@ import {
   Edit2, Download, ArrowLeft, ArrowUpDown, Bot, RefreshCw, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck, UserCheck
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
+import { conversationAfterReply, readSendFailure, type SendFailure } from '@/components/send-message-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
@@ -177,8 +178,8 @@ function ConversationsPageContent() {
     enable_sms: true,
   })
 
-  // Live Chat Template & Error States
-  const [chatSendError, setChatSendError] = useState<string | null>(null)
+  // Live Chat Template & Error States. A 24-hour refusal in the error also offers the template picker.
+  const [chatSendError, setChatSendError] = useState<SendFailure | null>(null)
   const [showLiveChatTemplateModal, setShowLiveChatTemplateModal] = useState(false)
   const [liveChatTemplates, setLiveChatTemplates] = useState<any[]>([])
   const [loadingLiveChatTemplates, setLoadingLiveChatTemplates] = useState(false)
@@ -211,6 +212,11 @@ function ConversationsPageContent() {
     } finally {
       setLoadingLiveChatTemplates(false)
     }
+  }
+
+  const openLiveChatTemplates = () => {
+    fetchLiveChatTemplates()
+    setShowLiveChatTemplateModal(true)
   }
 
   const handleSelectLiveChatTemplate = (tplSid: string) => {
@@ -292,9 +298,10 @@ function ConversationsPageContent() {
       }
       setShowLiveChatTemplateModal(false)
       setSelectedLiveChatTemplate(null)
+      noteHumanReply(selectedConversation)
     } catch (err: any) {
       console.error('[Dashboard] Send template error:', err)
-      setChatSendError(err instanceof Error ? err.message : String(err))
+      setChatSendError({ message: err instanceof Error ? err.message : String(err) })
     } finally {
       setSendingTemplate(false)
     }
@@ -661,6 +668,17 @@ function ConversationsPageContent() {
     if (!user) return
     loadConversations(user.organization_id, 1, mode, searchTermRef.current, listFilterRef.current, userAssignedToFilterRef.current, true)
   }, [user, loadConversations])
+
+  // A human reply turns the chatbot off and, for someone who only sees their own work, claims a
+  // chat nobody owned. Show that at once and reload the list, so the chat leaves the "Needs an
+  // agent" queue without waiting for the live update. The page is merged, not replaced: the open
+  // chat has to stay in the list.
+  const noteHumanReply = useCallback((convId: string) => {
+    if (!user) return
+    const sender = { id: user.id, seesAll: canSeeAll(user) }
+    setConversations((prev) => prev.map((c) => (c.id === convId ? conversationAfterReply(c, sender) : c)))
+    refreshConversationList('merge')
+  }, [user, refreshConversationList])
 
   const reloadAll = useCallback(() => {
     if (!user) return
@@ -1334,7 +1352,7 @@ function ConversationsPageContent() {
   async function handleSendMessage() {
     if ((!messageText.trim() && !attachedFile) || !selectedConversation || !user) return
     if (readOnly) {
-      setChatSendError(describeDenied('records.write'))
+      setChatSendError({ message: describeDenied('records.write') })
       return
     }
 
@@ -1371,6 +1389,7 @@ function ConversationsPageContent() {
 
     // Only touch what is on screen if this chat is still the one open when the answer arrives
     const stillOpen = () => selectedConvRef.current === convId
+    let failure: SendFailure | null = null
 
     try {
       const response = await fetch('/api/messages/send', {
@@ -1396,7 +1415,8 @@ function ConversationsPageContent() {
               : prev.filter((m) => m.id !== optimisticMsg.id)
           )
         }
-        throw new Error(data.error || 'Failed to dispatch message via WhatsApp')
+        failure = readSendFailure(data, 'Failed to dispatch message via WhatsApp')
+        throw new Error(failure.message)
       }
 
       if (data.message && stillOpen()) {
@@ -1408,15 +1428,18 @@ function ConversationsPageContent() {
           return prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
         })
       }
+      noteHumanReply(convId)
     } catch (error: any) {
       console.error('[Dashboard] Send error:', error)
-      const errMsg = error instanceof Error ? error.message : String(error)
+      const failed: SendFailure = failure || { message: error instanceof Error ? error.message : String(error) }
       if (stillOpen()) {
         // Give the text back so nothing typed is lost
-        setChatSendError(errMsg)
+        setChatSendError(failed)
         setMessageText(text)
         setReplyingTo(reply)
         if (media) setAttachedFile(media)
+        // A customer who never wrote is only reached with a template: open the picker right away
+        if (failed.templateReason === 'never_wrote') openLiveChatTemplates()
       } else {
         // The reader moved on: keep it as that chat's draft instead of dropping it into the wrong one
         draftsRef.current.set(convId, { text, file: media, reply })
@@ -1459,7 +1482,7 @@ function ConversationsPageContent() {
     } catch (err) {
       console.error('[Rephrase] Error:', err)
       // Say so instead of leaving the button looking like it did nothing
-      setChatSendError('The message could not be rephrased. Your text is unchanged; try again.')
+      setChatSendError({ message: 'The message could not be rephrased. Your text is unchanged; try again.' })
     } finally {
       setRephrasing(false)
     }
@@ -2265,8 +2288,18 @@ function ConversationsPageContent() {
                   <div className="mx-4 mb-2 mt-1 px-3.5 py-2.5 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex items-start justify-between gap-3 select-none z-10 animate-in fade-in duration-200 shadow-xs">
                     <div className="flex items-start gap-2 text-xs font-semibold text-rose-800 dark:text-rose-300 flex-1 min-w-0">
                       <AlertCircle size={15} className="flex-shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-                      <span className="break-words whitespace-normal leading-normal w-full">{chatSendError}</span>
+                      <span className="break-words whitespace-normal leading-normal w-full">{chatSendError.message}</span>
                     </div>
+                    {chatSendError.templateReason && !readOnly && (
+                      <button
+                        type="button"
+                        onClick={openLiveChatTemplates}
+                        className="h-7 px-2.5 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-[11px] font-semibold transition-colors inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <FileText size={12} />
+                        <span>Send a template</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setChatSendError(null)}
                       className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 text-xs font-bold px-1.5 py-0.5 rounded shrink-0"
@@ -2286,10 +2319,7 @@ function ConversationsPageContent() {
                     {!readOnly && (
                       <button
                         type="button"
-                        onClick={() => {
-                          fetchLiveChatTemplates()
-                          setShowLiveChatTemplateModal(true)
-                        }}
+                        onClick={openLiveChatTemplates}
                         className="h-8 px-3 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-[12.5px] font-semibold transition-colors flex items-center justify-center gap-1.5 flex-shrink-0 w-full sm:w-auto cursor-pointer"
                       >
                         <FileText size={13} />
@@ -2344,10 +2374,7 @@ function ConversationsPageContent() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        fetchLiveChatTemplates()
-                        setShowLiveChatTemplateModal(true)
-                      }}
+                      onClick={openLiveChatTemplates}
                       disabled={readOnly}
                       aria-label="Send a template"
                       className="hover:bg-[#e9edef] dark:hover:bg-[#374248] text-[#54656f] dark:text-[#8696a0] p-2 rounded-full transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2750,6 +2777,12 @@ function ConversationsPageContent() {
               </button>
             </div>
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Opened by a refused send: say why, in the server's words */}
+              {chatSendError?.templateReason && (
+                <p className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200 leading-normal">
+                  {chatSendError.message}
+                </p>
+              )}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Select Template</label>
                 {loadingLiveChatTemplates ? (

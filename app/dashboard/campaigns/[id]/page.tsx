@@ -47,6 +47,7 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { formatChatListTimestamp, formatChatTime, isSameDay } from '@/lib/chat-dates'
 import { ChatDateSeparator } from '@/components/chat-date-separator'
+import { readSendFailure, type SendFailure } from '@/components/send-message-dialog'
 
 interface WhatsAppTemplate {
   sid: string
@@ -145,7 +146,8 @@ export default function CampaignFullTabPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [inputMessage, setInputMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const [sendError, setSendError] = useState<string | null>(null)
+  // A 24-hour refusal in the error also offers the template picker
+  const [sendError, setSendError] = useState<SendFailure | null>(null)
   const [showCampaignContext, setShowCampaignContext] = useState(false)
   const [copiedPhone, setCopiedPhone] = useState(false)
 
@@ -582,7 +584,7 @@ export default function CampaignFullTabPage() {
       setSelectedTemplate(null)
     } catch (err: any) {
       console.error('Error sending template:', err)
-      setSendError(err.message || 'Failed to send template')
+      setSendError({ message: err.message || 'Failed to send template' })
     } finally {
       setIsSendingTemplate(false)
     }
@@ -635,7 +637,7 @@ export default function CampaignFullTabPage() {
       }
     } catch (err: any) {
       console.error('[Rephrase] Error:', err)
-      setSendError(err.message || 'Failed to rephrase message')
+      setSendError({ message: err.message || 'Failed to rephrase message' })
     } finally {
       setIsRephrasing(false)
     }
@@ -759,6 +761,7 @@ export default function CampaignFullTabPage() {
 
     setMessages((prev) => [...prev, optimisticMsg])
     setTimeout(() => scrollToBottom('smooth'), 30)
+    let failure: SendFailure | null = null
 
     try {
       const res = await fetch('/api/messages/send', {
@@ -774,7 +777,11 @@ export default function CampaignFullTabPage() {
 
       const data = await res.json()
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to dispatch message')
+        // A message the provider refused is stored as failed and shown so; one the route refused
+        // before trying was never stored, so its bubble goes
+        setMessages((prev) => (data.message ? prev.map((m) => (m.id === tempId ? data.message : m)) : prev.filter((m) => m.id !== tempId)))
+        failure = readSendFailure(data, 'Failed to dispatch message')
+        throw new Error(failure.message)
       }
 
       if (data.message) {
@@ -812,11 +819,17 @@ export default function CampaignFullTabPage() {
       )
     } catch (err: any) {
       console.error('Error sending message:', err)
-      setSendError(err.message || 'Failed to send reply. Please try again.')
+      const failed: SendFailure = failure || { message: err.message || 'Failed to send reply. Please try again.' }
+      setSendError(failed)
       // Mark temporary message as failed
       setMessages((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
       )
+      // A customer who never wrote is only reached with a template: open the picker right away
+      if (failed.templateReason === 'never_wrote') {
+        fetchTemplates()
+        setShowTemplateModal(true)
+      }
     } finally {
       setIsSending(false)
       textareaRef.current?.focus()
@@ -1564,17 +1577,32 @@ export default function CampaignFullTabPage() {
 
                 {/* Send Error Alert */}
                 {sendError && (
-                  <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-900/50 flex items-center justify-between text-xs text-red-600 dark:text-red-400">
-                    <div className="flex items-center gap-2">
+                  <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-900/50 flex items-center justify-between gap-3 text-xs text-red-600 dark:text-red-400">
+                    <div className="flex items-center gap-2 min-w-0">
                       <AlertCircle size={14} className="shrink-0" />
-                      <span>{sendError}</span>
+                      <span>{sendError.message}</span>
                     </div>
-                    <button
-                      onClick={() => setSendError(null)}
-                      className="p-1 hover:bg-red-100 dark:hover:bg-red-900/50 rounded cursor-pointer"
-                    >
-                      <X size={12} />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {sendError.templateReason && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetchTemplates()
+                            setShowTemplateModal(true)
+                          }}
+                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <FileText size={12} />
+                          <span>Send a template</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSendError(null)}
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-900/50 rounded cursor-pointer"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -2579,6 +2607,12 @@ export default function CampaignFullTabPage() {
 
             {/* Modal Body */}
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin">
+              {/* Opened by a refused send: say why, in the server's words */}
+              {sendError?.templateReason && (
+                <p className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200 leading-normal">
+                  {sendError.message}
+                </p>
+              )}
               {/* Template Selector */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">

@@ -22,6 +22,48 @@ interface TemplateOption {
   components?: any[]
 }
 
+// ── Answers of POST /api/messages/send, read the same way by every composer ─────────────────────
+
+/** Why WhatsApp refused a free-form message: the customer never wrote, or wrote too long ago. */
+export type TemplateReason = 'never_wrote' | 'window_closed'
+
+export interface SendFailure {
+  /** The server's explanation, shown as it is */
+  message: string
+  /** Set when only an approved template can reach the customer (code outside_24h_window) */
+  templateReason?: TemplateReason
+}
+
+/**
+ * Read a refused or failed send. The 24-hour refusal carries a code and a reason, so a composer
+ * can open its template picker instead of showing a bare error; every other answer, a teammate
+ * handling the customer or a number that does not match included, is shown in the server's words.
+ */
+export function readSendFailure(data: unknown, fallback: string): SendFailure {
+  const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+  const message = typeof body.error === 'string' && body.error.trim() ? body.error : fallback
+  if (body.code === 'outside_24h_window') {
+    return { message, templateReason: body.reason === 'never_wrote' ? 'never_wrote' : 'window_closed' }
+  }
+  return { message }
+}
+
+/**
+ * A chat as the send route leaves it once a human reply is away: the chatbot is switched off, and
+ * a sender who only sees their own work takes a chat nobody owns yet (the route's claimAfterSend
+ * rule). The inbox shows this at once instead of waiting for the live update.
+ */
+export function conversationAfterReply<T extends { assigned_to: string | null; auto_reply_enabled?: boolean | null }>(
+  conversation: T,
+  sender: { id: string; seesAll: boolean },
+): T {
+  return {
+    ...conversation,
+    auto_reply_enabled: false,
+    assigned_to: conversation.assigned_to ?? (sender.seesAll ? null : sender.id),
+  }
+}
+
 export function SendMessageDialog({
   contacts,
   organizationId,
@@ -35,6 +77,8 @@ export function SendMessageDialog({
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // WhatsApp refused the text for its 24-hour rule: only the template tab can reach this customer
+  const [templateOnly, setTemplateOnly] = useState<SendFailure | null>(null)
   const [success, setSuccess] = useState(false)
 
   const selectedContact = contacts.find((c) => c.id === selectedContactId)
@@ -79,6 +123,7 @@ export function SendMessageDialog({
 
     setSending(true)
     setError(null)
+    setTemplateOnly(null)
     setSuccess(false)
 
     try {
@@ -108,7 +153,15 @@ export function SendMessageDialog({
       const data = await response.json()
 
       if (!response.ok || !data.success || data.twilioSent === false) {
-        throw new Error(data.error || 'Failed to send message via WhatsApp')
+        const failure = readSendFailure(data, 'Failed to send message via WhatsApp')
+        if (failure.templateReason) {
+          // Only an approved template reaches this customer, so the template tab is the way
+          // forward: straight there when they never wrote, offered when their window closed
+          setTemplateOnly(failure)
+          if (failure.templateReason === 'never_wrote') setSendMode('template')
+          return
+        }
+        throw new Error(failure.message)
       }
 
       setSuccess(true)
@@ -147,7 +200,11 @@ export function SendMessageDialog({
             <label className="block text-sm font-medium mb-2">Select Contact</label>
             <select
               value={selectedContactId}
-              onChange={(e) => setSelectedContactId(e.target.value)}
+              onChange={(e) => {
+                setSelectedContactId(e.target.value)
+                // Whether a template is needed was said about the previous customer
+                setTemplateOnly(null)
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Choose a contact...</option>
@@ -200,7 +257,9 @@ export function SendMessageDialog({
 
           {sendMode === 'template' ? (
             <div>
-              <label className="block text-sm font-medium mb-2">Select Meta Approved Template</label>
+              <label className="block text-sm font-medium mb-2">
+                {templateOnly?.templateReason === 'never_wrote' ? 'Pick a template to start the conversation' : 'Select Meta Approved Template'}
+              </label>
               <select
                 value={selectedTemplateSid}
                 onChange={(e) => handleTemplateChange(e.target.value)}
@@ -233,6 +292,23 @@ export function SendMessageDialog({
               <div className="text-xs text-gray-500 mt-1">
                 {message.length}/1600 characters
               </div>
+            </div>
+          )}
+
+          {/* Only a template reaches this customer: said in the server's words, with the way there */}
+          {templateOnly && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-lg text-sm leading-snug">
+              <p>{templateOnly.message}</p>
+              {sendMode === 'text' && (
+                <button
+                  type="button"
+                  onClick={() => setSendMode('template')}
+                  className="mt-1.5 inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Choose a template
+                </button>
+              )}
             </div>
           )}
 
