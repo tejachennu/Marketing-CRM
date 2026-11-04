@@ -5,6 +5,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import type { FlowReply } from '@/lib/flows/flow-runner'
 
 export interface SignatureCheck {
   valid: boolean
@@ -46,14 +47,21 @@ export function verifyMetaSignature(
 /** Delivery statuses in the order Meta reports them. Anything else (pending, queued, unknown) comes before "sent". */
 const STATUS_ORDER: Record<string, number> = { sent: 1, delivered: 2, read: 3 }
 
+/** Twilio reports a final delivery failure as "undelivered": the same end state as Meta's "failed". */
+function deliveryState(status: string | null | undefined): string {
+  const state = String(status || '').trim().toLowerCase()
+  return state === 'undelivered' ? 'failed' : state
+}
+
 /**
- * Whether a status callback moves a message forward: sent → delivered → read, and failed only from
- * sent or delivered (or from no status yet). Meta's callbacks can arrive out of order and are
- * redelivered, so "delivered" after "read" must not take the blue ticks away, and nothing goes back.
+ * Whether a status callback moves a message forward: sent → delivered → read, and failed (Twilio:
+ * undelivered) only from sent or delivered (or from no status yet). Meta's and Twilio's callbacks can
+ * arrive out of order and are redelivered, so "delivered" after "read" must not take the blue ticks
+ * away, and nothing goes back.
  */
 export function isStatusProgress(from: string | null | undefined, to: string | null | undefined): boolean {
-  const current = String(from || '').trim().toLowerCase()
-  const next = String(to || '').trim().toLowerCase()
+  const current = deliveryState(from)
+  const next = deliveryState(to)
   if (current === 'failed' || next === current) return false
   if (next === 'failed') return current !== 'read'
   return (STATUS_ORDER[next] || 0) > (STATUS_ORDER[current] || 0)
@@ -80,6 +88,29 @@ export function messageSentAt(timestamp: unknown, now: number = Date.now()): str
   const ms = seconds * 1000
   if (ms < now - SENT_AT_WINDOW_MS || ms > now + 60 * 1000) return null
   return new Date(ms).toISOString()
+}
+
+/**
+ * A flow's reply as the inbox shows it: the body, then what the customer was offered, so an agent
+ * reading the chat sees the choices and not only "Please choose an option:". Buttons give
+ * "Body [A | B]", a list "Body [Section: row, row | Section: row]" and a native form
+ * "Body [Form: Open Form]" (its button text). The shapes are the ones lib/flows/flow-messages.ts sends.
+ */
+export function describeFlowReply(reply: FlowReply): string {
+  const body = String(reply?.body || '').trim()
+  const title = (item: any) => String(item?.title || '').trim()
+  let offered = ''
+  if (reply?.type === 'interactive_buttons') {
+    offered = (reply.buttons || []).map(title).filter(Boolean).join(' | ')
+  } else if (reply?.type === 'list_menu') {
+    offered = (reply.sections || []).map((section: any) => {
+      const rows = (section?.rows || []).map(title).filter(Boolean).join(', ')
+      return title(section) && rows ? `${title(section)}: ${rows}` : rows || title(section)
+    }).filter(Boolean).join(' | ')
+  } else if (reply?.type === 'native_flow') {
+    offered = `Form: ${String(reply.flowPayload?.flow_cta || 'Open Form').trim()}`
+  }
+  return offered ? `${body} [${offered}]` : body
 }
 
 /** A PostgREST error about a column that a migration not yet applied adds. */

@@ -5,7 +5,7 @@ const { createHmac } = require('node:crypto')
 
 const {
   verifyMetaSignature, verifyMetaSignatureWith, ownsWhatsAppEvent, pickEventOwner,
-  isStatusProgress, describeStatusError, messageSentAt, isMissingColumnError, isMissingUniqueIndexError,
+  isStatusProgress, describeStatusError, messageSentAt, isMissingColumnError, isMissingUniqueIndexError, describeFlowReply,
 } = require('../lib/meta-webhook.ts')
 const { getPublicBaseUrl, getWebhookOverride, describeIncompleteSignup } = require('../lib/whatsapp-onboarding.ts')
 
@@ -69,6 +69,33 @@ test('Status callbacks: a delivery status only moves forward', () => {
   assert.equal(isStatusProgress('sent', 'deleted'), false)
   assert.equal(isStatusProgress(null, 'warning'), false)
   assert.equal(isStatusProgress(null, ''), false)
+})
+
+test('Status callbacks: Twilio reports a final failure as "undelivered"', () => {
+  assert.equal(isStatusProgress('sent', 'undelivered'), true)
+  assert.equal(isStatusProgress(null, 'undelivered'), true)
+  assert.equal(isStatusProgress('read', 'undelivered'), false)
+  // It is as final as "failed", whichever word was stored
+  assert.equal(isStatusProgress('undelivered', 'delivered'), false)
+  assert.equal(isStatusProgress('undelivered', 'failed'), false)
+  assert.equal(isStatusProgress('failed', 'undelivered'), false)
+  // Twilio's "queued" and "sending" come before "sent", so a late one never takes a status back
+  assert.equal(isStatusProgress('sent', 'queued'), false)
+  assert.equal(isStatusProgress('delivered', 'sending'), false)
+})
+
+test('Flow replies: the stored body shows what the customer was offered', () => {
+  assert.equal(describeFlowReply({ type: 'interactive_buttons', body: 'Please choose an option:', buttons: [{ id: 'a', title: 'Option A' }, { id: 'b', title: 'Option B' }] }),
+    'Please choose an option: [Option A | Option B]')
+  assert.equal(describeFlowReply({ type: 'list_menu', body: 'Pick one:', buttonText: 'Browse', sections: [{ title: 'Books', rows: [{ id: '1', title: 'Fiction' }, { id: '2', title: 'Poetry' }] }, { title: 'Help', rows: [{ id: '3', title: 'Talk to us' }] }] }),
+    'Pick one: [Books: Fiction, Poetry | Help: Talk to us]')
+  assert.equal(describeFlowReply({ type: 'list_menu', body: 'Pick one:', sections: [{ rows: [{ id: '1', title: 'Fiction' }] }] }), 'Pick one: [Fiction]') // a section without a title
+  assert.equal(describeFlowReply({ type: 'native_flow', body: 'Please complete the form below:', flowPayload: { flow_id: '1', flow_cta: 'Book a visit' } }),
+    'Please complete the form below: [Form: Book a visit]')
+  assert.equal(describeFlowReply({ type: 'native_flow', body: 'Please complete the form below:', flowPayload: { flow_id: '1' } }), 'Please complete the form below: [Form: Open Form]')
+  // A plain text, or nothing offered: the body alone
+  assert.equal(describeFlowReply({ type: 'text', body: 'Hello there' }), 'Hello there')
+  assert.equal(describeFlowReply({ type: 'interactive_buttons', body: 'Choose:', buttons: [] }), 'Choose:')
 })
 
 test("Status callbacks: Meta's error is kept with its code and title", () => {

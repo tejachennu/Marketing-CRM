@@ -13,7 +13,9 @@ import {
   messageSentAt,
   isMissingColumnError,
   isMissingUniqueIndexError,
+  describeFlowReply,
 } from '@/lib/meta-webhook'
+import { checkRateLimit } from '@/lib/rate-limiter'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime, saveUnownedSubmission, FlowLockBusyError } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
@@ -59,6 +61,13 @@ function getSupabaseClient() {
 // Meta expects a quick answer to a webhook: a call that hangs is given up on, logged, and its reply skipped
 const GRAPH_TIMEOUT_MS = 15_000
 const OPENAI_TIMEOUT_MS = 25_000
+
+// What a customer hears when a flow handed their question to the AI and nothing could answer it
+const HANDOFF_NOTICE = 'Thanks for your question — our team will reply here shortly.'
+// The FAQ chatbot's hourly run budgets (the shopping assistant has its own in lib/commerce/shopping-assistant.ts)
+const FAQ_CONTACT_RUNS_PER_HOUR = 60
+const FAQ_ORG_RUNS_PER_HOUR = 1200
+const HOUR_MS = 60 * 60 * 1000
 
 async function downloadFacebookMedia(
   mediaId: string,
@@ -290,9 +299,11 @@ async function processEvent(
       console.log('[Facebook Webhook POST] Received status callback, acknowledging...')
 
       // In-chat payment results arrive here, as a status of type "payment" (not as a message).
-      // Without this, a customer could pay and the order would stay "payment pending" forever.
+      // Without this, a customer could pay and the order would stay "payment pending" forever. The
+      // store switch is not consulted: it stops new cart orders, not the capture of an order placed
+      // while the store was on, and a capture acknowledged unprocessed is lost (Meta does not resend it)
       const paymentStatuses = (Array.isArray(value.statuses) ? value.statuses : []).filter((item: any) => item?.type === 'payment')
-      if (paymentStatuses.length > 0 && orgData.enable_commerce !== false) {
+      if (paymentStatuses.length > 0) {
         try {
           for (const paymentStatus of paymentStatuses) {
             console.log('[Facebook Webhook POST] Processing payment status:', paymentStatus.status, 'for reference', paymentStatus.payment?.reference_id)
@@ -675,7 +686,10 @@ async function processEvent(
     }
 
     // ── Commerce Wing: Process in-chat e-commerce events ───────────────
-    if (orgData.enable_commerce !== false) {
+    // The store switch stops new cart orders only (with it off, a cart is kept as a plain message).
+    // An address, a payment or a checkout button for an order placed while the store was on is still
+    // handled; with no order waiting, a tap falls through like any other message
+    if (orgData.enable_commerce !== false || type !== 'order') {
       // A. Native cart order from WhatsApp
       if (type === 'order' && message.order) {
         try {
@@ -774,6 +788,7 @@ async function processEvent(
         console.error('[Facebook Webhook Flow] Could not save the form answers:', error.message)
       }
     }
+    let handedToAi = false // a flow delegated this message to the knowledge assistant
     if (conversation.auto_reply_enabled !== false) {
       try {
         const { count: inboundCount, error: countError } = await supabase.from('messages').select('id', { count: 'exact', head: true })
@@ -798,13 +813,18 @@ async function processEvent(
               if (!response.ok || data.error || !data.messages?.[0]?.id) throw new Error(data.error?.message || 'Meta did not accept the flow message')
               sid = `FB_${data.messages[0].id}`
             } catch (error: any) { failure = error.message }
+            // Stored with the choices offered, so an agent reading the chat sees what the customer was asked
             const { error } = await supabase.from('messages').insert({ organization_id: orgId, conversation_id: conversation.id,
-              sender_type: 'user', body: reply.body, twilio_message_sid: sid, status: failure ? 'failed' : 'sent', error_message: failure })
+              sender_type: 'user', body: describeFlowReply(reply), twilio_message_sid: sid, status: failure ? 'failed' : 'sent', error_message: failure })
             if (error) throw error
             if (failure) throw new Error(failure)
+            // The inbox sorts chats by their last message, which is now this reply; nothing else about the chat changes
+            const { error: bumpError } = await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id).eq('organization_id', orgId)
+            if (bumpError) console.warn('[Facebook Webhook Flow] Could not update the chat time:', bumpError.message)
           },
         })
         if (flowExec.handled) return NextResponse.json({ success: true, handled_by: 'whatsapp_flow_engine', action: flowExec.actionTaken })
+        handedToAi = Boolean(flowExec.isRagFallback)
       } catch (error: any) {
         // Only lease contention is worth a retry from Meta. Anything else has already been recorded on
         // the session (FAILED, customer apologised to), so the assistants below answer instead of Meta
@@ -821,6 +841,44 @@ async function processEvent(
     // assistants below keep none, so this is where a redelivery stops
     if (redelivered) return NextResponse.json({ success: true, redelivered: true })
 
+    // One text from the bot (a greeting, an FAQ answer, the hand-off notice), sent and then stored
+    // with its outcome: a send Meta refused, or that timed out, shows in the inbox as failed, not as
+    // delivered with a grey tick
+    const sendBotText = async (body: string, what: string): Promise<{ sid: string | null; failure: string | null }> => {
+      let sid: string | null = null
+      let failure: string | null = null
+      try {
+        if (!whatsappPhoneNumberId || !whatsappApiToken) throw new Error('WhatsApp Cloud API credentials are missing in Settings')
+        const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
+          body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phoneNumber.replace('+', '').trim(), type: 'text', text: { body } }),
+          signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
+        })
+        if (!fbRes.ok) throw new Error(`Meta refused the message: ${fbRes.status} ${await fbRes.text()}`)
+        const fbData = await fbRes.json()
+        sid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+        console.log(`[Facebook Webhook Chatbot] Sent Facebook message (${what}): ${sid}`)
+      } catch (sendErr: any) {
+        failure = sendErr?.message || String(sendErr)
+        console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message (${what}):`, failure)
+      }
+      const { error } = await supabase.from('messages').insert([{ organization_id: orgId, conversation_id: conversation.id,
+        sender_type: 'user', body, twilio_message_sid: sid, status: failure ? 'failed' : 'sent', error_message: failure }])
+      if (error) console.error(`[Facebook Webhook Chatbot] Could not store the ${what}:`, error.message)
+      await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id).eq('organization_id', orgId)
+      return { sid, failure }
+    }
+    let answered = false
+    // The end of this message, once everything that could answer it has had its chance. A customer
+    // whose question a flow handed to the AI is told the team will reply, rather than hearing nothing;
+    // a message no flow asked the AI about is left for an agent, as before
+    const finish = async (extra: Record<string, any> = {}) => {
+      const noticed = handedToAi && !answered
+      if (noticed) await sendBotText(HANDOFF_NOTICE, 'hand-off notice')
+      return NextResponse.json({ success: true, messageId: savedMessage.id, ...extra, ...(noticed ? { handoff_notice: true } : {}) })
+    }
+
     if (
       orgData.enable_ai !== false &&
       conversation.auto_reply_enabled !== false &&
@@ -830,59 +888,8 @@ async function processEvent(
       const greetingResult = classifyGreeting(messageBody)
       if (greetingResult.isGreeting) {
         console.log(`[Facebook Webhook Chatbot] Greeting detected (${greetingResult.category}), sent instant reply without OpenAI`)
-
-        let fbMessageSid = null
-        if (whatsappPhoneNumberId && whatsappApiToken) {
-          try {
-            const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${whatsappApiToken}`
-              },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to: phoneNumber.replace('+', '').trim(),
-                type: 'text',
-                text: {
-                  body: greetingResult.suggestedReply
-                }
-              }),
-              signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
-            })
-
-            if (fbRes.ok) {
-              const fbData = await fbRes.json()
-              fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
-              console.log(`[Facebook Webhook Chatbot] Sent Facebook message: ${fbMessageSid}`)
-            } else {
-              const errText = await fbRes.text()
-              console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message: ${fbRes.status} ${errText}`)
-            }
-          } catch (sendErr: any) {
-            console.error('[Facebook Webhook Chatbot] Failed to send Facebook message:', sendErr.message)
-          }
-        }
-
-        await supabase
-          .from('messages')
-          .insert([
-            {
-              organization_id: orgId,
-              conversation_id: conversation.id,
-              sender_type: 'user',
-              body: greetingResult.suggestedReply,
-              twilio_message_sid: fbMessageSid
-            }
-          ])
-
-        await supabase
-          .from('conversations')
-          .update({ last_message_at: new Date().toISOString() })
-          .eq('id', conversation.id)
-
-        return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'greeting_classifier' })
+        answered = !(await sendBotText(greetingResult.suggestedReply, 'greeting')).failure
+        return finish({ handled_by: 'greeting_classifier' })
       }
     }
 
@@ -932,6 +939,17 @@ async function processEvent(
           // The FAQ chatbot still answers
           console.error('[Facebook Webhook Chatbot] Shopping assistant failed:', assistantErr?.message || assistantErr)
         }
+      }
+
+      // The FAQ chatbot makes up to three OpenAI calls per message, so one customer, and one workspace,
+      // get so many runs an hour; past that the message waits for an agent, silently unless a flow
+      // handed it to the AI (then finish() sends the notice). The limiter counts per server instance
+      // (Vercel runs several at once), so the real ceiling is a small multiple of these
+      const withinFaqBudget = checkRateLimit(`faq:contact:${orgId}:${contact.id}`, FAQ_CONTACT_RUNS_PER_HOUR, HOUR_MS).allowed
+        && checkRateLimit(`faq:org:${orgId}`, FAQ_ORG_RUNS_PER_HOUR, HOUR_MS).allowed
+      if (!withinFaqBudget) {
+        console.warn(`[Facebook Webhook Chatbot] FAQ chatbot hourly limit reached for contact ${contact.id} in organization ${orgId}; no AI reply`)
+        return finish({ handled_by: 'faq_rate_limit' })
       }
 
       try {
@@ -1208,53 +1226,8 @@ ${LANGUAGE_RULES}
               if (botReply) {
                 console.log(`[Facebook Webhook Chatbot] Generated reply: "${botReply}" (isRiseTicket: ${isRiseTicket})`)
 
-                // 6. Send reply via Facebook Cloud API
-                let fbMessageSid = null
-                if (whatsappPhoneNumberId && whatsappApiToken) {
-                  try {
-                    const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${whatsappApiToken}`
-                      },
-                      body: JSON.stringify({
-                        messaging_product: 'whatsapp',
-                        recipient_type: 'individual',
-                        to: phoneNumber.replace('+', '').trim(),
-                        type: 'text',
-                        text: {
-                          body: botReply
-                        }
-                      }),
-                      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
-                    })
-
-                    if (fbRes.ok) {
-                      const fbData = await fbRes.json()
-                      fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
-                      console.log(`[Facebook Webhook Chatbot] Sent Facebook message: ${fbMessageSid}`)
-                    } else {
-                      const errText = await fbRes.text()
-                      console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message: ${fbRes.status} ${errText}`)
-                    }
-                  } catch (sendErr: any) {
-                    console.error('[Facebook Webhook Chatbot] Failed to send Facebook message:', sendErr.message)
-                  }
-                }
-
-                // 7. Save bot reply in messages table
-                await supabase
-                  .from('messages')
-                  .insert([
-                    {
-                      organization_id: orgId,
-                      conversation_id: conversation.id,
-                      sender_type: 'user',
-                      body: botReply,
-                      twilio_message_sid: fbMessageSid
-                    }
-                  ])
+                // 6. Send the reply via the Cloud API, 7. store it with its outcome, 8. move the chat up the inbox
+                answered = !(await sendBotText(botReply, 'FAQ answer')).failure
 
                 // Track chatbot analytics (fire-and-forget)
                 trackChatbotEvent({
@@ -1275,12 +1248,6 @@ ${LANGUAGE_RULES}
                 })
 
                 // Note: Greeting-handled messages are tracked separately in the greeting classifier block
-
-                // 8. Update conversation timestamp
-                await supabase
-                  .from('conversations')
-                  .update({ last_message_at: new Date().toISOString() })
-                  .eq('id', conversation.id)
 
                 // 9. Generate a ticket if chatbot fallbacks or isRiseTicket is true
                 if (isRiseTicket) {
@@ -1346,7 +1313,7 @@ ${LANGUAGE_RULES}
       }
     }
 
-    return NextResponse.json({ success: true, messageId: savedMessage.id })
+    return finish()
   } catch (error: any) {
     console.error('[Facebook Webhook] POST Webhook error:', error)
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 })
