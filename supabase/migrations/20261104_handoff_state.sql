@@ -4,17 +4,24 @@
 -- every manager reply produced as well (see lib/handoff.ts). Safe to run more than once.
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS handed_off_at timestamptz;
 
--- Chats a flow handed to the team queue that nobody has taken yet keep their place in the queue
-UPDATE conversations c
-   SET handed_off_at = COALESCE(s.last_interaction_at, now())
-  FROM flow_sessions s
- WHERE s.conversation_id = c.id
-   AND s.organization_id = c.organization_id
-   AND s.state_data->>'handed_off' = 'true'
-   AND s.state_data->>'assigned_user_id' IS NULL
-   AND c.assigned_to IS NULL
-   AND c.auto_reply_enabled = false
-   AND c.handed_off_at IS NULL;
+-- Chats a flow handed to the team queue that nobody has taken yet keep their place in the queue.
+-- Only where the Flow Builder's tables exist (scripts/db-migration-v31-flows.js): without them
+-- there were no flow hand-offs to carry over.
+DO $$
+BEGIN
+  IF to_regclass('public.flow_sessions') IS NOT NULL THEN
+    UPDATE conversations c
+       SET handed_off_at = COALESCE(s.last_interaction_at, now())
+      FROM flow_sessions s
+     WHERE s.conversation_id = c.id
+       AND s.organization_id = c.organization_id
+       AND s.state_data->>'handed_off' = 'true'
+       AND s.state_data->>'assigned_user_id' IS NULL
+       AND c.assigned_to IS NULL
+       AND c.auto_reply_enabled = false
+       AND c.handed_off_at IS NULL;
+  END IF;
+END $$;
 
 -- The queue index follows the new rule (the earlier one covered the inferred rule)
 DROP INDEX IF EXISTS idx_conversations_handed_off;
