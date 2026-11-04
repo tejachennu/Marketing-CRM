@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { isStatusProgress } from '@/lib/meta-webhook'
+import { describeTwilioRefusal, verifyTwilioRequest } from '@/lib/twilio-webhook'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -33,6 +34,13 @@ export async function POST(
     const orgId = uuidMatch[0]
 
     const body = await request.text()
+    // Only Twilio, signing with this workspace's auth token, may move its statuses
+    const { data: org } = await getSupabaseClient().from('organizations').select('twilio_auth_token').eq('id', orgId).maybeSingle()
+    const signed = verifyTwilioRequest(request, body, [org?.twilio_auth_token, process.env.TWILIO_AUTH_TOKEN])
+    if (!signed.ok) {
+      console.warn(`[Status Webhook] Refused a request for Org ${orgId}: ${describeTwilioRefusal(signed.reason)}`)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
     const paramsMap = new URLSearchParams(body)
 
     const messageSid = paramsMap.get('MessageSid') || ''

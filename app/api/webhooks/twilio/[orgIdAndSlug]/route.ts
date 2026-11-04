@@ -6,6 +6,7 @@ import path from 'path'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
 import { classifyGreeting } from '@/lib/greeting-classifier'
+import { describeTwilioRefusal, verifyTwilioRequest } from '@/lib/twilio-webhook'
 
 const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
 
@@ -133,8 +134,13 @@ export async function POST(
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
-    // Parse the incoming Twilio webhook body
+    // Parse the incoming Twilio webhook body, and only once Twilio is known to have sent it
     const body = await request.text()
+    const signed = verifyTwilioRequest(request, body, [orgData.twilio_auth_token, process.env.TWILIO_AUTH_TOKEN])
+    if (!signed.ok) {
+      console.warn(`[Twilio Webhook] Refused a request for Org ${orgId}: ${describeTwilioRefusal(signed.reason)}`)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
     const paramsMap = new URLSearchParams(body)
     const from = paramsMap.get('From') || ''
     const to = paramsMap.get('To') || ''

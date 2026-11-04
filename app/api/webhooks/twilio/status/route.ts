@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { describeTwilioRefusal, verifyTwilioRequest } from '@/lib/twilio-webhook'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -21,6 +22,12 @@ function getSupabaseClient() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text()
+    // This address names no workspace, so only the platform's own Twilio account may call it
+    const signed = verifyTwilioRequest(request, body, [process.env.TWILIO_AUTH_TOKEN])
+    if (!signed.ok) {
+      console.warn(`[v0] Refused a Twilio status callback: ${describeTwilioRefusal(signed.reason)}`)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
     const params = new URLSearchParams(body)
 
     const messageSid = params.get('MessageSid') || ''

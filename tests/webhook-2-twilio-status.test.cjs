@@ -30,12 +30,13 @@ function fakeDb() {
     seed(table, list) { rows(table).push(...list) },
     from(table) {
       const filters = []
-      const state = { op: 'select', payload: null, columns: '*' }
+      const state = { op: 'select', payload: null, columns: '*', single: false }
       const builder = {
         select(requested = '*') { state.columns = requested; return builder },
         update(data) { state.op = 'update'; state.payload = data; return builder },
         eq(column, value) { filters.push((row) => row[column] === value); return builder },
         in(column, values) { filters.push((row) => values.includes(row[column])); return builder },
+        maybeSingle() { state.single = true; return builder },
         then(resolve, reject) { return Promise.resolve().then(run).then(resolve, reject) },
       }
       const project = (row) => {
@@ -53,7 +54,8 @@ function fakeDb() {
       function run() {
         const matching = rows(table).filter((row) => filters.every((test) => test(row)))
         if (state.op === 'update') { for (const row of matching) Object.assign(row, state.payload); return { data: matching, error: null } }
-        return { data: matching.map(project), error: null }
+        const projected = matching.map(project)
+        return { data: state.single ? projected[0] || null : projected, error: null }
       }
       return builder
     },
@@ -67,12 +69,16 @@ stub(require.resolve('@supabase/supabase-js', { paths: [PROJECT] }), { createCli
 const { POST } = require(path.join(PROJECT, 'app/api/webhooks/twilio/[orgIdAndSlug]/status/route.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 
-/** Twilio posts the status as a form to the workspace's callback address. */
-const callback = async (org, fields) => {
-  const res = await POST(
-    new NextRequest(`https://wamacrm.example.com/api/webhooks/twilio/${org}/status`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() }),
-    { params: { orgIdAndSlug: org } }
-  )
+const twilio = require(require.resolve('twilio', { paths: [PROJECT] }))
+const TOKENS = { [ORG]: 'org-auth-token', [OTHER_ORG]: 'other-auth-token' }
+
+/** Twilio posts the status as a form to the workspace's callback address, signed with the account's auth token. */
+const callback = async (org, fields, { token = TOKENS[org], signature } = {}) => {
+  const url = `https://wamacrm.example.com/api/webhooks/twilio/${org}/status`
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+  const signed = signature !== undefined ? signature : token ? twilio.getExpectedTwilioSignature(token, url, fields) : null
+  if (signed) headers['X-Twilio-Signature'] = signed
+  const res = await POST(new NextRequest(url, { method: 'POST', headers, body: new URLSearchParams(fields).toString() }), { params: { orgIdAndSlug: org } })
   return res.status
 }
 const seed = () => {
@@ -82,6 +88,7 @@ const seed = () => {
     { id: 'out-2', organization_id: ORG, twilio_message_sid: 'SM2', status: 'sent', error_message: null },
     { id: 'elsewhere', organization_id: OTHER_ORG, twilio_message_sid: 'SM1', status: 'sent', error_message: null },
   ])
+  db.seed('organizations', [{ id: ORG, twilio_auth_token: TOKENS[ORG] }, { id: OTHER_ORG, twilio_auth_token: TOKENS[OTHER_ORG] }])
   db.seed('campaigns', [{ id: 'camp-1', organization_id: ORG }, { id: 'camp-9', organization_id: OTHER_ORG }])
   db.seed('campaign_logs', [
     { id: 'log-1', campaign_id: 'camp-1', status: 'SENT', error_message: null, message_sid: 'SM1' },
@@ -144,4 +151,45 @@ test("Twilio status: a callback at another workspace's address never touches thi
   assert.equal(await callback(ORG, {}), 200)
   assert.equal(message('out-1').status, 'sent')
   assert.equal(log('log-1').status, 'SENT')
+})
+
+test('Twilio status: only a callback Twilio signed with this workspace\'s auth token changes anything', async () => {
+  const { message, log } = seed()
+  const delivered = { MessageSid: 'SM1', MessageStatus: 'delivered' }
+  assert.equal(await callback(ORG, delivered, { token: null }), 403)                    // unsigned
+  assert.equal(await callback(ORG, delivered, { token: TOKENS[OTHER_ORG] }), 403)       // another workspace's account
+  assert.equal(await callback(ORG, delivered, { signature: 'forged' }), 403)
+  // Signed for other fields than the ones posted
+  const url = `https://wamacrm.example.com/api/webhooks/twilio/${ORG}/status`
+  assert.equal(await callback(ORG, delivered, { signature: twilio.getExpectedTwilioSignature(TOKENS[ORG], url, { MessageSid: 'SM1', MessageStatus: 'sent' }) }), 403)
+  assert.equal(message('out-1').status, 'sent')
+  assert.equal(log('log-1').status, 'SENT')
+
+  // A workspace without a saved token: nothing can be checked, so nothing is accepted
+  db.tables.organizations[0].twilio_auth_token = null
+  assert.equal(await callback(ORG, delivered, { token: TOKENS[ORG] }), 403)
+  assert.equal(message('out-1').status, 'sent')
+
+  // The documented switch for local tunnels
+  process.env.TWILIO_WEBHOOK_ALLOW_UNSIGNED = 'true'
+  try {
+    assert.equal(await callback(ORG, delivered, { token: null }), 200)
+    assert.equal(message('out-1').status, 'delivered')
+  } finally {
+    delete process.env.TWILIO_WEBHOOK_ALLOW_UNSIGNED
+  }
+})
+
+test('Twilio status: a proxy in front of the app does not break the signature', async () => {
+  const { message } = seed()
+  const fields = { MessageSid: 'SM2', MessageStatus: 'delivered' }
+  // Twilio signed the public address; the request arrives at an internal one with forwarding headers
+  const publicUrl = `https://crm.example.com/api/webhooks/twilio/${ORG}/status`
+  const request = new NextRequest(`http://10.0.0.5:3000/api/webhooks/twilio/${ORG}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Forwarded-Host': 'crm.example.com', 'X-Forwarded-Proto': 'https', 'X-Twilio-Signature': twilio.getExpectedTwilioSignature(TOKENS[ORG], publicUrl, fields) },
+    body: new URLSearchParams(fields).toString(),
+  })
+  assert.equal((await POST(request, { params: { orgIdAndSlug: ORG } })).status, 200)
+  assert.equal(message('out-2').status, 'delivered')
 })

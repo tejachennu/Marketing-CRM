@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { describeTwilioRefusal, verifyTwilioRequest } from '@/lib/twilio-webhook'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
@@ -216,6 +217,13 @@ export async function POST(request: NextRequest) {
         console.error('[v0] Error checking org WhatsApp provider:', dbErr)
         // Non-fatal, continue with defaults
       }
+    }
+
+    // Nothing is stored until Twilio is known to have sent this, signed with the account it belongs to
+    const signed = verifyTwilioRequest(request, body, [orgTwilioAuthToken, process.env.TWILIO_AUTH_TOKEN])
+    if (!signed.ok) {
+      console.warn(`[v0] Refused a Twilio webhook: ${describeTwilioRefusal(signed.reason)}`)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
     }
 
     // Download Twilio media using org-scoped credentials if available
