@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
-import { getMetaCredentials, metaRequest, uploadNativeFlow } from '@/lib/flows/meta-client'
+import { getMetaCredentials, metaRequest, uploadNativeFlow, type MetaCredentials } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
-import { formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
+import { getExpressFee } from '@/lib/commerce/commerce-utils'
+import {
+  STANDARD_ADDRESS_FORM_NAME, expressOptionTitle, getExpressOptionTitle, isStandardAddressForm, nextAddressFormName,
+  type AddressFormReport,
+} from '@/lib/commerce/go-live-checks'
 import { describeCatalogError, explainCommerceError, flattenPaymentConfigurations, setCommerceSettings } from '@/lib/commerce/meta-catalog'
 
 /**
@@ -12,8 +16,7 @@ import { describeCatalogError, explainCommerceError, flattenPaymentConfiguration
  */
 function addressFormScreens(org: any) {
   const screens = structuredClone(NATIVE_FLOW_TEMPLATES.SHIPPING_ADDRESS.screens) as any[]
-  const fee = getExpressFee(org)
-  const expressTitle = (fee > 0 ? `Express delivery (+${formatMoney(fee, org.currency)})` : 'Express delivery').slice(0, 30)
+  const expressTitle = expressOptionTitle(getExpressFee(org), org.currency)
   for (const screen of screens) {
     for (const field of screen.layout?.children || []) {
       if (field.name !== 'delivery_speed') continue
@@ -24,6 +27,40 @@ function addressFormScreens(org: any) {
     }
   }
   return screens
+}
+
+/**
+ * What a form says for express delivery, read back from Meta. A published form never changes, so
+ * this is what customers see whatever fee the store charges today.
+ */
+async function readAddressForm(credentials: MetaCredentials, flowId: string): Promise<AddressFormReport> {
+  try {
+    const assets = await metaRequest(credentials, `${flowId}/assets`)
+    const asset = (assets?.data || []).find((item: any) => item.asset_type === 'FLOW_JSON') || assets?.data?.[0]
+    const url = String(asset?.download_url || '')
+    if (!url.startsWith('https://')) throw new Error('Meta did not return the form file')
+    const response = await fetch(url, { signal: AbortSignal.timeout(20000) })
+    if (!response.ok) throw new Error(`Meta returned HTTP ${response.status} for the form file`)
+    return { id: flowId, expressLabel: getExpressOptionTitle(await response.json()), error: null }
+  } catch (error) {
+    const described = describeCatalogError(error)
+    // The catalog wording does not fit a form; for anything but the connection, Meta's own message does
+    const connection = described.kind === 'token' || described.kind === 'timeout' || described.kind === 'rate_limit'
+    return { id: flowId, expressLabel: null, error: connection ? described.message : String((error as any)?.message || described.message) }
+  }
+}
+
+/** Every form on the WhatsApp account, following Meta's paging. */
+async function listFlows(credentials: MetaCredentials): Promise<Array<{ id: string; name: string; status: string }>> {
+  const flows: Array<{ id: string; name: string; status: string }> = []
+  let after = ''
+  for (let page = 0; page < 10; page++) {
+    const data = await metaRequest(credentials, `${credentials.businessAccountId}/flows?fields=id,name,status&limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`)
+    for (const flow of data?.data || []) flows.push({ id: String(flow.id), name: String(flow.name || ''), status: String(flow.status || '').toUpperCase() })
+    after = data?.paging?.next && data?.paging?.cursors?.after ? String(data.paging.cursors.after) : ''
+    if (!after) break
+  }
+  return flows
 }
 
 function getSupabase() {
@@ -74,6 +111,7 @@ export async function GET(request: NextRequest) {
     const credentials = getMetaCredentials(org)
     const wabaId = credentials.businessAccountId
     const phoneNumberId = credentials.phoneNumberId
+    const addressFlowId = String(org.commerce_address_flow_id || '').trim()
 
     // The connection first: an expired token would otherwise show up as empty lists everywhere below
     let account: any
@@ -96,7 +134,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const [catalogs, payments, flows, settings] = await Promise.all([
+    const [catalogs, payments, flows, settings, addressForm] = await Promise.all([
       // The catalog connected to the WhatsApp account, read with the WhatsApp connection (a catalog
       // connection is granted catalogs only, not the account)
       attempt(async () => (await metaRequest(credentials, `${wabaId}/product_catalogs?fields=id,name,vertical,product_count`))?.data || []),
@@ -105,6 +143,8 @@ export async function GET(request: NextRequest) {
       phoneNumberId
         ? attempt(async () => (await metaRequest(credentials, `${phoneNumberId}/whatsapp_commerce_settings`))?.data?.[0] || null)
         : Promise.resolve({ value: null, error: 'No WhatsApp number is connected.' }),
+      // What the address form in use says, so the Order flow tab can compare it with the fee charged
+      addressFlowId ? readAddressForm(credentials, addressFlowId) : Promise.resolve(null),
     ])
 
     return NextResponse.json({
@@ -122,6 +162,7 @@ export async function GET(request: NextRequest) {
       flowsError: flows.error,
       commerceSettings: settings.value,
       commerceSettingsError: settings.error,
+      addressForm,
     })
   } catch (err: any) {
     console.error('[API Commerce Meta Detect GET] Error:', err)
@@ -157,8 +198,9 @@ export async function POST(request: NextRequest) {
 
     const credentials = getMetaCredentials(org)
 
-    // Action A: 1-Click Deploy & Publish Standard Delivery Address Flow
-    if (action === 'deploy_address_flow') {
+    // Action A: publish the standard delivery address form, or a new version of it when the one in
+    // use no longer shows the express charge the store applies ("republish" asks for that outright)
+    if (action === 'deploy_address_flow' || action === 'republish_address_flow') {
       const template = NATIVE_FLOW_TEMPLATES.SHIPPING_ADDRESS
       if (!template) {
         throw new Error('SHIPPING_ADDRESS template not found')
@@ -172,22 +214,50 @@ export async function POST(request: NextRequest) {
         if (error) throw error
       }
 
-      // Deploying twice must not create a second flow: Meta rejects duplicate flow names,
-      // which used to leave a half-created draft that could never be published.
-      let existingId: string | null = org.commerce_address_flow_id || null
-      if (existingId) {
+      const expectedLabel = expressOptionTitle(getExpressFee(org), org.currency)
+      const linkedId: string | null = org.commerce_address_flow_id || null
+      // The draft to finish, when the linked form is one. A published form is immutable on Meta: it
+      // stays in use until the new version is published, and the store is only then pointed at it.
+      let draftId: string | null = null
+      let name = STANDARD_ADDRESS_FORM_NAME
+      let replacing = false
+      if (linkedId) {
         try {
-          const remote = await metaRequest(credentials, `${existingId}?fields=id,status`)
+          const remote = await metaRequest(credentials, `${linkedId}?fields=id,name,status`)
+          const standard = isStandardAddressForm(remote.name)
           if (remote.status === 'PUBLISHED') {
-            return NextResponse.json({
-              success: true,
-              flowId: existingId,
-              message: 'The WhatsApp Delivery Address Flow is already published on Meta.',
-            })
+            const current = standard ? await readAddressForm(credentials, linkedId) : null
+            const upToDate = Boolean(current && !current.error && current.expressLabel === expectedLabel)
+            // "Create the standard form" leaves a form it could not read alone; a republish does not
+            if (upToDate || (standard && current?.error && action === 'deploy_address_flow')) {
+              return NextResponse.json({
+                success: true,
+                flowId: linkedId,
+                unchanged: true,
+                message: 'The WhatsApp Delivery Address Flow is already published on Meta and shows the current express delivery charge.',
+              })
+            }
+            replacing = true
+          } else if (remote.status === 'DRAFT' && standard) {
+            draftId = linkedId
+            name = String(remote.name)
           }
-          if (remote.status !== 'DRAFT') existingId = null // deprecated or blocked: start a new one
+          // Deprecated, blocked or someone else's form: a new standard one takes its place
         } catch {
-          existingId = null // the saved ID no longer exists on this WhatsApp account
+          // The saved ID no longer exists on this WhatsApp account
+        }
+      }
+
+      if (!draftId) {
+        // Meta refuses a name already used on the account, so a new version gets the next free one.
+        // A draft left by an attempt that did not publish is finished rather than duplicated.
+        const flows = await listFlows(credentials)
+        const leftover = flows.find((flow) => flow.status === 'DRAFT' && flow.id !== linkedId && isStandardAddressForm(flow.name))
+        if (leftover) {
+          draftId = leftover.id
+          name = leftover.name
+        } else {
+          name = nextAddressFormName(flows.map((flow) => flow.name))
         }
       }
 
@@ -197,13 +267,14 @@ export async function POST(request: NextRequest) {
       const uploadId = await uploadNativeFlow(
         credentials,
         {
-          name: 'WhatsApp Store Delivery Address',
+          name,
           categories: [template.category],
-          flow_id_meta: existingId,
+          flow_id_meta: draftId,
         },
         compiledJson,
-        // Save the draft ID as soon as Meta returns it, so a failed publish can be retried
-        saveFlowId
+        // Without a published form, the draft ID is saved as soon as Meta returns it, so a failed
+        // publish can be retried. A store with one keeps sending it until the new version is live.
+        replacing ? async () => {} : saveFlowId
       )
 
       console.log(`[Meta Deploy Flow] Publishing flow ID: ${uploadId}...`)
@@ -215,7 +286,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         flowId: uploadId,
-        message: 'Successfully created, uploaded, and published WhatsApp Delivery Address Flow on Meta!',
+        replaced: replacing ? linkedId : null,
+        message: replacing
+          ? `“${name}” is published with the current express delivery charge and is sent from now on.`
+          : 'Successfully created, uploaded, and published WhatsApp Delivery Address Flow on Meta!',
       })
     }
 

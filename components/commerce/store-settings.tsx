@@ -5,6 +5,7 @@ import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, Refresh
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
+import { MAX_STORE_AMOUNT } from '@/lib/organization-access'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
 
 const GATEWAY_LABELS: Record<string, string> = {
@@ -333,7 +334,11 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       set({ commerce_address_flow_id: data.flowId })
       onSaved({ commerce_address_flow_id: data.flowId })
       detectFromMeta(true)
-      showToast('success', 'The delivery address form is published and will be sent after each order.')
+      showToast('success', data.replaced
+        ? 'A new version of the delivery address form is published with the current express delivery charge.'
+        : data.unchanged
+          ? 'The delivery address form is already published and shows the current express delivery charge.'
+          : 'The delivery address form is published and will be sent after each order.')
     } catch (err: any) {
       alert({ title: 'Address form not published', message: err.message })
     } finally {
@@ -366,8 +371,9 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     const freeAbove = Number(form.commerce_free_shipping_threshold)
     const expressFee = Number(form.commerce_express_fee)
     const amounts = [shippingFee, freeAbove, ...(expressFeeEditable ? [expressFee] : [])]
-    if (amounts.some((amount) => !Number.isFinite(amount) || amount < 0)) {
-      showToast('error', 'Shipping amounts must be 0 or more.')
+    // The server checks the same; this only spares a round trip
+    if (amounts.some((amount) => !Number.isFinite(amount) || amount < 0 || amount > MAX_STORE_AMOUNT)) {
+      showToast('error', `Shipping amounts must be between 0 and ${MAX_STORE_AMOUNT.toLocaleString('en-US')}.`)
       return
     }
 
@@ -684,7 +690,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           <p className={hintClass}>
             {detected?.flowsError
               ? `Meta did not list your forms: ${detected.flowsError}`
-              : 'Your published WhatsApp forms. “Create the standard form” publishes a ready-made address form and selects it; it shows the express delivery charge set below, so save the shipping section first if you change that. A custom form must start on a screen named SHIPPING_DETAILS.'}
+              : 'Your published WhatsApp forms. “Create the standard form” publishes a ready-made address form and selects it; it shows the express delivery charge set below, so save the shipping section first if you change that. A published form never changes on Meta: when the charge changes later, the Order flow tab offers to publish a new version. A custom form must start on a screen named SHIPPING_DETAILS.'}
           </p>
         </div>
       </section>

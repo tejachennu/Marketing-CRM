@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { planOrganizationUpdate, toSafeOrganization } from '@/lib/organization-access'
+import { isMissingColumnError, planOrganizationUpdate, toSafeOrganization } from '@/lib/organization-access'
 import { can, describeDenied } from '@/lib/rbac'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -72,7 +72,13 @@ export async function PATCH(request: NextRequest) {
       .select('*')
       .maybeSingle()
 
-    if (error) throw error
+    if (error) {
+      // A setting whose column the team has not added yet is a known state, not a server fault
+      if (isMissingColumnError(error)) {
+        return NextResponse.json({ error: 'The database migration for this setting has not been applied yet.' }, { status: 400 })
+      }
+      throw error
+    }
     if (!organization) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }

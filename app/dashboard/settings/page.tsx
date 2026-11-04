@@ -167,6 +167,8 @@ export default function SettingsPage() {
   const [showOpenaiKey, setShowOpenaiKey] = useState(false)
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
+  const [whatsappAppSecret, setWhatsappAppSecret] = useState('')
+  const [showWhatsappAppSecret, setShowWhatsappAppSecret] = useState(false)
   const [currency, setCurrency] = useState('USD')
   const [ticketEmailEnabled, setTicketEmailEnabled] = useState(false)
   const [ticketEmailRecipients, setTicketEmailRecipients] = useState<string[]>([])
@@ -821,6 +823,7 @@ export default function SettingsPage() {
         setWhatsappGraphApiVersion(orgData.whatsapp_graph_api_version || 'v25.0')
         setWhatsappPhoneNumberId(orgData.whatsapp_phone_number_id || '')
         setWhatsappBusinessAccountId(orgData.whatsapp_business_account_id || '')
+        setWhatsappAppSecret(orgData.whatsapp_app_secret || '')
         setCurrency(orgData.currency || 'USD')
         setTicketEmailEnabled(orgData.ticket_email_enabled === true)
         setTicketEmailRecipients(orgData.ticket_email_recipients || [])
@@ -836,7 +839,12 @@ export default function SettingsPage() {
     if (!organization) return
     setSavingCredentials(true)
     try {
+      // The app secret column exists only after its migration: it is sent when it does, or when a
+      // value was typed, so the API says the migration is missing instead of the value being lost
+      const sendsAppSecret = whatsappProvider === 'facebook' && ('whatsapp_app_secret' in organization || whatsappAppSecret.trim() !== '')
+      const appSecretUpdate: Record<string, any> = sendsAppSecret ? { whatsapp_app_secret: whatsappAppSecret.trim() || null } : {}
       await saveOrganization({
+          ...appSecretUpdate,
           twilio_account_sid: twilioAccountSid.trim() || null,
           twilio_auth_token: twilioAuthToken.trim() || null,
           twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
@@ -862,6 +870,7 @@ export default function SettingsPage() {
 
       setOrganization({
         ...organization,
+        ...appSecretUpdate,
         twilio_account_sid: twilioAccountSid.trim() || null,
         twilio_auth_token: twilioAuthToken.trim() || null,
         twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
@@ -1559,6 +1568,36 @@ export default function SettingsPage() {
                             </div>
                           </div>
                         </details>
+                      )}
+
+                      {canManageSettings && whatsappProvider === 'facebook' && (
+                        <div>
+                          <label htmlFor="whatsapp-app-secret" className={labelClass}>
+                            Meta app secret
+                          </label>
+                          <div className="relative">
+                            <input
+                              id="whatsapp-app-secret"
+                              type={showWhatsappAppSecret ? 'text' : 'password'}
+                              value={whatsappAppSecret}
+                              onChange={(e) => setWhatsappAppSecret(e.target.value)}
+                              placeholder="Leave empty when connected with Embedded Signup"
+                              autoComplete="off"
+                              className={secretInputClass}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowWhatsappAppSecret(!showWhatsappAppSecret)}
+                              aria-label={showWhatsappAppSecret ? 'Hide the app secret' : 'Show the app secret'}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
+                            >
+                              {showWhatsappAppSecret ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                            Only for WhatsApp numbers connected through your own Meta app (not Embedded Signup). Found under App settings → Basic in Meta for Developers.
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}

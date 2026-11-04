@@ -4,6 +4,7 @@
  */
 
 import { can, describeDenied, type Permission, type RoleSubject } from './rbac'
+import { SUPPORTED_PAYMENT_GATEWAYS } from './commerce/commerce-utils'
 
 // Credentials never leave the server for someone who cannot manage settings
 const SECRET_COLUMN = /(token|secret|password|api_key|private_key|account_sid)/i
@@ -57,6 +58,9 @@ const SETTINGS_FIELDS = [
   'email_provider', 'smtp_host', 'smtp_port', 'smtp_email', 'smtp_password',
   'whatsapp_provider', 'whatsapp_api_token', 'whatsapp_default_phone',
   'whatsapp_graph_api_version', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
+  // Verifies the webhooks of a number connected through the workspace's own Meta app. Exists after
+  // its migration; the settings page sends it only when it does, or when a value was typed
+  'whatsapp_app_secret',
   'currency', 'ticket_email_enabled', 'ticket_email_recipients',
 ]
 
@@ -77,13 +81,59 @@ export const ORGANIZATION_FIELD_PERMISSIONS: Record<string, Permission> = {
   ...Object.fromEntries(AUTOMATION_FIELDS.map((field) => [field, 'automation.manage' as Permission])),
 }
 
+/** The most a store charges for shipping, in its currency. Anything above is a typo, not a fee. */
+export const MAX_STORE_AMOUNT = 1_000_000
+
+const AMOUNT_FIELDS: Record<string, string> = {
+  commerce_default_shipping_fee: 'The shipping fee',
+  commerce_free_shipping_threshold: 'The free shipping threshold',
+  commerce_express_fee: 'The express delivery charge',
+}
+
+/**
+ * A setting's value as it is stored, or the sentence saying why it is refused. Amounts arrive as
+ * numbers or numeric strings and are stored as numbers: the browser's own checks are not relied on.
+ */
+function checkValue(field: string, value: unknown): { ok: true; value: unknown } | { ok: false; error: string } {
+  if (field in AMOUNT_FIELDS) {
+    const amount = typeof value === 'string' ? Number(value.trim() || NaN) : value
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0 || amount > MAX_STORE_AMOUNT) {
+      return { ok: false, error: `${AMOUNT_FIELDS[field]} must be a number between 0 and ${MAX_STORE_AMOUNT.toLocaleString('en-US')}.` }
+    }
+    return { ok: true, value: Math.round(amount * 100) / 100 }
+  }
+  if (field === 'currency') {
+    const code = String(value ?? '').trim().toUpperCase()
+    if (!/^[A-Z]{3}$/.test(code)) return { ok: false, error: 'The currency must be a 3-letter code such as INR or USD.' }
+    return { ok: true, value: code }
+  }
+  if (field === 'commerce_payment_gateway') {
+    const gateway = String(value ?? '').trim().toLowerCase()
+    if (!(SUPPORTED_PAYMENT_GATEWAYS as readonly string[]).includes(gateway)) {
+      return { ok: false, error: `The payment gateway must be one of ${SUPPORTED_PAYMENT_GATEWAYS.join(', ')}.` }
+    }
+    return { ok: true, value: gateway }
+  }
+  return { ok: true, value }
+}
+
+/**
+ * PostgREST's answer when a column from a migration that has not been applied yet is written:
+ * Postgres's 42703 ("column does not exist") or the schema cache's PGRST204.
+ */
+export function isMissingColumnError(error: unknown): boolean {
+  const code = String((error as any)?.code || '')
+  const message = String((error as any)?.message || '')
+  return code === '42703' || code === 'PGRST204' || /column .* does not exist|could not find the '.+' column/i.test(message)
+}
+
 export type OrganizationUpdatePlan =
   | { ok: true; values: Record<string, any> }
   | { ok: false; status: 400 | 403; error: string }
 
 /**
- * Check a requested change against the caller's role.
- * The whole request is refused if any field is not allowed, so a save never applies partially.
+ * Check a requested change against the caller's role and each value against what its setting
+ * accepts. The whole request is refused if any field is not allowed, so a save never applies partially.
  */
 export function planOrganizationUpdate(user: RoleSubject, updates: unknown): OrganizationUpdatePlan {
   if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
@@ -103,5 +153,12 @@ export function planOrganizationUpdate(user: RoleSubject, updates: unknown): Org
     if (!can(user, permission)) return { ok: false, status: 403, error: describeDenied(permission) }
   }
 
-  return { ok: true, values: Object.fromEntries(entries) }
+  const values: Record<string, any> = {}
+  for (const [field, value] of entries) {
+    const checked = checkValue(field, value)
+    if (!checked.ok) return { ok: false, status: 400, error: checked.error }
+    values[field] = checked.value
+  }
+
+  return { ok: true, values }
 }

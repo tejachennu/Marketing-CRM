@@ -93,6 +93,7 @@ export function OrderFlowTab({
   const [checking, setChecking] = useState(false)
   const [orders, setOrders] = useState<RecentOrder[] | null>(null)
   const [enabling, setEnabling] = useState(false)
+  const [republishing, setRepublishing] = useState(false)
 
   const load = useCallback(async () => {
     setChecking(true)
@@ -157,8 +158,37 @@ export function OrderFlowTab({
     showToast('success', 'Store switched on: new carts become orders.')
   }
 
+  /** Meta never changes a published form, so a stale express charge needs a new version of it. */
+  async function republishAddressForm() {
+    setRepublishing(true)
+    try {
+      const res = await fetch('/api/commerce/meta-detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action: 'republish_address_flow' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.flowId) throw new Error(data.error || 'The address form could not be published.')
+      // The server already points the store at the new form; mirror it locally, then read Meta again
+      onSaved({ commerce_address_flow_id: data.flowId })
+      showToast('success', 'A new version of the address form is published with the current express charge.')
+      load()
+    } catch (err: any) {
+      showToast('error', err.message)
+    } finally {
+      setRepublishing(false)
+    }
+  }
+
   function FixButton({ check }: { check: GoLiveCheck }) {
     if (check.state === 'ok' || check.state === 'unknown' || !check.fix) return null
+    if (check.fix === 'republish_address_form') {
+      return (
+        <button type="button" onClick={republishAddressForm} disabled={republishing} className={secondaryButton}>
+          {republishing ? <Loader2 size={13} className="animate-spin" /> : <MapPin size={13} />} Publish new version
+        </button>
+      )
+    }
     if (check.fix === 'enable_cart') {
       return (
         <button type="button" onClick={enableCart} disabled={enabling} className={secondaryButton}>
