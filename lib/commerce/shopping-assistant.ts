@@ -19,8 +19,14 @@ import { ORDER_STATUS_LABELS, formatMoney, getFulfillment, type OrderStatus } fr
 const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
 const MAX_PRODUCTS_SENT = 10
-/** How many products the spelling-tolerant pass reads when the exact search finds nothing. */
-const FUZZY_POOL = 300
+/** How many words of a query get a search of their own, and how many products each search reads. */
+const SEARCH_WORDS = 3
+const SEARCH_PAGE = 100
+/** The spelling-tolerant pass reads the catalog in pages of this size, and this much of it at most. */
+const FUZZY_PAGE = 500
+const FUZZY_POOL = 2_000
+/** Dates are given in the store's own timezone: India unless the organization says otherwise. */
+const DEFAULT_TIMEZONE = 'Asia/Kolkata'
 /** How much of the chat the model reads: the last turns, and no more text than this in all. */
 const MAX_HISTORY_TURNS = 8
 const MAX_HISTORY_CHARS = 4_000
@@ -79,6 +85,11 @@ export function shoppingAssistantEnabled(organization: any): boolean {
   )
 }
 
+/** The order value from which the store ships for free, or 0 when it has no such threshold. */
+function freeShippingThreshold(organization: any): number {
+  return parseFloat(organization?.commerce_free_shipping_threshold) || 0
+}
+
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 const TOOLS = [
@@ -134,6 +145,7 @@ const TOOLS = [
 function systemPrompt(organization: any, customerName: string): string {
   const store = String(organization.name || 'our store')
   const currency = String(organization.currency || 'INR').toUpperCase()
+  const freeShippingAbove = freeShippingThreshold(organization)
   return `You are the WhatsApp shopping assistant of ${store}. Prices are in ${currency}.
 ${customerName ? `The customer's name is ${customerName}.` : ''}
 
@@ -141,10 +153,10 @@ Your job: help the customer find products from the catalog and answer questions 
 
 Rules:
 - Only talk about products that search_products returned. Never invent products, prices, stock, discounts or delivery dates.
-- Quote prices, totals and order details exactly as the tools returned them. Never mention a discount, coupon, promo code, offer, cashback, percentage or anything free: the tools never return such things, and a reply that mentions them is not sent. Questions about offers, discounts or shipping charges go to not_a_shopping_question.
+- Quote prices, totals and order details exactly as the tools returned them. Never mention a discount, coupon, promo code, offer, cashback, percentage or anything free: the tools never return such things, and a reply that mentions them is not sent. Questions about offers, discounts or shipping charges go to not_a_shopping_question.${freeShippingAbove > 0 ? ` The one exception: delivery is free on orders of ${formatMoney(freeShippingAbove, currency)} and above, which you may say in those words.` : ''}
 - When products match, call reply_to_customer with a short message and their product_ids, so the customer gets product cards. Tell them to tap a product, add it to the cart and send the cart to order.
 - If nothing matches, say so briefly and suggest something close from the results, or ask one clarifying question.
-- For order status, call get_my_orders and answer from it (status, items, tracking). If they have no orders, say so.
+- For order status, call get_my_orders and answer from it (status, date placed, items, and the carrier, tracking number and tracking link when there is one). If they have no orders, say so.
 - Anything else (policies, returns, shipping times, payment methods, greetings, complaints) or a request for a person: call not_a_shopping_question.
 - Always finish by calling reply_to_customer or not_a_shopping_question.
 
@@ -167,13 +179,34 @@ export function searchTerms(query: string): string[] {
   )].slice(0, 6)
 }
 
+/**
+ * A word as the pattern of a PostgREST `ilike` filter: the LIKE wildcards in it are escaped so it
+ * matches the word as typed, and it is quoted when it holds a character the filter syntax reserves.
+ */
+export function ilikePattern(word: string): string {
+  const pattern = `%${word.replace(/[\\%_]/g, '\\$&')}%`
+  // Inside quotes PostgREST reads a backslash as an escape, so the LIKE escapes are doubled
+  return /[,()"\s]/.test(pattern) ? `"${pattern.replace(/[\\"]/g, '\\$&')}"` : pattern
+}
+
+/** The filter that finds one word anywhere on a product. */
+export function wordFilter(word: string): string {
+  const pattern = ilikePattern(word)
+  return `title.ilike.${pattern},description.ilike.${pattern},category.ilike.${pattern}`
+}
+
+/** Everything a search can find a word in, as one lowercase text. */
+function searchText(row: any): string {
+  return `${row.title || ''} ${row.description || ''} ${row.category || ''}`.toLowerCase()
+}
+
 /** How well a product matches the search words, spelling-tolerant: title matches count most. */
-export function scoreProduct(product: AssistantProduct, terms: string[]): number {
+export function scoreProduct(product: Pick<AssistantProduct, 'title' | 'description' | 'category'>, terms: string[]): number {
   const rest = `${product.description || ''} ${product.category || ''}`
   return terms.reduce((score, term) => score + 3 * fuzzyWordMatch(term, product.title) + fuzzyWordMatch(term, rest), 0)
 }
 
-/** Rank products by the search words, best first; with words, only products that match at all. */
+/** Rank products by the search words, best first, spelling-tolerant; with words, only products that match at all. */
 export function rankProducts(products: AssistantProduct[], terms: string[], minimum = 0): AssistantProduct[] {
   if (terms.length === 0) return products.slice(0, 10)
   const scored = products
@@ -183,6 +216,17 @@ export function rankProducts(products: AssistantProduct[], terms: string[], mini
   // A broad word ("books") matches everything; keep only what is close to the best match
   const best = scored[0]?.score || 0
   return scored.filter(({ score }) => score >= best / 2).slice(0, 10).map(({ product }) => product)
+}
+
+/**
+ * How close a product comes to a word by sound and spelling, 0 to 1, or 0 when it is not close.
+ * It takes a near match in the title ("premchnd", "gitanjli"); one in the description alone is
+ * too easy to make by chance.
+ */
+function nearSpelling(product: Pick<AssistantProduct, 'title' | 'description' | 'category'>, word: string): number {
+  const score = scoreProduct(product, [word])
+  // The most one word can score is 4: a title match and one in the rest
+  return score > 2 ? score / 4 : 0
 }
 
 function toProduct(row: any): AssistantProduct {
@@ -199,6 +243,28 @@ function toProduct(row: any): AssistantProduct {
   }
 }
 
+/**
+ * The products a search found, best first and at most 10. A product with more of the words ranks
+ * higher; a word found on few products says more than one found on many ("radhakrishnan" over
+ * "books"), and a word in the title more than one in the description. Words nowhere as typed
+ * (`misspelt`) count by near spelling instead. Only products close to the best are kept, so a
+ * broad word cannot pad the results.
+ */
+export function rankFound(rows: any[], words: string[], misspelt: string[] = []): AssistantProduct[] {
+  const candidates = rows.map((row) => ({ product: toProduct(row), title: String(row.title || '').toLowerCase(), text: searchText(row) }))
+  // How well each product has each word: as typed, a little more in the title, or by near spelling
+  const matches = candidates.map(({ product, title, text }) =>
+    words.map((word) => (text.includes(word) ? (title.includes(word) ? 1.25 : 1) : misspelt.includes(word) ? nearSpelling(product, word) : 0))
+  )
+  const weights = words.map((_, i) => 1 / Math.log2(2 + matches.filter((match) => match[i] > 0).length))
+  const scored = candidates
+    .map(({ product }, row) => ({ product, score: matches[row].reduce((sum, match, i) => sum + weights[i] * match, 0) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+  const best = scored[0]?.score || 0
+  return scored.filter(({ score }) => score >= best / 2).slice(0, 10).map(({ product }) => product)
+}
+
 async function searchProducts(supabase: any, organizationId: string, args: any): Promise<AssistantProduct[]> {
   const terms = searchTerms(args?.query)
   const base = () => {
@@ -213,40 +279,83 @@ async function searchProducts(supabase: any, organizationId: string, args: any):
     if (Number.isFinite(min) && min > 0) query = query.gte('price', min)
     return query
   }
-
-  // 1. The words as typed
-  let exact = base()
-  if (terms.length > 0) {
-    exact = exact.or(terms.flatMap((term) => [`title.ilike.%${term}%`, `description.ilike.%${term}%`, `category.ilike.%${term}%`]).join(','))
+  if (terms.length === 0) {
+    const { data } = await base().limit(10)
+    return (data || []).map(toProduct)
   }
-  const { data } = await exact.limit(40)
-  const found = rankProducts((data || []).map(toProduct), terms)
-  if (found.length > 0 || terms.length === 0) return found
 
-  // 2. Nothing as typed: compare by sound and near spelling ("radakrishnan", "gitanjli", "premchnd")
-  const { data: pool } = await base().limit(FUZZY_POOL)
-  return rankProducts((pool || []).map(toProduct), terms, 2)
+  // 1. The first words as typed, each in a search of its own: in a large catalog a common word
+  //    ("books") would otherwise fill the page before a rare one ("radhakrishnan") got in
+  const words = terms.slice(0, SEARCH_WORDS)
+  const pages = await Promise.all(words.map((word) => base().or(wordFilter(word)).limit(SEARCH_PAGE)))
+  const found = new Map<string, any>()
+  for (const { data, error } of pages) {
+    if (error) console.warn('[Shopping Assistant] Product search failed:', error.message || error)
+    for (const row of data || []) found.set(String(row.retailer_id), row)
+  }
+
+  // 2. A word that is nowhere as typed may be misspelt or transliterated differently
+  //    ("radakrishnan", "gitanjli", "premchnd"): read the catalog a page at a time and keep the
+  //    products that sound like it. Numbers have no near spellings.
+  const rows = [...found.values()]
+  const misspelt = words.filter((word) => /\p{L}/u.test(word) && !rows.some((row) => searchText(row).includes(word)))
+  for (let from = 0; misspelt.length > 0 && from < FUZZY_POOL; from += FUZZY_PAGE) {
+    const { data } = await base().order('retailer_id').range(from, from + FUZZY_PAGE - 1)
+    for (const row of data || []) {
+      const id = String(row.retailer_id)
+      if (found.has(id)) continue
+      const product = toProduct(row)
+      if (misspelt.some((word) => nearSpelling(product, word) > 0)) found.set(id, row)
+    }
+    if ((data || []).length < FUZZY_PAGE) break
+  }
+  return rankFound([...found.values()], terms, misspelt)
 }
 
-/** The customer's orders as the model reads them, with the amounts and item names a reply may quote. */
-async function getMyOrders(supabase: any, organizationId: string, contactId: string): Promise<{ orders: any[]; amounts: number[]; titles: string[] }> {
+/** The store's timezone, when the organization names one Intl knows. */
+function storeTimezone(organization: any): string {
+  const zone = String(organization?.timezone || '').trim()
+  if (!zone) return DEFAULT_TIMEZONE
+  try {
+    return new Intl.DateTimeFormat('en-IN', { timeZone: zone }).resolvedOptions().timeZone
+  } catch {
+    return DEFAULT_TIMEZONE
+  }
+}
+
+/** A date as the customer reads it, in the store's timezone: "4 Nov 2026". */
+function formatDate(value: unknown, timeZone: string): string {
+  const date = new Date(String(value || ''))
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone }).format(date)
+}
+
+/**
+ * The customer's orders as the model reads them, with the amounts a reply may quote and the item
+ * names, tracking numbers and links it quotes as they are.
+ */
+async function getMyOrders(supabase: any, organization: any, contactId: string): Promise<{ orders: any[]; amounts: number[]; quoted: string[] }> {
+  const timeZone = storeTimezone(organization)
   const { data } = await supabase
     .from('commerce_orders')
     .select('order_number, status, payment_status, payment_method, subtotal, shipping_fee, tax_amount, total_amount, currency, shipping_address, created_at, items:commerce_order_items(title, quantity, unit_price)')
-    .eq('organization_id', organizationId)
+    .eq('organization_id', organization.id)
     .eq('contact_id', contactId)
     .order('created_at', { ascending: false })
     .limit(3)
   const amounts: number[] = []
-  const titles: string[] = []
+  const quoted: string[] = []
   const orders = (data || []).map((order: any) => {
     const fulfillment = getFulfillment(order)
+    const trackingUrl = String(order.shipping_address?.tracking_url || '').trim()
+    const shipped = fulfillment.shippedAt ? formatDate(fulfillment.shippedAt, timeZone) : ''
     const shipping = Number(order.shipping_fee) || 0
     const tax = Number(order.tax_amount) || 0
     amounts.push(Number(order.total_amount) || 0, Number(order.subtotal) || 0, shipping, tax)
+    quoted.push(fulfillment.trackingNumber, trackingUrl)
     return {
       order_number: order.order_number,
-      placed: String(order.created_at || '').slice(0, 10),
+      placed: formatDate(order.created_at, timeZone),
       status: ORDER_STATUS_LABELS[order.status as OrderStatus] || order.status,
       payment: order.payment_method === 'cod' ? 'Cash on Delivery' : order.payment_status,
       total: formatMoney(order.total_amount, order.currency),
@@ -255,16 +364,19 @@ async function getMyOrders(supabase: any, organizationId: string, contactId: str
       items: (order.items || []).map((item: any) => {
         const quantity = Number(item.quantity) || 1
         const unit = Number(item.unit_price)
-        titles.push(String(item.title || ''))
+        quoted.push(String(item.title || ''))
         if (!(unit > 0)) return `${quantity} × ${item.title}`
         amounts.push(unit, unit * quantity)
         return `${quantity} × ${item.title} @ ${formatMoney(unit, order.currency)}`
       }),
-      carrier: fulfillment.carrier || null,
-      tracking_number: fulfillment.trackingNumber || null,
+      // Delivery details, once the team has entered them
+      ...(fulfillment.carrier ? { carrier: fulfillment.carrier } : {}),
+      ...(fulfillment.trackingNumber ? { tracking_number: fulfillment.trackingNumber } : {}),
+      ...(trackingUrl ? { tracking_url: trackingUrl } : {}),
+      ...(shipped ? { shipped } : {}),
     }
   })
-  return { orders, amounts, titles }
+  return { orders, amounts, quoted: quoted.filter(Boolean) }
 }
 
 // ── Checking the reply ──────────────────────────────────────────────────────
@@ -273,8 +385,15 @@ async function getMyOrders(supabase: any, organizationId: string, contactId: str
 /** Amounts: "₹249", "Rs. 1,121/-", "INR 500", "$12.50", "249 rupees", "499/-", "199.00". */
 const AMOUNT = /(?:₹|\$|\b(?:rs\.?|inr)\s*)\s*(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:\/-|₹|rup(?:ees?|iya|iye|aya|aye|ay|ayalu)\b|rs\b|inr\b)|\b(\d[\d,]*\.\d{1,2})\b(?![.\d])/gi
 const PERCENT = /\d\s*%|\bpercent(?:age)?\b/i
-/** Everyday phrases that happen to contain an offer word; taken out before the check. */
-const NOT_OFFERS = /\bfeel\s+free\b|\b(?:tracking|pin|postal|zip|area|country|otp|product)\s+codes?\b/gi
+/**
+ * Everyday phrases that happen to contain an offer word: "feel free", the codes on orders and
+ * parcels, what a product is free of, a free-size garment. Taken out before the check.
+ */
+const NOT_OFFERS = /\bfeel\s+free\b|\b(?:tracking|pin|postal|zip|area|country|otp|product|order|qr|verification|security|hsn|sku|item|isbn|courier|reference)\s+codes?\b|\b(?:sugar|gluten|dairy|lactose|nut|alcohol|bpa|lead|paraben|chemical|cruelty|toll|hassle|worry|tension|hands)[\s-]?free\b|\bfree[\s-]?size\b/gi
+/** Shipping the store makes free above its threshold, which a reply may name, in either word order. */
+const FREE_SHIPPING = /\bfree\s+(?:home\s+)?(?:delivery|shipping)\b|\b(?:delivery|shipping)\s+(?:is\s+|will\s+be\s+|would\s+be\s+)?free\b/gi
+/** "we offer two sizes", "the shop also offers gift wrapping": offer as a verb, after its subject. */
+const OFFER_VERB = /\b(?:we|i|you|they|it|store|shop)\s+(?:(?:also|can|could|will|would|do|does|did|currently|now|only|still|always|usually)\s+)?offers?\b/gi
 /**
  * Talk of deals: in English, in Hindi, Telugu and Tamil written in English letters ("chhoot",
  * "muft", "tagginpu", "offer hai"), and in Hindi and Telugu script.
@@ -285,22 +404,36 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** The text without "offer" as a verb, unless something priced follows it in the same sentence. */
+function withoutOfferVerbs(text: string): string {
+  return text.replace(OFFER_VERB, (phrase: string, offset: number) => {
+    const rest = text.slice(offset + phrase.length).split(/[.!?\n]/)[0]
+    return PERCENT.test(rest) || rest.search(AMOUNT) >= 0 ? phrase : ' '
+  })
+}
+
 /**
  * Why a reply must not go out as it is, or null when it only restates tool results: it quotes an
  * amount the tools never returned (beyond ±1 for rounding), a percentage, or talks of offers.
  * Product and item names are quoted as they are, so numbers and words inside them do not count.
+ * A store that ships for free above a threshold may be quoted on that: the phrase and the amount.
  */
-export function unverifiedClaim(message: string, allowedAmounts: number[], quotedNames: string[] = []): string | null {
-  let text = message.replace(NOT_OFFERS, ' ')
-  for (const name of quotedNames) {
+export function unverifiedClaim(message: string, allowedAmounts: number[], quotedNames: string[] = [], store: { freeShippingThreshold?: number | null } = {}): string | null {
+  const freeShippingAbove = Number(store.freeShippingThreshold) || 0
+  let text = message
+  // Longest first, so a name inside another ("DL123" in its tracking link) cannot cut that one up
+  for (const name of [...quotedNames].sort((a, b) => b.length - a.length)) {
     if (name.trim()) text = text.replace(new RegExp(escapeRegExp(name.trim()), 'gi'), ' ')
   }
+  text = withoutOfferVerbs(text.replace(NOT_OFFERS, ' '))
+  if (freeShippingAbove > 0) text = text.replace(FREE_SHIPPING, ' ')
   if (PERCENT.test(text)) return 'percentage'
   const offer = text.match(OFFER_WORDS)
   if (offer) return `offer "${offer[0]}"`
+  const allowed = freeShippingAbove > 0 ? [...allowedAmounts, freeShippingAbove] : allowedAmounts
   for (const match of text.matchAll(AMOUNT)) {
     const amount = Number((match[1] || match[2] || match[3] || '').replace(/,/g, ''))
-    if (Number.isFinite(amount) && !allowedAmounts.some((allowed) => Math.abs(allowed - amount) <= 1)) return `amount ${amount}`
+    if (Number.isFinite(amount) && !allowed.some((value) => Math.abs(value - amount) <= 1)) return `amount ${amount}`
   }
   return null
 }
@@ -395,6 +528,7 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
   if (!shoppingAssistantEnabled(organization)) return { handled: false, reason: 'disabled' }
   if (!withinRunBudget(String(organization.id), String(contact.id))) return { handled: false, reason: 'rate_limited' }
   const fetcher = input.fetcher || fetch
+  const store = { freeShippingThreshold: freeShippingThreshold(organization) }
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt(organization, String(contact.first_name || '').trim()) },
@@ -403,9 +537,10 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
   ]
   // Products the searches returned: the only ones that can be sent, and the only prices to quote
   const seen = new Map<string, AssistantProduct>()
-  // Amounts and item names from the customer's orders, which a reply may quote too
+  // Amounts from the customer's orders, which a reply may quote too, and the item names, tracking
+  // numbers and links it quotes as they are
   const orderAmounts: number[] = []
-  const orderTitles: string[] = []
+  const orderQuoted: string[] = []
   // A reply that fails the check gets one more round to restate itself from tool results
   let rounds = MAX_TOOL_ROUNDS
   let corrected = false
@@ -452,7 +587,8 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
         const claim = unverifiedClaim(
           message,
           [...orderAmounts, ...found.flatMap((product) => (product.list_price ? [product.price, product.list_price] : [product.price]))],
-          [...orderTitles, ...found.map((product) => product.title)]
+          [...orderQuoted, ...found.map((product) => product.title)],
+          store
         )
         if (!claim) {
           const productsSent = await sendReply(input, message, products)
@@ -474,9 +610,9 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
         found.forEach((product) => seen.set(product.retailer_id, product))
         result = found.length ? found : { note: 'No products matched. Try other keywords or an empty query to see what the store sells.' }
       } else if (name === 'get_my_orders') {
-        const { orders, amounts, titles } = await getMyOrders(supabase, organization.id, contact.id)
+        const { orders, amounts, quoted } = await getMyOrders(supabase, organization, contact.id)
         orderAmounts.push(...amounts)
-        orderTitles.push(...titles)
+        orderQuoted.push(...quoted)
         result = orders.length ? orders : { note: 'This customer has no orders yet.' }
       } else {
         result = { error: `Unknown tool ${name}` }
