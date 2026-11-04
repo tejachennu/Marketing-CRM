@@ -4,12 +4,16 @@
  * Admins, managers and employees granted "see all" see every conversation. Everyone else
  * sees the conversations they work on: assigned to them directly, or belonging to one of
  * their active leads or open tickets. They also see the chats the chatbot handed to the team
- * (nobody assigned, chatbot off), so a customer waiting for a person can be picked up.
+ * (the hand-off queue, see lib/handoff.ts), so a customer waiting for a person can be picked up.
  */
 
 import type { NextRequest } from 'next/server'
 import { verifyRecordAccess, type AccessOptions } from './api-auth-helper'
+import { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from './handoff'
 import { canSeeAll, describeDenied, isSuperAdmin, type RoleSubject } from './rbac'
+import { isMissingColumn } from './scheduler/schema-errors'
+
+export { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from './handoff'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -17,20 +21,26 @@ export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value)
 }
 
-/**
- * PostgREST filter for the chats the chatbot handed to the team: the Flow Builder's "Hand off to
- * team" step clears `assigned_to` and switches the chatbot off, and nobody has taken the chat yet.
- */
-export const HANDED_OFF_FILTER = 'and(assigned_to.is.null,auto_reply_enabled.eq.false)'
+// ── The hand-off column, and a database that does not have it yet ──
 
-/** True for a chat waiting for any agent to pick it up (the same rule as HANDED_OFF_FILTER). */
-export function isHandedOff(conversation: { assigned_to?: string | null; auto_reply_enabled?: boolean | null }): boolean {
-  return conversation.assigned_to == null && conversation.auto_reply_enabled === false
+/** True when PostgREST says `conversations.handed_off_at` does not exist: the hand-off migration has not run. */
+export function isHandOffColumnMissing(error: { code?: string; message?: string } | null | undefined): boolean {
+  return isMissingColumn(error) && String(error?.message || '').includes('handed_off_at')
 }
 
-/** Narrow a `conversations` query to the chats handed to the team. */
-export function onlyHandedOff(query: any) {
-  return query.is('assigned_to', null).eq('auto_reply_enabled', false)
+let warnedMissingColumn = false
+/** Said once per process: the code keeps working on the old inferred rule until the migration runs. */
+export function warnMissingHandOffColumn() {
+  if (warnedMissingColumn) return
+  warnedMissingColumn = true
+  console.warn('[hand-off] conversations.handed_off_at does not exist: apply supabase/migrations/20261104_handoff_state.sql. Until then the hand-off queue is inferred from the chatbot being off.')
+}
+
+/** Narrow a `conversations` query to the chats in the hand-off queue; `legacy` for a database without the column. */
+export function onlyHandedOff(query: any, legacy = false) {
+  return legacy
+    ? query.is('assigned_to', null).eq('auto_reply_enabled', false)
+    : query.is('assigned_to', null).not('handed_off_at', 'is', null)
 }
 
 export interface ConversationScope {
@@ -40,6 +50,8 @@ export interface ConversationScope {
   orFilter: string
   /** `orFilter` plus the chats handed to the team: everything an assigned-only user may see. */
   visibleFilter: string
+  /** `visibleFilter` for a database without the hand-off column. */
+  legacyVisibleFilter: string
 }
 
 /** The conversations `userId` works on in an organization. */
@@ -60,7 +72,7 @@ export async function getAssignedConversationScope(supabase: any, userId: string
   if (conversationIds.length > 0) parts.push(`id.in.(${conversationIds.join(',')})`)
 
   const orFilter = parts.join(',')
-  return { contactIds, conversationIds, orFilter, visibleFilter: `${orFilter},${HANDED_OFF_FILTER}` }
+  return { contactIds, conversationIds, orFilter, visibleFilter: `${orFilter},${HANDED_OFF_FILTER}`, legacyVisibleFilter: `${orFilter},${LEGACY_HANDED_OFF_FILTER}` }
 }
 
 export interface ConversationRef {
@@ -69,6 +81,21 @@ export interface ConversationRef {
   contact_id?: string | null
   assigned_to?: string | null
   auto_reply_enabled?: boolean | null
+  handed_off_at?: string | null
+}
+
+const REF_COLUMNS = 'id, organization_id, contact_id, assigned_to, auto_reply_enabled'
+
+/** One conversation's access-relevant columns, or null when there is no such chat. Works without the hand-off column. */
+export async function loadConversationRef(supabase: any, conversationId: string): Promise<ConversationRef | null> {
+  const load = (columns: string) => supabase.from('conversations').select(columns).eq('id', conversationId).maybeSingle()
+  let { data, error } = await load(`${REF_COLUMNS}, handed_off_at`)
+  if (isHandOffColumnMissing(error)) {
+    warnMissingHandOffColumn()
+    ;({ data, error } = await load(REF_COLUMNS))
+  }
+  if (error) throw new Error(error.message)
+  return data || null
 }
 
 /** Whether `user` may open one conversation. */
@@ -116,14 +143,69 @@ export async function verifyConversationAccess(
   if (!result.authorized) return result
   if (isSuperAdmin(result.user) || canSeeAll(result.user)) return result
 
-  const { data: conversation } = await supabase
-    .from('conversations')
-    .select('id, organization_id, contact_id, assigned_to, auto_reply_enabled')
-    .eq('id', conversationId)
-    .maybeSingle()
-
+  const conversation = conversationId ? await loadConversationRef(supabase, conversationId).catch(() => null) : null
   if (!conversation || !(await canAccessConversation(supabase, result.user, conversation))) {
     return { authorized: false as const, error: describeDenied('records.view_all'), status: 403, user: result.user }
   }
   return result
+}
+
+/**
+ * The name of a teammate other than `userId` who holds an active lead for the contact or an open
+ * ticket on the chat (the same records that let them see the chat). Null when nobody does, or
+ * when `userId` holds one as well and so works this customer too.
+ */
+export async function findOtherHandler(supabase: any, organizationId: string, userId: string, contactId: string, conversationId: string | null): Promise<string | null> {
+  const [leads, tickets] = await Promise.all([
+    supabase.from('leads').select('assigned_to').eq('organization_id', organizationId).eq('contact_id', contactId).eq('status', 'active'),
+    conversationId
+      ? supabase.from('tickets').select('assigned_to').eq('organization_id', organizationId).eq('conversation_id', conversationId).eq('status', 'open')
+      : Promise.resolve({ data: [] }),
+  ])
+  const holders: string[] = [...(leads.data || []), ...(tickets.data || [])].map((row: any) => row.assigned_to).filter(isUuid)
+  if (holders.length === 0 || holders.includes(userId)) return null
+
+  const { data: teammate } = await supabase
+    .from('users')
+    .select('full_name, email')
+    .eq('id', holders[0])
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  return String(teammate?.full_name || teammate?.email || '').trim() || 'a teammate'
+}
+
+/**
+ * Give a chat to `userId` (null: to nobody) and take it out of the hand-off queue, in one
+ * statement. With `onlyUnassigned` the row changes only while nobody has it, so two agents taking
+ * the same chat at once cannot both win. Resolves to whether the row changed.
+ */
+export async function assignConversation(
+  supabase: any,
+  input: { conversationId: string; organizationId: string; userId: string | null; onlyUnassigned?: boolean }
+): Promise<boolean> {
+  const update = (values: Record<string, unknown>) => {
+    let query = supabase.from('conversations').update(values).eq('id', input.conversationId).eq('organization_id', input.organizationId)
+    if (input.onlyUnassigned) query = query.is('assigned_to', null)
+    return query.select('id')
+  }
+  let result = await update({ assigned_to: input.userId, handed_off_at: null })
+  if (isHandOffColumnMissing(result.error)) {
+    warnMissingHandOffColumn()
+    result = await update({ assigned_to: input.userId })
+  }
+  if (result.error) throw new Error(result.error.message)
+  return (result.data || []).length > 0
+}
+
+/** A person answered the chat without taking it: it leaves the hand-off queue. */
+export async function clearHandOff(supabase: any, input: { conversationId: string; organizationId: string }): Promise<void> {
+  const { error } = await supabase
+    .from('conversations')
+    .update({ handed_off_at: null })
+    .eq('id', input.conversationId)
+    .eq('organization_id', input.organizationId)
+    .not('handed_off_at', 'is', null)
+  if (!error) return
+  if (isHandOffColumnMissing(error)) return warnMissingHandOffColumn()
+  throw new Error(error.message)
 }

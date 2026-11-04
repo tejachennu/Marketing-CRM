@@ -6,11 +6,12 @@ import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
 import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate } from 'lucide-react'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
 import { isModuleDisabledByPlatform, isModuleEnabled, moduleForPath } from '@/lib/feature-flags'
+import { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from '@/lib/handoff'
 
 export default function DashboardLayout({
   children,
@@ -66,6 +67,8 @@ export default function DashboardLayout({
   const [showTickets, setShowTickets] = useState(false)
   const [activeTicketsCount, setActiveTicketsCount] = useState(0)
   const [unreadChatsCount, setUnreadChatsCount] = useState(0)
+  // The hand-off queue's filter; falls back to the inferred rule on a database without handed_off_at
+  const handOffFilterRef = useRef<string>(HANDED_OFF_FILTER)
   const [activeLeadsCount, setActiveLeadsCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
   // Start restricted: nothing role-gated is shown until the profile has loaded
@@ -475,8 +478,8 @@ export default function DashboardLayout({
             .eq('status', 'open')
           const ticketConvIds = (openTickets || []).map(t => t.conversation_id).filter(Boolean)
 
-          // Chats the chatbot handed to the team count for everyone (HANDED_OFF_FILTER in lib/record-visibility.ts)
-          let orConditions = `assigned_to.eq.${userId},and(assigned_to.is.null,auto_reply_enabled.eq.false)`
+          // Chats the chatbot handed to the team count for everyone (lib/handoff.ts)
+          let orConditions = `assigned_to.eq.${userId},${handOffFilterRef.current}`
           if (contactIds.length > 0) {
             orConditions += `,contact_id.in.(${contactIds.map(id => `"${id}"`).join(',')})`
           }
@@ -486,7 +489,12 @@ export default function DashboardLayout({
           query = query.or(orConditions)
         }
 
-        const { data, error } = await query
+        let { data, error } = await query
+        // A database without the hand-off column: count the queue the old way from now on
+        if (error && handOffFilterRef.current === HANDED_OFF_FILTER && /handed_off_at/.test(error.message || '')) {
+          handOffFilterRef.current = LEGACY_HANDED_OFF_FILTER
+          return fetchUnreadChatsCount()
+        }
         if (error) throw error
         const totalUnreadMessages = (data || []).reduce((sum, c) => sum + (c.unread_count || 0), 0)
         setUnreadChatsCount(totalUnreadMessages)
@@ -585,13 +593,16 @@ export default function DashboardLayout({
           if (payload.eventType === 'UPDATE') {
             const isAssignedToMe = payload.new.assigned_to === userId
             // A chat the chatbot handed to the team belongs to nobody yet, so every agent hears about it
-            const handedOff = payload.new.assigned_to == null && payload.new.auto_reply_enabled === false
+            const handedOff = isHandedOff(payload.new)
             if (!seeAll && !isAssignedToMe && !handedOff) return
 
             const oldVal = payload.old?.auto_reply_enabled
             const newVal = payload.new?.auto_reply_enabled
-            
-            if (newVal === false && oldVal !== false) {
+            // Realtime sends only the key of the old row unless the table has REPLICA IDENTITY FULL,
+            // so a fresh hand-off is told by its timestamp being recent
+            const freshHandOff = handedOff && payload.new.handed_off_at != null && Date.now() - Date.parse(payload.new.handed_off_at) < 60_000 && payload.old?.handed_off_at == null
+
+            if ((newVal === false && oldVal !== false) || freshHandOff) {
               try {
                 const { data: contact } = await supabase
                   .from('contacts')

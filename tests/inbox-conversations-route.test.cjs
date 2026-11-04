@@ -39,6 +39,11 @@ function parseFilter(text) {
   }
   if (splitTopLevel(text).length > 1) return parseFilter(`or(${text})`)
   const [column, op, ...rest] = text.split('.')
+  if (fake.noHandOffColumn && column === 'handed_off_at') throw missingColumn()
+  if (op === 'not') {
+    const inner = parseFilter([column, ...rest].join('.'))
+    return (row) => !inner(row)
+  }
   const value = rest.join('.')
   switch (op) {
     case 'eq': return (row) => String(row[column]) === value
@@ -52,25 +57,37 @@ function parseFilter(text) {
   }
 }
 
-const fake = { countFails: false }
+const fake = { countFails: false, noHandOffColumn: false }
+const missingColumn = () => ({ code: '42703', message: 'column conversations.handed_off_at does not exist' })
 const tables = {}
 const db = {
   from(table) {
     const filters = []
+    let broken = null // a filter or column the database does not have
     let selection = {}
     let ordering = null
     let window = null
     const query = {
-      select: (columns = '*', options = {}) => { selection = { columns, ...options }; return query },
+      select: (columns = '*', options = {}) => {
+        selection = { columns, ...options }
+        if (fake.noHandOffColumn && table === 'conversations' && /handed_off_at/.test(columns)) broken = missingColumn()
+        return query
+      },
       eq: (column, value) => { filters.push((row) => row[column] === value); return query },
+      not: (column, operator, value) => {
+        if (fake.noHandOffColumn && column === 'handed_off_at') broken = missingColumn()
+        filters.push((row) => !(operator === 'is' && value === null ? row[column] == null : row[column] === value))
+        return query
+      },
       gt: (column, value) => { filters.push((row) => row[column] > value); return query },
       is: (column, value) => { filters.push((row) => (value === null ? row[column] == null : row[column] === value)); return query },
       in: (column, values) => { filters.push((row) => values.includes(row[column])); return query },
-      or: (text) => { filters.push(parseFilter(text)); return query },
+      or: (text) => { try { filters.push(parseFilter(text)) } catch (error) { broken = error } return query },
       order: (column, { ascending = true } = {}) => { ordering = { column, ascending }; return query },
       range: (from, to) => { window = [from, to]; return query },
       limit: (count) => { window = [0, count - 1]; return query },
       then(resolve, reject) {
+        if (broken) return Promise.resolve({ data: null, count: null, error: broken }).then(resolve, reject)
         if (fake.countFails && table === 'conversations' && selection.head) {
           const error = { code: '42703', message: 'column conversations.auto_reply_enabled does not exist' }
           return Promise.resolve({ data: null, count: null, error }).then(resolve, reject)
@@ -115,16 +132,20 @@ async function list(params = {}) {
 const ids = (answer) => answer.conversations.map((conversation) => conversation.id)
 
 const chat = (id, hour, overrides) => ({ id, organization_id: ORG, contact_id: `contact-${id}`, unread_count: 0, last_message_at: `2026-11-04T${hour}:00:00Z`, ...overrides })
+const HANDED = '2026-11-04T05:00:00Z'
 function reset() {
   fake.countFails = false
+  fake.noHandOffColumn = false
   warnings.length = 0
   tables.conversations = [
     chat('mine', '10', { assigned_to: AGENT, auto_reply_enabled: true, unread_count: 2 }),
-    chat('waiting-newer', '09', { assigned_to: null, auto_reply_enabled: false, unread_count: 3 }),
+    chat('waiting-newer', '09', { assigned_to: null, auto_reply_enabled: false, handed_off_at: HANDED, unread_count: 3 }),
     chat('bot', '08', { assigned_to: null, auto_reply_enabled: true, unread_count: 1 }),        // the chatbot is still answering
-    chat('taken', '07', { assigned_to: TEAMMATE, auto_reply_enabled: false, unread_count: 5 }), // a teammate took over
-    chat('waiting-older', '06', { assigned_to: null, auto_reply_enabled: false, unread_count: 4 }),
-    chat('elsewhere', '05', { organization_id: OTHER_ORG, assigned_to: null, auto_reply_enabled: false, unread_count: 9 }),
+    chat('taken', '07', { assigned_to: TEAMMATE, auto_reply_enabled: false, handed_off_at: null, unread_count: 5 }), // a teammate took over
+    chat('waiting-older', '06', { assigned_to: null, auto_reply_enabled: false, handed_off_at: HANDED, unread_count: 4 }),
+    chat('elsewhere', '05', { organization_id: OTHER_ORG, assigned_to: null, auto_reply_enabled: false, handed_off_at: HANDED, unread_count: 9 }),
+    // A manager answered this one without taking it: the chatbot is off, but nobody handed it off
+    chat('answered', '04', { assigned_to: null, auto_reply_enabled: false, handed_off_at: null, unread_count: 0 }),
   ]
   tables.contacts = [{ id: 'contact-mine', organization_id: ORG, first_name: 'Asha', last_name: null, phone_number: '+15550000001' }]
   tables.leads = []
@@ -143,7 +164,7 @@ test('Inbox: filter=needs_agent lists the chats handed to the team, newest first
 
   // The whole inbox, for a manager: the queue size still comes along
   const all = await list()
-  assert.deepEqual(ids(all), ['mine', 'waiting-newer', 'bot', 'taken', 'waiting-older'])
+  assert.deepEqual(ids(all), ['mine', 'waiting-newer', 'bot', 'taken', 'waiting-older', 'answered'])
   assert.equal(all.needsAgentCount, 2)
   assert.equal(all.unreadMessagesCount, 15)
 })
@@ -165,6 +186,8 @@ test('Inbox: an assigned-only agent sees their own chats and the queue, nothing 
   // A single chat looked up by id follows the same rule
   assert.deepEqual(ids(await list({ id: 'waiting-older' })), ['waiting-older'])
   assert.deepEqual(ids(await list({ id: 'taken' })), [])
+  // A chat a manager answered without taking is not the team's queue, so it stays out of sight
+  assert.deepEqual(ids(await list({ id: 'answered' })), [])
 })
 
 test("Inbox: a manager filtering by a teammate gets that teammate's chats only", async () => {
@@ -195,8 +218,23 @@ test('Inbox: when the queue cannot be counted the list still loads, with one war
   fake.countFails = true
   const answer = await list()
   assert.equal(answer.status, 200)
-  assert.deepEqual(ids(answer), ['mine', 'waiting-newer', 'bot', 'taken', 'waiting-older'])
+  assert.deepEqual(ids(answer), ['mine', 'waiting-newer', 'bot', 'taken', 'waiting-older', 'answered'])
   assert.equal(answer.needsAgentCount, 0)
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /Needs-agent count unavailable/)
+})
+
+test('Inbox: before the hand-off migration the queue is inferred from the chatbot being off, with one warning', async () => {
+  reset()
+  fake.noHandOffColumn = true
+  caller = agent
+  const answer = await list()
+  assert.equal(answer.status, 200)
+  // The old rule: the chat a manager answered shows up as well
+  assert.deepEqual(ids(answer), ['mine', 'waiting-newer', 'waiting-older', 'answered'])
+  assert.equal(answer.needsAgentCount, 3)
+  assert.ok(warnings.some((warning) => /20261104_handoff_state\.sql/.test(warning)))
+
+  caller = manager
+  assert.deepEqual(ids(await list({ filter: 'needs_agent' })), ['waiting-newer', 'waiting-older', 'answered'])
 })

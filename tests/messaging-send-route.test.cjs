@@ -72,6 +72,7 @@ const db = {
       update: (patch) => { action = 'update'; values = patch; return query },
       eq: (column, value) => { where.push(['eq', column, value]); filters.push((row) => row[column] === value); return query },
       is: (column, value) => { where.push(['is', column, value]); filters.push((row) => (value === null ? row[column] == null : row[column] === value)); return query },
+      not: (column, operator, value) => { where.push(['not', column, operator, value]); filters.push((row) => (operator === 'is' && value === null ? row[column] != null : row[column] !== value)); return query },
       in: (column, values) => { where.push(['in', column, values]); filters.push((row) => values.includes(row[column])); return query },
       order: (column, { ascending = true } = {}) => { ordering = { column, ascending }; return query },
       limit: (count) => { limit = count; return query },
@@ -175,7 +176,7 @@ function reset({ provider = 'facebook', lastInboundHoursAgo = 1, conversation = 
     { id: STRANGER, organization_id: OTHER_ORG, phone_number: '+14165550999' },
   ]
   // Handed to the team by the chatbot: nobody assigned, chatbot off
-  tables.conversations = [{ id: CHAT, organization_id: ORG, contact_id: CONTACT, assigned_to: null, auto_reply_enabled: false, last_message_at: hoursAgo(1), ...conversation }]
+  tables.conversations = [{ id: CHAT, organization_id: ORG, contact_id: CONTACT, assigned_to: null, auto_reply_enabled: false, handed_off_at: hoursAgo(2), last_message_at: hoursAgo(1), ...conversation }]
   tables.messages = lastInboundHoursAgo === null ? [] : [{ id: 'inbound-1', organization_id: ORG, conversation_id: CHAT, sender_type: 'contact', body: 'Hi', created_at: hoursAgo(lastInboundHoursAgo) }]
   tables.leads = []
   tables.tickets = []
@@ -195,7 +196,8 @@ test('Send: an assigned-only agent who replies to a handed-off chat takes it, on
   const [claim] = assignments()
   assert.ok(claim, 'the chat was claimed')
   assert.ok(timeline.indexOf(claim) > timeline.indexOf('meta-send'), 'the claim comes after the send')
-  assert.deepEqual(claim.values, { assigned_to: AGENT })
+  assert.deepEqual(claim.values, { assigned_to: AGENT, handed_off_at: null })
+  assert.equal(chat().handed_off_at, null) // out of the hand-off queue
   assert.deepEqual(claim.where, [['eq', 'id', CHAT], ['eq', 'organization_id', ORG], ['is', 'assigned_to', null]])
   assert.equal(stored()[0].status, 'sent')
 })
@@ -209,6 +211,7 @@ test('Send: a send that fails leaves the chat unowned, the failed message still 
   assert.match(answer.error, /24-hour/)
   assert.equal(chat().assigned_to, null)
   assert.equal(assignments().length, 0)
+  assert.notEqual(chat().handed_off_at, null) // still waiting for the team
   assert.equal(stored()[0].status, 'failed')
 
   // Writing to the contact rather than the chat used to take the chat before sending; no longer
@@ -235,6 +238,9 @@ test('Send: managers and see-all employees are never auto-assigned, and a creden
   assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).success, true)
   assert.equal(chat().assigned_to, null)
   assert.equal(assignments().length, 0)
+  // A person answered, so the chat leaves the hand-off queue without becoming the manager's
+  assert.equal(chat().handed_off_at, null)
+  assert.ok(timeline.indexOf(timeline.find((event) => event.table === 'conversations' && 'handed_off_at' in (event.values || {}))) > timeline.indexOf('meta-send'))
 
   reset()
   caller = { ...agent, see_all: true }

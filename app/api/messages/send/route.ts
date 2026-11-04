@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { canSeeAll, describeDenied } from '@/lib/rbac'
-import { canAccessConversation } from '@/lib/record-visibility'
+import { assignConversation, canAccessConversation, clearHandOff, findOtherHandler } from '@/lib/record-visibility'
 import { MASTER_ORG_ID } from '@/lib/constants'
 import { assertPublicHttpUrl } from '@/lib/utils'
 import { parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
@@ -186,30 +186,6 @@ async function loadContact(supabase: any, contactId: string | null | undefined, 
     .eq('organization_id', orgId)
     .maybeSingle()
   return data || null
-}
-
-/**
- * The name of a teammate other than `userId` who holds an active lead for the contact or an open
- * ticket on the chat (the same records that let them see the chat, see lib/record-visibility.ts).
- * Null when nobody does, or when `userId` holds one as well and so works this customer too.
- */
-async function findOtherHandler(supabase: any, orgId: string, userId: string, contactId: string, conversationId: string | null): Promise<string | null> {
-  const [leads, tickets] = await Promise.all([
-    supabase.from('leads').select('assigned_to').eq('organization_id', orgId).eq('contact_id', contactId).eq('status', 'active'),
-    conversationId
-      ? supabase.from('tickets').select('assigned_to').eq('organization_id', orgId).eq('conversation_id', conversationId).eq('status', 'open')
-      : Promise.resolve({ data: [] }),
-  ])
-  const holders: string[] = [...(leads.data || []), ...(tickets.data || [])].map((row: any) => row.assigned_to).filter(isUuid)
-  if (holders.length === 0 || holders.includes(userId)) return null
-
-  const { data: teammate } = await supabase
-    .from('users')
-    .select('full_name, email')
-    .eq('id', holders[0])
-    .eq('organization_id', orgId)
-    .maybeSingle()
-  return String(teammate?.full_name || teammate?.email || '').trim() || 'a teammate'
 }
 
 /**
@@ -967,14 +943,16 @@ export async function POST(request: NextRequest) {
       .eq('id', conversation.id)
 
     // The chat becomes the sender's only once their message is away, and only if nobody took it
-    // meanwhile: the `assigned_to IS NULL` condition makes the claim atomic
-    if (claimAfterSend && sendStatus !== 'failed') {
-      await supabase
-        .from('conversations')
-        .update({ assigned_to: sender.id })
-        .eq('id', conversation.id)
-        .eq('organization_id', orgId)
-        .is('assigned_to', null)
+    // meanwhile: the `assigned_to IS NULL` condition makes the claim atomic. Either way a person has
+    // answered, so the chat leaves the hand-off queue.
+    if (sendStatus !== 'failed') {
+      try {
+        const claimed = claimAfterSend && (await assignConversation(supabase, { conversationId: conversation.id, organizationId: orgId, userId: sender.id, onlyUnassigned: true }))
+        if (!claimed) await clearHandOff(supabase, { conversationId: conversation.id, organizationId: orgId })
+      } catch (handOffError: any) {
+        // The message is already away; the queue catches up on the next reply
+        console.warn('[API] Could not update the chat owner after a reply:', handOffError?.message || handOffError)
+      }
     }
 
     if (sendStatus === 'failed') {

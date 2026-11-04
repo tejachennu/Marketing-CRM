@@ -7,10 +7,10 @@ import { formatChatListTimestamp } from '@/lib/chat-dates'
 import { formatBadgeCount, getAvatarTone, getMessagePreview } from '@/lib/chat-message-format'
 import { formatContactDisplayName, getContactAvatarInitials } from '@/lib/whatsapp-bsuid'
 
-/** The chatbot handed this chat to the team (nobody assigned, chatbot off) and nobody has taken it yet. */
-export function isHandedOff(conversation: Pick<ConversationWithContact, 'assigned_to' | 'auto_reply_enabled'>): boolean {
-  return conversation.assigned_to == null && conversation.auto_reply_enabled === false
-}
+import { isHandedOff } from '@/lib/handoff'
+
+// The inbox imports the rule from here as well
+export { isHandedOff }
 
 interface ConversationRowProps {
   conversation: ConversationWithContact

@@ -130,6 +130,8 @@ export interface Conversation {
   unread_count: number
   assigned_to: string | null
   auto_reply_enabled?: boolean | null
+  /** Set when a flow handed the chat to the team queue; cleared once someone takes it (after the 20261104 hand-off migration). */
+  handed_off_at?: string | null
   created_at: string
   updated_at: string
 }
