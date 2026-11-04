@@ -11,11 +11,14 @@ const TOKEN = 'org-auth-token'
 const stub = (file, exports) => { require.cache[file] = { id: file, filename: file, loaded: true, exports } }
 
 const writes = []
+const reads = []
 const tables = {}
+const MAX_ROWS = 1000 // Supabase's default PostgREST max-rows
 const db = {
   from(table) {
     let action = 'select'
     let shape = 'many'
+    let window = null
     const filters = []
     const query = {
       select: () => query,
@@ -25,11 +28,16 @@ const db = {
       eq: (column, value) => { filters.push((row) => row[column] === value); return query },
       in: () => query, or: () => query, ilike: () => query, neq: () => query, not: () => query, is: () => query, gt: () => query,
       order: () => query, limit: () => query,
+      // Like PostgREST, a read returns at most MAX_ROWS rows whatever range is asked for
+      range: (from, to) => { window = [from, to]; return query },
       single: () => { shape = 'one'; return query },
       maybeSingle: () => { shape = 'one'; return query },
       then(resolve, reject) {
         if (action !== 'select') writes.push({ table, action })
-        const rows = (tables[table] || []).filter((row) => filters.every((filter) => filter(row)))
+        reads.push(table)
+        let rows = (tables[table] || []).filter((row) => filters.every((filter) => filter(row)))
+        if (window) rows = rows.slice(window[0], window[1] + 1)
+        if (action === 'select' && shape === 'many') rows = rows.slice(0, MAX_ROWS)
         return Promise.resolve({ data: shape === 'one' ? rows[0] || null : rows, error: null }).then(resolve, reject)
       },
     }
@@ -110,4 +118,24 @@ test('Twilio inbound: the address without a workspace never guesses which worksp
   }))
   assert.equal(known.status, 403)
   assert.deepEqual(writes, [])
+})
+
+test('Twilio inbound: the address without a workspace finds a workspace past the first 1000 with a Twilio number', async () => {
+  reset()
+  // 2,400 other workspaces have a Twilio number saved; the one written to comes after all of them,
+  // saved with spaces and dashes
+  const others = Array.from({ length: 2400 }, (_, i) => ({ id: `0000${String(i).padStart(4, '0')}-0000-4000-8000-000000000000`, whatsapp_provider: 'twilio', twilio_whatsapp_number: `+1666${String(i).padStart(7, '0')}` }))
+  tables.organizations = [...others, { ...tables.organizations[0], twilio_whatsapp_number: '+1 555-000-1111 ' }]
+  tables.contacts = [{ id: 'c1', organization_id: ORG, phone_number: '+14165550123' }]
+  tables.conversations = [{ id: 'cv1', organization_id: ORG, contact_id: 'c1', is_active: true }]
+  reads.length = 0
+  const url = 'https://wamacrm.example.com/api/webhooks/twilio'
+  const res = await legacyRoute.POST(new NextRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilio.getExpectedTwilioSignature(TOKEN, url, fields) },
+    body: new URLSearchParams(fields).toString(),
+  }))
+  assert.notEqual((await res.clone().json()).ignored, true, 'not dropped as a message no workspace owns')
+  assert.ok(writes.some((write) => write.table === 'messages' && write.action === 'insert'), 'the message was stored in that workspace')
+  assert.ok(reads.filter((table) => table === 'organizations').length >= 3, 'the numbers were read page by page')
 })

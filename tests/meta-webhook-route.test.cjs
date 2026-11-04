@@ -14,6 +14,7 @@ const OWN_APP_WORKSPACE = '22222222-2222-4222-8222-222222222222' // connected wi
 const SIGNUP_WORKSPACE = '33333333-3333-4333-8333-333333333333' // connected through this app's signup
 const EXPIRED_WORKSPACE = '44444444-4444-4444-8444-444444444444' // its token no longer works
 const NO_SECRET_WORKSPACE = '55555555-5555-4555-8555-555555555555' // its own Meta app, but no app secret saved yet
+const EXPIRED_OWN_APP_WORKSPACE = '66666666-6666-4666-8666-666666666666' // its own Meta app and its secret saved, but its token has expired
 
 process.env.NEXT_PUBLIC_META_APP_ID = THIS_APP
 process.env.META_APP_SECRET = THIS_SECRET
@@ -31,6 +32,7 @@ const workspaces = {
   [SIGNUP_WORKSPACE]: { id: SIGNUP_WORKSPACE, whatsapp_provider: 'facebook', whatsapp_api_token: 'SIGNUP_TOKEN', whatsapp_business_account_id: '500000000000002', whatsapp_phone_number_id: '600000000000002' },
   [EXPIRED_WORKSPACE]: { id: EXPIRED_WORKSPACE, whatsapp_provider: 'facebook', whatsapp_api_token: 'EXPIRED_TOKEN', whatsapp_business_account_id: '500000000000003', whatsapp_phone_number_id: '600000000000003' },
   [NO_SECRET_WORKSPACE]: { id: NO_SECRET_WORKSPACE, whatsapp_provider: 'facebook', whatsapp_api_token: 'NO_SECRET_TOKEN', whatsapp_business_account_id: '500000000000004', whatsapp_phone_number_id: '600000000000004' },
+  [EXPIRED_OWN_APP_WORKSPACE]: { id: EXPIRED_OWN_APP_WORKSPACE, whatsapp_provider: 'facebook', whatsapp_api_token: 'EXPIRED_TOKEN_2', whatsapp_app_secret: OWN_APP_SECRET, whatsapp_business_account_id: '500000000000006', whatsapp_phone_number_id: '600000000000006' },
 }
 let ownerLookups = 0
 let secretColumnExists = true // false until supabase/migrations/20261104_whatsapp_app_secret.sql is applied
@@ -135,4 +137,24 @@ test("Webhook route: a workspace's app is looked up once, not for every message"
   await deliver(OWN_APP_WORKSPACE, sign(OWN_APP_SECRET))
   await deliver(OWN_APP_WORKSPACE, sign(OWN_APP_SECRET))
   assert.ok(appLookups <= 1, `looked up ${appLookups} times`)
+})
+
+test("Webhook route: a workspace's saved app secret verifies its webhooks without asking Meta, even once its token has expired", async () => {
+  appLookups = 0
+  ownerLookups = 0
+  // Payment captures and messages keep arriving after the workspace's WhatsApp token expired
+  assert.equal((await deliver(EXPIRED_OWN_APP_WORKSPACE, sign(OWN_APP_SECRET))).status, 200)
+  assert.equal(appLookups, 0, 'no Graph lookup with the dead token')
+  assert.equal(ownerLookups, 0, 'still for that workspace only')
+  // ...and a forged or unsigned payload is still refused
+  logged.error = []
+  assert.equal((await deliver(EXPIRED_OWN_APP_WORKSPACE, sign('not-their-secret'))).status, 403)
+  assert.equal((await deliver(EXPIRED_OWN_APP_WORKSPACE, null)).status, 403)
+  assert.ok(logged.error.some((line) => line.includes('may have expired')), 'the log says the token looks invalid')
+  // A matching saved secret is proof whichever app the token names (a tenant can point its token at
+  // its own app anyway), and this app's own signature still works for everyone
+  appLookups = 0
+  assert.equal((await deliver(OWN_APP_WORKSPACE, sign(OWN_APP_SECRET))).status, 200)
+  assert.equal(appLookups, 0)
+  assert.equal((await deliver(EXPIRED_OWN_APP_WORKSPACE, sign(THIS_SECRET))).status, 200)
 })

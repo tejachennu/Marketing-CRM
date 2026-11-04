@@ -87,6 +87,10 @@ async function downloadTwilioMedia(
   }
 }
 
+// Rows per read of the workspaces' Twilio numbers: at or under PostgREST's default max-rows, so a
+// short page reliably means the last one
+const TWILIO_NUMBER_PAGE_SIZE = 1000
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient()
@@ -145,11 +149,25 @@ export async function POST(request: NextRequest) {
     const toNumber = to.replace('whatsapp:', '').trim()
     const toDigits = toNumber.replace(/\D/g, '')
     if (toDigits) {
-      const { data: candidates } = await supabase
-        .from('organizations')
-        .select('id, twilio_whatsapp_number')
-        .not('twilio_whatsapp_number', 'is', null)
-      const owners = (candidates || []).filter((org: any) => String(org.twilio_whatsapp_number || '').replace(/\D/g, '') === toDigits)
+      // The saved number is free text ("+1 415-555-0100", "whatsapp:+14155550100"), so it is compared
+      // by its digits here rather than in the query. The read goes page by page: one unpaged select
+      // stops at the API's row limit (1000), and a workspace past it would never be found
+      const owners: any[] = []
+      for (let from = 0; ; from += TWILIO_NUMBER_PAGE_SIZE) {
+        const { data: page, error: pageError } = await supabase
+          .from('organizations')
+          .select('id, twilio_whatsapp_number')
+          .not('twilio_whatsapp_number', 'is', null)
+          .order('id', { ascending: true })
+          .range(from, from + TWILIO_NUMBER_PAGE_SIZE - 1)
+        if (pageError) {
+          // Refused rather than acknowledged: an incomplete read could file the message nowhere
+          console.error('[v0] Could not look up the workspace for this Twilio number:', pageError.message)
+          return NextResponse.json({ error: 'Could not look up the workspace' }, { status: 500 })
+        }
+        owners.push(...(page || []).filter((org: any) => String(org.twilio_whatsapp_number || '').replace(/\D/g, '') === toDigits))
+        if (!page || page.length < TWILIO_NUMBER_PAGE_SIZE) break
+      }
       if (owners.length === 1) orgId = owners[0].id
     }
 

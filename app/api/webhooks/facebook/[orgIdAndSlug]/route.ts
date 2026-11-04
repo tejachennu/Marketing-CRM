@@ -16,6 +16,7 @@ import {
   describeFlowReply,
 } from '@/lib/meta-webhook'
 import { checkRateLimit } from '@/lib/rate-limiter'
+import { isModuleDisabledOnServer, isModuleEnabledOnServer } from '@/lib/feature-flags'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime, saveUnownedSubmission, FlowLockBusyError } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
@@ -180,11 +181,11 @@ const tokenAppCache = new Map<string, { appId: string | null; at: number }>()
 const TOKEN_APP_CACHE_MS = 60 * 60 * 1000
 
 /**
- * The workspace in the URL when it is connected to WhatsApp through its own Meta app (not this one):
- * that app's ID, and the app secret saved in Settings → WhatsApp (empty when none is), with which
- * Meta signs that app's webhooks. Null for a workspace connected through this app.
+ * The Meta settings of the workspace in the URL, when it uses the WhatsApp Cloud API: its id, saved
+ * token, and the app secret saved in Settings → WhatsApp (empty when none is), with which Meta signs
+ * the webhooks of a workspace connected through its own Meta app. Null for any other workspace.
  */
-async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }): Promise<{ id: string; secret: string } | null> {
+async function workspaceMetaSettings(context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }): Promise<{ orgId: string; token: string; secret: string } | null> {
   try {
     const resolvedParams = await (context.params as any)
     const orgId = String(resolvedParams?.orgIdAndSlug || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]
@@ -197,21 +198,38 @@ async function workspaceOwnMetaApp(context: { params: Promise<{ orgIdAndSlug: st
     if (result.error && isMissingColumnError(result.error, 'whatsapp_app_secret')) result = await select('whatsapp_provider, whatsapp_api_token')
     if (result.error) throw result.error
     const org: any = result.data
-    const token = String(org?.whatsapp_api_token || '')
-    if (org?.whatsapp_provider !== 'facebook' || !token) return null
+    if (org?.whatsapp_provider !== 'facebook') return null
+    return { orgId, token: String(org?.whatsapp_api_token || ''), secret: String(org?.whatsapp_app_secret || '').trim() }
+  } catch (err) {
+    console.error('[Facebook Webhook POST] Could not read this workspace\'s Meta settings:', err)
+    return null
+  }
+}
 
-    const cacheKey = `${orgId}:${token.slice(-16)}`
+/**
+ * The Meta app the workspace's saved token belongs to, when that is not this app (the workspace is
+ * connected through its own Meta app). Null for a workspace on this app, and when Meta could not
+ * say (an expired or revoked token, a timeout); only used when the saved app secret did not verify
+ * the request, to word the refusal and for META_WEBHOOK_ALLOW_UNSIGNED.
+ */
+async function workspaceOwnMetaAppId(workspace: { orgId: string; token: string }): Promise<string | null> {
+  if (!workspace.token) return null
+  try {
+    const cacheKey = `${workspace.orgId}:${workspace.token.slice(-16)}`
     const cached = tokenAppCache.get(cacheKey)
     let appId = cached && Date.now() - cached.at < TOKEN_APP_CACHE_MS ? cached.appId : undefined
     if (appId === undefined) {
-      const res = await fetch('https://graph.facebook.com/v25.0/app?fields=id', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) })
+      const res = await fetch('https://graph.facebook.com/v25.0/app?fields=id', { headers: { Authorization: `Bearer ${workspace.token}` }, cache: 'no-store', signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) })
       const data = await res.json().catch(() => null)
-      if (!res.ok || !data?.id) return null // Not known: refused, and Meta retries
+      if (!res.ok || !data?.id) {
+        console.error(`[Facebook Webhook POST] Meta could not say which app this workspace's token belongs to (${res.status}${data?.error?.message ? `: ${data.error.message}` : ''}); the saved WhatsApp token may have expired`)
+        return null // Not known: refused, and Meta retries
+      }
       appId = String(data.id)
       tokenAppCache.set(cacheKey, { appId, at: Date.now() })
     }
     const thisApp = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
-    return appId && appId !== thisApp ? { id: appId, secret: String(org?.whatsapp_app_secret || '').trim() } : null
+    return appId && appId !== thisApp ? appId : null
   } catch (err) {
     console.error('[Facebook Webhook POST] Could not tell which Meta app this workspace uses:', err)
     return null
@@ -671,6 +689,7 @@ async function processEvent(
     else console.log('[Facebook Webhook] Message stored:', savedMessage.id)
 
     // Step 4: Update conversation metadata (a redelivery is not a new message for the agent)
+    let unreadBumped = false
     if (!redelivered) {
       const { error: updateError } = await supabase
         .from('conversations')
@@ -682,14 +701,49 @@ async function processEvent(
 
       if (updateError) {
         console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+      } else {
+        unreadBumped = true
       }
     }
 
+    // A stored row is what tells a redelivery apart, and a redelivery stops before the address form,
+    // the checkout buttons and the assistants. So when one of those steps is refused for Meta to
+    // retry (5xx), its row is taken back, with the unread count it added: the retry then counts as
+    // the first delivery and is answered, rather than being taken for one that was answered already.
+    // The cart order and payment handlers run on a redelivery anyway (each keeps its own record), so
+    // their failures keep the row: a message that keeps failing stays in the inbox for an agent
+    let takeBackInbound: (() => Promise<void>) | null = null
+    if (!redelivered && savedMessage?.id) {
+      const storedId = savedMessage.id
+      takeBackInbound = async () => {
+        takeBackInbound = null
+        const { error: deleteError } = await supabase.from('messages').delete().eq('id', storedId).eq('organization_id', orgId)
+        if (deleteError) {
+          console.error('[Facebook Webhook] Could not take back the message refused for a retry:', deleteError.message)
+          return
+        }
+        if (!unreadBumped) return
+        const { data: current } = await supabase.from('conversations').select('unread_count').eq('id', conversation.id).eq('organization_id', orgId).maybeSingle()
+        const unread = Math.max(0, Number(current?.unread_count || 0) - 1)
+        const { error: unreadError } = await supabase.from('conversations').update({ unread_count: unread }).eq('id', conversation.id).eq('organization_id', orgId)
+        if (unreadError) console.warn('[Facebook Webhook] Could not restore the unread count:', unreadError.message)
+      }
+    }
+    const refuseForRetry = async (body: Record<string, any>, status: number) => {
+      if (takeBackInbound) await takeBackInbound()
+      return NextResponse.json(body, { status })
+    }
+
+    // The checkout's own buttons ("Pay online", "Cash on Delivery"), and a form that carries an address
+    const checkoutButton = /^(cod_confirm|pay_online)_/.test(String(interactiveButtonId || ''))
+
     // ── Commerce Wing: Process in-chat e-commerce events ───────────────
-    // The store switch stops new cart orders only (with it off, a cart is kept as a plain message).
-    // An address, a payment or a checkout button for an order placed while the store was on is still
-    // handled; with no order waiting, a tap falls through like any other message
-    if (orgData.enable_commerce !== false || type !== 'order') {
+    // The store switch, and the platform's kill switch for commerce (DISABLED_MODULES), stop new cart
+    // orders only (with either off, a cart is kept as a plain message). An address, a payment or a
+    // checkout button for an order placed while the store was on is still handled; with no order
+    // waiting, a tap falls through like any other message
+    const takesCartOrders = orgData.enable_commerce !== false && !isModuleDisabledOnServer('commerce')
+    if (takesCartOrders || type !== 'order') {
       // A. Native cart order from WhatsApp
       if (type === 'order' && message.order) {
         try {
@@ -720,6 +774,10 @@ async function processEvent(
         // Forms from a workflow (a bare id) or a campaign button belong to the flow engine, even when they ask for an address
         const workflowForm = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(flowToken) || flowToken.startsWith('campaign:')
         const looksLikeAddress = Boolean(orderIdFromFlowToken(flowToken)) || (!flowToken.startsWith('order_') && !workflowForm && Boolean(flowSubmissionData.address_line_1))
+        // A redelivery got past this point the first time (a refused attempt took its row back), and
+        // the address handler keeps no record of handled messages: running it again would send the
+        // customer the next checkout step a second time
+        if (looksLikeAddress && redelivered) return NextResponse.json({ success: true, redelivered: true })
         if (looksLikeAddress) {
           try {
             const addressOrder = await handleInboundAddressSubmission({
@@ -735,7 +793,7 @@ async function processEvent(
             }
           } catch (commErr: any) {
             console.error('[Facebook Webhook Commerce] Failed to handle address submission:', commErr)
-            return NextResponse.json({ error: 'The delivery address could not be saved' }, { status: 500 })
+            return refuseForRetry({ error: 'The delivery address could not be saved' }, 500)
           }
         }
       }
@@ -759,7 +817,10 @@ async function processEvent(
         }
       }
 
-      // D. Checkout buttons: "Pay online", "Cash on Delivery", "Confirm order"
+      // D. Checkout buttons: "Pay online", "Cash on Delivery", "Confirm order". A redelivered tap was
+      //    handled the first time, and the handler keeps no record of handled taps: a second run would
+      //    tell the customer again that the order is confirmed, or send another payment card
+      if (checkoutButton && redelivered) return NextResponse.json({ success: true, redelivered: true })
       if (interactiveButtonId) {
         try {
           const button = await handleCheckoutButton({
@@ -774,14 +835,18 @@ async function processEvent(
           }
         } catch (commErr: any) {
           console.error('[Facebook Webhook Commerce] Failed to handle checkout button:', commErr)
-          return NextResponse.json({ error: 'The checkout step could not be completed' }, { status: 500 })
+          return refuseForRetry({ error: 'The checkout step could not be completed' }, 500)
         }
       }
     }
 
     // Step 4.5: Execute and deliver every automatic step in order.
+    // An organization without the Flow Builder (switched off for it, or on the whole platform) runs
+    // no flows: the message goes on to the assistants as if no flow existed.
     // With automation off (an agent has the chat) a submitted form is still saved, just not acted on
-    if (conversation.auto_reply_enabled === false && flowSubmissionData) {
+    const flowsEnabled = isModuleEnabledOnServer(orgData, 'flows')
+    if (!flowsEnabled) console.log(`[Facebook Webhook Flow] The Flow Builder is switched off for organization ${orgId}; no flow runs`)
+    if (flowsEnabled && conversation.auto_reply_enabled === false && flowSubmissionData) {
       try {
         await saveUnownedSubmission({ organizationId: orgId, contactPhone: phoneNumber, conversationId: conversation.id, flowSubmissionData, messageId: messageSid })
       } catch (error: any) {
@@ -789,7 +854,7 @@ async function processEvent(
       }
     }
     let handedToAi = false // a flow delegated this message to the knowledge assistant
-    if (conversation.auto_reply_enabled !== false) {
+    if (flowsEnabled && conversation.auto_reply_enabled !== false) {
       try {
         const { count: inboundCount, error: countError } = await supabase.from('messages').select('id', { count: 'exact', head: true })
           .eq('organization_id', orgId).eq('conversation_id', conversation.id).eq('sender_type', 'contact')
@@ -830,15 +895,16 @@ async function processEvent(
         // the session (FAILED, customer apologised to), so the assistants below answer instead of Meta
         // redelivering the message for days.
         if (error instanceof FlowLockBusyError) {
-          return NextResponse.json({ error: 'Workflow execution failed', details: error.message }, { status: 503 })
+          return refuseForRetry({ error: 'Workflow execution failed', details: error.message }, 503)
         }
         console.error('[Facebook Webhook Flow] Execution failed:', error.message)
       }
     }
 
-    // A redelivery was answered the first time. The commerce and flow engines above keep their own
-    // record of handled messages (and a retry after a 5xx from them must still reach them); the
-    // assistants below keep none, so this is where a redelivery stops
+    // A redelivery was answered the first time: an attempt refused for a retry took its row back, so
+    // a stored row means an earlier attempt got this far. The flow engine and the cart order handler
+    // keep their own record of handled messages; the checkout buttons and the address form stop
+    // above, and the assistants below keep none, so this is where a redelivery stops
     if (redelivered) return NextResponse.json({ success: true, redelivered: true })
 
     // One text from the bot (a greeting, an FAQ answer, the hand-off notice), sent and then stored
@@ -857,7 +923,9 @@ async function processEvent(
         })
         if (!fbRes.ok) throw new Error(`Meta refused the message: ${fbRes.status} ${await fbRes.text()}`)
         const fbData = await fbRes.json()
-        sid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+        // Without an id from Meta there is nothing a status callback could match, and a made-up one
+        // could collide with another message's under the (organization, provider id) unique index
+        sid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : null
         console.log(`[Facebook Webhook Chatbot] Sent Facebook message (${what}): ${sid}`)
       } catch (sendErr: any) {
         failure = sendErr?.message || String(sendErr)
@@ -905,7 +973,9 @@ async function processEvent(
 
       // Product and order questions: the shopping assistant answers with the store's own products and
       // the customer's own orders. Everything else falls through to the FAQ chatbot below.
-      if (shoppingAssistantEnabled(orgData)) {
+      // The platform's commerce kill switch stops it too: its product cards lead to carts that are
+      // no longer taken as orders
+      if (shoppingAssistantEnabled(orgData) && !isModuleDisabledOnServer('commerce')) {
         try {
           const { data: recentForAssistant } = await supabase
             .from('messages')
@@ -1315,6 +1385,7 @@ ${LANGUAGE_RULES}
 
     return finish()
   } catch (error: any) {
+    // The stored message (if any) is kept: an error that keeps recurring must not empty the inbox
     console.error('[Facebook Webhook] POST Webhook error:', error)
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 })
   }
@@ -1414,20 +1485,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
   if (!signature.valid) {
     // A workspace connected with its own Meta app gets that app's webhooks, signed with that app's
     // secret, which the workspace saves in Settings → WhatsApp. They are taken for that workspace's
-    // own account only; everything else must be signed with this app's secret.
-    const ownApp = await workspaceOwnMetaApp(context)
-    if (!ownApp) {
-      console.error('[Facebook Webhook POST] Rejected:', signature.note)
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
-    }
-    if (verifyMetaSignatureWith(ownApp.secret, rawBody, signatureHeader)) {
+    // own account only; everything else must be signed with this app's secret. A match with the
+    // saved secret is proof enough, so it is checked first: asking Meta which app the token belongs
+    // to would fail every delivery (payment captures included) once the workspace's token expires.
+    const workspace = await workspaceMetaSettings(context)
+    if (workspace?.secret && verifyMetaSignatureWith(workspace.secret, rawBody, signatureHeader)) {
       verified = true
-      console.log(`[Facebook Webhook POST] Signed by the workspace's own Meta app ${ownApp.id}; accepted for this workspace only`)
-    } else if (process.env.META_WEBHOOK_ALLOW_UNSIGNED === 'true') {
-      console.warn(`[Facebook Webhook POST] ${signature.note}; META_WEBHOOK_ALLOW_UNSIGNED is set, so it is accepted unverified for this workspace only (own Meta app ${ownApp.id})`)
+      console.log(`[Facebook Webhook POST] Signed with the app secret saved for workspace ${workspace.orgId}; accepted for this workspace only`)
     } else {
-      console.error(`[Facebook Webhook POST] Rejected: ${ownApp.secret ? 'the signature does not match the app secret saved for this workspace' : 'no app secret is saved for this workspace'} (own Meta app ${ownApp.id}). Add the Meta app secret in Settings → WhatsApp for workspaces connected through their own Meta app`)
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+      const ownAppId = workspace ? await workspaceOwnMetaAppId(workspace) : null
+      if (!ownAppId) {
+        console.error('[Facebook Webhook POST] Rejected:', signature.note)
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+      }
+      if (process.env.META_WEBHOOK_ALLOW_UNSIGNED === 'true') {
+        console.warn(`[Facebook Webhook POST] ${signature.note}; META_WEBHOOK_ALLOW_UNSIGNED is set, so it is accepted unverified for this workspace only (own Meta app ${ownAppId})`)
+      } else {
+        console.error(`[Facebook Webhook POST] Rejected: ${workspace?.secret ? 'the signature does not match the app secret saved for this workspace' : 'no app secret is saved for this workspace'} (own Meta app ${ownAppId}). Add the Meta app secret in Settings → WhatsApp for workspaces connected through their own Meta app`)
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+      }
     }
   } else if (signature.note) {
     console.warn('[Facebook Webhook POST]', signature.note)

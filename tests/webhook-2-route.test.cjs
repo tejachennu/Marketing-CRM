@@ -54,6 +54,7 @@ function fakeDb() {
         insert(data) { state.op = 'insert'; state.payload = [].concat(data); return builder },
         upsert(data, options) { state.op = 'upsert'; state.payload = [].concat(data); state.options = options || {}; return builder },
         update(data) { state.op = 'update'; state.payload = data; return builder },
+        delete() { state.op = 'delete'; return builder },
         eq(column, value) { filters.push({ column, test: (row) => row[column] === value }); return builder },
         in(column, values) { filters.push({ column, test: (row) => values.includes(row[column]) }); return builder },
         order(column, options) { state.order = { column, ascending: options?.ascending !== false }; return builder },
@@ -93,6 +94,9 @@ function fakeDb() {
         } else if (state.op === 'update') {
           data = matching()
           for (const row of data) Object.assign(row, state.payload)
+        } else if (state.op === 'delete') {
+          data = matching()
+          tables[table] = rows(table).filter((row) => !data.includes(row))
         }
         if (state.single || state.maybeSingle) return { data: data[0] ?? null, error: state.single && !data[0] ? { code: 'PGRST116', message: 'no rows' } : null, count: null }
         return { data, error: null, count: null }
@@ -106,34 +110,37 @@ let db = fakeDb()
 const stub = (file, exports) => { require.cache[file] = { id: file, filename: file, loaded: true, exports } }
 stub(require.resolve('@supabase/supabase-js', { paths: [PROJECT] }), { createClient: () => db })
 
+// Another run holds this customer's flow lease (the route answers 503 so Meta retries)
+class FlowLockBusyError extends Error {}
 // The flow engine: each test says what it does with the message. `runs` is every message it saw
 const flows = { runs: [], next: async () => ({ handled: false }) }
 stub(require.resolve(path.join(PROJECT, 'lib/flows/flow-executor.ts')), {
   executeFlowRuntime: async (input) => { flows.runs.push(input); return flows.next(input) },
   saveUnownedSubmission: async () => ({ handled: true, actionTaken: 'saved_submission' }),
-  FlowLockBusyError: class FlowLockBusyError extends Error {},
+  FlowLockBusyError,
 })
 // The commerce handlers record what reached them
-const commerce = { payments: [], orders: [], paymentError: null }
+// (`address` and `button` say what the address form and checkout button handlers do)
+const commerce = { payments: [], orders: [], addresses: [], buttons: [], paymentError: null, orderError: null, address: async () => null, button: async () => ({ handled: false }) }
 stub(require.resolve(path.join(PROJECT, 'lib/commerce/commerce-webhook-handler.ts')), {
   handleInboundPaymentConfirmation: async (input) => { commerce.payments.push(input); if (commerce.paymentError) throw commerce.paymentError; return null },
-  handleInboundCommerceOrder: async (input) => { commerce.orders.push(input) },
-  handleInboundAddressSubmission: async () => null,
-  handleCheckoutButton: async () => ({ handled: false }),
+  handleInboundCommerceOrder: async (input) => { commerce.orders.push(input); if (commerce.orderError) throw commerce.orderError },
+  handleInboundAddressSubmission: async (input) => { commerce.addresses.push(input); return commerce.address(input) },
+  handleCheckoutButton: async (input) => { commerce.buttons.push(input); return commerce.button(input) },
   orderIdFromFlowToken: (token) => (String(token || '').startsWith('order_') ? String(token).slice(6) : null),
 })
 // The shopping assistant: off unless a test turns it on, and then it answers as told
-const assistant = { enabled: false, result: { handled: false, reason: 'not_shopping' } }
+const assistant = { enabled: false, runs: 0, result: { handled: false, reason: 'not_shopping' } }
 stub(require.resolve(path.join(PROJECT, 'lib/commerce/shopping-assistant.ts')), {
   shoppingAssistantEnabled: () => assistant.enabled,
-  runShoppingAssistant: async () => assistant.result,
+  runShoppingAssistant: async () => { assistant.runs++; return assistant.result },
 })
 
 // Fake Meta and fake OpenAI. `meta.failures` is what the next sends do instead of succeeding: an
 // HTTP status Meta answers with, or an error the call throws (a timeout)
 let sent = []
 let replies = 0
-const meta = { failures: [] }
+const meta = { failures: [], withoutId: 0 }
 const openai = { calls: [], embeddings: true, answer: { reply: ANSWER, isRiseTicket: false } }
 global.fetch = async (input, init = {}) => {
   const url = new URL(String(input))
@@ -142,6 +149,7 @@ global.fetch = async (input, init = {}) => {
     if (failure instanceof Error) throw failure
     if (failure) return new Response(JSON.stringify({ error: { message: 'Something went wrong', code: 1 } }), { status: failure })
     sent.push(JSON.parse(init.body))
+    if (meta.withoutId > 0) { meta.withoutId--; return new Response(JSON.stringify({ messaging_product: 'whatsapp' }), { status: 200 }) }
     return new Response(JSON.stringify({ messages: [{ id: `wamid.reply.${++replies}` }] }), { status: 200 })
   }
   if (url.hostname === 'api.openai.com') {
@@ -180,10 +188,12 @@ const deliver = async (payload, org = ORG) => {
 const fresh = (extra) => {
   db = fakeDb()
   db.seed('organizations', [organization(extra)])
-  sent = []; replies = 0; meta.failures = []
+  sent = []; replies = 0; meta.failures = []; meta.withoutId = 0
   flows.runs = []; flows.next = async () => ({ handled: false })
-  commerce.payments = []; commerce.orders = []; commerce.paymentError = null
-  assistant.enabled = false; assistant.result = { handled: false, reason: 'not_shopping' }
+  commerce.payments = []; commerce.orders = []; commerce.addresses = []; commerce.buttons = []; commerce.paymentError = null; commerce.orderError = null
+  commerce.address = async () => null; commerce.button = async () => ({ handled: false })
+  delete process.env.DISABLED_MODULES; delete process.env.NEXT_PUBLIC_DISABLED_MODULES
+  assistant.enabled = false; assistant.runs = 0; assistant.result = { handled: false, reason: 'not_shopping' }
   openai.calls = []; openai.embeddings = true; openai.answer = { reply: ANSWER, isRiseTicket: false }
   logged.warn = []; logged.error = []
   return db
@@ -420,4 +430,157 @@ test('FAQ chatbot: its hourly run budget is per customer and per workspace', asy
   // ...while this workspace's are unaffected
   await deliver(inbound('wamid.in.6', 'What time do you open?', '919000000004'))
   assert.deepEqual(texts(), [ANSWER])
+})
+
+test('Busy flow lock: a message refused with 503 is answered in full when Meta retries it', async () => {
+  // The flow engine is busy with the customer's previous message, then free on the retry, where the
+  // flow hands the question to the AI (or matches nothing)
+  for (const onRetry of [async () => ({ handled: false, isRagFallback: true }), async () => ({ handled: false })]) {
+    fresh()
+    let busy = true
+    flows.next = async (input) => { if (busy) throw new FlowLockBusyError('busy'); return onRetry(input) }
+    assert.equal(await deliver(inbound('wamid.in.1', 'What time do you open?')), 503)
+    assert.equal(messages().length, 0, 'the refused delivery took its message back')
+    assert.equal(db.tables.conversations[0].unread_count, 0, 'and the unread count it added')
+    busy = false
+    assert.equal(await deliver(inbound('wamid.in.1', 'What time do you open?')), 200)
+    assert.deepEqual(texts(), [ANSWER], 'the retry was answered')
+    assert.equal(messages().filter((row) => row.sender_type === 'contact').length, 1, 'stored once')
+    assert.equal(db.tables.conversations[0].unread_count, 1, 'unread once')
+    // A third delivery of the same message is a real redelivery: nothing more is sent
+    assert.equal(await deliver(inbound('wamid.in.1', 'What time do you open?')), 200)
+    assert.equal(sent.length, 1)
+  }
+
+  // The hand-off notice is not lost either, when the AI cannot answer on the retry
+  fresh({ openai_api_key: '' })
+  let busy = true
+  flows.next = async () => { if (busy) throw new FlowLockBusyError('busy'); return { handled: false, isRagFallback: true } }
+  assert.equal(await deliver(inbound('wamid.in.2', 'Do you ship to Goa?')), 503)
+  busy = false
+  assert.equal(await deliver(inbound('wamid.in.2', 'Do you ship to Goa?')), 200)
+  assert.deepEqual(texts(), [HANDOFF_NOTICE])
+})
+
+test('Redelivery: a checkout button or address form handled the first time is not handled again', async () => {
+  fresh({ enable_commerce: true, enable_ai: false })
+  commerce.button = async () => ({ handled: true, outcome: 'cod_confirmed' })
+  const tap = change(message('wamid.tap.1', CUSTOMER, { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: 'cod_confirm_11111111-1111-4111-8111-111111111111', title: 'Cash on Delivery' } } }))
+  assert.equal(await deliver(tap), 200)
+  assert.equal(commerce.buttons.length, 1)
+  assert.equal(await deliver(tap), 200)
+  assert.equal(commerce.buttons.length, 1, 'the redelivered tap did not reach the checkout again')
+  assert.equal(flows.runs.length, 0, 'nor the flow engine')
+
+  const form = change(message('wamid.form.1', CUSTOMER, { type: 'interactive', interactive: { type: 'nfm_reply', nfm_reply: { response_json: JSON.stringify({ flow_token: 'order_11111111-1111-4111-8111-111111111111', address_line_1: '1 MG Road' }) } } }))
+  commerce.address = async () => ({ id: '11111111-1111-4111-8111-111111111111' })
+  assert.equal(await deliver(form), 200)
+  assert.equal(await deliver(form), 200)
+  assert.equal(commerce.addresses.length, 1, 'the redelivered form did not resend the next checkout step')
+  assert.equal(flows.runs.length, 0)
+
+  // A handler that failed asks Meta to retry, and the retry reaches it again
+  commerce.address = async () => { throw new Error('database unavailable') }
+  const second = change(message('wamid.form.2', CUSTOMER, { type: 'interactive', interactive: { type: 'nfm_reply', nfm_reply: { response_json: JSON.stringify({ flow_token: 'order_11111111-1111-4111-8111-111111111111', address_line_1: '2 MG Road' }) } } }))
+  assert.equal(await deliver(second), 500)
+  commerce.address = async () => ({ id: '11111111-1111-4111-8111-111111111111' })
+  assert.equal(await deliver(second), 200)
+  assert.equal(commerce.addresses.length, 3, 'the retry was handled')
+  commerce.button = async () => { throw new Error('database unavailable') }
+  const tap2 = change(message('wamid.tap.2', CUSTOMER, { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: 'pay_online_11111111-1111-4111-8111-111111111111', title: 'Pay online' } } }))
+  assert.equal(await deliver(tap2), 500)
+  commerce.button = async () => ({ handled: true, outcome: 'payment_requested' })
+  assert.equal(await deliver(tap2), 200)
+  assert.equal(commerce.buttons.length, 3, 'the retried tap was handled')
+  assert.equal(messages().filter((row) => row.sender_type === 'contact').length, 4, 'every message stored once')
+
+  // A payment status keeps its own idempotency and is passed on every time
+  const capture = { id: 'wamid.pay.9', status: 'captured', type: 'payment', timestamp: String(nowSeconds()), recipient_id: CUSTOMER, payment: { reference_id: 'MB-1001' } }
+  await deliver(change({ statuses: [capture] }))
+  await deliver(change({ statuses: [capture] }))
+  assert.equal(commerce.payments.length, 2)
+})
+
+test('Module switches: no flow runs for a workspace without the Flow Builder, or with flows switched off platform-wide', async () => {
+  for (const setup of [
+    () => fresh({ enable_flows: false }),
+    () => { fresh(); process.env.DISABLED_MODULES = 'flows' },
+    () => { fresh(); process.env.NEXT_PUBLIC_DISABLED_MODULES = 'flows' },
+  ]) {
+    setup()
+    flows.next = async (input) => { await input.sendReply({ type: 'text', body: 'Welcome to the flow' }); return { handled: true, actionTaken: 'sent' } }
+    assert.equal(await deliver(inbound('wamid.in.1', 'What time do you open?')), 200)
+    assert.equal(flows.runs.length, 0, 'the flow engine was not run')
+    assert.deepEqual(texts(), [ANSWER], 'the FAQ chatbot answered instead')
+  }
+  delete process.env.DISABLED_MODULES; delete process.env.NEXT_PUBLIC_DISABLED_MODULES
+
+  // Flow Builder on (or its column not migrated yet): flows run as before
+  fresh({ enable_flows: true })
+  await deliver(inbound('wamid.in.2', 'menu'))
+  assert.equal(flows.runs.length, 1)
+  fresh()
+  await deliver(inbound('wamid.in.3', 'menu'))
+  assert.equal(flows.runs.length, 1)
+})
+
+test('Module switches: commerce switched off platform-wide takes no new cart orders, and still records payments', async () => {
+  fresh({ enable_commerce: true, enable_ai: false })
+  process.env.DISABLED_MODULES = ' Commerce '
+  const cart = change(message('wamid.cart.9', CUSTOMER, { type: 'order', order: { catalog_id: '1', product_items: [{ product_retailer_id: 'SKU-1', quantity: 1, item_price: 250, currency: 'INR' }] } }))
+  assert.equal(await deliver(cart), 200)
+  assert.equal(commerce.orders.length, 0, 'not an order while commerce is switched off')
+  assert.match(messages()[0].body, /WhatsApp Cart Order/, 'kept as a plain message for the agent')
+  assert.equal(await deliver(change(message('wamid.pay.9', CUSTOMER, { type: 'payment', payment: { reference_id: 'MB-1001', status: 'captured' } }))), 200)
+  assert.equal(commerce.payments.length, 1, 'a payment for an existing order is still recorded')
+  commerce.button = async () => ({ handled: true, outcome: 'cod_confirmed' })
+  await deliver(change(message('wamid.tap.9', CUSTOMER, { type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: 'cod_confirm_11111111-1111-4111-8111-111111111111', title: 'Cash on Delivery' } } })))
+  assert.equal(commerce.buttons.length, 1, 'a checkout tap for an existing order is still handled')
+  delete process.env.DISABLED_MODULES
+
+  // The shopping assistant is off with it: its product cards would lead to carts no longer taken
+  fresh({ enable_commerce: true })
+  assistant.enabled = true
+  process.env.DISABLED_MODULES = 'commerce'
+  assert.equal(await deliver(inbound('wamid.in.9', 'Do you have red shoes?')), 200)
+  assert.equal(assistant.runs, 0, 'the shopping assistant was not run')
+  assert.deepEqual(texts(), [ANSWER], 'the FAQ chatbot answered instead')
+  delete process.env.DISABLED_MODULES
+  assert.equal(await deliver(inbound('wamid.in.10', 'Do you have blue shoes?')), 200)
+  assert.equal(assistant.runs, 1, 'with commerce on, the assistant runs')
+})
+
+test('Cart orders and payments: a handler that keeps failing leaves the message in the inbox while Meta retries', async () => {
+  fresh({ enable_commerce: true, enable_ai: false })
+  const cart = change(message('wamid.cart.5', CUSTOMER, { type: 'order', order: { catalog_id: '1', product_items: [{ product_retailer_id: 'SKU-1', quantity: 1, item_price: 250, currency: 'INR' }] } }))
+  const carts = () => messages().filter((row) => row.twilio_message_sid === 'FB_wamid.cart.5')
+  commerce.orderError = new Error('database unavailable')
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assert.equal(await deliver(cart), 500, 'Meta is asked to retry')
+    assert.equal(carts().length, 1, 'the cart stays visible to an agent between attempts')
+    assert.match(carts()[0].body, /WhatsApp Cart Order/)
+  }
+  commerce.orderError = null
+  assert.equal(await deliver(cart), 200)
+  assert.equal(commerce.orders.length, 3, 'every attempt reached the order engine, which keeps its own record')
+  assert.equal(carts().length, 1, 'stored once')
+  assert.equal(db.tables.conversations[0].unread_count, 1, 'unread once')
+
+  // A payment that arrives as a message, likewise
+  commerce.paymentError = new Error('database unavailable')
+  const payment = change(message('wamid.pay.5', CUSTOMER, { type: 'payment', payment: { reference_id: 'MB-1001', status: 'captured' } }))
+  assert.equal(await deliver(payment), 500)
+  assert.equal(messages().filter((row) => row.twilio_message_sid === 'FB_wamid.pay.5').length, 1, 'the payment message stays')
+  commerce.paymentError = null
+  assert.equal(await deliver(payment), 200)
+  assert.equal(commerce.payments.length, 2, 'the retry reached the payment ledger')
+  assert.equal(messages().filter((row) => row.twilio_message_sid === 'FB_wamid.pay.5').length, 1)
+})
+
+test('Bot replies: a send Meta accepted without an id is stored without a made-up one', async () => {
+  fresh()
+  meta.withoutId = 2
+  await deliver(inbound('wamid.in.1', 'hi'))
+  await deliver(inbound('wamid.in.2', 'hello'))
+  assert.deepEqual(botRows().map((row) => [row.status, row.twilio_message_sid]), [['sent', null], ['sent', null]])
 })
