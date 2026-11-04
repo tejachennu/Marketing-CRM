@@ -233,6 +233,51 @@ export function toMinorUnits(amount: number | string | null | undefined): number
   return Number.isFinite(value) ? Math.round(value * 100) : 0
 }
 
+/** Back to major units (rupees, dollars), exact to the paisa. */
+export function fromMinorUnits(minor: number): number {
+  return Math.round(minor) / 100
+}
+
+const wholeQuantity = (quantity: unknown) => Math.max(1, Math.floor(Number(quantity) || 1))
+
+/** What one order line costs, from whole minor units, so the lines always add up to the subtotal. */
+export function lineTotal(unitPrice: number | string | null | undefined, quantity: unknown): number {
+  return fromMinorUnits(toMinorUnits(unitPrice) * wholeQuantity(quantity))
+}
+
+/**
+ * The price to charge for one unit of a cart line. The store's own catalog price wins over what
+ * the cart says whenever the two differ by more than 1%: a stale or tampered cart must not set
+ * the price. The cart price is only trusted for products the store has not synced.
+ */
+export function chooseUnitPrice(cartPrice: unknown, catalogPrice: unknown): number {
+  const cart = Number(cartPrice) > 0 ? Number(cartPrice) : 0
+  const catalog = Number(catalogPrice) > 0 ? Number(catalogPrice) : 0
+  if (!catalog) return cart
+  if (!cart) return catalog
+  return Math.abs(cart - catalog) > catalog / 100 ? catalog : cart
+}
+
+/**
+ * Subtotal, shipping, tax and total of an order. Worked out in minor units and rounded once, the
+ * way WhatsApp checks a payment request, so the amount asked for is the amount stored.
+ */
+export function calculateOrderTotals(
+  items: Array<{ unit_price: number | string; quantity: unknown }>,
+  rules: { shippingFee?: number | string | null; freeShippingThreshold?: number | string | null; taxRate?: number | null } = {}
+) {
+  const subtotal = items.reduce((sum, item) => sum + toMinorUnits(item.unit_price) * wholeQuantity(item.quantity), 0)
+  const threshold = toMinorUnits(rules.freeShippingThreshold)
+  const shippingFee = threshold > 0 && subtotal >= threshold ? 0 : Math.max(0, toMinorUnits(rules.shippingFee))
+  const taxAmount = Math.round(subtotal * (Number(rules.taxRate) || 0))
+  return {
+    subtotal: fromMinorUnits(subtotal),
+    shippingFee: fromMinorUnits(shippingFee),
+    taxAmount: fromMinorUnits(taxAmount),
+    grandTotal: fromMinorUnits(subtotal + shippingFee + taxAmount),
+  }
+}
+
 /** Express delivery surcharge. 50 until the store sets its own; 0 means express costs nothing extra. */
 export const DEFAULT_EXPRESS_FEE = 50
 export function getExpressFee(organization: Record<string, any> | null | undefined): number {
@@ -286,6 +331,64 @@ export function hasPaymentRequest(order: { order_number: string; meta_payment_re
   if (!parsed) return false
   if (parsed.kind === 'order_id') return true
   return parsed.orderNumber === buildPaymentReference(order.order_number)
+}
+
+// Every request sent for an order is kept in commerce_orders.payment_requests (migration
+// 20261104_commerce_payment_requests.sql), oldest first, so a payment can be checked against the
+// amount that was actually asked for under its reference. Without the column only the latest
+// reference (meta_payment_reference) is known.
+
+export interface PaymentRequestRecord {
+  reference: string
+  /** Major units: what the customer was asked to pay. */
+  amount: number
+  currency: string
+  requested_at: string
+  /** When a later request replaced this one and WhatsApp withdrew its card. */
+  voided_at?: string | null
+}
+
+export function getPaymentRequests(order: { payment_requests?: unknown } | null | undefined): PaymentRequestRecord[] {
+  const list = Array.isArray(order?.payment_requests) ? order.payment_requests : []
+  return list.filter((entry: any): entry is PaymentRequestRecord => Boolean(entry) && typeof entry === 'object' && typeof entry.reference === 'string')
+}
+
+/** The request a payment reference was sent under, when it was recorded. */
+export function findPaymentRequest(order: { payment_requests?: unknown } | null | undefined, reference: string): PaymentRequestRecord | null {
+  return getPaymentRequests(order).find((entry) => entry.reference === reference) || null
+}
+
+// Campaign "Order details" templates carry no order: the campaign worker sends them under
+// "C" + the first 8 hex digits of the campaign id + the first 12 of the recipient's campaign_logs id.
+const CAMPAIGN_REFERENCE = /^C([0-9a-f]{8})([0-9a-f]{12})$/i
+
+export function parseCampaignReference(reference: unknown): { campaignPrefix: string; logPrefix: string } | null {
+  const match = String(reference ?? '').trim().match(CAMPAIGN_REFERENCE)
+  return match ? { campaignPrefix: match[1].toLowerCase(), logPrefix: match[2].toLowerCase() } : null
+}
+
+/** True when a row's uuid starts with the hex digits a campaign reference carries. */
+export function uuidHasPrefix(id: unknown, prefix: string): boolean {
+  return String(id ?? '').replace(/-/g, '').toLowerCase().startsWith(prefix.toLowerCase())
+}
+
+// ── Database errors ─────────────────────────────────────────────────────────
+
+/**
+ * PostgREST's answer when a migration has not been applied yet and a column is missing. The code
+ * keeps working without the column, so a migration can be applied after the release.
+ */
+export function isMissingColumnError(error: any, column: string): boolean {
+  if (!error) return false
+  const code = String(error.code || '')
+  const message = String(error.message || error.details || '')
+  if (code === '42703' || code === 'PGRST204') return !message || message.includes(column)
+  return message.includes(column) && /column|schema cache/i.test(message)
+}
+
+/** A row that breaks a unique index (Postgres 23505): the record already exists. */
+export function isUniqueViolation(error: any): boolean {
+  return String(error?.code || '') === '23505' || /duplicate key value/i.test(String(error?.message || ''))
 }
 
 // ── Delivery details ────────────────────────────────────────────────────────

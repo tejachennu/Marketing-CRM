@@ -403,27 +403,41 @@ test('Catalog sync: Meta items become product rows', () => {
 })
 
 // In-memory Supabase adapter: every filter is applied, so tenant scoping is really exercised.
-function commerceDb(seed = {}) {
-  const tables = { commerce_orders: [], commerce_order_items: [], commerce_products: [], commerce_transactions: [], messages: [], contacts: [], ...structuredClone(seed) }
+// `options` plays the database as production may have it: columns a migration has not added yet
+// (PostgREST answers PGRST204), unique indexes (23505) and inserts that fail outright.
+function commerceDb(seed = {}, options = {}) {
+  const tables = { commerce_orders: [], commerce_order_items: [], commerce_products: [], commerce_transactions: [], messages: [], contacts: [], conversations: [], campaigns: [], campaign_logs: [], ...structuredClone(seed) }
+  const { missingColumns = {}, uniqueIndexes = {}, failInsert = () => null } = options
   let sequence = 0
   const from = table => {
     if (!tables[table]) tables[table] = []
-    let filters = [], op = 'select', values, singular = false, sorts = [], max = Infinity
+    let filters = [], op = 'select', values, singular = false, sorts = [], max = Infinity, offset = 0
+    const answer = (data, error = null) => Promise.resolve({ data, error })
     const query = {
       select() { return this },
       eq(key, value) { filters.push(row => row[key] === value); return this },
       neq(key, value) { filters.push(row => row[key] !== value); return this },
       in(key, list) { filters.push(row => list.includes(row[key])); return this },
-      order(key, options = {}) { sorts.push([key, options.ascending === false ? -1 : 1]); return this },
+      order(key, sort = {}) { sorts.push([key, sort.ascending === false ? -1 : 1]); return this },
       limit(count) { max = count; return this },
+      range(from, to) { offset = from; max = to - from + 1; return this },
       maybeSingle() { singular = true; return this }, single() { singular = true; return this },
       insert(data) { op = 'insert'; values = Array.isArray(data) ? data : [data]; return this },
       upsert(data) { op = 'upsert'; values = Array.isArray(data) ? data : [data]; return this },
       update(data) { op = 'update'; values = data; return this },
       delete() { op = 'delete'; return this },
       then(resolve, reject) {
+        const written = op === 'update' ? [values] : op === 'insert' || op === 'upsert' ? values : []
+        const unknown = (missingColumns[table] || []).find(column => written.some(value => column in value))
+        if (unknown) return answer(null, { code: 'PGRST204', message: `Could not find the '${unknown}' column of '${table}' in the schema cache` }).then(resolve, reject)
         let rows = tables[table].filter(row => filters.every(filter => filter(row)))
         if (op === 'insert' || op === 'upsert') {
+          const refused = failInsert(table, values)
+          if (refused) return answer(null, refused).then(resolve, reject)
+          const key = uniqueIndexes[table]
+          if (key && values.some(value => tables[table].some(row => key.every(column => row[column] === value[column])))) {
+            return answer(null, { code: '23505', message: `duplicate key value violates unique constraint "uq_${table}"` }).then(resolve, reject)
+          }
           // Ids are valid UUIDs because checkout buttons and form tokens carry them
           rows = values.map(value => ({ id: `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`, created_at: new Date(Date.now() + sequence).toISOString(), ...structuredClone(value) }))
           tables[table].push(...rows)
@@ -433,13 +447,13 @@ function commerceDb(seed = {}) {
           tables[table] = tables[table].filter(row => !rows.includes(row))
         } else {
           for (const [key, direction] of [...sorts].reverse()) rows = [...rows].sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * direction)
-          rows = rows.slice(0, max)
+          rows = rows.slice(offset, offset + max)
         }
         // Like Supabase: items come back with an order when asked for
         if (table === 'commerce_orders' && op !== 'delete') {
           rows = rows.map(row => ({ ...row, items: tables.commerce_order_items.filter(item => item.order_id === row.id) }))
         }
-        return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null }).then(resolve, reject)
+        return answer(structuredClone(singular ? rows[0] || null : rows)).then(resolve, reject)
       },
     }
     return query
@@ -474,7 +488,7 @@ const openOrder = (overrides = {}) => ({
   created_at: '2026-10-13T09:00:00.000Z', ...overrides,
 })
 const orderLines = [{ id: 'line-1', order_id: ORDER_ID, retailer_id: 'SKU-1', title: 'Shirt', unit_price: 500, quantity: 2 }]
-const seeded = (order = {}, extra = {}) => commerceDb({ commerce_orders: [openOrder(order)], commerce_order_items: orderLines, contacts: [{ id: CONTACT_ID, organization_id: 'org', phone_number: '+919876543210' }], ...extra })
+const seeded = (order = {}, extra = {}, options = {}) => commerceDb({ commerce_orders: [openOrder(order)], commerce_order_items: orderLines, contacts: [{ id: CONTACT_ID, organization_id: 'org', phone_number: '+919876543210' }], ...extra }, options)
 
 // ── 1. Cart ─────────────────────────────────────────────────────────────────
 
@@ -695,16 +709,37 @@ test('Checkout buttons: Cash on Delivery confirms the order once and tells the c
   assert.equal(database.tables.messages.length, 2) // both replies are in the chat
 })
 
-test('Checkout buttons: Pay online sends a payment request under a fresh reference each time', async () => {
+test('Checkout buttons: Pay online sends a payment request under a fresh reference each time, withdrawing the last one', async () => {
   const database = seeded()
   const sent = await withWhatsApp(async () => {
     assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested')
     assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested')
   })
-  assert.deepEqual(sent.map(message => message.interactive.action.parameters.reference_id), ['ORD-261013-AB12', 'ORD-261013-AB12.2'])
+  // The first card is withdrawn before the second request goes out, so only one card can be paid
+  assert.deepEqual(sent.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12'], ['order_status', 'ORD-261013-AB12'], ['order_details', 'ORD-261013-AB12.2']])
+  assert.equal(sent[1].interactive.action.parameters.order.status, 'canceled')
+  assert.match(sent[1].interactive.body.text, /replaced by a new one/)
   assert.equal(sent[0].interactive.action.parameters.total_amount.value, 104000)
+  const order = database.tables.commerce_orders[0]
+  assert.equal(order.meta_payment_reference, 'ORD-261013-AB12.2')
+  assert.equal(order.status, 'payment_pending')
+  // Every request is remembered with what it asked for; the withdrawn one says so
+  assert.deepEqual(order.payment_requests.map(request => [request.reference, request.amount, request.currency, Boolean(request.voided_at)]), [['ORD-261013-AB12', 1040, 'INR', true], ['ORD-261013-AB12.2', 1040, 'INR', false]])
+  assert.ok(order.payment_requests.every(request => Number.isFinite(Date.parse(request.requested_at))))
+  // The requests are noted in the chat; the withdrawal is not a message to the customer
+  assert.equal(database.tables.messages.length, 2)
+  assert.ok(database.tables.messages.every(message => /^\[Sent payment request for Order #ORD-261013-AB12 \(₹\s?1,040\)\]$/.test(message.body)))
+})
+
+test('Checkout buttons: without the payment_requests column the latest reference is still kept', async () => {
+  const database = seeded({}, {}, { missingColumns: { commerce_orders: ['payment_requests'] } })
+  const sent = await withWhatsApp(async () => {
+    await tap(database, `pay_online_${ORDER_ID}`)
+    await tap(database, `pay_online_${ORDER_ID}`)
+  })
+  assert.deepEqual(sent.map(message => message.interactive.type), ['order_details', 'order_status', 'order_details'])
   assert.equal(database.tables.commerce_orders[0].meta_payment_reference, 'ORD-261013-AB12.2')
-  assert.equal(database.tables.commerce_orders[0].status, 'payment_pending')
+  assert.equal(database.tables.commerce_orders[0].payment_requests, undefined)
 })
 
 test('Checkout buttons: a request that cannot be sent is not left in silence', async () => {
@@ -759,16 +794,16 @@ test('Checkout buttons: Cash on Delivery that was switched off offers payment in
 // ── 4. Payment ──────────────────────────────────────────────────────────────
 
 // Payment results as Meta really sends them: a webhook status of type "payment"
-const metaPaymentStatus = (status, transactionStatus = 'success', reference = 'ORD-261013-AB12') => ({
-  id: 'wamid.payment',
+const metaPaymentStatus = (status, transactionStatus = 'success', reference = 'ORD-261013-AB12', { amount = 104000, transactionId = 'pay_ABC123', id = 'wamid.payment' } = {}) => ({
+  id,
   recipient_id: '919876543210',
   type: 'payment',
   status,
   payment: {
     reference_id: reference,
-    amount: { value: 104000, offset: 100 },
+    amount: { value: amount, offset: 100 },
     currency: 'INR',
-    transaction: { id: 'pay_ABC123', pg_transaction_id: 'pg_1', type: 'razorpay', status: transactionStatus },
+    transaction: { id: transactionId, pg_transaction_id: 'pg_1', type: 'razorpay', status: transactionStatus },
   },
   timestamp: '1760000000',
 })
@@ -776,7 +811,7 @@ const pay = (database, payload, organization = store()) => handlers.handleInboun
 
 test('Commerce payments: only an explicit success is read as paid', () => {
   const read = payload => handlers.normalizePaymentUpdate(payload)
-  assert.deepEqual(read(metaPaymentStatus('captured')), { referenceId: 'ORD-261013-AB12', outcome: 'paid', transactionId: 'pay_ABC123', amount: 1040, currency: 'INR' })
+  assert.deepEqual(read(metaPaymentStatus('captured')), { referenceId: 'ORD-261013-AB12', outcome: 'paid', transactionId: 'pay_ABC123', amount: 1040, currency: 'INR', eventId: 'wamid.payment' })
   assert.equal(read(metaPaymentStatus('pending', 'pending')).outcome, 'pending')
   assert.equal(read(metaPaymentStatus('pending', 'failed')).outcome, 'failed')
   // A failed transaction wins even if the outer status were to say captured
@@ -832,14 +867,20 @@ test('Commerce payments: the order is found by any reference it was requested un
   await withWhatsApp(async () => { await pay(legacy, metaPaymentStatus('captured', 'success', ORDER_ID)) })
   assert.equal(legacy.tables.commerce_orders[0].payment_status, 'paid')
 
-  // Another store's reference, or one that matches nothing, changes nothing
+  // Another store's reference, or one that matches nothing, changes no order. The money still goes
+  // into the ledger of the store that received it, without an order, so it can be traced.
   const untouched = seeded({ meta_payment_reference: 'ORD-261013-AB12' })
-  await withWhatsApp(async () => {
+  const nothingSent = await withWhatsApp(async () => {
     assert.equal(await pay(untouched, metaPaymentStatus('captured'), store({ id: 'someone-else' })), null)
     assert.equal(await pay(untouched, metaPaymentStatus('captured', 'success', 'ORD-999999-ZZZZ')), null)
+    assert.equal(await pay(untouched, metaPaymentStatus('captured', 'success', 'ORD-999999-ZZZZ')), null) // redelivered
   })
   assert.equal(untouched.tables.commerce_orders[0].payment_status, 'pending')
-  assert.equal(untouched.tables.commerce_transactions.length, 0)
+  assert.deepEqual(
+    untouched.tables.commerce_transactions.map(row => [row.organization_id, row.order_id, row.status, row.amount, row.transaction_id]),
+    [['someone-else', null, 'unmatched', 1040, 'pay_ABC123'], ['org', null, 'unmatched', 1040, 'pay_ABC123']]
+  )
+  assert.equal(nothingSent.length, 0)
 })
 
 test('Commerce payments: pending never marks an order paid; a failure is recorded and explained once', async () => {
@@ -896,10 +937,11 @@ test('Dashboard reminder: the customer is sent the step the order is waiting on'
   assert.equal(first[0].interactive.type, 'flow')
   assert.match(first[0].interactive.body.text, /reminder about your order #ORD-261013-AB12/)
 
-  // The address is on file and a payment request was already sent: a new one, under a new reference
+  // The address is on file and a payment request was already sent: that card is withdrawn and a
+  // new one goes out, under a new reference
   const needsPayment = seeded({ shipping_address: { address_line_1: '1 MG Road' }, meta_payment_reference: 'ORD-261013-AB12' })
   const second = await withWhatsApp(async () => { assert.equal((await remind(needsPayment, withGateway({ commerce_address_flow_id: '999', commerce_enable_cod: false }))).step, 'payment') })
-  assert.equal(second[0].interactive.action.parameters.reference_id, 'ORD-261013-AB12.2')
+  assert.deepEqual(second.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_status', 'ORD-261013-AB12'], ['order_details', 'ORD-261013-AB12.2']])
   assert.equal(needsPayment.tables.commerce_orders[0].meta_payment_reference, 'ORD-261013-AB12.2')
 
   // Nothing is sent for an order that is no longer waiting on the customer
@@ -964,4 +1006,272 @@ test('Canceling an order withdraws its unpaid payment request', async () => {
     const none = await withWhatsApp(async () => { assert.equal(await cancel(database), false) })
     assert.equal(none.length, 0)
   }
+})
+
+// ── 6. Payment integrity ────────────────────────────────────────────────────
+
+const requestedOrder = (overrides = {}) => ({
+  meta_payment_reference: 'ORD-261013-AB12',
+  payment_requests: [{ reference: 'ORD-261013-AB12', amount: 1040, currency: 'INR', requested_at: '2026-10-13T09:05:00.000Z' }],
+  ...overrides,
+})
+const paidOrder = (overrides = {}) => requestedOrder({ status: 'paid', payment_status: 'paid', payment_method: 'whatsapp_pay', ...overrides })
+const firstPayment = { id: 'txn-1', order_id: ORDER_ID, organization_id: 'org', transaction_id: 'pay_ABC123', amount: 1040, currency: 'INR', status: 'captured' }
+const captured = (overrides = {}) => metaPaymentStatus('captured', 'success', 'ORD-261013-AB12', overrides)
+const bodies = database => database.tables.messages.map(message => message.body)
+const ledger = database => database.tables.commerce_transactions.map(row => [row.status, row.amount, row.transaction_id, row.order_id])
+
+test('Commerce payments: money that is not the amount asked for is held for the team, not marked paid', async () => {
+  const database = seeded(requestedOrder({ conversation_id: 'conversation-9' }))
+  const sent = await withWhatsApp(async () => {
+    await pay(database, captured({ amount: 50000 }))
+    await pay(database, captured({ amount: 50000 })) // Meta redelivery: nothing is repeated
+  })
+  const order = () => database.tables.commerce_orders[0]
+  assert.deepEqual([order().status, order().payment_status, order().payment_method], ['payment_pending', 'pending', undefined])
+  // The money is in the ledger, the team sees why the order is not paid, the customer knows what happens next
+  assert.deepEqual(ledger(database), [['captured', 500, 'pay_ABC123', ORDER_ID]])
+  assert.match(order().customer_note, /^Payment of ₹\s?500 received on \d{4}-\d{2}-\d{2} \(reference ORD-261013-AB12\) but the order total is ₹\s?1,040; team to review\.$/)
+  assert.equal(bodies(database).filter(body => /^\[Payment of ₹\s?500 received for Order #ORD-261013-AB12 but the order total is ₹\s?1,040; team to review\]$/.test(body)).length, 1)
+  assert.ok(database.tables.messages.every(message => message.conversation_id === 'conversation-9'))
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].type, 'text')
+  assert.match(sent[0].text.body, /received ₹\s?500 for order #ORD-261013-AB12\. The order total is ₹\s?1,040.*contact you/)
+
+  // The right amount comes after all: paid as usual, the short payment stays on record for the refund
+  const again = await withWhatsApp(async () => { await pay(database, captured({ transactionId: 'pay_DEF456', id: 'wamid.payment2' })) })
+  assert.deepEqual([order().status, order().payment_status, order().payment_method], ['paid', 'paid', 'whatsapp_pay'])
+  assert.deepEqual(ledger(database).map(row => row[0]), ['captured', 'captured'])
+  assert.equal(again[0].interactive.type, 'order_status')
+
+  // Too much is held too
+  const over = seeded(requestedOrder())
+  await withWhatsApp(async () => { await pay(over, captured({ amount: 200000 })) })
+  assert.equal(over.tables.commerce_orders[0].payment_status, 'pending')
+  assert.deepEqual(ledger(over), [['captured', 2000, 'pay_ABC123', ORDER_ID]])
+
+  // An order from before amounts were kept is checked against its total
+  const legacy = seeded({ meta_payment_reference: 'ORD-261013-AB12' })
+  await withWhatsApp(async () => { await pay(legacy, captured({ amount: 103900 })) })
+  assert.equal(legacy.tables.commerce_orders[0].payment_status, 'pending')
+  // A paisa of rounding is not a short payment
+  const rounding = seeded(requestedOrder())
+  await withWhatsApp(async () => { await pay(rounding, captured({ amount: 103999 })) })
+  assert.equal(rounding.tables.commerce_orders[0].payment_status, 'paid')
+})
+
+test('Commerce payments: a second payment for a paid order is recorded and the customer is told it will be refunded', async () => {
+  const database = seeded(paidOrder(), { commerce_transactions: [firstPayment] })
+  const sent = await withWhatsApp(async () => {
+    await pay(database, captured()) // the first payment, delivered again: ignored
+    await pay(database, captured({ transactionId: 'pay_XYZ789', id: 'wamid.payment2' }))
+    await pay(database, captured({ transactionId: 'pay_XYZ789', id: 'wamid.payment2' })) // and that one again
+  })
+  const order = database.tables.commerce_orders[0]
+  assert.deepEqual([order.status, order.payment_status], ['paid', 'paid'])
+  assert.deepEqual(ledger(database), [['captured', 1040, 'pay_ABC123', ORDER_ID], ['duplicate', 1040, 'pay_XYZ789', ORDER_ID]])
+  assert.match(order.customer_note, /^Second payment of ₹\s?1,040 received on \d{4}-\d{2}-\d{2} \(reference ORD-261013-AB12\); refund due\.$/)
+  assert.equal(bodies(database).filter(body => /^\[Second payment of ₹\s?1,040 received for Order #ORD-261013-AB12; refund due\]$/.test(body)).length, 1)
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].text.body, /second payment of ₹\s?1,040 for order #ORD-261013-AB12.*refunded/)
+
+  // A payment without a gateway id is told apart by WhatsApp's own event id, so a redelivery is still one payment
+  const anonymous = seeded(paidOrder(), { commerce_transactions: [firstPayment] })
+  const payload = { ...captured({ id: 'wamid.payment3' }), payment: { ...captured().payment, transaction: {} } }
+  await withWhatsApp(async () => { await pay(anonymous, payload); await pay(anonymous, payload) })
+  assert.deepEqual(ledger(anonymous).map(row => row[2]), ['pay_ABC123', 'TXN_wamid.payment3'])
+})
+
+test('Commerce payments: a failure that arrives after the money never undoes the payment', async () => {
+  const database = seeded(paidOrder(), { commerce_transactions: [firstPayment] })
+  const sent = await withWhatsApp(async () => { await pay(database, metaPaymentStatus('pending', 'failed')) })
+  assert.deepEqual([database.tables.commerce_orders[0].status, database.tables.commerce_orders[0].payment_status], ['paid', 'paid'])
+  assert.equal(sent.length, 0)
+  assert.equal(database.tables.messages.length, 0)
+})
+
+test('Commerce payments: the ledger is written before the order is marked paid', async () => {
+  // The ledger cannot be written: nothing is marked paid and the error reaches Meta, which redelivers
+  const broken = seeded(requestedOrder(), {}, { failInsert: table => (table === 'commerce_transactions' ? { code: '08006', message: 'connection failure' } : null) })
+  // PostgREST errors are thrown as they come (plain objects), as everywhere in the handler
+  const nothing = await withWhatsApp(async () => { await assert.rejects(() => pay(broken, captured()), error => error.message === 'connection failure') })
+  assert.equal(broken.tables.commerce_orders[0].payment_status, 'pending')
+  assert.equal(nothing.length, 0)
+
+  // The unique index refuses the row: a parallel delivery got in first and finishes the order
+  const parallel = seeded(requestedOrder(), {}, { failInsert: table => (table === 'commerce_transactions' ? { code: '23505', message: 'duplicate key value violates unique constraint "uq_commerce_transactions_transaction"' } : null) })
+  const silent = await withWhatsApp(async () => { assert.equal((await pay(parallel, captured())).payment_status, 'pending') })
+  assert.equal(parallel.tables.commerce_orders[0].payment_status, 'pending')
+  assert.equal(silent.length, 0)
+
+  // A crash between the ledger and the order: the redelivery finishes the order without a second ledger row
+  const crashed = seeded(requestedOrder(), { commerce_transactions: [firstPayment] }, { uniqueIndexes: { commerce_transactions: ['organization_id', 'transaction_id'] } })
+  const finished = await withWhatsApp(async () => { await pay(crashed, captured()) })
+  assert.deepEqual([crashed.tables.commerce_orders[0].status, crashed.tables.commerce_orders[0].payment_status], ['paid', 'paid'])
+  assert.equal(crashed.tables.commerce_transactions.length, 1)
+  assert.equal(finished.length, 2) // receipt and thank-you
+})
+
+test('Commerce payments: the thank-you greets the customer by the name on the address form, never by a phone number', async () => {
+  const greeting = async (order, contact) => {
+    const database = seeded(requestedOrder(order), { contacts: [{ id: CONTACT_ID, organization_id: 'org', phone_number: '+919876543210', ...contact }] })
+    const sent = await withWhatsApp(async () => { await pay(database, captured()) })
+    return sent[1].text.body.split('!')[0]
+  }
+  assert.equal(await greeting({ shipping_address: { full_name: 'Asha Rao', address_line_1: '1 MG Road' } }, { first_name: 'Someone' }), '🎉 Thank you, Asha')
+  assert.equal(await greeting({}, { first_name: 'Ravi Kumar' }), '🎉 Thank you, Ravi')
+  assert.equal(await greeting({}, { first_name: '919876543210' }), '🎉 Thank you')
+  assert.equal(await greeting({}, { first_name: '+91 98765 43210' }), '🎉 Thank you')
+})
+
+// ── 7. Payments for campaign "Order details" templates ───────────────────────
+
+const CAMPAIGN_ID = 'aaaaaaaa-1111-4111-8111-111111111111'
+const LOG_ID = 'bbbbbbbb-cccc-4ccc-8ccc-cccccccccccc'
+// "C" + 8 hex digits of the campaign id + 12 of the log id, as the campaign worker sends it
+const CAMPAIGN_REFERENCE = 'Caaaaaaaabbbbbbbbcccc'
+const campaignDb = (log = {}, extra = {}, options = {}) => commerceDb({
+  campaigns: [{ id: CAMPAIGN_ID, organization_id: 'org', name: 'Diwali offer' }, { id: 'dddddddd-2222-4222-8222-222222222222', organization_id: 'someone-else', name: 'Not ours' }],
+  campaign_logs: [
+    // A big send: the recipient's row is well past the first page of 1000
+    ...Array.from({ length: 1100 }, (_, index) => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, campaign_id: CAMPAIGN_ID, phone_number: `+91900000${String(index).padStart(4, '0')}`, status: 'SENT' })),
+    { id: LOG_ID, campaign_id: CAMPAIGN_ID, phone_number: '+919876543210', status: 'SENT', variables_mapped: { order_amount: '499', order_quantity: '2', shipping_fee: '42', order_item_name: 'Festive box', order_item_id: 'BOX-1' }, created_at: '2026-10-20T10:00:00.000Z', ...log },
+  ],
+  contacts: [{ id: CONTACT_ID, organization_id: 'org', phone_number: '+919876543210', first_name: 'Asha' }],
+  conversations: [
+    { id: 'conversation-old', organization_id: 'org', contact_id: CONTACT_ID, last_message_at: '2026-10-01T00:00:00.000Z' },
+    { id: 'conversation-new', organization_id: 'org', contact_id: CONTACT_ID, last_message_at: '2026-10-21T00:00:00.000Z' },
+  ],
+  ...extra,
+}, options)
+const campaignPayment = (overrides = {}) => metaPaymentStatus('captured', 'success', CAMPAIGN_REFERENCE, overrides)
+
+test('Campaign payments: a payment for an "Order details" template gets its own paid order and receipt', async () => {
+  const database = campaignDb()
+  const sent = await withWhatsApp(async () => {
+    await pay(database, campaignPayment())
+    await pay(database, campaignPayment()) // redelivered
+  })
+  assert.equal(database.tables.commerce_orders.length, 1)
+  const order = database.tables.commerce_orders[0]
+  assert.deepEqual(
+    [order.status, order.payment_status, order.payment_method, order.checkout_type, order.contact_id, order.conversation_id, order.meta_payment_reference, order.currency],
+    ['paid', 'paid', 'whatsapp_pay', 'campaign', CONTACT_ID, 'conversation-new', CAMPAIGN_REFERENCE, 'INR']
+  )
+  assert.deepEqual([order.subtotal, order.shipping_fee, order.tax_amount, order.total_amount], [998, 42, 0, 1040])
+  assert.match(order.order_number, /^ORD-\d{6}-[A-Z2-9]{4}$/)
+  assert.match(order.customer_note, /Diwali offer/)
+  assert.deepEqual(order.payment_requests, [{ reference: CAMPAIGN_REFERENCE, amount: 1040, currency: 'INR', requested_at: '2026-10-20T10:00:00.000Z' }])
+  assert.deepEqual(database.tables.commerce_order_items.map(line => [line.title, line.retailer_id, line.quantity, line.unit_price, line.total_price]), [['Festive box', 'BOX-1', 2, 499, 998]])
+  assert.deepEqual(ledger(database), [['captured', 1040, 'pay_ABC123', order.id]])
+  // The usual receipt and thank-you, once, in the customer's latest conversation
+  assert.equal(sent.length, 2)
+  assert.deepEqual([sent[0].interactive.type, sent[0].interactive.action.parameters.reference_id, sent[0].to], ['order_status', CAMPAIGN_REFERENCE, '919876543210'])
+  assert.match(sent[1].text.body, /Thank you, Asha!.*Festive box × 2/s)
+  assert.ok(database.tables.messages.every(message => message.conversation_id === 'conversation-new'))
+})
+
+test('Campaign payments: the whole amount is one line when the template numbers do not add up, and unknown customers are filed', async () => {
+  // Nothing usable from the CSV, and nobody with that number yet: a contact and a conversation are made for the order
+  const bare = campaignDb({ variables_mapped: null, phone_number: '+919999999999' }, { contacts: [], conversations: [] })
+  const sent = await withWhatsApp(async () => { await pay(bare, campaignPayment({ amount: 25000 })) })
+  const order = bare.tables.commerce_orders[0]
+  assert.deepEqual([order.subtotal, order.shipping_fee, order.total_amount, order.payment_status], [250, 0, 250, 'paid'])
+  assert.deepEqual(bare.tables.commerce_order_items.map(line => [line.title, line.quantity, line.unit_price]), [['Payment requested by campaign "Diwali offer"', 1, 250]])
+  assert.deepEqual(bare.tables.contacts.map(contact => [contact.organization_id, contact.phone_number]), [['org', '+919999999999']])
+  assert.equal(bare.tables.conversations.length, 1)
+  assert.deepEqual([order.contact_id, order.conversation_id], [bare.tables.contacts[0].id, bare.tables.conversations[0].id])
+  assert.equal(sent[0].to, '919999999999')
+
+  // Numbers that do not add up to what was paid are not trusted for the lines
+  const odd = campaignDb({ variables_mapped: { order_amount: '300', order_quantity: '2' } })
+  await withWhatsApp(async () => { await pay(odd, campaignPayment({ amount: 100000 })) })
+  assert.deepEqual(odd.tables.commerce_order_items.map(line => [line.quantity, line.unit_price, line.total_price]), [[1, 1000, 1000]])
+  assert.equal(odd.tables.commerce_orders[0].total_amount, 1000)
+
+  // The column from a later migration is missing: the order is still created
+  const legacy = campaignDb({}, {}, { missingColumns: { commerce_orders: ['payment_requests'] } })
+  await withWhatsApp(async () => { await pay(legacy, campaignPayment()) })
+  assert.deepEqual([legacy.tables.commerce_orders[0].payment_status, legacy.tables.commerce_orders[0].payment_requests], ['paid', undefined])
+})
+
+test('Campaign payments: a reference that resolves to nothing is kept as an unmatched transaction, never dropped', async () => {
+  // Another store's campaign, a log that is gone, a reference the CSV supplied
+  for (const reference of ['Cdddddddd222222222222', 'Caaaaaaaa999999999999', 'INV-2026-0042']) {
+    const database = campaignDb()
+    const sent = await withWhatsApp(async () => { assert.equal(await pay(database, metaPaymentStatus('captured', 'success', reference)), null) })
+    assert.equal(database.tables.commerce_orders.length, 0)
+    assert.deepEqual(ledger(database), [['unmatched', 1040, 'pay_ABC123', null]])
+    assert.equal(sent.length, 0)
+  }
+  // A pending or failed update for a campaign reference is nothing to record
+  const database = campaignDb()
+  await withWhatsApp(async () => { assert.equal(await pay(database, metaPaymentStatus('pending', 'pending', CAMPAIGN_REFERENCE)), null) })
+  assert.deepEqual([database.tables.commerce_orders.length, database.tables.commerce_transactions.length], [0, 0])
+})
+
+// ── 8. Prices and money arithmetic ──────────────────────────────────────────
+
+test('Commerce webhook: the store\'s catalog price wins over a cart price that differs by more than 1%', async () => {
+  const database = commerceDb({ commerce_products: [
+    { id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Linen Shirt', price: 450 },
+    { id: 'p2', organization_id: 'org', retailer_id: 'SKU-2', title: 'Cap', price: 200 },
+    { id: 'p3', organization_id: 'org', retailer_id: 'SKU-3', title: 'Unpriced', price: 0 },
+  ] })
+  await withWhatsApp(async () => {
+    await handlers.handleInboundCommerceOrder({
+      organization: store(), ...party, messageId: 'm', database,
+      orderPayload: { catalog_id: 'CAT', product_items: [
+        { product_retailer_id: 'SKU-1', quantity: 2, item_price: 400 },    // 11% under the catalog: the catalog price is charged
+        { product_retailer_id: 'SKU-2', quantity: 1, item_price: 201.5 },  // within 1%: the price the customer saw
+        { product_retailer_id: 'SKU-3', quantity: 1, item_price: 99.99 },  // no catalog price: the cart's
+        { product_retailer_id: 'SKU-NEW', quantity: 3, item_price: 10.1 }, // never synced: the cart's
+      ] },
+    })
+  })
+  assert.deepEqual(database.tables.commerce_order_items.map(line => [line.retailer_id, line.unit_price, line.total_price]), [['SKU-1', 450, 900], ['SKU-2', 201.5, 201.5], ['SKU-3', 99.99, 99.99], ['SKU-NEW', 10.1, 30.3]])
+  assert.deepEqual([database.tables.commerce_orders[0].subtotal, database.tables.commerce_orders[0].total_amount], [1231.79, 1231.79])
+})
+
+test('Money: totals and lines are worked out in paise and rounded once', () => {
+  assert.equal(utils.lineTotal(10.1, 3), 30.3)
+  assert.equal(utils.lineTotal(0.1, 3), 0.3)
+  assert.equal(utils.lineTotal('12.34', '2'), 24.68)
+  assert.equal(utils.fromMinorUnits(123179), 1231.79)
+  assert.deepEqual(utils.calculateOrderTotals([{ unit_price: 10.1, quantity: 3 }, { unit_price: 0.1, quantity: 3 }], { shippingFee: 40, taxRate: 0.05 }), { subtotal: 30.6, shippingFee: 40, taxAmount: 1.53, grandTotal: 72.13 })
+  assert.deepEqual(utils.calculateOrderTotals([{ unit_price: 500, quantity: '2' }], { shippingFee: 80, freeShippingThreshold: 900 }), { subtotal: 1000, shippingFee: 0, taxAmount: 0, grandTotal: 1000 })
+  assert.deepEqual(utils.calculateOrderTotals([{ unit_price: 500, quantity: 1 }], { shippingFee: '80', freeShippingThreshold: 900 }), { subtotal: 500, shippingFee: 80, taxAmount: 0, grandTotal: 580 })
+  assert.deepEqual(utils.calculateOrderTotals([], {}), { subtotal: 0, shippingFee: 0, taxAmount: 0, grandTotal: 0 })
+
+  assert.equal(utils.chooseUnitPrice(400, 450), 450)
+  assert.equal(utils.chooseUnitPrice(452, 450), 452)
+  assert.equal(utils.chooseUnitPrice(455, 450), 450)
+  assert.equal(utils.chooseUnitPrice(0, 450), 450)
+  assert.equal(utils.chooseUnitPrice(99.99, 0), 99.99)
+  assert.equal(utils.chooseUnitPrice('abc', null), 0)
+})
+
+test('Payment requests, campaign references and database errors are read safely', () => {
+  const order = { payment_requests: [{ reference: 'ORD-1', amount: 10, currency: 'INR', requested_at: 't' }, null, 'junk', { amount: 5 }] }
+  assert.deepEqual(utils.getPaymentRequests(order).map(request => request.reference), ['ORD-1'])
+  assert.deepEqual(utils.getPaymentRequests({}), [])
+  assert.deepEqual(utils.getPaymentRequests({ payment_requests: 'not a list' }), [])
+  assert.equal(utils.findPaymentRequest(order, 'ORD-1').amount, 10)
+  assert.equal(utils.findPaymentRequest(order, 'ORD-2'), null)
+
+  assert.deepEqual(utils.parseCampaignReference('Caaaaaaaabbbbbbbbcccc'), { campaignPrefix: 'aaaaaaaa', logPrefix: 'bbbbbbbbcccc' })
+  assert.deepEqual(utils.parseCampaignReference('C0123ABCD0123456789ab'), { campaignPrefix: '0123abcd', logPrefix: '0123456789ab' })
+  for (const bad of ['ORD-261013-AB12', 'Caaaaaaaabbbbbbbbccc', 'Caaaaaaaabbbbbbbbccccc', 'Xaaaaaaaabbbbbbbbcccc', 'Caaaaaaaabbbbbbbbccgg', '', null]) assert.equal(utils.parseCampaignReference(bad), null)
+  assert.equal(utils.uuidHasPrefix('AAAAAAAA-1111-4111-8111-111111111111', 'aaaaaaaa'), true)
+  assert.equal(utils.uuidHasPrefix('bbbbbbbb-1111-4111-8111-111111111111', 'aaaaaaaa'), false)
+
+  // What PostgREST says when a migration has not been applied, and when a unique index refuses a row
+  assert.equal(utils.isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'payment_requests' column of 'commerce_orders' in the schema cache" }, 'payment_requests'), true)
+  assert.equal(utils.isMissingColumnError({ code: '42703', message: 'column commerce_orders.payment_requests does not exist' }, 'payment_requests'), true)
+  assert.equal(utils.isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'other' column" }, 'payment_requests'), false)
+  assert.equal(utils.isMissingColumnError({ code: '23505', message: 'duplicate key value' }, 'payment_requests'), false)
+  assert.equal(utils.isMissingColumnError(null, 'payment_requests'), false)
+  assert.equal(utils.isUniqueViolation({ code: '23505' }), true)
+  assert.equal(utils.isUniqueViolation({ message: 'duplicate key value violates unique constraint "x"' }), true)
+  assert.equal(utils.isUniqueViolation({ code: '42703' }), false)
 })

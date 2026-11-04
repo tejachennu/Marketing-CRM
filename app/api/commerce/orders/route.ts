@@ -114,6 +114,12 @@ function describeStatusChange(orderNumber: string, status: OrderStatus, tracking
   }
 }
 
+/** "paid", "confirmed for Cash on Delivery", ...: the status as the line noted in the chat reads it. */
+function describeAuditStatus(status: OrderStatus): string {
+  if (status === 'cod_confirmed') return 'confirmed for Cash on Delivery'
+  return (ORDER_STATUS_LABELS[status] || status).toLowerCase()
+}
+
 // PATCH: Update order status or details
 export async function PATCH(request: NextRequest) {
   try {
@@ -177,6 +183,8 @@ export async function PATCH(request: NextRequest) {
       if (status === 'cod_confirmed') updates.payment_method = 'cod'
       if (status === 'delivered' && order.payment_method === 'cod') updates.payment_status = 'paid' // cash is collected on delivery
     }
+    // A payment status set by hand, beyond what the new status already implies
+    const paymentStatusChanged = Boolean(paymentStatus) && paymentStatus !== order.payment_status && paymentStatus !== updates.payment_status
     if (paymentStatus) updates.payment_status = paymentStatus
     if (customerNote !== undefined) updates.customer_note = String(customerNote ?? '').slice(0, 1000)
 
@@ -198,6 +206,18 @@ export async function PATCH(request: NextRequest) {
     const updatedOrder = updatedRows?.[0]
     if (!updatedOrder) {
       return NextResponse.json({ error: 'This order was just changed by someone else. Refresh to see its current status.' }, { status: 409 })
+    }
+
+    // Who changed what is noted in the order's chat, next to the messages the customer got
+    const who = String(authResult.user?.full_name || authResult.user?.email || '').trim() || 'a team member'
+    const auditLines: string[] = []
+    if (statusChanged) auditLines.push(`[Order #${order.order_number} marked ${describeAuditStatus(status)} by ${who}]`)
+    if (paymentStatusChanged) auditLines.push(`[Order #${order.order_number} payment marked ${paymentStatus} by ${who}]`)
+    if (auditLines.length > 0 && order.conversation_id) {
+      const { error: auditErr } = await supabase.from('messages').insert(
+        auditLines.map((body) => ({ organization_id: organizationId, conversation_id: order.conversation_id, sender_type: 'user', body, status: 'sent' }))
+      )
+      if (auditErr) console.error('[API Commerce Orders PATCH] The change could not be noted in the chat:', auditErr)
     }
 
     let notified = false

@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { isBsuid } from '@/lib/whatsapp-bsuid'
 import {
   buildAddressFlowMessage,
   buildButtonsMessage,
@@ -18,20 +19,32 @@ import {
   buildTextMessage,
   OrderDetailsItem,
 } from './commerce-messages'
-import { calculateOrderTotals, fetchMetaProductsBySku } from './meta-commerce'
+import { fetchMetaProductsBySku } from './meta-commerce'
 import {
   ORDER_STATUS_LABELS,
   CHECKOUT_TEXT,
   OPEN_CHECKOUT_STATUSES,
+  calculateOrderTotals,
+  chooseUnitPrice,
   describeWhatsAppError,
+  findPaymentRequest,
   formatAddress,
   formatMoney,
+  fromMinorUnits,
   getExpressFee,
   getPaymentGateway,
+  getPaymentRequests,
   hasPaymentRequest,
+  isMissingColumnError,
+  isUniqueViolation,
+  lineTotal,
   nextPaymentReference,
+  parseCampaignReference,
   parsePaymentReference,
+  toMinorUnits,
+  uuidHasPrefix,
   type OrderStatus,
+  type PaymentRequestRecord,
 } from './commerce-utils'
 
 function getSupabase() {
@@ -91,6 +104,8 @@ export interface PaymentUpdate {
   /** Amount in major units (rupees, not paise); 0 when Meta did not report one. */
   amount: number
   currency: string | null
+  /** WhatsApp's id of the payment event (the order message it belongs to): the same on every redelivery. */
+  eventId: string | null
 }
 
 const PAID_STATUSES = new Set(['captured', 'success', 'successful', 'completed', 'paid'])
@@ -126,6 +141,7 @@ export function normalizePaymentUpdate(raw: any): PaymentUpdate | null {
     transactionId: String(transaction.id || transaction.pg_transaction_id || payment.transaction_id || raw.transaction_id || '').trim() || null,
     amount: Number.isFinite(value) && value > 0 ? value / offset : 0,
     currency: payment.currency ? String(payment.currency).toUpperCase() : null,
+    eventId: String(raw.id || '').trim() || null,
   }
 }
 
@@ -196,6 +212,32 @@ async function sendAndLog(context: CheckoutContext, payload: unknown, logLine: s
   return result
 }
 
+/** A line for the team in the CRM conversation; nothing is sent to the customer. */
+async function logSystemLine(context: CheckoutContext, body: string): Promise<void> {
+  if (!context.conversationId) return
+  await context.supabase.from('messages').insert({
+    organization_id: context.organization.id,
+    conversation_id: context.conversationId,
+    sender_type: 'user',
+    body,
+    status: 'sent',
+  })
+}
+
+/**
+ * Write an order row that carries `payment_requests`, leaving the column out when the database
+ * does not have it yet (migration 20261104_commerce_payment_requests.sql): then only the latest
+ * reference is kept, as before.
+ */
+type WriteResult = { data?: any; error: any }
+async function writeWithPaymentRequests(row: Record<string, any>, write: (row: Record<string, any>) => PromiseLike<WriteResult>): Promise<WriteResult> {
+  const result = await write(row)
+  if (!result.error || !('payment_requests' in row) || !isMissingColumnError(result.error, 'payment_requests')) return result
+  const rest = { ...row }
+  delete rest.payment_requests
+  return write(rest)
+}
+
 function toOrderItems(rows: any[] | null | undefined): OrderDetailsItem[] {
   return (rows || []).map((item: any) => ({
     retailer_id: item.retailer_id,
@@ -214,7 +256,10 @@ async function loadOrderItems(supabase: Database, orderId: string): Promise<Orde
 
 /**
  * Ask for payment inside the chat. Each request gets a fresh reference (WhatsApp refuses to
- * reuse one) and the order remembers it, so the payment that comes back finds its order.
+ * reuse one) and the order remembers every one it sent, with the amount asked for, so the
+ * payment that comes back finds its order and is checked against the right amount. The earlier
+ * card is withdrawn first (best effort: WhatsApp may have expired it already), so the customer
+ * has one card to pay, not two.
  */
 async function sendPaymentRequest(context: CheckoutContext, order: any, items: OrderDetailsItem[], intro: string): Promise<SendResult> {
   const gateway = getPaymentGateway(context.organization)
@@ -224,7 +269,7 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
   const currency = order.currency || context.organization.currency || 'INR'
   const reference = nextPaymentReference(order)
 
-  let payload: unknown
+  let payload: ReturnType<typeof buildOrderDetailsMessage>
   try {
     payload = buildOrderDetailsMessage({
       phone: context.customerPhone,
@@ -240,18 +285,37 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
   } catch (err: any) {
     return { ok: false, error: err.message }
   }
+  // What WhatsApp will ask for: worked out from the lines, the way WhatsApp checks it
+  const requestedAmount = fromMinorUnits(payload.interactive.action.parameters.total_amount.value)
+
+  const previousReference = hasPaymentRequest(order) ? String(order.meta_payment_reference) : null
+  const withdrawn = previousReference
+    ? await voidPaymentRequest({
+        organization: context.organization,
+        order,
+        database: context.supabase,
+        phone: context.customerPhone,
+        description: `This payment request for Order #${order.order_number} was replaced by a new one.`,
+      })
+    : false
 
   const result = await sendAndLog(
     context,
     payload,
-    `[Sent payment request for Order #${order.order_number} (${formatMoney(order.total_amount, currency)})]`
+    `[Sent payment request for Order #${order.order_number} (${formatMoney(requestedAmount, currency)})]`
   )
   if (result.ok) {
-    await context.supabase
-      .from('commerce_orders')
-      .update({ meta_payment_reference: reference, updated_at: new Date().toISOString() })
-      .eq('id', order.id)
+    const now = new Date().toISOString()
+    const requests: PaymentRequestRecord[] = getPaymentRequests(order).map((entry) =>
+      withdrawn && entry.reference === previousReference && !entry.voided_at ? { ...entry, voided_at: now } : entry
+    )
+    requests.push({ reference, amount: requestedAmount, currency, requested_at: now })
+    await writeWithPaymentRequests(
+      { meta_payment_reference: reference, payment_requests: requests, updated_at: now },
+      (row) => context.supabase.from('commerce_orders').update(row).eq('id', order.id)
+    )
     order.meta_payment_reference = reference
+    order.payment_requests = requests
   }
   return result
 }
@@ -427,19 +491,20 @@ export async function handleInboundCommerceOrder({
     }
   }
 
+  // The store's catalog sets the price of a product it knows; the cart's own price only counts
+  // for products that were never synced (see chooseUnitPrice)
   const items: OrderDetailsItem[] = rawItems.map((item) => {
     const retailerId = String(item.product_retailer_id || '')
     const product = productsBySku.get(retailerId)
-    const cartPrice = parseFloat(item.item_price) || 0
     return {
       retailer_id: retailerId,
       name: product?.title || `Item #${retailerId}`,
-      unit_price: cartPrice > 0 ? cartPrice : Number(product?.price) || 0,
+      unit_price: chooseUnitPrice(parseFloat(item.item_price), product?.price),
       quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
     }
   })
 
-  // 2. Calculate totals
+  // 2. Calculate totals, in paise, rounded once
   const totals = calculateOrderTotals(items, {
     shippingFee: parseFloat(organization.commerce_default_shipping_fee) || 0,
     freeShippingThreshold: parseFloat(organization.commerce_free_shipping_threshold) || 0,
@@ -502,7 +567,7 @@ export async function handleInboundCommerceOrder({
       title: item.name,
       quantity: item.quantity,
       unit_price: item.unit_price,
-      total_price: Math.round(item.unit_price * item.quantity * 100) / 100,
+      total_price: lineTotal(item.unit_price, item.quantity),
       image_url: productsBySku.get(item.retailer_id)?.image_url || null,
     }))
   )
@@ -607,8 +672,8 @@ export async function handleInboundAddressSubmission({
   // one, so resubmitting the form (or switching back to standard) never stacks the surcharge.
   const previousExpressFee = previous.delivery_speed === 'express' ? Number(previous.express_fee ?? getExpressFee(organization)) || 0 : 0
   const expressFee = isExpress ? getExpressFee(organization) : 0
-  const updatedShippingFee = Math.max(0, Math.round(((Number(order.shipping_fee) || 0) - previousExpressFee + expressFee) * 100) / 100)
-  const updatedTotal = Math.round((Number(order.subtotal) + updatedShippingFee + Number(order.tax_amount)) * 100) / 100
+  const updatedShippingFee = fromMinorUnits(Math.max(0, toMinorUnits(order.shipping_fee) - toMinorUnits(previousExpressFee) + toMinorUnits(expressFee)))
+  const updatedTotal = fromMinorUnits(toMinorUnits(order.subtotal) + toMinorUnits(updatedShippingFee) + toMinorUnits(order.tax_amount))
 
   const shippingAddress = {
     ...previous,
@@ -783,11 +848,250 @@ async function findOrderByReference(supabase: Database, organizationId: string, 
   return data?.[0] || null
 }
 
+/** The ledger row of a gateway transaction, inside one organization. */
+async function findTransaction(supabase: Database, organizationId: string, transactionId: string) {
+  const { data } = await supabase
+    .from('commerce_transactions')
+    .select('id, order_id, status')
+    .eq('organization_id', organizationId)
+    .eq('transaction_id', transactionId)
+    .limit(1)
+  return data?.[0] || null
+}
+
+/**
+ * Write a payment to the ledger. Returns null when the same transaction is already there (Meta
+ * delivered it twice, or a parallel delivery got in first; migration
+ * 20261104_commerce_transactions_unique.sql). Anything else is thrown so Meta redelivers: money
+ * must never go unrecorded.
+ */
+async function recordTransaction(supabase: Database, row: Record<string, any>): Promise<{ id: string | null } | null> {
+  const { data, error } = await supabase.from('commerce_transactions').insert(row).select('id').maybeSingle()
+  if (!error) return { id: data?.id || null }
+  if (isUniqueViolation(error)) return null
+  console.error(`[Commerce] Transaction ${row.transaction_id} could not be recorded:`, error)
+  throw error
+}
+
+/** The gateway's id of a payment; without one, the webhook's own id, which is the same on every redelivery. */
+const transactionIdOf = (update: PaymentUpdate) => update.transactionId || (update.eventId ? `TXN_${update.eventId}` : `TXN_${Date.now()}`)
+
+/** A note on the order for the team. The same note is never added twice. */
+async function noteOnOrder(supabase: Database, order: any, note: string): Promise<void> {
+  const existing = String(order.customer_note || '')
+  if (existing.includes(note)) return
+  const customer_note = [existing, note].filter(Boolean).join('\n')
+  await supabase.from('commerce_orders').update({ customer_note, updated_at: new Date().toISOString() }).eq('id', order.id)
+  order.customer_note = customer_note
+}
+
+const today = () => new Date().toISOString().slice(0, 10)
+
+/** The customer's first name for a thank-you, unless it is really a phone number or a WhatsApp id. */
+function firstNameOf(value: unknown): string | undefined {
+  const word = String(value || '').trim().split(/\s+/)[0] || ''
+  return word && /[^0-9+\-().\s]/.test(word) && !/^\+?\d/.test(word) && !isBsuid(word) ? word : undefined
+}
+
+// ── Payments for campaign "Order details" templates ─────────────────────────
+// The campaign worker sends order_details templates under a reference made of the campaign id and
+// the recipient's campaign_logs id. No order exists for those, so one is created when the money
+// arrives, from what the template asked for (order_amount, order_item_name, ...).
+
+const PAGE = 1000
+
+/** The first row whose id starts with `prefix`, read a page at a time: PostgREST cannot filter a uuid by prefix. */
+async function findRowByIdPrefix(prefix: string, page: (from: number, to: number) => PromiseLike<{ data: any[] | null }>) {
+  for (let from = 0; from < 500 * PAGE; from += PAGE) {
+    const { data } = await page(from, from + PAGE - 1)
+    const rows = data || []
+    const hit = rows.find((row: any) => uuidHasPrefix(row.id, prefix))
+    if (hit) return hit
+    if (rows.length < PAGE) return null
+  }
+  return null
+}
+
+/** The ways one number may be stored on a contact (the campaign worker matches the same variants). */
+function phoneVariants(value: unknown): string[] {
+  const raw = String(value || '').replace(/^whatsapp:/i, '').trim()
+  if (!raw) return []
+  const digits = raw.replace(/[\s\-()]/g, '')
+  const bare = digits.replace(/^\+/, '')
+  return [...new Set([raw, digits, bare, `+${bare}`, `whatsapp:${bare}`, `whatsapp:+${bare}`])]
+}
+
+/** A value the campaign's CSV supplied for the recipient, under any of the names the template send accepts. */
+function campaignVar(vars: Record<string, any>, ...keys: string[]): string {
+  for (const key of keys) {
+    const name = Object.keys(vars).find((candidate) => candidate.toLowerCase() === key)
+    const value = name ? String(vars[name] ?? '').trim() : ''
+    if (value) return value
+  }
+  return ''
+}
+
+/**
+ * The order for a campaign payment, created unpaid: the caller records the money and marks it
+ * paid like any other order. Null when the reference is not a campaign's, or the campaign is gone.
+ */
+async function createOrderForCampaignPayment(supabase: Database, organization: any, update: PaymentUpdate, customerPhone: string) {
+  const parsed = parseCampaignReference(update.referenceId)
+  if (!parsed) return null
+
+  const campaign = await findRowByIdPrefix(parsed.campaignPrefix, (from, to) =>
+    supabase.from('campaigns').select('id, name').eq('organization_id', organization.id).order('id', { ascending: true }).range(from, to)
+  )
+  if (!campaign) return null
+  // campaign_logs has no organization column: its rows are reached through this organization's
+  // campaign. A send can be large, so the pages carry ids only and the one row is read after.
+  const logId = await findRowByIdPrefix(parsed.logPrefix, (from, to) =>
+    supabase.from('campaign_logs').select('id').eq('campaign_id', campaign.id).order('id', { ascending: true }).range(from, to)
+  )
+  const { data: log } = logId
+    ? await supabase.from('campaign_logs').select('id, phone_number, variables_mapped, created_at').eq('id', logId.id).eq('campaign_id', campaign.id).maybeSingle()
+    : { data: null }
+  if (!log) return null
+
+  // What was asked for. The captured amount is the truth; the template's lines describe it when they add up.
+  const vars: Record<string, any> = log.variables_mapped && typeof log.variables_mapped === 'object' ? log.variables_mapped : {}
+  const quantity = Math.max(1, Math.floor(Number(campaignVar(vars, 'order_quantity', 'quantity')) || 1))
+  const unitPrice = Number(campaignVar(vars, 'order_amount', 'order_total', 'amount')) || 0
+  const shippingFee = Math.max(0, Number(campaignVar(vars, 'shipping_fee')) || 0)
+  const taxAmount = Math.max(0, Number(campaignVar(vars, 'tax_amount')) || 0)
+  const templateTotal = fromMinorUnits(toMinorUnits(unitPrice) * quantity + toMinorUnits(shippingFee) + toMinorUnits(taxAmount))
+  const paid = update.amount > 0 ? update.amount : templateTotal
+  if (!(paid > 0)) return null
+  const linesAddUp = unitPrice > 0 && Math.abs(templateTotal - paid) <= 0.01
+  const item = {
+    retailer_id: campaignVar(vars, 'order_item_id', 'product_id') || 'campaign',
+    title: campaignVar(vars, 'order_item_name', 'product_name') || `Payment requested by campaign "${campaign.name}"`,
+    quantity: linesAddUp ? quantity : 1,
+    unit_price: linesAddUp ? unitPrice : paid,
+  }
+
+  // The customer: the campaign's recipient, whom the worker filed as a contact before sending
+  const numbers = [...new Set([...phoneVariants(log.phone_number), ...phoneVariants(customerPhone)])]
+  let contact: any = null
+  if (numbers.length > 0) {
+    const { data } = await supabase.from('contacts').select('id, first_name, phone_number').eq('organization_id', organization.id).in('phone_number', numbers).limit(1)
+    contact = data?.[0] || null
+    if (!contact) {
+      const phone = String(customerPhone || log.phone_number).replace(/^whatsapp:/i, '').trim()
+      const { data: created } = await supabase
+        .from('contacts')
+        .insert([{ organization_id: organization.id, phone_number: phone, whatsapp_number: `whatsapp:${phone}`, first_name: phone }])
+        .select('id, first_name, phone_number')
+        .maybeSingle()
+      contact = created || null
+    }
+  }
+  let conversationId: string | null = null
+  if (contact) {
+    const { data: latest } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('organization_id', organization.id)
+      .eq('contact_id', contact.id)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+    conversationId = latest?.[0]?.id || null
+    if (!conversationId) {
+      const { data: created } = await supabase
+        .from('conversations')
+        .insert([{ organization_id: organization.id, contact_id: contact.id, is_active: true, last_message_at: new Date().toISOString() }])
+        .select('id')
+        .maybeSingle()
+      conversationId = created?.id || null
+    }
+  }
+
+  const currency = update.currency || organization.currency || 'INR'
+  const orderNumber = await createOrderNumber(supabase, organization.id)
+  const { data: order, error: orderErr } = await writeWithPaymentRequests(
+    {
+      organization_id: organization.id,
+      contact_id: contact?.id || null,
+      conversation_id: conversationId,
+      order_number: orderNumber,
+      status: 'payment_pending',
+      checkout_type: 'campaign',
+      subtotal: lineTotal(item.unit_price, item.quantity),
+      shipping_fee: linesAddUp ? shippingFee : 0,
+      tax_amount: linesAddUp ? taxAmount : 0,
+      total_amount: paid,
+      currency,
+      payment_status: 'pending',
+      customer_note: `Paid through the "${campaign.name}" campaign.`,
+      meta_payment_reference: update.referenceId,
+      payment_requests: [{ reference: update.referenceId, amount: paid, currency, requested_at: log.created_at || new Date().toISOString() }],
+    },
+    (row) => supabase.from('commerce_orders').insert([row]).select().single()
+  )
+  if (orderErr || !order) {
+    console.error('[Commerce] Error creating the order for a campaign payment:', orderErr)
+    throw orderErr || new Error('The order for the campaign payment could not be created')
+  }
+
+  // Two deliveries of the same payment can both get here; the earliest order wins
+  const { data: sameReference } = await supabase
+    .from('commerce_orders')
+    .select('*')
+    .eq('organization_id', organization.id)
+    .eq('meta_payment_reference', update.referenceId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  if (sameReference && sameReference.length > 1 && sameReference[0].id !== order.id) {
+    await supabase.from('commerce_orders').delete().eq('id', order.id)
+    return sameReference[0]
+  }
+
+  const { error: itemsErr } = await supabase.from('commerce_order_items').insert([
+    { order_id: order.id, product_id: null, retailer_id: item.retailer_id, title: item.title, quantity: item.quantity, unit_price: item.unit_price, total_price: lineTotal(item.unit_price, item.quantity), image_url: null },
+  ])
+  if (itemsErr) {
+    await supabase.from('commerce_orders').delete().eq('id', order.id)
+    throw itemsErr
+  }
+  console.log(`[Commerce] Created Order ${order.order_number} for a payment from campaign "${campaign.name}"`)
+  return order
+}
+
+/**
+ * Money that arrived for no order this store knows (a reference from elsewhere, a campaign that
+ * was deleted): written to the ledger without an order, so it can be traced, and logged.
+ */
+async function recordUnmatchedPayment(supabase: Database, organization: any, update: PaymentUpdate, paymentPayload: any): Promise<void> {
+  const transactionId = transactionIdOf(update)
+  console.warn(`[Commerce] Payment ${transactionId} of ${update.amount} ${update.currency || ''} under reference "${update.referenceId}" matches no order; recorded as unmatched`)
+  if (await findTransaction(supabase, organization.id, transactionId)) return
+  try {
+    await recordTransaction(supabase, {
+      order_id: null,
+      organization_id: organization.id,
+      gateway: organization.commerce_payment_gateway || 'razorpay',
+      transaction_id: transactionId,
+      amount: update.amount,
+      currency: update.currency || organization.currency || 'INR',
+      status: 'unmatched',
+      raw_payload: paymentPayload,
+    })
+  } catch (err: any) {
+    // A database that insists on an order for every row cannot hold it: say so loudly rather than have Meta retry for days
+    if (String(err?.code) === '23502') {
+      console.error('[Commerce] UNRECORDED PAYMENT (commerce_transactions.order_id does not allow NULL):', JSON.stringify(paymentPayload))
+      return
+    }
+    throw err
+  }
+}
+
 /**
  * Handle payment confirmation (`type: "payment"` or `payment_status` interactive update)
  */
 export async function handleInboundPaymentConfirmation({
   organization,
+  contact,
   conversation,
   paymentPayload,
   customerPhone,
@@ -805,59 +1109,124 @@ export async function handleInboundPaymentConfirmation({
   const update = normalizePaymentUpdate(paymentPayload)
   if (!update) return null
 
-  // 1. Find the order. It must belong to the organization that received the webhook;
-  //    the reference alone must never reach another tenant's order.
-  const order = await findOrderByReference(supabase, organization.id, update.referenceId)
-  if (!order) return null
-
-  // Meta retries webhooks: a repeat for an already-paid order must not add a second
-  // transaction row or send the customer another receipt.
-  if (order.payment_status === 'paid') {
-    console.log(`[Commerce] Order #${order.order_number} is already paid; ignoring duplicate payment update`)
-    return order
+  // 1. Find the order. It must belong to the organization that received the webhook; the
+  //    reference alone must never reach another tenant's order. A payment for a campaign template
+  //    has no order yet, so one is made for it; money that matches nothing is still recorded.
+  let order = await findOrderByReference(supabase, organization.id, update.referenceId)
+  if (!order && update.outcome === 'paid') {
+    order = await createOrderForCampaignPayment(supabase, organization, update, customerPhone || '')
+    if (!order) await recordUnmatchedPayment(supabase, organization, update, paymentPayload)
   }
+  if (!order) return null
 
   const receiptConversationId = conversation?.id || order.conversation_id || null
   let receiptPhone = customerPhone || ''
-  if (!receiptPhone && order.contact_id) {
+  let customerName = String(contact?.first_name || '').trim()
+  if ((!receiptPhone || !customerName) && order.contact_id) {
     const { data: orderContact } = await supabase
       .from('contacts')
-      .select('phone_number')
+      .select('phone_number, first_name')
       .eq('id', order.contact_id)
       .eq('organization_id', organization.id)
       .maybeSingle()
-    receiptPhone = orderContact?.phone_number || ''
+    receiptPhone = receiptPhone || orderContact?.phone_number || ''
+    customerName = customerName || String(orderContact?.first_name || '').trim()
   }
   const context: CheckoutContext = { supabase, organization, conversationId: receiptConversationId, customerPhone: receiptPhone }
+  const currency = update.currency || order.currency || organization.currency || 'INR'
+  const money = (amount: number) => formatMoney(amount, currency)
 
   if (update.outcome !== 'paid') {
     console.log(`[Commerce] Payment for Order #${order.order_number} is ${update.outcome}; order left unpaid`)
-    if (update.outcome === 'failed' && order.payment_status !== 'failed') {
-      await supabase
+    if (update.outcome === 'failed') {
+      // Only a payment still awaited can fail: a capture that got in first is never overwritten
+      const { data: failed, error: failErr } = await supabase
         .from('commerce_orders')
         .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', order.id)
-      // Say it once, so the customer is not left wondering whether the money went through
-      if (receiptPhone && isOpen(order.status)) {
-        await sendAndLog(
-          context,
-          buildTextMessage(receiptPhone, `The payment for order #${order.order_number} did not go through, and you have not been charged for this order. You can tap "Review and pay" above to try again, or reply here for help.`),
-          `[Payment failed for Order #${order.order_number}; customer was told]`
-        )
+        .in('payment_status', ['pending'])
+        .select('id')
+      if (failErr) throw failErr
+      if (failed && failed.length > 0) {
+        // Say it once, so the customer is not left wondering whether the money went through
+        if (receiptPhone && isOpen(order.status)) {
+          await sendAndLog(
+            context,
+            buildTextMessage(receiptPhone, `The payment for order #${order.order_number} did not go through, and you have not been charged for this order. You can tap "Review and pay" above to try again, or reply here for help.`),
+            `[Payment failed for Order #${order.order_number}; customer was told]`
+          )
+        }
+        return { ...order, payment_status: 'failed' }
       }
-      return { ...order, payment_status: 'failed' }
     }
     return order
   }
 
-  const currency = update.currency || order.currency || organization.currency || 'INR'
-  const transactionId = update.transactionId || `TXN_${Date.now()}`
-  const paidAmount = update.amount || Number(order.total_amount)
-  if (update.amount > 0 && Math.abs(update.amount - Number(order.total_amount)) > 0.01) {
-    console.warn(`[Commerce] Order #${order.order_number}: paid ${update.amount} but the order total is ${order.total_amount}`)
+  // 2. Money arrived. It is checked against the amount asked for under its reference (or the
+  //    order total, for requests sent before amounts were kept).
+  const transactionId = transactionIdOf(update)
+  const requested = findPaymentRequest(order, update.referenceId)
+  const expected = requested ? requested.amount : Number(order.total_amount)
+  // Meta did not report an amount: taken as the amount asked for
+  const paidAmount = update.amount > 0 ? update.amount : expected
+  const differs = (a: number, b: number) => Math.abs(a - b) > 0.01
+  const recorded = await findTransaction(supabase, organization.id, transactionId)
+  const ledgerRow = (status: 'captured' | 'duplicate') => ({
+    order_id: order.id,
+    organization_id: organization.id,
+    gateway: organization.commerce_payment_gateway || 'razorpay',
+    transaction_id: transactionId,
+    amount: paidAmount,
+    currency,
+    status,
+    raw_payload: paymentPayload,
+  })
+
+  // 2a. Already paid: the same transaction again is Meta redelivering it; a different one is a
+  //     second payment, which has to go back to the customer.
+  if (order.payment_status === 'paid') {
+    if (recorded) {
+      console.log(`[Commerce] Order #${order.order_number} is already paid; ignoring duplicate payment update`)
+      return order
+    }
+    if (!(await recordTransaction(supabase, ledgerRow('duplicate')))) return order
+    await noteOnOrder(supabase, order, `Second payment of ${money(paidAmount)} received on ${today()} (reference ${update.referenceId}); refund due.`)
+    await logSystemLine(context, `[Second payment of ${money(paidAmount)} received for Order #${order.order_number}; refund due]`)
+    if (receiptPhone) {
+      await sendAndLog(
+        context,
+        buildTextMessage(receiptPhone, `We received a second payment of ${money(paidAmount)} for order #${order.order_number}, which was already paid. It will be refunded; our team will contact you shortly.`),
+        `[Told customer Order #${order.order_number} is already paid; the second payment will be refunded]`
+      )
+    }
+    return order
   }
 
-  // The condition on payment_status makes two simultaneous deliveries record the payment once
+  // 2b. The ledger comes first: a crash can leave a transaction without a paid order (finished on
+  //     redelivery), never a paid order without its transaction.
+  const inserted = recorded ? null : await recordTransaction(supabase, ledgerRow('captured'))
+  if (!recorded && !inserted) {
+    // A parallel delivery recorded it a moment ago and is finishing the order
+    return order
+  }
+
+  // 2c. Not the amount asked for: the order is not marked paid. The team decides, the customer is told.
+  if (differs(paidAmount, expected)) {
+    if (!recorded) {
+      await noteOnOrder(supabase, order, `Payment of ${money(paidAmount)} received on ${today()} (reference ${update.referenceId}) but the order total is ${money(expected)}; team to review.`)
+      await logSystemLine(context, `[Payment of ${money(paidAmount)} received for Order #${order.order_number} but the order total is ${money(expected)}; team to review]`)
+      if (receiptPhone) {
+        await sendAndLog(
+          context,
+          buildTextMessage(receiptPhone, `We received ${money(paidAmount)} for order #${order.order_number}. The order total is ${money(expected)}, so our team will contact you shortly to sort it out.`),
+          `[Told customer Order #${order.order_number} is under review: paid ${money(paidAmount)} of ${money(expected)}]`
+        )
+      }
+    }
+    return order
+  }
+
+  // 3. Mark the order paid. The condition on payment_status makes two deliveries record it once.
   const { data: marked, error: updateErr } = await supabase
     .from('commerce_orders')
     .update({
@@ -871,39 +1240,36 @@ export async function handleInboundPaymentConfirmation({
     .in('payment_status', ['pending', 'failed'])
     .select('id')
   if (updateErr) throw updateErr
-  if (!marked || marked.length === 0) return { ...order, payment_status: 'paid' }
+  if (!marked || marked.length === 0) {
+    // Another delivery marked it paid in between; our copy of the transaction is marked as such
+    if (inserted?.id) await supabase.from('commerce_transactions').update({ status: 'duplicate' }).eq('id', inserted.id).eq('organization_id', organization.id)
+    return { ...order, payment_status: 'paid' }
+  }
+  if (requested && differs(paidAmount, Number(order.total_amount))) {
+    // Paid what an earlier request asked for; the order changed after it was sent (say, express delivery)
+    await logSystemLine(context, `[Payment of ${money(paidAmount)} received for Order #${order.order_number} against an earlier request; the order total is now ${money(Number(order.total_amount))}]`)
+  }
 
-  // 2. Record transaction
-  await supabase.from('commerce_transactions').insert({
-    order_id: order.id,
-    organization_id: organization.id,
-    gateway: organization.commerce_payment_gateway || 'razorpay',
-    transaction_id: transactionId,
-    amount: paidAmount,
-    currency,
-    status: 'captured',
-    raw_payload: paymentPayload,
-  })
-
-  // 3. Send the customer a receipt, in the conversation the order came from
+  // 4. Send the customer a receipt, in the conversation the order came from
   if (receiptPhone) {
     const text = order.status === 'canceled'
-      ? `We received ${formatMoney(paidAmount, currency)} for order #${order.order_number}, but this order was canceled. Our team will contact you about your refund.`
-      : CHECKOUT_TEXT.paid(formatMoney(paidAmount, currency), order.order_number)
+      ? `We received ${money(paidAmount)} for order #${order.order_number}, but this order was canceled. Our team will contact you about your refund.`
+      : CHECKOUT_TEXT.paid(money(paidAmount), order.order_number)
     // The receipt card belongs to the payment request that was paid
     const card = await sendAndLog(
       context,
       buildOrderStatusMessage({ phone: receiptPhone, referenceId: update.referenceId, status: 'processing', description: text }),
-      `[Payment received for Order #${order.order_number} (${formatMoney(paidAmount, currency)}); receipt sent]`
+      `[Payment received for Order #${order.order_number} (${money(paidAmount)}); receipt sent]`
     )
     if (!card.ok) {
-      await sendAndLog(context, buildTextMessage(receiptPhone, text), `[Payment received for Order #${order.order_number} (${formatMoney(paidAmount, currency)}); receipt sent]`)
+      await sendAndLog(context, buildTextMessage(receiptPhone, text), `[Payment received for Order #${order.order_number} (${money(paidAmount)}); receipt sent]`)
     }
     // Then a warm thank-you, as a normal message the customer can reply to
     if (order.status !== 'canceled') {
       const items = await loadOrderItems(supabase, order.id)
       const thanks = CHECKOUT_TEXT.thankYou({
-        name: String(order.shipping_address?.name || order.customer_name || '').trim().split(/\s+/)[0] || undefined,
+        // The address form stores the customer's name as full_name
+        name: firstNameOf(order.shipping_address?.full_name) || firstNameOf(customerName),
         store: String(organization.name || '').trim() || undefined,
         orderNumber: order.order_number,
         items: items.map((item) => ({ name: item.name, quantity: item.quantity })),
@@ -980,17 +1346,31 @@ export async function notifyOrderStatus({
 }
 
 /**
- * Withdraw the payment request of an order that is being canceled, so the customer can no
- * longer pay for it from the chat. Nothing happens when no request was sent or it is paid.
+ * Withdraw the current payment request of an order, so the customer can no longer pay it from
+ * the chat: the order is being canceled, or a new request replaces it. Nothing happens when no
+ * request was sent or it is paid.
  */
-export async function voidPaymentRequest({ organization, order, database }: { organization: any; order: any; database?: Database }): Promise<boolean> {
+export async function voidPaymentRequest({ organization, order, database, phone, description }: {
+  organization: any
+  order: any
+  database?: Database
+  /** The customer's number, when the caller already has it. */
+  phone?: string
+  /** What the withdrawn card says; the order was canceled unless told otherwise. */
+  description?: string
+}): Promise<boolean> {
   if (!hasPaymentRequest(order) || order.payment_status === 'paid') return false
   const supabase = database || getSupabase()
-  const phone = await loadCustomerPhone(supabase, organization.id, order)
-  if (!phone) return false
+  const customerPhone = phone || (await loadCustomerPhone(supabase, organization.id, order))
+  if (!customerPhone) return false
   const result = await sendWhatsAppMessage(
     organization,
-    buildOrderStatusMessage({ phone, referenceId: order.meta_payment_reference, status: 'canceled', description: `Order #${order.order_number} was canceled.` })
+    buildOrderStatusMessage({
+      phone: customerPhone,
+      referenceId: order.meta_payment_reference,
+      status: 'canceled',
+      description: description || `Order #${order.order_number} was canceled.`,
+    })
   )
   return result.ok
 }
