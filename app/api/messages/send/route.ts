@@ -373,7 +373,8 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('contact_id', contactId)
         .eq('organization_id', orgId)
-        .order('last_message_at', { ascending: false })
+        // Postgres sorts empty dates first when descending: a row never messaged must not win
+        .order('last_message_at', { ascending: false, nullsFirst: false })
         .limit(1)
 
       const existingConv = existingConvs?.[0] || null
