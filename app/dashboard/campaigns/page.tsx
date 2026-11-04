@@ -2365,7 +2365,8 @@ export default function CampaignsPage() {
                                 log.status === 'READ' ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-200/50' :
                                 log.status === 'DELIVERED' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-200/50' :
                                 log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-emerald-950/20 text-[#008069] border-[#00a884]/20' :
-                                log.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-200/50' :
+                                // SENDING: claimed by the worker, Meta's answer not in yet
+                                log.status === 'PENDING' || log.status === 'SENDING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-200/50' :
                                 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-200/50'
                               }`}>
                                 {log.status}

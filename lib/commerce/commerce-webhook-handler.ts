@@ -189,6 +189,9 @@ export interface SendResult {
   superseded?: boolean
 }
 
+/** How long a send may take. A webhook or reminder run must not hang on a stalled Meta connection. */
+export const WHATSAPP_SEND_TIMEOUT_MS = 15_000
+
 /** Meta error: a free-form message more than 24 hours after the customer's last message. */
 const OUTSIDE_WINDOW_CODE = 131047
 const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -213,6 +216,7 @@ export async function sendWhatsAppMessage(organization: any, payload: unknown): 
           Authorization: `Bearer ${organization.whatsapp_api_token}`,
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(WHATSAPP_SEND_TIMEOUT_MS),
       }
     )
     const data = await res.json().catch(() => null)
@@ -224,6 +228,11 @@ export async function sendWhatsAppMessage(organization: any, payload: unknown): 
     }
     return { ok: true, messageId: data?.messages?.[0]?.id || null }
   } catch (err: any) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      console.error(`[Commerce] WhatsApp send timed out after ${WHATSAPP_SEND_TIMEOUT_MS / 1000} s`)
+      // Meta may still deliver it; the caller treats this like any other refusal
+      return { ok: false, error: 'WhatsApp did not answer in time. The message may still arrive; check the chat before sending again.' }
+    }
     console.error('[Commerce] WhatsApp send error:', err)
     return { ok: false, error: 'WhatsApp could not be reached. Check your connection and try again.' }
   }

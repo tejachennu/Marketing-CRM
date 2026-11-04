@@ -1701,3 +1701,21 @@ test('Stock: without the stock_adjusted_at column nothing is counted, with one w
   }
   assert.deepEqual(warnings.filter(line => line.includes(handlers.STOCK_MIGRATION_HINT)).length, 1)
 })
+
+test('Commerce send: every Meta call carries a deadline, and a timeout is a refusal that says the message may still arrive', async () => {
+  const original = globalThis.fetch
+  let signal = null
+  globalThis.fetch = async (_url, init) => {
+    signal = init.signal
+    throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+  }
+  try {
+    const result = await handlers.sendWhatsAppMessage({ whatsapp_api_token: 't', whatsapp_phone_number_id: '1' }, { type: 'text' })
+    assert.ok(signal instanceof AbortSignal, 'the request is bounded')
+    assert.equal(result.ok, false)
+    assert.match(result.error, /did not answer in time.*may still arrive/)
+    assert.equal(handlers.WHATSAPP_SEND_TIMEOUT_MS, 15000)
+  } finally {
+    globalThis.fetch = original
+  }
+})
