@@ -5,7 +5,9 @@ import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, Refresh
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
-import { MAX_STORE_AMOUNT } from '@/lib/organization-access'
+import { getStatusTemplate, getStatusTemplateBodyProblem, getStorefrontLink } from '@/lib/commerce/go-live-checks'
+import { MAX_STORE_AMOUNT, MAX_TEMPLATE_NAME_LENGTH } from '@/lib/organization-access'
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
 
 const GATEWAY_LABELS: Record<string, string> = {
@@ -13,6 +15,21 @@ const GATEWAY_LABELS: Record<string, string> = {
   payu: 'PayU',
   billdesk: 'BillDesk',
   zaakpay: 'Zaakpay',
+}
+
+/** An approved utility template on the account, as the order-update picker lists it. */
+interface TemplateChoice {
+  name: string
+  language: string
+  /** The body text, for the preview. */
+  body: string
+}
+
+/** One picker value per template: Meta names a template by name and language, and names never contain "|". */
+const templateKey = (template: { name: string; language: string } | null) => (template ? `${template.name}|${template.language}` : '')
+const parseTemplateKey = (key: string): { name: string; language: string } | null => {
+  const [name, language] = key.split('|')
+  return name ? { name, language: language || '' } : null
 }
 
 /** The store's catalog as Meta sees it, from /api/commerce/catalog. */
@@ -47,6 +64,15 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
   const expressFeeEditable = 'commerce_express_fee' in orgData
   // The AI assistant switch needs its column (supabase/migrations/20261018_commerce_ai_assistant.sql)
   const assistantEditable = 'commerce_ai_assistant' in orgData
+  // The checkout reminders switch needs its column (supabase/migrations/20261104_commerce_reminders.sql)
+  const remindersEditable = 'commerce_reminders_enabled' in orgData
+  // The order-update template needs its column (supabase/migrations/20261104_commerce_status_template.sql)
+  const statusTemplateEditable = 'commerce_status_template' in orgData
+  // WhatsApp's in-chat payments are for businesses in India, so a gateway is only chosen in rupees
+  const isInr = currency === 'INR'
+  // Meta's storefront for the number: the catalog opens from it
+  const storefrontLink = getStorefrontLink(orgData)
+  const savedTemplate = getStatusTemplate(orgData)
   // A store that was never set up is switched on by its first save; after that the switch decides
   const neverSetUp = !orgData.enable_commerce && !orgData.meta_catalog_id && !orgData.commerce_gateway_config_name && !orgData.commerce_address_flow_id
 
@@ -61,8 +87,41 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     commerce_express_fee: String(getExpressFee(orgData)),
     commerce_address_flow_id: orgData.commerce_address_flow_id || '',
     commerce_ai_assistant: orgData.commerce_ai_assistant !== false,
+    commerce_reminders_enabled: orgData.commerce_reminders_enabled !== false,
+    commerce_status_template: savedTemplate,
   })
   const set = (changes: Partial<typeof form>) => setForm((current) => ({ ...current, ...changes }))
+  /** The fallback inputs edit the two halves of the template setting. */
+  const typeTemplate = (changes: Partial<{ name: string; language: string }>) =>
+    set({ commerce_status_template: { name: form.commerce_status_template?.name || '', language: form.commerce_status_template?.language || '', ...changes } })
+
+  // Approved utility templates on the account, for the order-update picker; null until read, with
+  // the reason when Meta would not list them (the name and language are then typed instead)
+  const [templates, setTemplates] = useState<TemplateChoice[] | null>(null)
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp-templates?organizationId=${orgId}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Meta did not list your templates.')
+      const list: TemplateChoice[] = (Array.isArray(data.templates) ? data.templates : [])
+        .filter((template: any) => String(template.status).toUpperCase() === 'APPROVED' && String(template.category).toUpperCase() === 'UTILITY')
+        .map((template: any) => ({
+          name: String(template.name || ''),
+          language: String(template.language || ''),
+          body: String((template.components || []).find((component: any) => component?.type === 'BODY')?.text || ''),
+        }))
+        .sort((a: TemplateChoice, b: TemplateChoice) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language))
+      setTemplates(list)
+      setTemplatesError(null)
+    } catch (err: any) {
+      setTemplates(null)
+      setTemplatesError(err.message || 'Meta did not list your templates.')
+    }
+  }, [orgId])
+  const chosenTemplate = templates?.find((template) => templateKey(template) === templateKey(form.commerce_status_template)) || null
+  // Said before the save: the handler fills the body by position, and Meta refuses a mismatch only when the update is sent
+  const templateProblem = chosenTemplate ? getStatusTemplateBodyProblem(chosenTemplate.body) : null
 
   const [isSaving, setIsSaving] = useState(false)
   // What Meta reports for the WhatsApp Business account: the choices below come only from here
@@ -106,7 +165,10 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
 
   // Everything Meta knows is read when the screen opens; "Refresh from Meta" reads it again
   useEffect(() => {
-    if (whatsappConnected) detectFromMeta(true)
+    if (whatsappConnected) {
+      detectFromMeta(true)
+      if (statusTemplateEditable) loadTemplates()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whatsappConnected, orgId])
 
@@ -379,6 +441,10 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       return
     }
 
+    // Typed by hand, the template may be half filled; the server says what is missing
+    const typed = form.commerce_status_template
+    const statusTemplate = typed && (typed.name.trim() || typed.language.trim()) ? { name: typed.name.trim(), language: typed.language.trim() } : null
+
     setIsSaving(true)
     try {
       const update: Record<string, any> = {
@@ -392,6 +458,8 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         commerce_address_flow_id: form.commerce_address_flow_id.trim() || null,
         ...(expressFeeEditable ? { commerce_express_fee: expressFee } : {}),
         ...(assistantEditable ? { commerce_ai_assistant: form.commerce_ai_assistant } : {}),
+        ...(remindersEditable ? { commerce_reminders_enabled: form.commerce_reminders_enabled } : {}),
+        ...(statusTemplateEditable ? { commerce_status_template: statusTemplate } : {}),
       }
       const res = await fetch('/api/organization', {
         method: 'PATCH',
@@ -401,7 +469,11 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Store settings could not be saved.')
       onSaved(update)
-      showToast('success', form.enable_commerce ? 'Store settings saved.' : 'Store settings saved. The store is switched off, so new carts are not turned into orders.')
+      // Switching the store off withdraws the payment cards still open in chats; the answer counts them
+      const withdrawn = Number(data.paymentRequestsWithdrawn) || 0
+      showToast('success', form.enable_commerce
+        ? 'Store settings saved.'
+        : `Store settings saved. The store is switched off, so new carts are not turned into orders.${withdrawn ? ` ${withdrawn} open payment request${withdrawn === 1 ? ' was' : 's were'} withdrawn from customers’ chats.` : ''}`)
     } catch (err: any) {
       alert({ title: 'Settings not saved', message: err.message })
     } finally {
@@ -450,6 +522,25 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         </span>
       </label>
 
+      {/* Checkout reminders, sent by the cron tick */}
+      <label className={`${cardClass} p-4 sm:p-5 flex items-center justify-between gap-4 ${remindersEditable ? 'cursor-pointer' : ''}`}>
+        <span>
+          <span className={`block ${heading}`}>Remind customers about unfinished checkouts (up to 2 reminders)</span>
+          <span className={`block ${subheading}`}>
+            {!remindersEditable
+              ? 'Off until the database update supabase/migrations/20261104_commerce_reminders.sql is run. Then a customer who leaves a cart without an address or payment is sent the step they stopped at, an hour later and once more the next day.'
+              : form.commerce_reminders_enabled
+                ? 'A customer who leaves a cart without an address or payment is sent the step they stopped at, an hour later and once more the next day. Reminders only go out while WhatsApp still accepts a plain message (24 hours after their last message).'
+                : 'Off: unfinished checkouts are left alone. “Send reminder” on an order still works.'}
+          </span>
+        </span>
+        <span className="relative shrink-0">
+          <input type="checkbox" role="switch" checked={remindersEditable ? form.commerce_reminders_enabled : false} disabled={!remindersEditable} onChange={(event) => set({ commerce_reminders_enabled: event.target.checked })} className="peer sr-only" />
+          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#00a884] peer-disabled:opacity-60 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40" />
+          <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+        </span>
+      </label>
+
       <div className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
         <div>
           <h2 className={heading}>From your WhatsApp Business account</h2>
@@ -468,7 +559,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             </p>
           )}
         </div>
-        <button type="button" onClick={() => detectFromMeta()} disabled={isDetecting || !whatsappConnected} title={whatsappConnected ? undefined : 'Connect WhatsApp in Settings first'} className={`${secondaryButton} shrink-0`}>
+        <button type="button" onClick={() => { detectFromMeta(); if (statusTemplateEditable) loadTemplates() }} disabled={isDetecting || !whatsappConnected} title={whatsappConnected ? undefined : 'Connect WhatsApp in Settings first'} className={`${secondaryButton} shrink-0`}>
           {isDetecting ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           {isDetecting ? 'Reading…' : 'Refresh from Meta'}
         </button>
@@ -665,6 +756,18 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             </button>
           )}
         </div>
+
+        {/* Meta's storefront link for the number, once there is a catalog to open */}
+        {storefrontLink && chosenCatalogId && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
+            <div className="min-w-0 text-xs text-slate-600 dark:text-slate-300">
+              <p className="font-semibold text-slate-900 dark:text-white">Your catalog link</p>
+              <a href={storefrontLink} target="_blank" rel="noreferrer" className="font-mono break-all text-[#008069] dark:text-[#00a884] hover:underline">{storefrontLink}</a>
+              <p className={hintClass}>Opens your catalog in WhatsApp: put it on your website, in your Instagram bio or on posters. In a chat, “Send catalog” in the Products tab sends a button that does the same.</p>
+            </div>
+            <CopyPhoneButton phoneNumber={storefrontLink} showText displayText="Copy link" title="Copy the catalog link" iconSize={12} className="shrink-0 self-start sm:self-center text-xs" />
+          </div>
+        )}
       </section>
 
       <section className={`${cardClass} p-4 sm:p-5 space-y-4`}>
@@ -692,7 +795,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           <p className={hintClass}>
             {detected?.flowsError
               ? `Meta did not list your forms: ${detected.flowsError}`
-              : 'Your published WhatsApp forms. “Create the standard form” publishes a ready-made address form and selects it; it shows the express delivery charge set below, so save the shipping section first if you change that. A published form never changes on Meta: when the charge changes later, the Order flow tab offers to publish a new version. A custom form must start on a screen named SHIPPING_DETAILS.'}
+              : 'Your published WhatsApp forms. “Create the standard form” publishes a ready-made address form and selects it; it shows the express delivery charge set below, so save the shipping section first if you change that. A published form never changes on Meta: when the charge changes later, the Order flow tab offers to publish a new version. A custom form must start on a screen named SHIPPING_DETAILS and collect the address in a field named address_line_1.'}
           </p>
         </div>
       </section>
@@ -712,7 +815,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         </div>
         <div>
           <label htmlFor="gateway-config" className={labelClass}>Online payment</label>
-          <select id="gateway-config" value={form.commerce_gateway_config_name} onChange={(event) => choosePaymentSetup(event.target.value)} disabled={!whatsappConnected} className={inputClass}>
+          <select id="gateway-config" value={form.commerce_gateway_config_name} onChange={(event) => choosePaymentSetup(event.target.value)} disabled={!whatsappConnected || (!isInr && !hasGateway)} className={inputClass}>
             <option value="">No online payment</option>
             {form.commerce_gateway_config_name && !paymentSetups.some((config) => config.configuration_name === form.commerce_gateway_config_name) && (
               <option value={form.commerce_gateway_config_name}>
@@ -732,11 +835,13 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             })}
           </select>
           <p className={hintClass}>
-            {detected?.paymentConfigsError
-              ? `Meta did not list your payment setups: ${detected.paymentConfigsError}`
-              : detected && paymentSetups.length === 0
-                ? 'No payment setup on your WhatsApp account yet. Add one in WhatsApp Manager → Payments (Razorpay, PayU, BillDesk or Zaakpay), then Refresh from Meta.'
-                : 'Payment setups on your WhatsApp account (WhatsApp Manager → Payments). In-chat payment is for businesses in India, in rupees.'}
+            {!isInr
+              ? `In-chat payment is for businesses in India and works in rupees only; your workspace currency is ${currency}. ${hasGateway ? 'Payment requests fail until it is INR: choose “No online payment”, or change the currency in Settings → General → Regional Preferences.' : 'To offer it, change the currency in Settings → General → Regional Preferences (an admin setting).'}`
+              : detected?.paymentConfigsError
+                ? `Meta did not list your payment setups: ${detected.paymentConfigsError}`
+                : detected && paymentSetups.length === 0
+                  ? 'No payment setup on your WhatsApp account yet. Add one in WhatsApp Manager → Payments (Razorpay, PayU, BillDesk or Zaakpay), then Refresh from Meta.'
+                  : 'Payment setups on your WhatsApp account (WhatsApp Manager → Payments). In-chat payment is for businesses in India, in rupees.'}
           </p>
           {(() => {
             const chosen = paymentSetups.find((config) => config.configuration_name === form.commerce_gateway_config_name)
@@ -769,6 +874,64 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             With no gateway and no Cash on Delivery, customers can place an order but cannot pay in the chat. They will only be told that your team will contact them.
           </p>
         )}
+      </section>
+
+      {/* Order updates once a plain message is no longer allowed */}
+      <section className={`${cardClass} p-4 sm:p-5 space-y-4`}>
+        <div>
+          <h2 className={heading}>Order updates</h2>
+          <p className={subheading}>“Shipped” and “Delivered” messages for orders paid in cash or marked paid by your team. WhatsApp refuses a plain message once the customer&apos;s last message is more than a day old, so from then on the update goes out as an approved template.</p>
+        </div>
+        {!statusTemplateEditable ? (
+          <p className={hintClass}>To choose a template here, run the database update <span className="font-mono">supabase/migrations/20261104_commerce_status_template.sql</span>. Until then, updates only reach customers who messaged in the last 24 hours.</p>
+        ) : templates ? (
+          <div>
+            <label htmlFor="status-template" className={labelClass}>Order-update template</label>
+            <select id="status-template" value={templateKey(form.commerce_status_template)} onChange={(event) => set({ commerce_status_template: parseTemplateKey(event.target.value) })} className={inputClass}>
+              <option value="">None: plain messages only</option>
+              {savedTemplate && !templates.some((template) => templateKey(template) === templateKey(savedTemplate)) && (
+                <option value={templateKey(savedTemplate)}>Saved template {savedTemplate.name} · {savedTemplate.language} (not an approved utility template on Meta right now)</option>
+              )}
+              {templates.map((template) => (
+                <option key={templateKey(template)} value={templateKey(template)}>{template.name} · {template.language}</option>
+              ))}
+            </select>
+            <p className={hintClass}>
+              {templates.length === 0
+                ? 'No approved utility template on your WhatsApp account yet. Create one under Templates (category Utility); once Meta approves it, Refresh from Meta and choose it here.'
+                : 'Approved utility templates on your WhatsApp account.'}
+            </p>
+            {chosenTemplate?.body && (
+              <p className="mt-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-700 dark:text-slate-200 whitespace-pre-line">{chosenTemplate.body}</p>
+            )}
+            {templateProblem && (
+              <p role="alert" className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={15} className="shrink-0 mt-px" />
+                <span>{templateProblem} Choose another template, or edit this one under Templates.</span>
+              </p>
+            )}
+          </div>
+        ) : whatsappConnected && !templatesError ? (
+          <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><Loader2 size={14} className="animate-spin" /> Reading your templates from Meta…</p>
+        ) : (
+          // Meta did not list the templates: the name and language are typed instead
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <label htmlFor="status-template-name" className={labelClass}>Template name</label>
+              <input id="status-template-name" type="text" maxLength={MAX_TEMPLATE_NAME_LENGTH} value={form.commerce_status_template?.name || ''} onChange={(event) => typeTemplate({ name: event.target.value })} placeholder="order_update" className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="status-template-language" className={labelClass}>Language</label>
+              <input id="status-template-language" type="text" maxLength={6} value={form.commerce_status_template?.language || ''} onChange={(event) => typeTemplate({ language: event.target.value })} placeholder="en_US" className={inputClass} />
+            </div>
+            <p className={`${hintClass} sm:col-span-3`}>
+              {templatesError
+                ? `Meta did not list your templates (${templatesError}), so type the name and language of an approved utility template as shown under Templates. Leave both empty for none.`
+                : 'Connect WhatsApp in Settings to pick from your approved templates, or type the name and language of one as shown under Templates. Leave both empty for none.'}
+            </p>
+          </div>
+        )}
+        <p className={hintClass}>The template body needs three numbered variables, in this order: {'{{1}}'} the order number, {'{{2}}'} the new status (Shipped, Delivered…), {'{{3}}'} the tracking details (carrier and number, or a dash). For example: “Order {'{{1}}'} is {'{{2}}'}. Tracking: {'{{3}}'}”.</p>
       </section>
 
       <section className={`${cardClass} p-4 sm:p-5 space-y-4`}>

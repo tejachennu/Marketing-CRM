@@ -2,8 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { isMissingColumnError, planOrganizationUpdate, toSafeOrganization } from '@/lib/organization-access'
 import { can, describeDenied } from '@/lib/rbac'
+import { OPEN_CHECKOUT_STATUSES } from '@/lib/commerce/commerce-utils'
+import { voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
+import { ADDRESS_FORM_ERROR } from '@/lib/commerce/go-live-checks'
+import { getMetaCredentials } from '@/lib/flows/meta-client'
+import { readAddressForm } from '@/app/api/commerce/meta-detect/route'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
+
+/**
+ * Open orders with a live payment card are withdrawn this many at most in one save, a few at a
+ * time: each is a Meta call, and the save answers within a serverless function's time.
+ */
+const MAX_WITHDRAWN = 100
+const WITHDRAW_BATCH = 5
 
 /**
  * GET /api/organization?organizationId=...
@@ -47,8 +59,73 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * Why a form cannot be the address step, or null when it can. The checkout reads the delivery
+ * address from the form's `address_line_1` field, so the form is read from Meta first. When Meta
+ * cannot be read (or WhatsApp is not connected) the choice is accepted, and the Order flow tab's
+ * check reports the form once Meta answers.
+ */
+async function addressFormProblem(organization: Record<string, any>, flowId: string): Promise<string | null> {
+  let credentials
+  try {
+    credentials = getMetaCredentials(organization)
+  } catch {
+    return null
+  }
+  const form = await readAddressForm(credentials, flowId)
+  if (form.error) {
+    console.warn(`[API] Address form ${flowId} accepted without being checked: ${form.error}`)
+    return null
+  }
+  return form.collectsAddress === false ? ADDRESS_FORM_ERROR : null
+}
+
+/**
+ * With the store off nobody answers a payment, so the payment cards still open in customers'
+ * chats are withdrawn. Best effort: a card WhatsApp will not withdraw is logged, never a reason
+ * to refuse the save. Returns how many were withdrawn.
+ */
+async function withdrawOpenPaymentRequests(supabase: any, organization: Record<string, any>): Promise<number> {
+  const { data: orders, error } = await supabase
+    .from('commerce_orders')
+    .select('*')
+    .eq('organization_id', organization.id)
+    .in('status', OPEN_CHECKOUT_STATUSES)
+    .eq('payment_status', 'pending')
+    .not('meta_payment_reference', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(MAX_WITHDRAWN)
+  if (error) {
+    console.warn('[API] Store switched off: the open payment requests could not be read:', error.message || error)
+    return 0
+  }
+  const withdraw = async (order: Record<string, any>): Promise<boolean> => {
+    try {
+      return await voidPaymentRequest({
+        organization,
+        order,
+        database: supabase,
+        description: `Order #${order.order_number}: the store has paused orders, so this payment request was withdrawn.`,
+      })
+    } catch (err: any) {
+      console.warn(`[API] Store switched off: the payment request for order #${order.order_number} was not withdrawn:`, err?.message || err)
+      return false
+    }
+  }
+  let withdrawn = 0
+  const pending: Record<string, any>[] = orders || []
+  for (let start = 0; start < pending.length; start += WITHDRAW_BATCH) {
+    const results = await Promise.all(pending.slice(start, start + WITHDRAW_BATCH).map(withdraw))
+    withdrawn += results.filter(Boolean).length
+  }
+  if (pending.length) console.log(`[API] Store switched off: ${withdrawn} of ${pending.length} open payment request(s) withdrawn.`)
+  return withdrawn
+}
+
+/**
  * PATCH /api/organization  { organizationId, updates }
- * Each setting needs the permission listed in lib/organization-access.ts.
+ * Each setting needs the permission listed in lib/organization-access.ts. A form chosen for the
+ * address step has to collect an address (400 otherwise), and switching the store off withdraws
+ * the payment requests still open in chats; the answer says how many (`paymentRequestsWithdrawn`).
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -65,7 +142,29 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: plan.error }, { status: plan.status })
     }
 
-    const { data: organization, error } = await getSupabaseAdminClient()
+    const supabase = getSupabaseAdminClient()
+
+    // Two settings depend on what is stored now: the address form (checked against Meta only
+    // when it changes) and the store switch (open payment requests are withdrawn when it goes off)
+    const flowId = typeof plan.values.commerce_address_flow_id === 'string' ? plan.values.commerce_address_flow_id.trim() : ''
+    const switchingOff = plan.values.enable_commerce === false
+    let current: Record<string, any> | null = null
+    if (flowId || switchingOff) {
+      const { data, error } = await supabase.from('organizations').select('*').eq('id', organizationId).maybeSingle()
+      if (error) throw error
+      if (!data) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+      current = data
+    }
+
+    if (current && flowId && flowId !== String(current.commerce_address_flow_id || '').trim()) {
+      const problem = await addressFormProblem(current, flowId)
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+    }
+    // Only the switch from on to off withdraws cards: saving a store that is already off must not
+    // message customers again. Decided before the update, from the row as it was.
+    const goingOff = Boolean(current) && switchingOff && current!.enable_commerce !== false
+
+    const { data: organization, error } = await supabase
       .from('organizations')
       .update(plan.values)
       .eq('id', organizationId)
@@ -83,7 +182,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, organization: toSafeOrganization(organization) }, { headers: NO_STORE })
+    const paymentRequestsWithdrawn = goingOff ? await withdrawOpenPaymentRequests(supabase, organization) : 0
+
+    return NextResponse.json({ success: true, organization: toSafeOrganization(organization), paymentRequestsWithdrawn }, { headers: NO_STORE })
   } catch (error: any) {
     console.error('[API] Update organization error:', error)
     return NextResponse.json({ error: error.message || 'Failed to save settings' }, { status: 500 })

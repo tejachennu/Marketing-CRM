@@ -5,6 +5,7 @@ const assert = require('node:assert/strict')
 const {
   getGoLiveChecks, isReadyToSell, expressOptionTitle, getExpressOptionTitle, getFeeShownInLabel,
   nextAddressFormName, isStandardAddressForm, STANDARD_ADDRESS_FORM_NAME,
+  formCollectsAddress, getStatusTemplate, getStatusTemplateBodyProblem, getStorefrontLink, ADDRESS_FORM_ERROR,
 } = require('../lib/commerce/go-live-checks.ts')
 const { getPaymentStep, CHECKOUT_TEXT } = require('../lib/commerce/commerce-utils.ts')
 const { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } = require('../lib/flows/meta-flows-spec.ts')
@@ -22,7 +23,7 @@ const byId = (checks) => Object.fromEntries(checks.map((check) => [check.id, che
 const withForm = (expressLabel, extra = {}) => meta({ flows: [{ id: 'F1', name: STANDARD_ADDRESS_FORM_NAME, status: 'PUBLISHED' }], addressForm: { id: 'F1', expressLabel, error: null }, ...extra })
 
 test('Go live: a fully set-up store is ready', () => {
-  const checks = getGoLiveChecks(store({ commerce_gateway_config_name: 'razor-live', commerce_address_flow_id: 'F1' }), meta())
+  const checks = getGoLiveChecks(store({ commerce_gateway_config_name: 'razor-live', commerce_address_flow_id: 'F1', commerce_status_template: { name: 'order_update', language: 'en' } }), meta())
   assert.ok(checks.every((check) => check.state === 'ok'), JSON.stringify(checks.filter((check) => check.state !== 'ok')))
   assert.equal(isReadyToSell(checks), true)
   // Every check says what it is about and where to fix it when it fails
@@ -181,6 +182,109 @@ test('Checkout: the payment step follows the settings', () => {
   assert.equal(getPaymentStep({}), 'cod')
   assert.equal(getPaymentStep({ commerce_enable_cod: false }), 'acknowledged')
   assert.equal(CHECKOUT_TEXT.received('ORD-1', 2, '₹398'), 'Thank you! We received your order #ORD-1 for 2 items (Total: ₹398).')
+})
+
+test('Go live: payment setups Meta would not list are a warning, not a pass', () => {
+  const refused = meta({ paymentConfigs: [], paymentConfigsError: 'Permissions error' })
+  const check = byId(getGoLiveChecks(store({ commerce_gateway_config_name: 'razor-live' }), refused)).payment
+  assert.equal(check.state, 'warning')
+  assert.match(check.detail, /“razor-live” could not be checked: Permissions error/)
+  assert.match(check.detail, /Cash on Delivery/)
+  assert.equal(check.fix, 'store_settings')
+  // Without Cash on Delivery too: nothing says the setup is broken, so it does not block
+  const alone = byId(getGoLiveChecks(store({ commerce_gateway_config_name: 'razor-live', commerce_enable_cod: false }), refused)).payment
+  assert.equal(alone.state, 'warning')
+  assert.ok(!/Cash on Delivery/.test(alone.detail), alone.detail)
+  assert.equal(isReadyToSell(getGoLiveChecks(store({ commerce_gateway_config_name: 'razor-live', commerce_enable_cod: false }), refused)), true)
+  // Without a gateway the list does not matter, and rupees come before the list
+  assert.equal(byId(getGoLiveChecks(store(), refused)).payment.state, 'ok')
+  assert.match(byId(getGoLiveChecks(store({ currency: 'USD', commerce_gateway_config_name: 'razor-live' }), refused)).payment.detail, /rupees only/)
+})
+
+test('Go live: the currency fixes say where the currency is changed', () => {
+  const missing = byId(getGoLiveChecks(store({ currency: null }), meta())).currency
+  assert.match(missing.detail, /Settings → General → Regional Preferences/)
+  assert.match(missing.detail, /Save Preferences/)
+  const dollars = byId(getGoLiveChecks(store({ currency: 'USD', commerce_gateway_config_name: 'razor-live' }), meta())).payment
+  assert.ok(dollars.detail.startsWith('Online payment in the chat works in Indian rupees only, and the store currency is USD.'), dollars.detail)
+  assert.match(dollars.detail, /Settings → General → Regional Preferences/)
+  assert.match(dollars.detail, /“No online payment” in Store settings/)
+})
+
+test('Go live: a published form that collects no address is pointed out', () => {
+  const noAddress = meta({ flows: [{ id: 'F1', name: 'Lead form', status: 'PUBLISHED' }], addressForm: { id: 'F1', expressLabel: null, collectsAddress: false, error: null } })
+  const check = byId(getGoLiveChecks(store({ commerce_address_flow_id: 'F1' }), noAddress)).address
+  assert.equal(check.state, 'warning')
+  assert.equal(check.required, false)
+  assert.equal(check.fix, 'store_settings')
+  assert.match(check.detail, /^Lead form is published, but it does not collect a delivery address \(it needs an address_line_1 field\)/)
+  // A form that does, one Meta could not read, a report about another form, no report: published is enough
+  const state = (addressForm) => byId(getGoLiveChecks(store({ commerce_address_flow_id: 'F1' }), meta({ addressForm }))).address.state
+  assert.equal(state({ id: 'F1', expressLabel: null, collectsAddress: true, error: null }), 'ok')
+  assert.equal(state({ id: 'F1', expressLabel: null, collectsAddress: null, error: 'Meta did not answer in time.' }), 'ok')
+  assert.equal(state({ id: 'F2', expressLabel: null, collectsAddress: false, error: null }), 'ok')
+  assert.equal(state(null), 'ok')
+  // A warning on the optional step never blocks orders
+  assert.equal(isReadyToSell(getGoLiveChecks(store({ commerce_address_flow_id: 'F1' }), noAddress)), true)
+})
+
+test('Go live: an order-update template is wanted for customers a day old', () => {
+  const missing = byId(getGoLiveChecks(store({ commerce_status_template: null }), meta())).status_template
+  assert.equal(missing.state, 'warning')
+  assert.equal(missing.required, false)
+  assert.equal(missing.fix, 'store_settings')
+  assert.ok(missing.detail.startsWith('Customers who confirmed more than a day ago cannot be told about shipping or delivery until an order-update template is chosen'), missing.detail)
+  assert.match(missing.detail, /in Store settings\.$/)
+  // Without the column, the database update is named
+  assert.match(byId(getGoLiveChecks(store(), meta())).status_template.detail, /20261104_commerce_status_template\.sql/)
+  const chosen = byId(getGoLiveChecks(store({ commerce_status_template: { name: 'order_update', language: 'en_US' } }), meta())).status_template
+  assert.equal(chosen.state, 'ok')
+  assert.match(chosen.detail, /“order_update” \(en_US\)/)
+  // The warning never blocks orders
+  assert.equal(isReadyToSell(getGoLiveChecks(store(), meta())), true)
+  assert.deepEqual(getStatusTemplate({ commerce_status_template: { name: ' order_update ', language: 'en' } }), { name: 'order_update', language: 'en' })
+  assert.equal(getStatusTemplate({ commerce_status_template: { name: 'order_update' } }), null)
+  assert.equal(getStatusTemplate({ commerce_status_template: 'order_update' }), null)
+  assert.equal(getStatusTemplate({}), null)
+  assert.equal(getStatusTemplate(null), null)
+})
+
+test('Order-update template: the body has to take the three numbered variables the update fills', () => {
+  assert.equal(getStatusTemplateBodyProblem('Order {{1}} is {{2}}. Tracking: {{3}}'), null)
+  // Spaces inside the braces and a variable used twice are fine; the order of appearance is not checked
+  assert.equal(getStatusTemplateBodyProblem('{{ 3 }} for order {{2}}: {{1}} ({{1}})'), null)
+  const two = getStatusTemplateBodyProblem('Order {{1}} is {{2}}.')
+  assert.match(two, /^This template has 2 variables in its body \(\{\{1\}\}, \{\{2\}\}\), but the order update fills exactly three numbered ones/)
+  assert.match(two, /\{\{1\}\} the order number, \{\{2\}\} the status, \{\{3\}\} the tracking details/)
+  assert.match(getStatusTemplateBodyProblem('Your order has shipped.'), /^This template has no variables in its body, but/)
+  assert.match(getStatusTemplateBodyProblem('Order {{1}} has shipped.'), /^This template has one variable in its body \(\{\{1\}\}\)/)
+  assert.match(getStatusTemplateBodyProblem('{{1}} {{2}} {{3}} {{4}}'), /^This template has 4 variables/)
+  // Meta's named variables are filled by name, which the update does not do
+  assert.match(getStatusTemplateBodyProblem('Order {{order_number}} is {{status}}. Tracking: {{tracking}}'), /^This template uses named variables \(\{\{order_number\}\}, \{\{status\}\}, \{\{tracking\}\}\), but the order update fills numbered ones/)
+  assert.match(getStatusTemplateBodyProblem(''), /no variables/)
+  assert.match(getStatusTemplateBodyProblem(undefined), /no variables/)
+})
+
+test('Address form: whether a form hands back a delivery address is read from its fields', () => {
+  assert.equal(formCollectsAddress(compileMetaFlowJSON(structuredClone(NATIVE_FLOW_TEMPLATES.SHIPPING_ADDRESS.screens))), true)
+  assert.equal(formCollectsAddress({ screens: NATIVE_FLOW_TEMPLATES.SHIPPING_ADDRESS.screens }), true)
+  // A lead form: the field is on no screen
+  assert.equal(formCollectsAddress({ screens: [{ id: 'LEAD', layout: { type: 'SingleColumnLayout', children: [{ type: 'Form', name: 'form', children: [{ type: 'TextInput', name: 'full_name' }, { type: 'TextInput', name: 'city' }] }] } }] }), false)
+  // The field may sit on a later screen
+  assert.equal(formCollectsAddress({ screens: [{ id: 'A', layout: { children: [{ type: 'TextInput', name: 'full_name' }] } }, { id: 'B', layout: { children: [{ type: 'Form', name: 'form', children: [{ type: 'TextInput', name: 'address_line_1' }] }] } }] }), true)
+  assert.equal(formCollectsAddress(null), false)
+  assert.equal(formCollectsAddress({ screens: 'x' }), false)
+  assert.equal(ADDRESS_FORM_ERROR, 'This form does not collect a delivery address (it needs an address_line_1 field)')
+})
+
+test('Storefront: the catalog link is Meta\'s wa.me/c/ address for the store\'s number', () => {
+  assert.equal(getStorefrontLink({ whatsapp_default_phone: '+91 98765 43210' }), 'https://wa.me/c/919876543210')
+  assert.equal(getStorefrontLink({ whatsapp_default_phone: 'whatsapp:+14155238886' }), 'https://wa.me/c/14155238886')
+  // Too short to be a number, or no number yet
+  assert.equal(getStorefrontLink({ whatsapp_default_phone: '1234' }), null)
+  assert.equal(getStorefrontLink({ whatsapp_default_phone: '' }), null)
+  assert.equal(getStorefrontLink({}), null)
+  assert.equal(getStorefrontLink(null), null)
 })
 
 test('Go live: a connected catalog missing from Meta\'s account list is not reported as disconnected', () => {

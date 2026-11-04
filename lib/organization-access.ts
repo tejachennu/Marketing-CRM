@@ -73,6 +73,11 @@ const AUTOMATION_FIELDS = [
   'commerce_express_fee',
   // Exists after supabase/migrations/20261018_commerce_ai_assistant.sql; sent only when it does
   'commerce_ai_assistant',
+  // Exists after supabase/migrations/20261104_commerce_reminders.sql; the cron tick reads it
+  'commerce_reminders_enabled',
+  // Exists after supabase/migrations/20261104_commerce_status_template.sql: the approved template
+  // that carries order updates once a plain message is no longer allowed
+  'commerce_status_template',
 ]
 
 /** Which permission a member needs to change each column. Columns not listed cannot be changed here. */
@@ -88,6 +93,38 @@ const AMOUNT_FIELDS: Record<string, string> = {
   commerce_default_shipping_fee: 'The shipping fee',
   commerce_free_shipping_threshold: 'The free shipping threshold',
   commerce_express_fee: 'The express delivery charge',
+}
+
+// ── The order-update template ────────────────────────────────────────────────
+// Meta names a template by its name and language. Names are lowercase letters, digits and
+// underscores (up to 512 characters); languages are codes such as "en", "en_US", "pt_BR" or "fil".
+
+export const MAX_TEMPLATE_NAME_LENGTH = 512
+const TEMPLATE_NAME = /^[a-z0-9_]+$/
+const TEMPLATE_LANGUAGE = /^[a-z]{2,3}(_[A-Z]{2})?$/
+
+export const STATUS_TEMPLATE_ERROR =
+  'The order-update template needs its name on Meta (lowercase letters, digits and underscores, up to 512 characters) and its language code, such as en or en_US.'
+
+export interface StatusTemplate {
+  name: string
+  language: string
+}
+
+/**
+ * The order-update template as it is stored: `{ name, language }` or null for none. The language
+ * is put in Meta's casing ("en_US") because the fallback input lets it be typed by hand.
+ */
+export function checkStatusTemplate(value: unknown): { ok: true; value: StatusTemplate | null } | { ok: false; error: string } {
+  if (value === null || value === undefined || value === '') return { ok: true, value: null }
+  if (typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: STATUS_TEMPLATE_ERROR }
+  const name = String((value as any).name ?? '').trim()
+  const [base = '', region] = String((value as any).language ?? '').trim().split('_')
+  const language = region === undefined ? base.toLowerCase() : `${base.toLowerCase()}_${region.toUpperCase()}`
+  if (!name || name.length > MAX_TEMPLATE_NAME_LENGTH || !TEMPLATE_NAME.test(name) || !TEMPLATE_LANGUAGE.test(language)) {
+    return { ok: false, error: STATUS_TEMPLATE_ERROR }
+  }
+  return { ok: true, value: { name, language } }
 }
 
 /**
@@ -114,6 +151,7 @@ function checkValue(field: string, value: unknown): { ok: true; value: unknown }
     }
     return { ok: true, value: gateway }
   }
+  if (field === 'commerce_status_template') return checkStatusTemplate(value)
   return { ok: true, value }
 }
 

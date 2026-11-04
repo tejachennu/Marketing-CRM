@@ -1230,7 +1230,7 @@ export default function SettingsPage() {
             <SectionHeader
               icon={Globe}
               title="Regional Preferences"
-              description="Used for formatting values in the Sales Pipeline and Analytics."
+              description="The currency amounts are shown and charged in: the Sales Pipeline, Analytics and the WhatsApp store (order totals, shipping fees and payment requests)."
               action={
                 <button type="button" onClick={handleSaveCredentials} disabled={savingCredentials} className={primaryButtonClass}>
                   {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -1253,6 +1253,9 @@ export default function SettingsPage() {
                 <option value="EUR">EUR (€)</option>
                 <option value="GBP">GBP (£)</option>
               </select>
+              <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                New workspaces start on USD. A store in India chooses INR: in-chat WhatsApp payments work in rupees only.
+              </p>
             </div>
           </section>
 
@@ -1552,6 +1555,9 @@ export default function SettingsPage() {
                                   placeholder="e.g. +14155238886"
                                   className={inputClass}
                                 />
+                                <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
+                                  The number customers message. It is also your catalog link, https://wa.me/c/&lt;number&gt;, shown in Store settings.
+                                </p>
                               </div>
                               <div>
                                 <label className={labelClass}>

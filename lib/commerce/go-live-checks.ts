@@ -10,7 +10,7 @@ export type CheckState = 'ok' | 'warning' | 'error' | 'skipped' | 'unknown'
 export type CheckFix = 'settings' | 'store_settings' | 'enable_cart' | 'whatsapp_manager' | 'republish_address_form'
 
 export interface GoLiveCheck {
-  id: 'whatsapp' | 'store' | 'currency' | 'catalog' | 'cart' | 'address' | 'express_fee' | 'payment'
+  id: 'whatsapp' | 'store' | 'currency' | 'catalog' | 'cart' | 'address' | 'express_fee' | 'payment' | 'status_template'
   title: string
   state: CheckState
   detail: string
@@ -24,7 +24,9 @@ export interface AddressFormReport {
   id: string
   /** What the form's express delivery choice says; null when the form offers no such choice. */
   expressLabel: string | null
-  /** Why the form could not be read, in which case `expressLabel` means nothing. */
+  /** Whether the form hands back a delivery address (an `address_line_1` field); null when it could not be read. */
+  collectsAddress: boolean | null
+  /** Why the form could not be read, in which case `expressLabel` and `collectsAddress` mean nothing. */
   error: string | null
 }
 
@@ -86,24 +88,80 @@ export function expressOptionTitle(fee: number, currency: string | null | undefi
   return titles.find((title) => title.length <= MAX_OPTION_TITLE) || titles[2].slice(0, MAX_OPTION_TITLE)
 }
 
+/** Every component of a form's screens, compiled for Meta or as a template (layouts, their children, and so on down). */
+function formNodes(flowJson: any): any[] {
+  const screens = Array.isArray(flowJson?.screens) ? flowJson.screens : []
+  const pending: any[] = screens.map((screen: any) => screen?.layout)
+  const nodes: any[] = []
+  while (pending.length) {
+    const node = pending.pop()
+    if (!node || typeof node !== 'object') continue
+    nodes.push(node)
+    if (Array.isArray(node.children)) pending.push(...node.children)
+  }
+  return nodes
+}
+
 /**
  * The express delivery choice's title in a form, compiled for Meta (`data-source`) or as a
  * template (`options`); null when the form offers no such choice.
  */
 export function getExpressOptionTitle(flowJson: any): string | null {
-  const screens = Array.isArray(flowJson?.screens) ? flowJson.screens : []
-  const pending: any[] = screens.map((screen: any) => screen?.layout)
-  while (pending.length) {
-    const node = pending.pop()
-    if (!node || typeof node !== 'object') continue
-    if (node.name === 'delivery_speed') {
-      const options = Array.isArray(node['data-source']) ? node['data-source'] : Array.isArray(node.options) ? node.options : []
-      const express = options.find((option: any) => option?.id === 'express')
-      return express ? String(express.title ?? '') : null
-    }
-    if (Array.isArray(node.children)) pending.push(...node.children)
+  const node = formNodes(flowJson).find((item) => item.name === 'delivery_speed')
+  if (!node) return null
+  const options = Array.isArray(node['data-source']) ? node['data-source'] : Array.isArray(node.options) ? node.options : []
+  const express = options.find((option: any) => option?.id === 'express')
+  return express ? String(express.title ?? '') : null
+}
+
+/** The field the checkout reads the delivery address from; a form without it leaves orders without one. */
+export const ADDRESS_FIELD_NAME = 'address_line_1'
+export const ADDRESS_FORM_ERROR = `This form does not collect a delivery address (it needs an ${ADDRESS_FIELD_NAME} field)`
+
+/** True when the form has a field named `address_line_1`, whatever screen it is on. */
+export function formCollectsAddress(flowJson: any): boolean {
+  return formNodes(flowJson).some((node) => node.name === ADDRESS_FIELD_NAME)
+}
+
+/** The approved template that carries order updates once a plain message is refused, or null for none. */
+export function getStatusTemplate(organization: Record<string, any> | null | undefined): { name: string; language: string } | null {
+  const raw = organization?.commerce_status_template
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name || '').trim()
+  const language = String(raw.language || '').trim()
+  return name && language ? { name, language } : null
+}
+
+/** The variables a template body fills, in order of appearance: "1", "2", or a name such as "order". */
+function templateVariables(body: string): string[] {
+  return (String(body || '').match(/\{\{[^{}]*\}\}/g) || []).map((variable) => variable.slice(2, -2).trim())
+}
+
+/**
+ * Why a template body cannot carry the order update, or null when it can. The update fills three
+ * numbered variables, and Meta refuses a template sent with a different count or with named
+ * variables filled by position.
+ */
+export function getStatusTemplateBodyProblem(body: string): string | null {
+  const variables = templateVariables(body)
+  const listed = variables.map((variable) => `{{${variable}}}`).join(', ')
+  const expected = '({{1}} the order number, {{2}} the status, {{3}} the tracking details), so Meta would refuse it.'
+  if (variables.some((variable) => !/^\d+$/.test(variable))) {
+    return `This template uses named variables (${listed}), but the order update fills numbered ones ${expected}`
   }
-  return null
+  const distinct = Array.from(new Set(variables)).sort().join(',')
+  if (distinct === '1,2,3') return null
+  const count = variables.length === 0 ? 'no variables' : variables.length === 1 ? 'one variable' : `${variables.length} variables`
+  return `This template has ${count} in its body${listed ? ` (${listed})` : ''}, but the order update fills exactly three numbered ones ${expected}`
+}
+
+/**
+ * Meta's storefront for a WhatsApp number: the link opens the catalog connected to it. Null until
+ * the store's number is known.
+ */
+export function getStorefrontLink(organization: Record<string, any> | null | undefined): string | null {
+  const digits = String(organization?.whatsapp_default_phone || '').replace(/\D/g, '')
+  return digits.length >= 8 ? `https://wa.me/c/${digits}` : null
 }
 
 /** "₹50" from "Express delivery (+₹50)"; null when the title shows no amount. */
@@ -137,7 +195,7 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
   // 3. Currency: every total and payment request is in it, so it is not guessed
   checks.push(/^[A-Z]{3}$/.test(currency)
     ? { id: 'currency', title: 'Currency set', state: 'ok', required: true, detail: `Order totals, shipping fees and payment requests are in ${currency}.` }
-    : { id: 'currency', title: 'Currency set', state: 'error', required: true, fix: 'settings', detail: 'Choose the workspace currency in Settings → General. Order totals, shipping fees and payment requests use it.' })
+    : { id: 'currency', title: 'Currency set', state: 'error', required: true, fix: 'settings', detail: 'Choose the workspace currency in Settings → General → Regional Preferences and press Save Preferences (an admin setting). Order totals, shipping fees and payment requests use it.' })
 
   // 4. Catalog
   const catalogId = String(organization?.meta_catalog_id || '').trim()
@@ -193,10 +251,15 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
   const flowId = String(organization?.commerce_address_flow_id || '').trim()
   const flow = meta?.flows?.find((item) => String(item.id) === flowId)
   const published = Boolean(flow && String(flow.status).toUpperCase() === 'PUBLISHED')
+  // What the form in use says, read back from Meta (its fields and its express choice)
+  const form = meta?.addressForm
   if (!flowId) {
     checks.push({ id: 'address', title: 'Delivery address form', state: 'skipped', required: false, fix: 'store_settings', detail: 'Not used: customers are not asked for an address. Recommended for Cash on Delivery.' })
   } else if (!known) {
     checks.push({ id: 'address', title: 'Delivery address form', state: 'unknown', required: false, detail: 'Checking with Meta…' })
+  } else if (published && form && form.id === flowId && !form.error && form.collectsAddress === false) {
+    // Saving the choice already refuses such a form when Meta could be read; this catches the rest
+    checks.push({ id: 'address', title: 'Delivery address form', state: 'warning', required: false, fix: 'store_settings', detail: `${flow?.name || 'The form'} is published, but it does not collect a delivery address (it needs an ${ADDRESS_FIELD_NAME} field), so orders get none. Choose another form or use “Create the standard form” in Store settings.` })
   } else if (published) {
     checks.push({ id: 'address', title: 'Delivery address form', state: 'ok', required: false, detail: `${flow?.name || 'Address form'} is published.` })
   } else {
@@ -207,7 +270,6 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
   // 7. The express charge the form shows (optional). The fee is a setting only after the optional
   // database update (scripts/db-migration-v34-commerce.js); before it, every form shows the fixed
   // default and there is nothing to compare.
-  const form = meta?.addressForm
   if (organization && 'commerce_express_fee' in organization && flowId && published && form && form.id === flowId && !form.error && form.expressLabel !== null) {
     const shown = getFeeShownInLabel(form.expressLabel)
     const fee = getExpressFee(organization)
@@ -233,7 +295,7 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
   let gatewayProblem: { detail: string; fix: CheckFix } | null = null
   if (gateway && currency && currency !== 'INR') {
     // WhatsApp's in-chat payments (Razorpay, PayU, BillDesk, Zaakpay) are for businesses in India
-    gatewayProblem = { detail: `Online payment in the chat works in Indian rupees only, and the store currency is ${currency}.`, fix: 'settings' }
+    gatewayProblem = { detail: `Online payment in the chat works in Indian rupees only, and the store currency is ${currency}. Change it in Settings → General → Regional Preferences, or choose “No online payment” in Store settings.`, fix: 'settings' }
   } else if (gateway && known && !meta?.paymentConfigsError) {
     if (!config) {
       gatewayProblem = { detail: `The payment setup “${gateway.configName}” is not on your WhatsApp account.`, fix: 'whatsapp_manager' }
@@ -249,8 +311,22 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
     checks.push({ id: 'payment', title: 'A way to pay', state: 'error', required: true, fix: 'store_settings', detail: 'No online payment and no Cash on Delivery: customers are only told your team will contact them.' })
   } else if (gatewayProblem) {
     checks.push({ id: 'payment', title: 'A way to pay', state: cod ? 'warning' : 'error', required: true, fix: gatewayProblem.fix, detail: `${gatewayProblem.detail}${cod ? ' Customers can still choose Cash on Delivery.' : ''}` })
+  } else if (gateway && known && meta?.paymentConfigsError) {
+    // The setup could not be checked, which says nothing about whether it works: a warning, as for the catalog list
+    checks.push({ id: 'payment', title: 'A way to pay', state: 'warning', required: true, fix: 'store_settings', detail: `Meta did not list your payment setups, so “${gateway.configName}” could not be checked: ${meta.paymentConfigsError}${cod ? ' Customers can still choose Cash on Delivery.' : ''}` })
   } else {
     checks.push({ id: 'payment', title: 'A way to pay', state: gateway && !known ? 'unknown' : 'ok', required: true, detail: `Customers can pay by ${ways}.` })
+  }
+
+  // 9. Order updates after a day (optional). Meta refuses a plain message once the customer's last
+  // message is over 24 hours old (error 131047), the usual case when a Cash on Delivery order ships
+  // the next day; only an approved template gets through then.
+  const template = getStatusTemplate(organization)
+  if (template) {
+    checks.push({ id: 'status_template', title: 'Order-update template', state: 'ok', required: false, detail: `“${template.name}” (${template.language}) carries shipping and delivery updates when a plain message is no longer allowed.` })
+  } else {
+    const migrated = !organization || 'commerce_status_template' in organization
+    checks.push({ id: 'status_template', title: 'Order-update template', state: 'warning', required: false, fix: 'store_settings', detail: `Customers who confirmed more than a day ago cannot be told about shipping or delivery until an order-update template is chosen${migrated ? ' in Store settings.' : '. This needs the database update supabase/migrations/20261104_commerce_status_template.sql first.'}` })
   }
 
   return checks

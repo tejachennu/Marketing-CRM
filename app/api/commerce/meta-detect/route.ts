@@ -5,7 +5,7 @@ import { getMetaCredentials, metaRequest, uploadNativeFlow, type MetaCredentials
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
 import { getExpressFee } from '@/lib/commerce/commerce-utils'
 import {
-  STANDARD_ADDRESS_FORM_NAME, expressOptionTitle, getExpressOptionTitle, isStandardAddressForm, nextAddressFormName,
+  STANDARD_ADDRESS_FORM_NAME, expressOptionTitle, formCollectsAddress, getExpressOptionTitle, isStandardAddressForm, nextAddressFormName,
   type AddressFormReport,
 } from '@/lib/commerce/go-live-checks'
 import { describeCatalogError, explainCommerceError, flattenPaymentConfigurations, setCommerceSettings } from '@/lib/commerce/meta-catalog'
@@ -30,10 +30,12 @@ function addressFormScreens(org: any) {
 }
 
 /**
- * What a form says for express delivery, read back from Meta. A published form never changes, so
- * this is what customers see whatever fee the store charges today.
+ * What a form says for express delivery and whether it hands back a delivery address, read from
+ * the form file Meta stores. A published form never changes, so this is what customers see
+ * whatever fee the store charges today. Also used by PATCH /api/organization before a form is
+ * chosen for the address step.
  */
-async function readAddressForm(credentials: MetaCredentials, flowId: string): Promise<AddressFormReport> {
+export async function readAddressForm(credentials: MetaCredentials, flowId: string): Promise<AddressFormReport> {
   try {
     const assets = await metaRequest(credentials, `${flowId}/assets`)
     const asset = (assets?.data || []).find((item: any) => item.asset_type === 'FLOW_JSON') || assets?.data?.[0]
@@ -41,12 +43,13 @@ async function readAddressForm(credentials: MetaCredentials, flowId: string): Pr
     if (!url.startsWith('https://')) throw new Error('Meta did not return the form file')
     const response = await fetch(url, { signal: AbortSignal.timeout(20000) })
     if (!response.ok) throw new Error(`Meta returned HTTP ${response.status} for the form file`)
-    return { id: flowId, expressLabel: getExpressOptionTitle(await response.json()), error: null }
+    const flowJson = await response.json()
+    return { id: flowId, expressLabel: getExpressOptionTitle(flowJson), collectsAddress: formCollectsAddress(flowJson), error: null }
   } catch (error) {
     const described = describeCatalogError(error)
     // The catalog wording does not fit a form; for anything but the connection, Meta's own message does
     const connection = described.kind === 'token' || described.kind === 'timeout' || described.kind === 'rate_limit'
-    return { id: flowId, expressLabel: null, error: connection ? described.message : String((error as any)?.message || described.message) }
+    return { id: flowId, expressLabel: null, collectsAddress: null, error: connection ? described.message : String((error as any)?.message || described.message) }
   }
 }
 

@@ -8,7 +8,8 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { CHECKOUT_TEXT, formatMoney, getPaymentStep } from '@/lib/commerce/commerce-utils'
-import { getGoLiveChecks, isReadyToSell, type CheckState, type GoLiveCheck, type MetaDetection } from '@/lib/commerce/go-live-checks'
+import { getGoLiveChecks, getStorefrontLink, isReadyToSell, type CheckState, type GoLiveCheck, type MetaDetection } from '@/lib/commerce/go-live-checks'
+import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { formatContactDisplayName } from '@/lib/whatsapp-bsuid'
 import { describeCommerceMessage, parseCommerceMessage } from '@/lib/chat-commerce'
 import { StatusBadge, cardClass, secondaryButton, squareButton, type ShowToast } from './ui'
@@ -126,6 +127,8 @@ export function OrderFlowTab({
   const checks = useMemo(() => getGoLiveChecks(orgData, meta), [orgData, meta])
   const ready = meta !== null && isReadyToSell(checks)
   const blocking = checks.filter((check) => check.required && check.state === 'error').length
+  // Meta's storefront for the number: worth sharing once the store can take an order
+  const storefrontLink = getStorefrontLink(orgData)
 
   async function enableCart() {
     setEnabling(true)
@@ -267,6 +270,17 @@ export function OrderFlowTab({
             )
           })}
         </ol>
+
+        {ready && storefrontLink && (
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-xs">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-emerald-900 dark:text-emerald-100">Share your catalog</p>
+              <a href={storefrontLink} target="_blank" rel="noreferrer" className="font-mono break-all text-[#008069] dark:text-[#00a884] hover:underline">{storefrontLink}</a>
+              <p className="mt-0.5 text-emerald-800/80 dark:text-emerald-200/80">Opens your catalog in WhatsApp: put it on your website, in your Instagram bio or on posters. In a chat, “Send catalog” in the Products tab sends a button that does the same.</p>
+            </div>
+            <CopyPhoneButton phoneNumber={storefrontLink} showText displayText="Copy link" title="Copy the catalog link" iconSize={12} className="shrink-0 self-start sm:self-center text-xs" />
+          </div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
@@ -315,7 +329,7 @@ export function OrderFlowTab({
                 </>
               )}
             </FlowStep>
-            <FlowStep icon={Truck} title="5. Your team ships it" last note="Orders → To ship → Mark as shipped (with carrier and tracking), then Mark as delivered. The customer is messaged at each step. For Cash on Delivery, Mark as paid once the cash is collected." />
+            <FlowStep icon={Truck} title="5. Your team ships it" last note="Orders → To ship → Mark as shipped (with carrier and tracking), then Mark as delivered. The customer is messaged at each step. For Cash on Delivery, press Cash collected on the order once the money is in hand, before or after shipping: the order is then marked as paid." />
           </ol>
         </section>
 

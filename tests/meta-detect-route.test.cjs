@@ -169,14 +169,31 @@ test('Store settings from Meta: the account’s catalog is read with the WhatsAp
 test('Address form: what the form in use says for express delivery is read back from Meta', async () => {
   reset({ commerce_address_flow_id: FORM })
   const data = await detect()
-  assert.deepEqual(data.addressForm, { id: FORM, expressLabel: 'Express delivery (+₹50)', error: null })
+  assert.deepEqual(data.addressForm, { id: FORM, expressLabel: 'Express delivery (+₹50)', collectsAddress: true, error: null })
   // A form that is gone from the account is reported, and the rest is still read
   reset({ commerce_address_flow_id: '800700600500499' })
   const gone = await detect()
   assert.equal(gone.success, true)
   assert.equal(gone.addressForm.expressLabel, null)
+  assert.equal(gone.addressForm.collectsAddress, null)
   assert.match(gone.addressForm.error, /does not exist/)
   assert.equal(gone.flows.length, 1)
+})
+
+test('Address form: whether a form collects an address is read from Meta, for choosing one', async () => {
+  reset()
+  const credentials = { token: 'WHATSAPP_TOKEN', version: 'v25.0', businessAccountId: WABA, phoneNumberId: PHONE }
+  assert.equal((await route.readAddressForm(credentials, FORM)).collectsAddress, true)
+  // A lead form published on the account has no address field
+  const LEAD = '800700600500401'
+  const leadJson = compileMetaFlowJSON([{ id: 'LEAD', title: 'Lead', layout: { type: 'SingleColumnLayout', children: [{ type: 'TextInput', name: 'full_name', label: 'Name', required: true }] } }])
+  meta.flows.push({ id: LEAD, name: 'Lead form', status: 'PUBLISHED', json: leadJson })
+  assert.deepEqual(await route.readAddressForm(credentials, LEAD), { id: LEAD, expressLabel: null, collectsAddress: false, error: null })
+  // When Meta cannot be read, nothing is claimed either way
+  meta.expired = true
+  const unreachable = await route.readAddressForm(credentials, FORM)
+  assert.equal(unreachable.collectsAddress, null)
+  assert.match(unreachable.error, /expired/)
 })
 
 test('Address form: the standard form is created with the express charge and published', async () => {
