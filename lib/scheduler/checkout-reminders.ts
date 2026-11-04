@@ -9,7 +9,7 @@
 import { OPEN_CHECKOUT_STATUSES, type OrderStatus } from '@/lib/commerce/commerce-utils'
 import { resendCheckoutStep } from '@/lib/commerce/commerce-webhook-handler'
 import { parseCommerceMessage } from '@/lib/chat-commerce'
-import { isModuleDisabledByPlatform, isModuleEnabled } from '@/lib/feature-flags'
+import { isModuleDisabledOnServer, isModuleEnabledOnServer } from '@/lib/feature-flags'
 import { isMissingColumn } from './schema-errors'
 
 type Database = any
@@ -119,7 +119,7 @@ export async function sendCheckoutReminders({
   let cursor: string | null = null
 
   // The platform's kill switch for commerce stops the reminders with the rest of the module
-  if (isModuleDisabledByPlatform('commerce')) return { disabled: true, ...result }
+  if (isModuleDisabledOnServer('commerce')) return { disabled: true, ...result }
 
   while (result.sent + result.failed < limit && result.scanned < MAX_SCANNED) {
     if (outOfTime()) {
@@ -184,7 +184,7 @@ async function remindOrder(supabase: Database, order: any, now: Date, sendTimeou
   // The query already leaves these out; a reminder must never reach a canceled, paid or
   // confirmed order, or a store whose commerce module is off, so the rules are checked here as well.
   if (!organization || !isOpen(order.status) || order.payment_status === 'paid') return 'skipped'
-  if (organization.enable_commerce === false || !isModuleEnabled(organization, 'commerce')) return 'skipped'
+  if (organization.enable_commerce === false || !isModuleEnabledOnServer(organization, 'commerce')) return 'skipped'
 
   // Claim the order for this run first. With a second scheduler running (pg_cron next to
   // Vercel Cron, or a slow tick overlapping the next one) a customer could otherwise be

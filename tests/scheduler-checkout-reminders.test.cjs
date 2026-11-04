@@ -456,3 +456,14 @@ test('Reminders: a run whose time is up stops before the next order', async () =
   assert.deepEqual(result, { scanned: 0, sent: 0, failed: 0, waiting: 0, held: 0, out_of_time: true })
   assert.equal(resends.length, 0)
 })
+
+test('Reminders: the runtime DISABLED_MODULES kill switch stops them without a rebuild', async () => {
+  const { sendCheckoutReminders } = require(path.join(PROJECT, 'lib/scheduler/checkout-reminders.ts'))
+  process.env.DISABLED_MODULES = 'commerce'
+  try {
+    const result = await sendCheckoutReminders({ supabase: { from() { throw new Error('the database must not be read') } } })
+    assert.equal(result.disabled, true)
+  } finally {
+    delete process.env.DISABLED_MODULES
+  }
+})
