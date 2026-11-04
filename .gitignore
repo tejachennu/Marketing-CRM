@@ -17,3 +17,5 @@ node_modules
 .env
 
 certificates
+# Claude Code session files (worktrees, local settings)
+.claude/
