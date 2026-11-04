@@ -23,7 +23,8 @@ const hoursAgo = (hours) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOS
 
 const tables = {}
 const timeline = [] // 'meta-send' | 'twilio-send' | { table, values, where }
-const fake = { messagesFail: false }
+const reads = [] // every select, as { table, where, limit }
+const fake = { failSelect: null } // (table, where) => true makes that select fail, as a timed-out statement does
 let nextId = 1
 const db = {
   from(table) {
@@ -48,7 +49,10 @@ const db = {
         timeline.push({ table, values: created, where: [] })
         return finish(created)
       }
-      if (fake.messagesFail && table === 'messages' && action === 'select') return { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } }
+      if (action === 'select') {
+        reads.push({ table, where, limit })
+        if (fake.failSelect && fake.failSelect(table, where)) return { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } }
+      }
       let matched = rows.filter((row) => filters.every((filter) => filter(row)))
       if (action === 'update') {
         timeline.push({ table, values, where })
@@ -68,6 +72,7 @@ const db = {
       update: (patch) => { action = 'update'; values = patch; return query },
       eq: (column, value) => { where.push(['eq', column, value]); filters.push((row) => row[column] === value); return query },
       is: (column, value) => { where.push(['is', column, value]); filters.push((row) => (value === null ? row[column] == null : row[column] === value)); return query },
+      in: (column, values) => { where.push(['in', column, values]); filters.push((row) => values.includes(row[column])); return query },
       order: (column, { ascending = true } = {}) => { ordering = { column, ascending }; return query },
       limit: (count) => { limit = count; return query },
       single: () => { shape = 'single'; return query },
@@ -152,13 +157,14 @@ const template = { templateName: 'order_update', templateSid: 'order_update', te
 function reset({ provider = 'facebook', lastInboundHoursAgo = 1, conversation = {} } = {}) {
   meta.fails = false
   twilio.fails = false
-  fake.messagesFail = false
+  fake.failSelect = null
   caller = agent
   metaSent.length = 0
   uploads.length = 0
   fetched.length = 0
   twilioSent.length = 0
   timeline.length = 0
+  reads.length = 0
   mediaAnswers = {}
   tables.organizations = [{
     id: ORG, whatsapp_provider: provider, whatsapp_api_token: 'META_TOKEN', whatsapp_phone_number_id: '600000000000001',
@@ -392,6 +398,7 @@ test('Send: outside the 24-hour window a free-form WhatsApp message is refused; 
   assert.equal(answer.status, 422)
   assert.equal(answer.error, 'This customer last wrote more than 24 hours ago, so WhatsApp only allows an approved template message.')
   assert.equal(answer.code, 'outside_24h_window')
+  assert.equal(answer.reason, 'window_closed')
   assert.equal(metaSent.length, 0)
   assert.equal(stored().length, 0, 'nothing is stored for a send that was not attempted')
   assert.equal(chat().assigned_to, null)
@@ -419,17 +426,101 @@ test('Send: outside the 24-hour window a free-form WhatsApp message is refused; 
   tables.messages.push({ id: 'ours', organization_id: ORG, conversation_id: CHAT, sender_type: 'user', body: 'Earlier reply', created_at: hoursAgo(2) })
   assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).status, 422)
 
-  // A chat the customer never wrote in has no window, and neither has a chat that does not exist yet
+  // A customer who never wrote has no window, whether they have a chat or not, and is told so apart
   reset({ lastInboundHoursAgo: null })
-  assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).status, 422)
+  answer = await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 422)
+  assert.equal(answer.error, 'This customer has not written to you yet. Start the conversation with an approved template message.')
+  assert.equal(answer.code, 'outside_24h_window')
+  assert.equal(answer.reason, 'never_wrote')
   reset()
   tables.conversations = []
-  assert.equal((await send({ contactId: CONTACT, organizationId: ORG, message: 'Hello', channel: 'whatsapp' })).status, 422)
+  answer = await send({ contactId: CONTACT, organizationId: ORG, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 422)
+  assert.equal(answer.reason, 'never_wrote')
   assert.equal(tables.conversations.length, 0, 'no chat is created for a message that cannot be sent')
 
   // When the lookup itself fails the provider decides, as before
   reset({ lastInboundHoursAgo: 25 })
-  fake.messagesFail = true
+  fake.failSelect = (table) => table === 'messages'
+  assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).status, 200)
+})
+
+test("Send: the 24-hour window is the customer's, found across every chat row of theirs", async () => {
+  const NEWEST_CHAT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  const NEIGHBOUR = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' // another customer of the same organization
+  const row = (id, lastMessageHoursAgo, extra = {}) => ({ id, organization_id: ORG, contact_id: CONTACT, assigned_to: null, auto_reply_enabled: false, last_message_at: hoursAgo(lastMessageHoursAgo), ...extra })
+  const inbound = (conversationId, sentHoursAgo, organizationId = ORG) => ({ id: `in-${conversationId}-${sentHoursAgo}`, organization_id: organizationId, conversation_id: conversationId, sender_type: 'contact', body: 'Hi', created_at: hoursAgo(sentHoursAgo) })
+  const windowReads = () => ({
+    chats: reads.filter((read) => read.table === 'conversations' && read.where.some(([, column]) => column === 'contact_id')).at(-1),
+    inbound: reads.find((read) => read.table === 'messages' && read.where.some(([operator]) => operator === 'in')),
+  })
+
+  // The customer wrote an hour ago in the row the webhook keeps current; the agent replies from an older row
+  reset({ lastInboundHoursAgo: null })
+  tables.conversations.push(row(NEWEST_CHAT, 0.5))
+  tables.messages.push(inbound(NEWEST_CHAT, 1))
+  let answer = await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 200, answer.error)
+  assert.equal(metaSent[0].to, '14165550123')
+  assert.equal(stored()[0].conversation_id, CHAT, 'the reply stays in the chat it was written in')
+  // Found with one read of the contact's chats, newest first, and one of their messages across those chats
+  assert.deepEqual(windowReads().chats.where, [['eq', 'organization_id', ORG], ['eq', 'contact_id', CONTACT]])
+  assert.equal(windowReads().chats.limit, 50)
+  assert.deepEqual(windowReads().inbound.where, [['eq', 'organization_id', ORG], ['in', 'conversation_id', [NEWEST_CHAT, CHAT]], ['eq', 'sender_type', 'contact']])
+
+  // Written to by contact: the reply lands in the latest row although the customer wrote in an older one
+  reset({ lastInboundHoursAgo: 1 })
+  tables.conversations.push(row(NEWEST_CHAT, 0.5))
+  answer = await send({ contactId: CONTACT, organizationId: ORG, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 200, answer.error)
+  assert.equal(answer.message.conversation_id, NEWEST_CHAT)
+
+  // Nothing from the customer in any row: never wrote, whatever the team sent them
+  reset({ lastInboundHoursAgo: null })
+  tables.conversations.push(row(NEWEST_CHAT, 0.5))
+  tables.messages.push({ id: 'ours', organization_id: ORG, conversation_id: NEWEST_CHAT, sender_type: 'user', body: 'Earlier template', created_at: hoursAgo(1) })
+  answer = await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 422)
+  assert.equal(answer.error, 'This customer has not written to you yet. Start the conversation with an approved template message.')
+  assert.equal(answer.code, 'outside_24h_window')
+  assert.equal(answer.reason, 'never_wrote')
+  assert.equal(metaSent.length, 0)
+  assert.equal(tables.messages.length, 1, 'nothing is stored for a send that was not attempted')
+
+  // Old in every row: the window closed
+  reset({ lastInboundHoursAgo: 30 })
+  tables.conversations.push(row(NEWEST_CHAT, 25))
+  tables.messages.push(inbound(NEWEST_CHAT, 25))
+  answer = await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 422)
+  assert.equal(answer.error, 'This customer last wrote more than 24 hours ago, so WhatsApp only allows an approved template message.')
+  assert.equal(answer.reason, 'window_closed')
+  assert.equal(metaSent.length, 0)
+
+  // Another customer's chat, or a chat of this contact id in another organization, opens no window here
+  reset({ lastInboundHoursAgo: null })
+  tables.conversations.push(row(NEWEST_CHAT, 0.5, { contact_id: NEIGHBOUR }), row('foreign-chat', 0.5, { organization_id: OTHER_ORG }))
+  tables.messages.push(inbound(NEWEST_CHAT, 1), inbound('foreign-chat', 1, OTHER_ORG))
+  answer = await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 422)
+  assert.equal(answer.reason, 'never_wrote')
+  assert.deepEqual(windowReads().inbound.where[1], ['in', 'conversation_id', [CHAT]])
+
+  // Only the 50 most recent rows are searched
+  reset({ lastInboundHoursAgo: null })
+  tables.conversations = Array.from({ length: 60 }, (_, i) => row(`chat-${String(i).padStart(2, '0')}`, i + 1))
+  tables.messages.push(inbound('chat-00', 1))
+  answer = await send({ conversationId: 'chat-59', message: 'Hello', channel: 'whatsapp' })
+  assert.equal(answer.status, 200, answer.error)
+  const searched = windowReads().inbound.where[1][2]
+  assert.equal(searched.length, 50)
+  assert.equal(searched[0], 'chat-00')
+  assert.equal(searched[49], 'chat-49')
+
+  // When the chat list cannot be read the provider decides, as when the messages cannot
+  reset({ lastInboundHoursAgo: 30 })
+  fake.failSelect = (table, where) => table === 'conversations' && where.some(([, column]) => column === 'contact_id')
   assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).status, 200)
 })
 

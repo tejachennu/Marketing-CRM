@@ -76,8 +76,9 @@ function ipv6Groups(address: string): number[] | null {
 }
 
 function isPrivateIpv6([g0, g1, g2, g3, g4, g5, g6, g7]: number[]): boolean {
-  // The last two groups read as an IPv4 address, for the forms that wrap one
-  const wrappedIpv4 = () => isPrivateIpv4([g6 >> 8, g6 & 255, g7 >> 8, g7 & 255])
+  // Two groups read as an IPv4 address, for the forms that wrap one; most keep it in the last two
+  const ipv4In = (high: number, low: number) => isPrivateIpv4([high >> 8, high & 255, low >> 8, low & 255])
+  const wrappedIpv4 = () => ipv4In(g6, g7)
   const zeroPrefix = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0
   if (zeroPrefix && g5 === 0xffff) return wrappedIpv4() // ::ffff:a.b.c.d, IPv4-mapped: connects to the IPv4 address
   if (zeroPrefix && g5 === 0) {
@@ -85,6 +86,11 @@ function isPrivateIpv6([g0, g1, g2, g3, g4, g5, g6, g7]: number[]): boolean {
     return wrappedIpv4() // ::a.b.c.d, IPv4-compatible
   }
   if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) return wrappedIpv4() // 64:ff9b::/96 NAT64
+  // 64:ff9b:1::/48 (RFC 8215) is NAT64 again, through a translator on the local network instead
+  // of the well-known prefix; it connects to the IPv4 address in the last 32 bits just the same
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 1) return wrappedIpv4()
+  // 2002::/16 6to4: tunnelled to the IPv4 address in groups 1-2, so 2002:7f00:1:: reaches 127.0.0.1
+  if (g0 === 0x2002) return ipv4In(g1, g2)
   return (
     (g0 & 0xffc0) === 0xfe80 || // fe80::/10 link-local
     (g0 & 0xffc0) === 0xfec0 || // fec0::/10 site-local (deprecated, still routed on some networks)

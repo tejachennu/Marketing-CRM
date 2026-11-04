@@ -34,6 +34,9 @@ const MEDIA_TIMEOUT_MS = 15_000
  */
 const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000
 const OUTSIDE_WINDOW_MESSAGE = 'This customer last wrote more than 24 hours ago, so WhatsApp only allows an approved template message.'
+const NEVER_WROTE_MESSAGE = 'This customer has not written to you yet. Start the conversation with an approved template message.'
+/** How many of a customer's chats are searched for their last message: a contact rarely has more than a handful */
+const WINDOW_CHATS_LIMIT = 50
 
 /** A phone number as digits only, so "+1 (416) 555-0123" and "whatsapp:14165550123" compare equal. */
 const phoneDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '')
@@ -210,15 +213,34 @@ async function findOtherHandler(supabase: any, orgId: string, userId: string, co
 }
 
 /**
- * When the customer last wrote in a chat, in ms since the epoch: null when they never have,
- * undefined when the lookup failed (the provider then decides, as it did before this check).
+ * When the customer last wrote, in ms since the epoch: null when they never have, undefined when
+ * a lookup failed (the provider then decides, as it did before this check).
+ *
+ * The window is the customer's, not one chat row's: the dashboard and the campaign worker open
+ * new rows for a contact, while the webhook stores what the customer writes in their latest
+ * active row. The reply and the message that opened the window are therefore often in different
+ * rows, so every row of the contact is searched, the most recent ones first.
  */
-async function latestInboundAt(supabase: any, orgId: string, conversationId: string): Promise<number | null | undefined> {
+async function latestInboundAt(supabase: any, orgId: string, contactId: string): Promise<number | null | undefined> {
+  const { data: chats, error: chatsError } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('contact_id', contactId)
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(WINDOW_CHATS_LIMIT)
+  if (chatsError) {
+    console.warn("[Messages Send] Could not list the customer's chats:", chatsError.message || chatsError)
+    return undefined
+  }
+  const chatIds: string[] = (chats || []).map((chat: any) => chat.id)
+  if (chatIds.length === 0) return null
+
   const { data, error } = await supabase
     .from('messages')
     .select('created_at')
     .eq('organization_id', orgId)
-    .eq('conversation_id', conversationId)
+    .in('conversation_id', chatIds)
     .eq('sender_type', 'contact')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -442,12 +464,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Outside the 24-hour service window WhatsApp refuses anything but a template, so the send
-    // is not attempted and nothing is stored. A chat with no message from the customer (a new
-    // one included) has no window at all.
+    // is not attempted and nothing is stored. A customer who has never written (a new contact
+    // included) has no window at all and is told so apart from one whose window closed: the
+    // `reason` lets the screen offer a template that opens the conversation rather than a wait.
     if (isWhatsApp && !isTemplateSend) {
-      const lastInboundAt = conversation ? await latestInboundAt(supabase, orgId, conversation.id) : null
-      if (lastInboundAt !== undefined && (lastInboundAt === null || Date.now() - lastInboundAt > SERVICE_WINDOW_MS)) {
-        return NextResponse.json({ error: OUTSIDE_WINDOW_MESSAGE, code: 'outside_24h_window' }, { status: 422 })
+      const lastInboundAt = await latestInboundAt(supabase, orgId, contact.id)
+      if (lastInboundAt === null) {
+        return NextResponse.json({ error: NEVER_WROTE_MESSAGE, code: 'outside_24h_window', reason: 'never_wrote' }, { status: 422 })
+      }
+      if (lastInboundAt !== undefined && Date.now() - lastInboundAt > SERVICE_WINDOW_MS) {
+        return NextResponse.json({ error: OUTSIDE_WINDOW_MESSAGE, code: 'outside_24h_window', reason: 'window_closed' }, { status: 422 })
       }
     }
 
