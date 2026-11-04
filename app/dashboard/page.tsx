@@ -10,7 +10,7 @@ import { canAssign, canSeeAll, describeDenied, isReadOnly } from '@/lib/rbac'
 import { 
   Search, Send, Phone, LogOut, Wifi, WifiOff, 
   Paperclip, File, FileText, X, ChevronDown, CheckCheck, Check, AlertCircle, Loader2, MessageCircle,
-  Edit2, Download, ArrowLeft, ArrowUpDown, Bot, RefreshCw, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck
+  Edit2, Download, ArrowLeft, ArrowUpDown, Bot, RefreshCw, Reply, Sparkles, ExternalLink, BookOpen, Pin, Clock, Ticket, Wand2, Briefcase, Smile, AlignLeft, SpellCheck, ShieldCheck, UserCheck
 } from 'lucide-react'
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
@@ -19,7 +19,10 @@ import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/l
 import { formatBadgeCount, formatWindowRemaining, getAvatarTone, getMessagePreview, getMessageText, getServiceWindow, parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { MessageList } from '@/components/chat/message-list'
 import { collectProductRefs, parseCommerceMessage, type ChatOrderCard, type ChatProductCard } from '@/lib/chat-commerce'
-import { ConversationRow } from '@/components/chat/conversation-row'
+import { ConversationRow, isHandedOff } from '@/components/chat/conversation-row'
+
+/** Which chats the list shows: everything, the unread ones, or the chats the chatbot handed to the team. */
+type ListFilter = 'all' | 'unread' | 'needs_agent'
 
 function ConversationsPageContent() {
   const router = useRouter()
@@ -77,7 +80,10 @@ function ConversationsPageContent() {
   
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('')
-  const [unreadFilter, setUnreadFilter] = useState(false)
+  const [listFilter, setListFilter] = useState<ListFilter>('all')
+  // Chats the chatbot handed to the team that nobody has taken yet; sent back with every list
+  const [needsAgentCount, setNeedsAgentCount] = useState(0)
+  const [assigningToMe, setAssigningToMe] = useState(false)
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest')
   // For sales_employee without see_all, restrict conversations to only their assigned ones
   const [userAssignedToFilter, setUserAssignedToFilter] = useState<string | null>(null)
@@ -324,14 +330,14 @@ function ConversationsPageContent() {
   }, [conversations])
 
   const searchTermRef = useRef(searchTerm)
-  const unreadFilterRef = useRef(unreadFilter)
+  const listFilterRef = useRef(listFilter)
   const userAssignedToFilterRef = useRef(userAssignedToFilter)
 
   useEffect(() => {
     searchTermRef.current = searchTerm
-    unreadFilterRef.current = unreadFilter
+    listFilterRef.current = listFilter
     userAssignedToFilterRef.current = userAssignedToFilter
-  }, [searchTerm, unreadFilter, userAssignedToFilter])
+  }, [searchTerm, listFilter, userAssignedToFilter])
 
   // Tick every 60s to keep the 24h free window timer accurate
   useEffect(() => {
@@ -428,19 +434,22 @@ function ConversationsPageContent() {
   const fetchConversations = useCallback(async (
     orgId: string, 
     pageNum = 1, 
-    searchVal = '', 
-    unreadOnly = false,
+    searchVal = '',
+    filter: ListFilter = 'all',
     assignedTo?: string | null
-  ): Promise<{ conversations: ConversationWithContact[]; count: number; hasMore: boolean }> => {
-    let url = `/api/conversations?organizationId=${orgId}&page=${pageNum}&limit=12&search=${encodeURIComponent(searchVal)}&unread=${unreadOnly}`
+  ): Promise<{ conversations: ConversationWithContact[]; count: number; hasMore: boolean; needsAgentCount: number }> => {
+    let url = `/api/conversations?organizationId=${orgId}&page=${pageNum}&limit=12&search=${encodeURIComponent(searchVal)}&unread=${filter === 'unread'}`
+    if (filter === 'needs_agent') url += '&filter=needs_agent'
     if (assignedTo) url += `&assignedTo=${encodeURIComponent(assignedTo)}`
     const res = await fetch(url)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Failed to fetch conversations')
-    return { 
-      conversations: data.conversations || [], 
+    return {
+      conversations: data.conversations || [],
       count: data.count || 0,
-      hasMore: data.hasMore || false 
+      hasMore: data.hasMore || false,
+      // Comes with every list, so the "Needs an agent" badge needs no request of its own
+      needsAgentCount: data.needsAgentCount || 0,
     }
   }, [])
 
@@ -468,6 +477,8 @@ function ConversationsPageContent() {
       } else if (res.ok && data.count !== undefined) {
         setUnreadCount(data.count)
       }
+      // Live updates refresh this count too, so the queue badge follows hand-offs and pick-ups
+      if (res.ok && typeof data.needsAgentCount === 'number') setNeedsAgentCount(data.needsAgentCount)
     } catch (err) {
       console.error('[Dashboard] Error fetching unread count:', err)
     }
@@ -503,14 +514,14 @@ function ConversationsPageContent() {
     orgId: string, 
     pageNum = 1, 
     append: boolean | 'merge' = false, 
-    searchVal = '', 
-    unreadOnly = false,
+    searchVal = '',
+    filter: ListFilter = 'all',
     assignedTo?: string | null,
     force = false
   ) => {
     // The user saved at sign-in has no organization yet; the list loads once the profile has arrived
     if (!orgId) return
-    const fetchKey = `${orgId}-${pageNum}-${append}-${searchVal}-${unreadOnly}-${assignedTo || ''}`
+    const fetchKey = `${orgId}-${pageNum}-${append}-${searchVal}-${filter}-${assignedTo || ''}`
     if (!force && fetchKey === lastFetchedKeyRef.current) {
       return
     }
@@ -524,11 +535,12 @@ function ConversationsPageContent() {
       } else if (append !== 'merge') {
         setFetchingConvs(true)
       }
-      const result = await fetchConversations(orgId, pageNum, searchVal, unreadOnly, assignedTo)
+      const result = await fetchConversations(orgId, pageNum, searchVal, filter, assignedTo)
 
       // The search or filter changed while this request was in flight: its result is out of date
-      if (searchVal !== searchTermRef.current || unreadOnly !== unreadFilterRef.current) return
+      if (searchVal !== searchTermRef.current || filter !== listFilterRef.current) return
 
+      setNeedsAgentCount(result.needsAgentCount)
       setConversations((prev) => {
         if (append === 'merge') {
           const fresh = new Map(result.conversations.map((c) => [c.id, c]))
@@ -647,7 +659,7 @@ function ConversationsPageContent() {
   /** Reload the first page of the list with the search and filter currently applied. */
   const refreshConversationList = useCallback((mode: false | 'merge' = false) => {
     if (!user) return
-    loadConversations(user.organization_id, 1, mode, searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
+    loadConversations(user.organization_id, 1, mode, searchTermRef.current, listFilterRef.current, userAssignedToFilterRef.current, true)
   }, [user, loadConversations])
 
   const reloadAll = useCallback(() => {
@@ -710,7 +722,7 @@ function ConversationsPageContent() {
           const { data, error } = await supabase
             .from('conversations')
             .select(`
-              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, auto_reply_enabled, assigned_to, created_at, updated_at,
               contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
             `)
             .eq('contact_id', currentContactId)
@@ -736,7 +748,7 @@ function ConversationsPageContent() {
               // Someone who only sees their own chats keeps the one they start
               .insert([{ organization_id: user.organization_id, contact_id: currentContactId, is_active: true, ...(canSeeAll(user) ? {} : { assigned_to: user.id }) }])
               .select(`
-                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, assigned_to, created_at, updated_at,
+                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, auto_reply_enabled, assigned_to, created_at, updated_at,
                 contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
               `)
               .single()
@@ -771,6 +783,7 @@ function ConversationsPageContent() {
                 is_active,
                 last_message_at,
                 unread_count,
+                auto_reply_enabled,
                 assigned_to,
                 created_at,
                 updated_at,
@@ -853,7 +866,7 @@ function ConversationsPageContent() {
           })
         }
         await Promise.all([
-          loadConversations(userData.organization_id, 1, false, searchTerm, unreadFilter, seeAll ? null : userData.id),
+          loadConversations(userData.organization_id, 1, false, searchTerm, listFilter, seeAll ? null : userData.id),
           loadContacts(userData.organization_id),
         ])
       } catch (error) {
@@ -873,11 +886,11 @@ function ConversationsPageContent() {
     if (!user) return
     const delayDebounceFn = setTimeout(() => {
       setConvPage(1)
-      loadConversations(user.organization_id, 1, false, searchTerm, unreadFilter, userAssignedToFilter)
+      loadConversations(user.organization_id, 1, false, searchTerm, listFilter, userAssignedToFilter)
     }, 300)
 
     return () => clearTimeout(delayDebounceFn)
-  }, [searchTerm, unreadFilter, user, loadConversations, userAssignedToFilter])
+  }, [searchTerm, listFilter, user, loadConversations, userAssignedToFilter])
 
   // ─── Realtime Subscriptions ───
 
@@ -895,7 +908,7 @@ function ConversationsPageContent() {
       if (listRefreshTimer) return
       listRefreshTimer = setTimeout(() => {
         listRefreshTimer = null
-        loadConversations(orgId, 1, 'merge', searchTermRef.current, unreadFilterRef.current, userAssignedToFilterRef.current, true)
+        loadConversations(orgId, 1, 'merge', searchTermRef.current, listFilterRef.current, userAssignedToFilterRef.current, true)
       }, 1200)
     }
 
@@ -913,6 +926,8 @@ function ConversationsPageContent() {
         { event: 'UPDATE', schema: 'public', table: 'conversations', filter: orgFilter },
         (payload) => {
           const updated = payload.new as any
+          // A chat just handed to the team is not in an assigned-only agent's list yet: fetch it
+          if (isHandedOff(updated) && !conversationsRef.current.some((c) => c.id === updated.id)) scheduleListRefresh()
           setConversations((prev) =>
             prev.map((c) =>
               c.id === updated.id
@@ -1122,7 +1137,7 @@ function ConversationsPageContent() {
   const handleLoadMore = () => {
     if (!user || loadingMore) return
     // The next page of the list as it is filtered now, not of the unfiltered inbox
-    loadConversations(user.organization_id, convPage + 1, true, searchTerm, unreadFilter, userAssignedToFilter)
+    loadConversations(user.organization_id, convPage + 1, true, searchTerm, listFilter, userAssignedToFilter)
   }
 
   const toggleAutoReply = async (convId: string, currentVal: boolean) => {
@@ -1150,6 +1165,33 @@ function ConversationsPageContent() {
       )
     } finally {
       setTogglingAutoReply(false)
+    }
+  }
+
+  // Take a chat the chatbot handed to the team. Written like toggleAutoReply, straight to the table:
+  // there is no API route for assigning a conversation yet.
+  const assignToMe = async (convId: string) => {
+    if (!user || assigningToMe) return
+    setAssigningToMe(true)
+    try {
+      // Only while nobody has it, so two agents clicking at once cannot both take the chat
+      const { data, error } = await supabase
+        .from('conversations')
+        .update({ assigned_to: user.id })
+        .eq('id', convId)
+        .eq('organization_id', user.organization_id)
+        .is('assigned_to', null)
+        .select('id')
+      if (error) throw error
+      // No row: a teammate was first; the live update shows who has it
+      if (!data || data.length === 0) throw new Error('A teammate just took this chat.')
+      setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, assigned_to: user.id } : c)))
+      loadUnreadCount(user.organization_id, true)
+    } catch (err) {
+      console.error('[Dashboard] Failed to take the chat:', err)
+      alert({ title: 'Chat not assigned', message: err instanceof Error ? err.message : 'The chat could not be assigned to you. Please try again.' })
+    } finally {
+      setAssigningToMe(false)
     }
   }
 
@@ -1538,6 +1580,8 @@ function ConversationsPageContent() {
 
   const selectedConvData = conversations.find((c) => c.id === selectedConversation)
   const selectedContact = selectedConvData?.contact
+  // Handed to the team by the chatbot and not taken yet: the header says so and offers to take it
+  const selectedHandedOff = Boolean(selectedConvData && isHandedOff(selectedConvData))
   const selectedContactName = formatContactDisplayName(selectedContact)
 
   // WhatsApp's 24-hour rule, worked out once and used by the header and the composer alike.
@@ -1669,19 +1713,22 @@ function ConversationsPageContent() {
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 select-none">
+          {/* Three chips and the sort button do not always fit the sidebar on one line, so the row may wrap */}
+          <div className="flex flex-wrap items-center justify-between gap-2 select-none">
             <div className="flex items-center gap-1.5" role="group" aria-label="Filter chats">
-              {[
-                { unread: false, label: 'All' },
-                { unread: true, label: 'Unread' },
-              ].map((option) => {
-                const active = unreadFilter === option.unread
+              {([
+                { value: 'all', label: 'All', count: 0 },
+                { value: 'unread', label: 'Unread', count: unreadCount },
+                { value: 'needs_agent', label: 'Needs an agent', count: needsAgentCount, title: 'Chats the chatbot handed to the team that nobody has taken yet' },
+              ] as { value: ListFilter; label: string; count: number; title?: string }[]).map((option) => {
+                const active = listFilter === option.value
                 return (
                   <button
-                    key={option.label}
+                    key={option.value}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setUnreadFilter(option.unread)}
+                    title={option.title}
+                    onClick={() => setListFilter(option.value)}
                     className={`h-7 px-3 rounded-full text-[13px] font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
                       active
                         ? 'bg-[#d9fdd3] dark:bg-[#0a332c] text-[#008069] dark:text-[#00a884]'
@@ -1689,8 +1736,8 @@ function ConversationsPageContent() {
                     }`}
                   >
                     {option.label}
-                    {option.unread && unreadCount > 0 && (
-                      <span className="tabular-nums text-[11px] font-semibold opacity-80">{formatBadgeCount(unreadCount, 999)}</span>
+                    {option.count > 0 && (
+                      <span className="tabular-nums text-[11px] font-semibold opacity-80">{formatBadgeCount(option.count, 999)}</span>
                     )}
                   </button>
                 )
@@ -1700,7 +1747,7 @@ function ConversationsPageContent() {
               type="button"
               onClick={() => setSortBy((prev) => (prev === 'newest' ? 'oldest' : 'newest'))}
               title="Change the order of the list"
-              className="h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[12px] font-medium text-[#54656f] dark:text-[#8696a0] hover:bg-[#f0f2f5] dark:hover:bg-[#202c33] cursor-pointer"
+              className="ml-auto h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[12px] font-medium text-[#54656f] dark:text-[#8696a0] hover:bg-[#f0f2f5] dark:hover:bg-[#202c33] cursor-pointer"
             >
               <ArrowUpDown size={12} />
               {sortBy === 'newest' ? 'Newest first' : 'Oldest first'}
@@ -1733,11 +1780,11 @@ function ConversationsPageContent() {
                   <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">Try a different name or part of the phone number.</p>
                   <button type="button" onClick={() => setSearchTerm('')} className="mt-3 text-[13px] font-semibold text-[#008069] dark:text-[#00a884] hover:underline cursor-pointer">Clear search</button>
                 </>
-              ) : unreadFilter ? (
+              ) : listFilter !== 'all' ? (
                 <>
                   <p className="text-[14px] font-medium text-[#111b21] dark:text-[#e9edef]">You&apos;re all caught up</p>
-                  <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">There are no unread chats.</p>
-                  <button type="button" onClick={() => setUnreadFilter(false)} className="mt-3 text-[13px] font-semibold text-[#008069] dark:text-[#00a884] hover:underline cursor-pointer">Show all chats</button>
+                  <p className="text-[13px] text-[#667781] dark:text-[#8696a0] mt-1">{listFilter === 'unread' ? 'There are no unread chats.' : 'No chat is waiting for an agent.'}</p>
+                  <button type="button" onClick={() => setListFilter('all')} className="mt-3 text-[13px] font-semibold text-[#008069] dark:text-[#00a884] hover:underline cursor-pointer">Show all chats</button>
                 </>
               ) : (
                 <>
@@ -1911,12 +1958,36 @@ function ConversationsPageContent() {
                 </div>
               )}
 
-              {/* Auto-Reply Chatbot Toggle Override */}
+              {/* Auto-Reply Chatbot Toggle Override. A chat the chatbot handed to the team says so, and can be taken. */}
               {selectedConversation && (
                 <div className="flex items-center gap-1.5 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-1.5 md:pl-4">
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none hidden sm:inline">
-                    Auto-Reply Chatbot
-                  </span>
+                  {selectedHandedOff ? (
+                    <>
+                      <span
+                        className="text-[10px] font-bold text-amber-600 dark:text-amber-400 select-none hidden sm:inline"
+                        title="The chatbot handed this customer to the team. Nobody has taken the chat yet."
+                      >
+                        Chatbot paused – handed off to the team
+                      </span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => assignToMe(selectedConversation)}
+                          disabled={assigningToMe}
+                          className="px-1.5 sm:px-2 py-1 text-[10px] font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-wait rounded transition-all cursor-pointer flex items-center gap-1"
+                          title="Take this chat: it moves to your list and leaves the queue"
+                          aria-label="Assign to me"
+                        >
+                          {assigningToMe ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={12} className="sm:hidden" />}
+                          <span className="hidden sm:inline">Assign to me</span>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 select-none hidden sm:inline">
+                      Auto-Reply Chatbot
+                    </span>
+                  )}
                   <button
                     onClick={() => {
                       const conv = conversations.find((c) => c.id === selectedConversation)
@@ -1933,7 +2004,9 @@ function ConversationsPageContent() {
                     title={
                       conversations.find((c) => c.id === selectedConversation)?.auto_reply_enabled !== false
                         ? 'AI chatbot will automatically reply to customer messages'
-                        : 'Chatbot auto-reply is disabled for this contact'
+                        : selectedHandedOff
+                          ? 'Resume chatbot: it answers this customer again and the chat leaves the queue'
+                          : 'Chatbot auto-reply is disabled for this contact'
                     }
                   >
                     <span

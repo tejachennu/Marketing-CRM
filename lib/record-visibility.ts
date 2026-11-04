@@ -3,7 +3,8 @@
  *
  * Admins, managers and employees granted "see all" see every conversation. Everyone else
  * sees the conversations they work on: assigned to them directly, or belonging to one of
- * their active leads or open tickets.
+ * their active leads or open tickets. They also see the chats the chatbot handed to the team
+ * (nobody assigned, chatbot off), so a customer waiting for a person can be picked up.
  */
 
 import type { NextRequest } from 'next/server'
@@ -16,11 +17,29 @@ export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value)
 }
 
+/**
+ * PostgREST filter for the chats the chatbot handed to the team: the Flow Builder's "Hand off to
+ * team" step clears `assigned_to` and switches the chatbot off, and nobody has taken the chat yet.
+ */
+export const HANDED_OFF_FILTER = 'and(assigned_to.is.null,auto_reply_enabled.eq.false)'
+
+/** True for a chat waiting for any agent to pick it up (the same rule as HANDED_OFF_FILTER). */
+export function isHandedOff(conversation: { assigned_to?: string | null; auto_reply_enabled?: boolean | null }): boolean {
+  return conversation.assigned_to == null && conversation.auto_reply_enabled === false
+}
+
+/** Narrow a `conversations` query to the chats handed to the team. */
+export function onlyHandedOff(query: any) {
+  return query.is('assigned_to', null).eq('auto_reply_enabled', false)
+}
+
 export interface ConversationScope {
   contactIds: string[]
   conversationIds: string[]
-  /** PostgREST `or` filter selecting the conversations in scope. */
+  /** PostgREST `or` filter selecting the conversations assigned to the user. */
   orFilter: string
+  /** `orFilter` plus the chats handed to the team: everything an assigned-only user may see. */
+  visibleFilter: string
 }
 
 /** The conversations `userId` works on in an organization. */
@@ -40,7 +59,8 @@ export async function getAssignedConversationScope(supabase: any, userId: string
   if (contactIds.length > 0) parts.push(`contact_id.in.(${contactIds.join(',')})`)
   if (conversationIds.length > 0) parts.push(`id.in.(${conversationIds.join(',')})`)
 
-  return { contactIds, conversationIds, orFilter: parts.join(',') }
+  const orFilter = parts.join(',')
+  return { contactIds, conversationIds, orFilter, visibleFilter: `${orFilter},${HANDED_OFF_FILTER}` }
 }
 
 export interface ConversationRef {
@@ -48,6 +68,7 @@ export interface ConversationRef {
   organization_id: string
   contact_id?: string | null
   assigned_to?: string | null
+  auto_reply_enabled?: boolean | null
 }
 
 /** Whether `user` may open one conversation. */
@@ -55,6 +76,8 @@ export async function canAccessConversation(supabase: any, user: RoleSubject, co
   if (!user?.id) return false
   if (canSeeAll(user)) return true
   if (conversation.assigned_to === user.id) return true
+  // Handed to the team by the chatbot: whichever agent opens it may take it
+  if (isHandedOff(conversation)) return true
 
   if (conversation.contact_id) {
     const { data: leads } = await supabase
@@ -95,7 +118,7 @@ export async function verifyConversationAccess(
 
   const { data: conversation } = await supabase
     .from('conversations')
-    .select('id, organization_id, contact_id, assigned_to')
+    .select('id, organization_id, contact_id, assigned_to, auto_reply_enabled')
     .eq('id', conversationId)
     .maybeSingle()
 

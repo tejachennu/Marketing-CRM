@@ -7,6 +7,11 @@ import { formatChatListTimestamp } from '@/lib/chat-dates'
 import { formatBadgeCount, getAvatarTone, getMessagePreview } from '@/lib/chat-message-format'
 import { formatContactDisplayName, getContactAvatarInitials } from '@/lib/whatsapp-bsuid'
 
+/** The chatbot handed this chat to the team (nobody assigned, chatbot off) and nobody has taken it yet. */
+export function isHandedOff(conversation: Pick<ConversationWithContact, 'assigned_to' | 'auto_reply_enabled'>): boolean {
+  return conversation.assigned_to == null && conversation.auto_reply_enabled === false
+}
+
 interface ConversationRowProps {
   conversation: ConversationWithContact
   selected: boolean
@@ -20,6 +25,7 @@ export const ConversationRow = memo(function ConversationRow({ conversation, sel
   const name = formatContactDisplayName(conversation.contact)
   const last = conversation.last_message
   const unread = conversation.unread_count > 0
+  const handedOff = isHandedOff(conversation)
   const preview = last ? getMessagePreview(last) : conversation.contact?.phone_number || ''
 
   return (
@@ -69,6 +75,14 @@ export const ConversationRow = memo(function ConversationRow({ conversation, sel
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {handedOff && (
+              <span
+                className="text-[10px] font-semibold leading-none px-1.5 py-[3px] rounded-full whitespace-nowrap bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/70 dark:border-amber-900/50"
+                title="The chatbot handed this chat to the team. Nobody has taken it yet."
+              >
+                Handed off
+              </span>
+            )}
             <button
               type="button"
               onClick={(event) => {

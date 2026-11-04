@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { canSeeAll } from '@/lib/rbac'
-import { getAssignedConversationScope, isUuid } from '@/lib/record-visibility'
+import { getAssignedConversationScope, isUuid, onlyHandedOff } from '@/lib/record-visibility'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10) || 20))
     const unreadOnly = searchParams.get('unread') === 'true'
+    // The hand-off queue: chats the chatbot handed to the team that nobody has taken yet
+    const needsAgentOnly = searchParams.get('filter') === 'needs_agent'
     const search = sanitizeSearchTerm(searchParams.get('search'))
     const specificId = searchParams.get('id')
     const requestedAssignee = searchParams.get('assignedTo') || null
@@ -83,28 +85,39 @@ export async function GET(request: NextRequest) {
 
     // ── Role-based filtering: assigned conversations plus those of the user's active leads and open tickets ──
     // Applied to a single-conversation lookup too, so an id cannot be used to open someone else's chat.
+    // Someone limited to their own work also sees the chats the chatbot handed to the team, so they can
+    // be picked up; a manager filtering by a teammate wants that teammate's chats only.
     const scope = assignedTo ? await getAssignedConversationScope(supabase, assignedTo, orgId) : null
-    if (scope) {
-      query = query.or(scope.orFilter)
+    const visibleFilter = scope ? (canSeeAll(authResult.user) ? scope.orFilter : scope.visibleFilter) : null
+    if (visibleFilter) {
+      query = query.or(visibleFilter)
     }
 
-    // ── Calculate unread messages count (total unread messages for matching conversations) ──
-    let unreadMessagesCount = 0
+    // ── Unread messages (over the visible conversations) and the size of the hand-off queue (whole organization) ──
     let sumQuery = supabase
       .from('conversations')
       .select('unread_count')
       .eq('organization_id', orgId)
       .gt('unread_count', 0)
 
-    if (scope) {
-      sumQuery = sumQuery.or(scope.orFilter)
+    if (visibleFilter) {
+      sumQuery = sumQuery.or(visibleFilter)
     }
 
-    const { data: sumData } = await sumQuery
-    unreadMessagesCount = (sumData || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0)
+    // Every list answer carries the queue size, so the inbox shows its badge without another request
+    const needsAgentQuery = onlyHandedOff(supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId))
+    const [{ data: sumData }, { count: waiting, error: waitingError }] = await Promise.all([sumQuery, needsAgentQuery])
+    const unreadMessagesCount = (sumData || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0)
+    // A badge must never take the inbox down with it
+    if (waitingError) console.warn('[API] Needs-agent count unavailable:', waitingError.message)
+    const needsAgentCount = waitingError ? 0 : waiting || 0
 
     if (unreadOnly && !specificId) {
       query = query.gt('unread_count', 0)
+    }
+
+    if (needsAgentOnly && !specificId) {
+      query = onlyHandedOff(query)
     }
 
     if (search && !specificId) {
@@ -123,6 +136,8 @@ export async function GET(request: NextRequest) {
           success: true,
           conversations: [],
           count: 0,
+          unreadMessagesCount,
+          needsAgentCount,
           page,
           limit,
           hasMore: false,
@@ -167,6 +182,7 @@ export async function GET(request: NextRequest) {
       conversations: conversationsWithLastMsg,
       count: count || 0,
       unreadMessagesCount,
+      needsAgentCount,
       page,
       limit,
       hasMore: (count || 0) > offset + formatted.length,
