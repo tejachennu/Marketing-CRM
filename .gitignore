@@ -19,3 +19,6 @@ node_modules
 certificates
 # Claude Code session files (worktrees, local settings)
 .claude/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
