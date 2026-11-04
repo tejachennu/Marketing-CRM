@@ -16,11 +16,21 @@ import {
   type CatalogProductRow,
   type CatalogSync,
 } from './catalog-items'
-import { checkBatch, describeCatalogError, fetchCatalogItems, getCatalogCredentials, isGraphId, sendItemsBatch } from './meta-catalog'
+import { checkBatch, describeCatalogError, fetchCatalogItems, getCatalogCredentials, isGraphId, sendItemsBatch, type BatchStatus } from './meta-catalog'
 
 /** Long enough for Meta to process a batch; after this an unanswered one is treated as lost. */
 const BATCH_TIMEOUT_MS = 30 * 60 * 1000
 const WRITE_CONCURRENCY = 20
+/** Waiting products read at a time while asking Meta how their batches went. */
+const REFRESH_PAGE = 500
+/**
+ * Time limits, within the products route's `maxDuration` of 120 seconds: a sync asks Meta how the
+ * waiting batches went, then reads the catalog, then writes the last page and looks for removals.
+ * The dashboard asks again for whatever a refresh could not reach; a read that stops is reported as incomplete.
+ */
+const REFRESH_BUDGET_MS = 20 * 1000
+const PULL_READ_BUDGET_MS = 70 * 1000
+const PULL_WRITE_CHUNK = 200
 
 interface StoredProduct {
   id: string
@@ -171,72 +181,82 @@ export interface RefreshSummary {
   pending: number
 }
 
-/** Ask Meta how the batches still being processed went, and record the answer on each product. */
+/**
+ * Ask Meta how the batches still being processed went, and record the answer on each product.
+ * Works through the waiting products a page at a time until none are left or the time budget is
+ * used up, asking Meta once per batch however many pages its items span.
+ */
 export async function refreshCatalogStatus(
   supabase: any,
   organization: Record<string, any>,
-  options: { fetcher?: typeof fetch; limit?: number; now?: number } = {}
+  options: { fetcher?: typeof fetch; limit?: number; now?: number; budgetMs?: number } = {}
 ): Promise<RefreshSummary> {
   const summary: RefreshSummary = { accepted: 0, rejected: 0, pending: 0 }
-  const { data } = await supabase
-    .from('commerce_products')
-    .select('id, retailer_id, metadata')
-    .eq('organization_id', organization.id)
-    .eq('metadata->catalog->>state', 'pending')
-    .order('id', { ascending: true })
-    .limit(options.limit || 500)
-  const waiting: StoredProduct[] = data || []
-  if (waiting.length === 0) return summary
-
   const catalogId = linkedCatalogId(organization)
   const credentials = getCatalogCredentials(organization)
   const now = options.now ?? Date.now()
   const stamp = new Date(now).toISOString()
+  const pageSize = options.limit || REFRESH_PAGE
+  const startedAt = Date.now()
+  const checked = new Map<string, BatchStatus | null>()
 
-  const byHandle = new Map<string, StoredProduct[]>()
-  for (const product of waiting) {
-    const handle = getCatalogSync(product)?.handle || ''
-    byHandle.set(handle, [...(byHandle.get(handle) || []), product])
-  }
+  let after = ''
+  for (;;) {
+    // Pages move by id: rows settled on one page leave the "pending" set, so a row offset would skip others
+    let query = supabase.from('commerce_products').select('id, retailer_id, metadata').eq('organization_id', organization.id).eq('metadata->catalog->>state', 'pending')
+    if (after) query = query.gt('id', after)
+    const { data } = await query.order('id', { ascending: true }).limit(pageSize)
+    const waiting: StoredProduct[] = data || []
+    if (waiting.length === 0) break
 
-  for (const [handle, products] of byHandle) {
-    let status: Awaited<ReturnType<typeof checkBatch>> | null = null
-    if (handle) {
-      try {
-        status = await checkBatch(credentials, catalogId, handle, options.fetcher)
-      } catch {
-        status = null // Meta could not be asked right now; try again on the next refresh
-      }
+    const byHandle = new Map<string, StoredProduct[]>()
+    for (const product of waiting) {
+      const handle = getCatalogSync(product)?.handle || ''
+      byHandle.set(handle, [...(byHandle.get(handle) || []), product])
     }
 
-    await inChunks(products, WRITE_CONCURRENCY, async (product) => {
-      const previous = getCatalogSync(product)
-      if (status?.finished) {
-        const warnings = status.warnings.get(product.retailer_id) || previous?.warnings || []
-        if (status.invalidIds.has(product.retailer_id)) {
-          summary.rejected++
-          await saveCatalogSync(supabase, organization.id, product, {
-            state: 'error',
-            errors: status.errors.get(product.retailer_id) || ['Meta did not accept this item.'],
-            synced_at: stamp,
-            catalog_id: previous?.catalog_id || catalogId,
-            ...(warnings.length ? { warnings } : {}),
-          })
-        } else {
-          summary.accepted++
-          await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp, catalog_id: previous?.catalog_id || catalogId, ...(warnings.length ? { warnings } : {}) })
+    for (const [handle, products] of byHandle) {
+      if (handle && !checked.has(handle)) {
+        try {
+          checked.set(handle, await checkBatch(credentials, catalogId, handle, options.fetcher))
+        } catch {
+          checked.set(handle, null) // Meta could not be asked right now; try again on the next refresh
         }
-        return
       }
+      const status = checked.get(handle) || null
 
-      const sentAt = Date.parse(previous?.synced_at || '')
-      if (!handle || (Number.isFinite(sentAt) && now - sentAt > BATCH_TIMEOUT_MS)) {
-        summary.rejected++
-        await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp, catalog_id: previous?.catalog_id || catalogId })
-        return
-      }
-      summary.pending++
-    })
+      await inChunks(products, WRITE_CONCURRENCY, async (product) => {
+        const previous = getCatalogSync(product)
+        if (status?.finished) {
+          const warnings = status.warnings.get(product.retailer_id) || previous?.warnings || []
+          if (status.invalidIds.has(product.retailer_id)) {
+            summary.rejected++
+            await saveCatalogSync(supabase, organization.id, product, {
+              state: 'error',
+              errors: status.errors.get(product.retailer_id) || ['Meta did not accept this item.'],
+              synced_at: stamp,
+              catalog_id: previous?.catalog_id || catalogId,
+              ...(warnings.length ? { warnings } : {}),
+            })
+          } else {
+            summary.accepted++
+            await saveCatalogSync(supabase, organization.id, product, { state: 'synced', synced_at: stamp, catalog_id: previous?.catalog_id || catalogId, ...(warnings.length ? { warnings } : {}) })
+          }
+          return
+        }
+
+        const sentAt = Date.parse(previous?.synced_at || '')
+        if (!handle || (Number.isFinite(sentAt) && now - sentAt > BATCH_TIMEOUT_MS)) {
+          summary.rejected++
+          await saveCatalogSync(supabase, organization.id, product, { state: 'error', errors: ['Meta did not confirm this update. Send it to the catalog again.'], synced_at: stamp, catalog_id: previous?.catalog_id || catalogId })
+          return
+        }
+        summary.pending++
+      })
+    }
+
+    after = waiting[waiting.length - 1].id
+    if (waiting.length < pageSize || Date.now() - startedAt >= (options.budgetMs ?? REFRESH_BUDGET_MS)) break
   }
 
   return summary
@@ -268,75 +288,108 @@ export function wasDeletedInCatalog(product: { metadata?: Record<string, any> | 
 }
 
 /**
- * Copy the Meta catalog into `commerce_products`. Items that have left the catalog are removed from
- * the copy, but only after the whole catalog was read; products that were never in it are left alone.
+ * Copy the Meta catalog into `commerce_products`. Each page is written as soon as it is read, so a
+ * read that stops short (the page cap, a slow Meta, the function's time limit) still leaves every
+ * product it reached up to date and none half-written. Items that have left the catalog are removed
+ * from the copy, but only after the whole catalog was read; products that were never in it are left alone.
  */
-export async function pullCatalogToDatabase(supabase: any, organization: Record<string, any>, fetcher?: typeof fetch): Promise<PullSummary> {
+export async function pullCatalogToDatabase(
+  supabase: any,
+  organization: Record<string, any>,
+  fetcher?: typeof fetch,
+  options: { budgetMs?: number; pageTimeoutMs?: number } = {}
+): Promise<PullSummary> {
   const catalogId = linkedCatalogId(organization)
-  const listing = await fetchCatalogItems(getCatalogCredentials(organization), catalogId, fetcher)
-  const items = listing.items
-  const incomplete = !listing.complete
+  const credentials = getCatalogCredentials(organization)
   const defaults = getCatalogItemDefaults(organization)
   const now = new Date().toISOString()
 
-  // What is stored now: for details Meta's listing does not return, and to find what has left the catalog
-  const stored = new Map<string, StoredProduct>()
-  for (let from = 0; from < 50000; from += 1000) {
-    const { data, error } = await supabase
-      .from('commerce_products')
-      .select('id, retailer_id, metadata')
-      .eq('organization_id', organization.id)
-      .order('id', { ascending: true })
-      .range(from, from + 999)
-    if (error) return { total: items.length, synced: 0, removed: 0, skipped: 0, otherCurrency: 0, incomplete, error: error.message }
-    for (const product of data || []) stored.set(product.retailer_id, product)
-    if (!data || data.length < 1000) break
-  }
-
-  const inCatalog = new Set<string>()
-  const rows: CatalogProductRow[] = []
+  const seen = new Set<string>() // every SKU the listing had, written or not
+  let synced = 0
   let skipped = 0
   let otherCurrency = 0
-  for (const item of items) {
-    const current = stored.get(String(item?.retailer_id || item?.id || '').trim())
-    const row = toCatalogProductRow(item, getProductAttributes(current), now)
-    if (!row || inCatalog.has(row.retailer_id)) continue
-    inCatalog.add(row.retailer_id)
-    row.metadata = { ...row.metadata, catalog: { ...(row.metadata?.catalog || { state: 'synced' }), catalog_id: catalogId } }
-    const note = getCurrencyMismatch(row.currency, defaults)
-    if (note) {
-      otherCurrency++
-      row.metadata.catalog.warnings = [...(row.metadata.catalog.warnings || []), note]
-    }
-    // A change made here that Meta has not applied must not be overwritten by the older catalog copy
-    const state = current?.metadata?.catalog?.state
-    if (state === 'pending' || state === 'error') skipped++
-    else rows.push(row)
-  }
-
-  let synced = 0
   let firstError: string | null = null
-  for (let start = 0; start < rows.length; start += 200) {
-    const chunk = rows.slice(start, start + 200)
-    const { error } = await supabase
-      .from('commerce_products')
-      .upsert(chunk.map((row) => ({ organization_id: organization.id, ...row, updated_at: now })), { onConflict: 'organization_id,retailer_id' })
-    if (error) firstError = firstError || error.message
-    else synced += chunk.length
+
+  const sku = (item: any) => String(item?.retailer_id || item?.id || '').trim()
+  const writePage = async (items: any[]) => {
+    // Once each, and never one an earlier page had: a re-read from the start (see fetchCatalogItems) repeats pages
+    const fresh = new Set(items.map(sku).filter((id) => id && !seen.has(id)))
+    if (fresh.size === 0) return
+    // The rows these items replace, as they are right now: for details Meta's listing does not return,
+    // and so a change made here since the read began is seen and kept rather than overwritten
+    const { data, error } = await supabase.from('commerce_products').select('id, retailer_id, metadata').eq('organization_id', organization.id).in('retailer_id', [...fresh])
+    for (const id of fresh) seen.add(id)
+    if (error) {
+      firstError = firstError || error.message
+      return
+    }
+    const current = new Map<string, StoredProduct>((data || []).map((product: StoredProduct) => [product.retailer_id, product]))
+
+    const rows: CatalogProductRow[] = []
+    for (const item of items) {
+      const id = sku(item)
+      if (!fresh.delete(id)) continue
+      const stored = current.get(id)
+      const row = toCatalogProductRow(item, getProductAttributes(stored), now)
+      if (!row) continue
+      row.metadata = { ...row.metadata, catalog: { ...(row.metadata?.catalog || { state: 'synced' }), catalog_id: catalogId } }
+      const note = getCurrencyMismatch(row.currency, defaults)
+      if (note) {
+        otherCurrency++
+        row.metadata.catalog.warnings = [...(row.metadata.catalog.warnings || []), note]
+      }
+      // A change made here that Meta has not applied must not be overwritten by the older catalog copy
+      const state = stored?.metadata?.catalog?.state
+      if (state === 'pending' || state === 'error') skipped++
+      else rows.push(row)
+    }
+
+    for (let start = 0; start < rows.length; start += PULL_WRITE_CHUNK) {
+      const chunk = rows.slice(start, start + PULL_WRITE_CHUNK)
+      const { error: writeError } = await supabase
+        .from('commerce_products')
+        .upsert(chunk.map((row) => ({ organization_id: organization.id, ...row, updated_at: now })), { onConflict: 'organization_id,retailer_id' })
+      if (writeError) firstError = firstError || writeError.message
+      else synced += chunk.length
+    }
   }
 
-  // Only after a complete, error-free read, so a partial sync can never empty the product list
+  const listing = await fetchCatalogItems(credentials, catalogId, fetcher, {
+    onPage: writePage,
+    budgetMs: options.budgetMs ?? PULL_READ_BUDGET_MS,
+    ...(options.pageTimeoutMs !== undefined ? { pageTimeoutMs: options.pageTimeoutMs } : {}),
+  })
+  const incomplete = !listing.complete
+
+  // Only after a complete, error-free read, so a partial sync can never empty the product list. The
+  // rows are read now, after the catalog, so a product sent while it was being read is not taken for one that left it
   let removed = 0
-  if (!firstError && !incomplete && inCatalog.size > 0) {
-    const stale = [...stored.values()].filter((product) => !inCatalog.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId)).map((product) => product.id)
-    for (let start = 0; start < stale.length; start += 100) {
+  if (!firstError && !incomplete && seen.size > 0) {
+    const stale: string[] = []
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data, error } = await supabase
+        .from('commerce_products')
+        .select('id, retailer_id, metadata')
+        .eq('organization_id', organization.id)
+        .order('id', { ascending: true })
+        .range(from, from + 999)
+      if (error) {
+        firstError = error.message
+        break
+      }
+      for (const product of data || []) {
+        if (!seen.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId)) stale.push(product.id)
+      }
+      if (!data || data.length < 1000) break
+    }
+    for (let start = 0; !firstError && start < stale.length; start += 100) {
       const ids = stale.slice(start, start + 100)
       const { error } = await supabase.from('commerce_products').delete().eq('organization_id', organization.id).in('id', ids)
       if (!error) removed += ids.length
     }
   }
 
-  return { total: inCatalog.size, synced, removed, skipped, otherCurrency, incomplete, error: firstError }
+  return { total: seen.size, synced, removed, skipped, otherCurrency, incomplete, error: firstError }
 }
 
 /**

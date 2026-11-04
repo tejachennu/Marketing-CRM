@@ -407,8 +407,9 @@ export async function checkBatch(credentials: MetaCredentials, catalogId: string
 }
 
 export interface CatalogListing {
+  /** Empty when `onPage` took the pages as they came. */
   items: any[]
-  /** False when the catalog has more than was read: the page cap was reached, or Meta was slow with a page. */
+  /** False when the catalog has more than was read: the page cap or the time budget was reached, or Meta was slow with a page. */
   complete: boolean
 }
 
@@ -417,6 +418,10 @@ export interface ListingOptions {
   maxPages?: number
   /** How long one page may take. */
   pageTimeoutMs?: number
+  /** How long the whole read may take. The page under way when it runs out is the last, and the listing is incomplete. */
+  budgetMs?: number
+  /** Given each page as it arrives, instead of the items being collected: the caller can save a page before the next is read. */
+  onPage?: (items: any[]) => Promise<void> | void
 }
 
 /** Settles like `promise`, or rejects with a TimeoutError once `ms` have passed. metaRequest sets its own signal, so the wait is wrapped instead. */
@@ -432,6 +437,7 @@ async function readItems(credentials: MetaCredentials, firstPath: string, fetche
   const items: any[] = []
   let path: string | null = firstPath
   const maxPages = options.maxPages ?? MAX_CATALOG_PAGES
+  const startedAt = Date.now()
   // Follow Graph API paging so catalogs with more than 100 products are read completely
   for (let page = 0; path && page < maxPages; page++) {
     let response: any
@@ -442,11 +448,15 @@ async function readItems(credentials: MetaCredentials, firstPath: string, fetche
       if (page > 0 && describeCatalogError(error).kind === 'timeout') return { items, complete: false }
       throw error
     }
-    items.push(...(response?.data || []))
+    const found: any[] = Array.isArray(response?.data) ? response.data : []
+    if (options.onPage) await options.onPage(found)
+    else items.push(...found)
     const after: string | undefined = response?.paging?.next ? response?.paging?.cursors?.after : undefined
     path = after ? `${firstPath}&after=${encodeURIComponent(after)}` : null
+    // Out of time with pages still to come: the caller keeps what was read, and is told it is not everything
+    if (path && options.budgetMs !== undefined && Date.now() - startedAt >= options.budgetMs) break
   }
-  // A path left over means Meta still had a page when the cap was reached
+  // A path left over means Meta still had a page when the cap or the budget was reached
   return { items, complete: path === null }
 }
 
@@ -466,27 +476,49 @@ export async function fetchCatalogItems(credentials: MetaCredentials, catalogId:
   }
 }
 
-/** Look a few items up by SKU. Never throws: a slow or failing lookup returns what it has. */
+/** SKUs asked for in one `products` request: the filter travels in the URL, which stays short this way. */
+export const SKU_LOOKUP_CHUNK = 10
+/** Lookups in flight at once. The caller is usually handling an order, so Meta is not flooded on its behalf. */
+export const SKU_LOOKUP_CONCURRENCY = 3
+const SKU_LOOKUP_TIMEOUT_MS = 4000
+
+/**
+ * Look items up by SKU, any number of them: ten a request, a few requests at a time, the answers
+ * merged in the order asked. Never throws: a slow or failing request loses only its own SKUs.
+ */
 export async function fetchCatalogItemsBySku(credentials: MetaCredentials, catalogId: string, skus: string[], fetcher: typeof fetch = fetch): Promise<any[]> {
   if (!isGraphId(catalogId)) return []
-  const found: any[] = []
-  await Promise.all(
-    skus.slice(0, 10).map(async (sku) => {
-      try {
-        const filter = encodeURIComponent(JSON.stringify({ retailer_id: { eq: sku } }))
-        const response = await fetcher(`https://graph.facebook.com/${credentials.version}/${catalogId}/products?fields=${ITEM_FIELDS}&filter=${filter}&limit=1`, {
-          headers: { Authorization: `Bearer ${credentials.token}` },
-          signal: AbortSignal.timeout(4000),
-        })
-        if (!response.ok) return
-        const item = (await response.json())?.data?.[0]
-        if (item && String(item.retailer_id) === sku) found.push(item)
-      } catch {
-        // Best effort only
+  const wanted = [...new Set((Array.isArray(skus) ? skus : []).map((sku) => String(sku ?? '').trim()).filter(Boolean))]
+  const chunks: string[][] = []
+  for (let start = 0; start < wanted.length; start += SKU_LOOKUP_CHUNK) chunks.push(wanted.slice(start, start + SKU_LOOKUP_CHUNK))
+
+  const found = new Map<string, any>()
+  const lookUp = async (chunk: string[]) => {
+    try {
+      const filter = encodeURIComponent(JSON.stringify({ retailer_id: { is_any: chunk } }))
+      const response = await fetcher(`https://graph.facebook.com/${credentials.version}/${catalogId}/products?fields=${ITEM_FIELDS}&filter=${filter}&limit=${chunk.length}`, {
+        headers: { Authorization: `Bearer ${credentials.token}` },
+        signal: AbortSignal.timeout(SKU_LOOKUP_TIMEOUT_MS),
+      })
+      if (!response.ok) return
+      const data = await response.json().catch(() => null)
+      for (const item of Array.isArray(data?.data) ? data.data : []) {
+        const sku = String(item?.retailer_id ?? '')
+        // Only what was asked for: Meta's filter is trusted no further than that
+        if (chunk.includes(sku) && !found.has(sku)) found.set(sku, item)
       }
+    } catch {
+      // Best effort only
+    }
+  }
+  // Each worker takes the next chunk as it finishes, so at most SKU_LOOKUP_CONCURRENCY requests are in flight
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(SKU_LOOKUP_CONCURRENCY, chunks.length) }, async () => {
+      while (next < chunks.length) await lookUp(chunks[next++])
     })
   )
-  return found
+  return wanted.filter((sku) => found.has(sku)).map((sku) => found.get(sku))
 }
 
 // ── What the access token may do ────────────────────────────────────────────

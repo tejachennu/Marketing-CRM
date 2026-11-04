@@ -8,10 +8,15 @@ import { describeCatalogError, isGraphId } from '@/lib/commerce/meta-catalog'
 import { pullCatalogToDatabase, pushProductsToCatalog, refreshCatalogStatus, removeFromCatalog } from '@/lib/commerce/catalog-sync'
 import { isUuid } from '@/lib/record-visibility'
 
+/** A full catalog sync reads up to 200 pages from Meta before it is done. Vercel honours this on Pro; Hobby caps it lower. */
+export const maxDuration = 120
+
 /** What a catalog call needs from the organization. */
 const CATALOG_ORG_COLUMNS = 'id, name, currency, meta_catalog_id, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_default_phone, whatsapp_business_account_id, whatsapp_phone_number_id'
 /** The most products one "send to catalog" request handles. */
 const MAX_PUSH = 3000
+/** Products outside the catalog, or whose last send was turned down: what "send all" sends. getCatalogState's rule as a PostgREST filter. */
+const NOT_IN_CATALOG = 'metadata->catalog->>state.eq.error,and(metadata->catalog->>state.is.null,or(metadata->>source.is.null,metadata->>source.neq.meta))'
 
 const NOT_LINKED = 'Link your Meta catalog in Store settings and connect WhatsApp first.'
 
@@ -164,6 +169,9 @@ export async function POST(request: NextRequest) {
       if (!hasCatalog(org)) return NextResponse.json({ error: NOT_LINKED }, { status: 400 })
 
       let toSend: any[] = []
+      // For "send all": the last product this call looked at, and how many still wait after it
+      let cursor: string | null = null
+      let remaining = 0
       if (Array.isArray(body.productIds)) {
         const ids = body.productIds.filter(isUuid).slice(0, 500)
         if (ids.length === 0) return NextResponse.json({ error: 'Choose the products to send.' }, { status: 400 })
@@ -171,20 +179,30 @@ export async function POST(request: NextRequest) {
         if (error) throw error
         toSend = data || []
       } else {
-        for (let from = 0; from < 50000 && toSend.length < MAX_PUSH; from += 1000) {
-          const { data, error } = await supabase
-            .from('commerce_products')
-            .select('*')
-            .eq('organization_id', organizationId)
-            .order('id', { ascending: true })
-            .range(from, from + 999)
+        // MAX_PUSH at a time, in id order. The caller passes the cursor it was given back as `after` to go
+        // on from there, and calls again while `remaining` says there is more: one pass over the store,
+        // each product once, however many were turned down along the way
+        let after: string | null = isUuid(body.after) ? body.after : null
+        for (let pages = 0; pages < 50 && toSend.length < MAX_PUSH; pages++) {
+          const limit = Math.min(1000, MAX_PUSH - toSend.length)
+          let query = supabase.from('commerce_products').select('*').eq('organization_id', organizationId).or(NOT_IN_CATALOG)
+          if (after) query = query.gt('id', after)
+          const { data, error } = await query.order('id', { ascending: true }).limit(limit)
           if (error) throw error
-          toSend.push(...(data || []).filter((row) => ['not_sent', 'error'].includes(getCatalogState(row))))
-          if (!data || data.length < 1000) break
+          if (!data || data.length === 0) break
+          // The filter narrows the read; the rule itself is getCatalogState's
+          toSend.push(...data.filter((row) => ['not_sent', 'error'].includes(getCatalogState(row))))
+          after = data[data.length - 1].id
+          if (data.length < limit) break
         }
-        toSend = toSend.slice(0, MAX_PUSH)
+        cursor = toSend.length > 0 ? after : null
+        if (cursor) {
+          const { count, error } = await supabase.from('commerce_products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).gt('id', cursor).or(NOT_IN_CATALOG)
+          if (error) throw error
+          remaining = count || 0
+        }
       }
-      if (toSend.length === 0) return NextResponse.json({ success: true, sent: 0, rejected: 0, problems: [] })
+      if (toSend.length === 0) return NextResponse.json({ success: true, sent: 0, rejected: 0, pushed: 0, remaining: 0, cursor: null, problems: [] })
 
       try {
         const summary = await pushProductsToCatalog(supabase, org, toSend)
@@ -192,7 +210,7 @@ export async function POST(request: NextRequest) {
           .map((row) => ({ title: row.title as string, errors: summary.outcomes.get(row.id)?.state === 'error' ? summary.outcomes.get(row.id)!.errors : [] }))
           .filter((problem) => problem.errors.length > 0)
           .slice(0, 5)
-        return NextResponse.json({ success: true, sent: summary.sent, rejected: summary.rejected, requestError: summary.requestError, problems })
+        return NextResponse.json({ success: true, sent: summary.sent, rejected: summary.rejected, pushed: toSend.length, remaining, cursor, requestError: summary.requestError, problems })
       } catch (catalogErr) {
         return NextResponse.json({ error: describeCatalogError(catalogErr).message }, { status: 502 })
       }

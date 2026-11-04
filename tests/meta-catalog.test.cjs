@@ -76,6 +76,7 @@ function fakeDb(rows) {
         delete: () => { operation = { type: 'delete' }; return query },
         upsert: (incoming) => { operation = { type: 'upsert', rows: incoming }; return query },
         eq: (column, value) => { filters.push((row) => read(row, column) === value); return query },
+        gt: (column, value) => { filters.push((row) => String(read(row, column)) > String(value)); return query },
         in: (column, values) => { filters.push((row) => values.includes(row[column])); return query },
         order: () => query,
         limit: (count) => { window = [0, count - 1]; return query },
@@ -571,6 +572,115 @@ test('Catalog API: a listing cut short by the page cap or a slow page says so', 
   // A first page that never comes is a failure, not an empty catalog
   await assert.rejects(() => meta.fetchCatalogItems(CREDENTIALS, CATALOG, async () => new Promise(() => {}), { pageTimeoutMs: 20 }), { name: 'TimeoutError' })
   assert.equal(meta.describeCatalogError({ name: 'TimeoutError' }).kind, 'timeout')
+
+  // Out of time with a page still to come: the page under way is the last, and the listing says it is not all
+  const timed = graph(first, { data: [{ retailer_id: 'B' }] })
+  assert.deepEqual(await meta.fetchCatalogItems(CREDENTIALS, CATALOG, timed, { budgetMs: 0 }), { items: [{ retailer_id: 'A' }], complete: false })
+  assert.equal(timed.calls.length, 1)
+  // A caller that takes the pages as they arrive gets each one once, and no collected copy
+  const pages = []
+  const handed = await meta.fetchCatalogItems(CREDENTIALS, CATALOG, graph(first, { data: [{ retailer_id: 'B' }] }), { onPage: (items) => { pages.push(items.map((item) => item.retailer_id)) } })
+  assert.deepEqual([pages, handed], [[['A'], ['B']], { items: [], complete: true }])
+})
+
+test('Catalog API: SKUs are looked up ten a request, three requests at a time, and a failed request loses only its own', async () => {
+  const skus = Array.from({ length: 35 }, (_, index) => `SKU-${index}`)
+  let inFlight = 0
+  let mostInFlight = 0
+  const requests = []
+  const fetcher = async (url, init) => {
+    inFlight++
+    mostInFlight = Math.max(mostInFlight, inFlight)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    inFlight--
+    const query = new URL(url).searchParams
+    const asked = JSON.parse(query.get('filter')).retailer_id.is_any
+    requests.push({ path: new URL(url).pathname, auth: init.headers.Authorization, limit: query.get('limit'), asked })
+    // The second request is refused and the third fails; the others answer, one with an item nobody asked for
+    if (asked[0] === 'SKU-10') return { ok: false, status: 500, json: async () => ({ error: { message: 'Something went wrong' } }) }
+    if (asked[0] === 'SKU-20') throw new Error('network down')
+    return { ok: true, status: 200, json: async () => ({ data: [...asked.map((sku) => ({ retailer_id: sku, name: sku })), { retailer_id: 'OTHER', name: 'Not asked for' }] }) }
+  }
+  const found = await meta.fetchCatalogItemsBySku(CREDENTIALS, CATALOG, [...skus, 'SKU-0', ' ', ''], fetcher)
+  requests.sort((a, b) => Number(a.asked[0].slice(4)) - Number(b.asked[0].slice(4)))
+  assert.equal(meta.SKU_LOOKUP_CHUNK, 10)
+  assert.deepEqual(requests.map((request) => request.asked.length), [10, 10, 10, 5])      // once each, blanks dropped
+  assert.deepEqual(requests.map((request) => request.limit), ['10', '10', '10', '5'])
+  assert.deepEqual(requests[3].asked, skus.slice(30))
+  assert.ok(requests.every((request) => request.path === `/v25.0/${CATALOG}/products` && request.auth === 'Bearer TOKEN'))
+  assert.equal(mostInFlight, meta.SKU_LOOKUP_CONCURRENCY)
+  assert.deepEqual(found.map((item) => item.retailer_id), [...skus.slice(0, 10), ...skus.slice(30)])
+
+  // Nothing to ask, or nothing that can be asked: an empty answer, and Meta is left alone
+  assert.deepEqual(await meta.fetchCatalogItemsBySku(CREDENTIALS, CATALOG, [], fetcher), [])
+  assert.deepEqual(await meta.fetchCatalogItemsBySku(CREDENTIALS, 'not-a-catalog', skus, fetcher), [])
+  assert.equal(requests.length, 4)
+  assert.deepEqual(await meta.fetchCatalogItemsBySku(CREDENTIALS, CATALOG, ['A'], async () => { throw new Error('down') }), [])
+})
+
+test('Catalog sync: the catalog is written page by page, and nothing is removed until it was read to the end', async () => {
+  const confirmed = { source: 'meta', catalog: { state: 'synced', review_status: 'approved', catalog_id: CATALOG } }
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'P1', title: 'Old 1', metadata: confirmed },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'GONE', title: 'Left the catalog', metadata: confirmed },
+    { id: 'c', organization_id: 'org-1', retailer_id: 'P2', title: 'Old 2', metadata: confirmed },
+  ])
+  const titles = () => Object.fromEntries(db.rows.map((row) => [row.retailer_id, row.title]))
+  const page = (sku, next) => ({ data: [{ retailer_id: sku, name: `New ${sku}`, price: '100 INR' }], ...(next ? { paging: { cursors: { after: next }, next: 'https://graph.facebook.com/next' } } : {}) })
+
+  // Page 1 is already saved when page 2 is asked for; page 3 never comes
+  let whileReading = null
+  const slow = graph(page('P1', 'C1'), () => { whileReading = titles(); return page('P2', 'C2') }, () => new Promise(() => {}))
+  const summary = await sync.pullCatalogToDatabase(db, ORG, slow, { pageTimeoutMs: 20 })
+  assert.deepEqual(whileReading, { P1: 'New P1', GONE: 'Left the catalog', P2: 'Old 2' })
+  assert.deepEqual(summary, { total: 2, synced: 2, removed: 0, skipped: 0, otherCurrency: 0, incomplete: true, error: null })
+  assert.deepEqual(titles(), { P1: 'New P1', GONE: 'Left the catalog', P2: 'New P2' })
+
+  // Out of time with a page still to come: the same, by the budget rather than a slow page
+  const budgeted = graph(page('P1', 'C1'), page('P2'))
+  const short = await sync.pullCatalogToDatabase(db, ORG, budgeted, { budgetMs: 0 })
+  assert.equal(budgeted.calls.length, 1)
+  assert.deepEqual([short.total, short.synced, short.incomplete, short.removed], [1, 1, true, 0])
+  assert.equal(db.rows.length, 3)
+
+  // Read to the end: GONE has really left the catalog
+  const complete = await sync.pullCatalogToDatabase(db, ORG, graph(page('P1', 'C1'), page('P2')))
+  assert.deepEqual([complete.total, complete.incomplete, complete.removed], [2, false, 1])
+  assert.deepEqual(Object.keys(titles()).sort(), ['P1', 'P2'])
+})
+
+test('Catalog sync: a change saved while the catalog is being read is kept', async () => {
+  const confirmed = { source: 'meta', catalog: { state: 'synced', catalog_id: CATALOG } }
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'P1', title: 'Old 1', metadata: confirmed },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'P2', title: 'Old 2', metadata: confirmed },
+  ])
+  const page = (sku, next) => ({ data: [{ retailer_id: sku, name: `New ${sku}`, price: '100 INR' }], ...(next ? { paging: { cursors: { after: next }, next: 'https://graph.facebook.com/next' } } : {}) })
+  const fetcher = graph(page('P1', 'C1'), () => {
+    // Saved from the dashboard between the two pages, and sent to Meta, which is still working on it
+    const row = db.rows.find((candidate) => candidate.retailer_id === 'P2')
+    Object.assign(row, { title: 'My edit', metadata: { ...confirmed, catalog: { state: 'pending', handle: 'H1', catalog_id: CATALOG } } })
+    return page('P2')
+  })
+  const summary = await sync.pullCatalogToDatabase(db, ORG, fetcher)
+  assert.deepEqual([summary.synced, summary.skipped, summary.removed], [1, 1, 0])
+  assert.deepEqual(Object.fromEntries(db.rows.map((row) => [row.retailer_id, row.title])), { P1: 'New P1', P2: 'My edit' })
+})
+
+test('Catalog sync: a refresh works through every waiting product, asking Meta once per batch', async () => {
+  const waiting = () => Array.from({ length: 5 }, (_, index) => ({ id: `p${index}`, organization_id: 'org-1', retailer_id: `SKU-${index}`, metadata: { catalog: { state: 'pending', handle: index < 3 ? 'H1' : 'H2', synced_at: '2026-10-13T10:00:00.000Z' } } }))
+  const finished = () => graph({ data: [{ status: 'finished', errors: [], ids_of_invalid_requests: [] }] })
+
+  const db = fakeDb(waiting())
+  const fetcher = finished()
+  assert.deepEqual(await sync.refreshCatalogStatus(db, ORG, { fetcher, limit: 2 }), { accepted: 5, rejected: 0, pending: 0 })
+  assert.deepEqual(fetcher.calls.map((call) => new URL(call.url).searchParams.get('handle')), ['H1', 'H2'])
+  assert.ok(db.rows.every((row) => row.metadata.catalog.state === 'synced'))
+
+  // Out of time: what was reached is settled, the rest waits for the next refresh
+  const more = fakeDb(waiting())
+  assert.deepEqual(await sync.refreshCatalogStatus(more, ORG, { fetcher: finished(), limit: 2, budgetMs: 0 }), { accepted: 2, rejected: 0, pending: 0 })
+  assert.deepEqual(more.rows.map((row) => row.metadata.catalog.state), ['synced', 'synced', 'pending', 'pending', 'pending'])
 })
 
 test('Catalog sync: an incomplete read updates what it saw and removes nothing', async () => {
@@ -627,6 +737,21 @@ test('Catalog items: a price in another currency is pointed out, never converted
   assert.equal(items.getCatalogItemDefaults({ ...ORG, currency: 'rupees' }).currency, 'INR')
   assert.equal(items.toCatalogItem(product({ currency: '' }), { ...DEFAULTS, currency: 'AED' }).price, '1499.00 AED')
 
+  // The database gives every new store USD. One that never changed it and prices in INR is left alone;
+  // a store that chose its currency, or a dollar store with a euro item, is still told
+  const unset = { ...DEFAULTS, currency: 'USD' }
+  assert.equal(items.getCurrencyMismatch('INR', unset), null)
+  assert.equal(items.getCurrencyMismatch('inr', unset), null)
+  assert.equal(items.getCurrencyMismatch('EUR', unset), 'Priced in EUR, but the store sells in USD.')
+  assert.equal(items.getCurrencyMismatch('INR', { ...DEFAULTS, currency: 'AED' }), 'Priced in INR, but the store sells in AED.')
+  const dollarDefault = { ...ORG, currency: 'USD' }
+  const quiet = fakeDb([{ id: 'p1', organization_id: 'org-1', ...product() }])
+  const quietPush = await sync.pushProductsToCatalog(quiet, dollarDefault, quiet.rows.map((row) => ({ ...row })), { fetcher: graph({ handles: ['H1'], validation_status: [] }) })
+  assert.deepEqual([quietPush.outcomes.get('p1').warnings, quiet.rows[0].metadata.catalog.warnings], [[], undefined])
+  const quietPull = fakeDb([])
+  const pulledQuietly = await sync.pullCatalogToDatabase(quietPull, dollarDefault, graph({ data: [{ retailer_id: 'IN-2', name: 'Local', price: '₹500.00', currency: 'INR' }] }))
+  assert.deepEqual([pulledQuietly.otherCurrency, quietPull.rows[0].metadata.catalog.warnings], [0, undefined])
+
   // Sent as it is, with the note recorded on the product
   assert.equal(items.toCatalogItem(product({ currency: 'USD', price: 20 }), DEFAULTS).price, '20.00 USD')
   const db = fakeDb([{ id: 'p1', organization_id: 'org-1', ...product({ currency: 'USD', price: 20 }) }])
@@ -645,6 +770,33 @@ test('Catalog items: a price in another currency is pointed out, never converted
   assert.deepEqual([byKey['US-1'].currency, byKey['US-1'].price], ['USD', 20])
   assert.deepEqual(byKey['US-1'].metadata.catalog.warnings, ['Priced in USD, but the store sells in INR.'])
   assert.equal(byKey['IN-1'].metadata.catalog.warnings, undefined)
+})
+
+test('Catalog items: the dashboard keeps sending until nothing waits, and stops at a refusal', () => {
+  const run = (...batches) => batches.reduce((totals, batch) => items.tallyPushBatch(totals, batch), items.EMPTY_PUSH_RUN)
+  const batch = (pushed, remaining, cursor, extra = {}) => ({ sent: pushed, rejected: 0, pushed, remaining, cursor, problems: [], ...extra })
+
+  // 10,000 outside the catalog: three requests of 3,000, then the rest, each going on from the last
+  const first = run(batch(3000, 7000, 'c1', { sent: 2990, rejected: 10, problems: [{ title: 'Kurta', errors: ['Add a photo.'] }] }))
+  assert.equal(first.next, 'c1')
+  assert.equal(items.describePushRun(first), `${(3000).toLocaleString()} of ${(10000).toLocaleString()} sent…`)
+  const second = run(batch(3000, 7000, 'c1'), batch(3000, 4000, 'c2'))
+  assert.deepEqual([second.next, second.pushed, second.remaining], ['c2', 6000, 4000])
+  const done = run(batch(3000, 7000, 'c1', { sent: 2990, rejected: 10, problems: [{ title: 'Kurta', errors: ['Add a photo.'] }] }), batch(3000, 4000, 'c2'), batch(3000, 1000, 'c3'), batch(1000, 0, 'c4'))
+  assert.deepEqual([done.next, done.sent, done.rejected, done.pushed, done.remaining], [null, 9990, 10, 10000, 0])
+  assert.deepEqual(done.problems, [{ title: 'Kurta', errors: ['Add a photo.'] }])
+
+  // A request Meta refused outright would refuse the next too; one that got somewhere goes on
+  const refused = run(batch(3000, 7000, 'c1', { sent: 0, rejected: 3000, requestError: 'The WhatsApp connection has expired or was removed.' }))
+  assert.deepEqual([refused.next, refused.requestError, refused.rejected], [null, 'The WhatsApp connection has expired or was removed.', 3000])
+  assert.equal(run(batch(3000, 7000, 'c1', { sent: 2000, rejected: 1000, requestError: 'Meta is receiving too many catalog updates right now.' })).next, 'c1')
+  // Nothing taken on, or nowhere to go on from: over, whatever "remaining" says
+  assert.equal(run(batch(0, 5, 'c1')).next, null)
+  assert.equal(run(batch(5, 5, null)).next, null)
+  assert.equal(run({}).next, null)
+  // The first refusal is the one reported, and at most five examples are kept
+  const noisy = run(batch(1, 9, 'c1', { requestError: 'first', sent: 1 }), batch(1, 8, 'c2', { requestError: 'second', sent: 1, problems: Array.from({ length: 6 }, (_, index) => ({ title: `P${index}`, errors: ['x'] })) }))
+  assert.deepEqual([noisy.requestError, noisy.problems.length], ['first', 5])
 })
 
 test('Catalog sync: Meta’s answer for each item lands on that product, across batches', async () => {

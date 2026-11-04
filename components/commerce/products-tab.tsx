@@ -6,12 +6,15 @@ import type { CommerceProduct } from '@/lib/types'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
-import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
+import { EMPTY_PUSH_RUN, PRODUCT_CONDITIONS, describePushRun, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, tallyPushBatch, type CatalogState, type PushBatch } from '@/lib/commerce/catalog-items'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
 const PAGE_SIZE = 24
 /** WhatsApp shows at most 30 products in one message. */
 const MAX_COLLECTION = 30
+/** How often, and for how long at a stretch, the tab asks Meta how the products it is still processing went. */
+const POLL_INTERVAL_MS = 30 * 1000
+const POLL_FOR_MS = 5 * 60 * 1000
 
 const EMPTY_FORM = {
   id: '', title: '', retailer_id: '', price: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true,
@@ -92,7 +95,13 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [catalogCounts, setCatalogCounts] = useState({ sending: 0, attention: 0, notSent: 0 })
   // Set while the last sync could not read the whole catalog
   const [syncNotice, setSyncNotice] = useState('')
-  const refreshTriesRef = useRef(0)
+  // While Meta is processing products: when this stretch of asking about them began, and whether it gave up
+  const pollStartRef = useRef<number | null>(null)
+  const [pollRound, setPollRound] = useState(0)
+  const [pollTimedOut, setPollTimedOut] = useState(false)
+  // The "send all" run under way, so it can be stopped when the tab closes
+  const pushRef = useRef<AbortController | null>(null)
+  const [pushProgress, setPushProgress] = useState('')
 
   // Products selected for a collection. Kept by id so the selection survives paging and searching.
   const [picked, setPicked] = useState<Map<string, CommerceProduct>>(new Map())
@@ -141,25 +150,54 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     load(1)
   }, [load])
 
-  // Meta processes catalog changes in the background. While some are outstanding, ask how they went.
+  // Meta processes catalog changes in the background. While some are outstanding, ask how they went
+  // every half minute, for up to five minutes at a stretch; after that the owner is told to press Sync.
   useEffect(() => {
-    if (!canManageStore || !catalogLinked || catalogCounts.sending === 0 || refreshTriesRef.current >= 12) return
+    if (!canManageStore || !catalogLinked || catalogCounts.sending === 0) {
+      pollStartRef.current = null
+      setPollTimedOut(false)
+      return
+    }
+    if (isPushing) return
+    if (pollStartRef.current === null) pollStartRef.current = Date.now()
+    if (Date.now() - pollStartRef.current >= POLL_FOR_MS) {
+      setPollTimedOut(true)
+      return
+    }
+    const round = new AbortController()
     const timer = setTimeout(async () => {
-      refreshTriesRef.current += 1
       try {
         await fetch('/api/commerce/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ organizationId: orgId, action: 'refresh_catalog' }),
+          signal: round.signal,
         })
       } catch {
         // Tried again on the next round
       }
-      load(page, { silent: true })
-    }, 30000)
-    return () => clearTimeout(timer)
-    // `products` changes with every reload, which schedules the next round
-  }, [canManageStore, catalogLinked, catalogCounts.sending, orgId, load, page, products])
+      if (round.signal.aborted) return
+      await load(page, { silent: true })
+      // Schedules the next round, unless the counts now say nothing is outstanding
+      if (!round.signal.aborted) setPollRound((count) => count + 1)
+    }, POLL_INTERVAL_MS)
+    // When the tab closes or the list changes under it, the round is dropped: nothing runs after it
+    return () => {
+      clearTimeout(timer)
+      round.abort()
+    }
+  }, [canManageStore, catalogLinked, catalogCounts.sending, isPushing, orgId, load, page, pollRound])
+
+  // A "send all" run still going when the tab closes stops there
+  useEffect(() => () => pushRef.current?.abort(), [])
+
+  /** Start a fresh five minutes of asking Meta about the products it is processing. */
+  const restartPolling = () => {
+    pollStartRef.current = null
+    setPollTimedOut(false)
+    // Schedules a round even when the counts come back unchanged, which alone would not
+    setPollRound((count) => count + 1)
+  }
 
   // Changes made in Commerce Manager (added, edited or deleted products) are brought in when the list
   // opens, at most every 10 minutes per browser. Quiet: the Sync button reports in detail.
@@ -208,7 +246,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The catalog could not be synced')
-      refreshTriesRef.current = 0
+      restartPolling()
       setSyncNotice(data.incomplete ? incompleteNotice(data.total || 0) : '')
       await load(1, { silent: true })
       const removed = data.removed ? ` ${data.removed} no longer in the catalog ${data.removed === 1 ? 'was' : 'were'} removed.` : ''
@@ -223,38 +261,59 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     }
   }
 
-  /** Send every product that is not in the WhatsApp catalog yet (and retry the ones Meta turned down). */
+  /**
+   * Send every product that is not in the WhatsApp catalog yet (and retry the ones Meta turned down),
+   * in as many requests as the store needs: each sends a few thousand and says how many still wait.
+   */
   async function sendToCatalog() {
+    const run = new AbortController()
+    pushRef.current = run
     setIsPushing(true)
+    let totals = EMPTY_PUSH_RUN
     try {
-      const res = await fetch('/api/commerce/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationId: orgId, action: 'push_meta' }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'The products could not be sent to your catalog')
-      refreshTriesRef.current = 0
+      let after: string | null = null
+      do {
+        // The types are spelled out: `after` feeds the request and is set from its answer, which TypeScript otherwise reads as circular
+        const res: Response = await fetch('/api/commerce/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organizationId: orgId, action: 'push_meta', ...(after ? { after } : {}) }),
+          signal: run.signal,
+        })
+        const data: PushBatch & { error?: string } = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || 'The products could not be sent to your catalog')
+        totals = tallyPushBatch(totals, data)
+        after = totals.next
+        if (after) setPushProgress(describePushRun(totals))
+      } while (after)
+      if (run.signal.aborted) return
+      restartPolling()
       await load(page, { silent: true })
 
-      if (data.requestError && !data.sent) {
-        alert({ title: 'Nothing was added to your catalog', message: data.requestError })
+      if (totals.requestError && !totals.sent) {
+        alert({ title: 'Nothing was added to your catalog', message: totals.requestError })
         return
       }
-      if (data.sent) showToast('success', `${data.sent} product${data.sent === 1 ? '' : 's'} sent to your WhatsApp catalog. They usually appear within a few minutes.`)
-      if (data.rejected) {
-        const examples = (data.problems || []).map((problem: { title: string; errors: string[] }) => `• ${problem.title}: ${problem.errors[0]}`).join('\n')
+      if (totals.sent) showToast('success', `${totals.sent.toLocaleString()} product${totals.sent === 1 ? '' : 's'} sent to your WhatsApp catalog. They usually appear within a few minutes.`)
+      if (totals.rejected) {
+        const examples = totals.problems.map((problem) => `• ${problem.title}: ${problem.errors[0]}`).join('\n')
         alert({
-          title: `${data.rejected} product${data.rejected === 1 ? ' was' : 's were'} not added`,
-          message: `${examples}${data.rejected > (data.problems || []).length ? '\n…and more.' : ''}\n\nChoose “Needs attention” in the filter to see and fix them.`,
+          title: `${totals.rejected.toLocaleString()} product${totals.rejected === 1 ? ' was' : 's were'} not added`,
+          message: `${examples}${totals.rejected > totals.problems.length ? '\n…and more.' : ''}\n\nChoose “Needs attention” in the filter to see and fix them.`,
         })
-      } else if (!data.sent) {
+      } else if (!totals.sent) {
         showToast('success', 'Every product is already in your WhatsApp catalog.')
       }
     } catch (err: any) {
+      // The tab closed mid-way: nothing to report, and no one to report it to
+      if (run.signal.aborted) return
       showToast('error', err.message)
     } finally {
-      setIsPushing(false)
+      if (pushRef.current === run) pushRef.current = null
+      if (!run.signal.aborted) {
+        setIsPushing(false)
+        setPushProgress('')
+      }
     }
   }
 
@@ -306,7 +365,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       await load(id ? page : 1, { silent: true })
       // A ticked product keeps its ticks but shows its new details
       if (data.product && picked.has(data.product.id)) setPicked((current) => new Map(current).set(data.product.id, data.product))
-      refreshTriesRef.current = 0
+      restartPolling()
       const name = `“${data.product?.title || 'Product'}”`
       if (data.catalog?.state === 'error') {
         alert({
@@ -454,6 +513,22 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         <p role="status" className="flex items-start gap-2 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-200">
           <AlertCircle size={14} className="shrink-0 mt-0.5" />
           <span>{syncNotice}</span>
+        </p>
+      )}
+
+      {isPushing && pushProgress && (
+        <p role="status" className="flex items-start gap-2 px-4 py-2.5 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 text-xs text-sky-800 dark:text-sky-200">
+          <Loader2 size={14} className="shrink-0 mt-0.5 animate-spin" />
+          <span>Sending products to your WhatsApp catalog: {pushProgress}</span>
+        </p>
+      )}
+
+      {pollTimedOut && !isPushing && catalogCounts.sending > 0 && (
+        <p role="status" className="flex items-start gap-2 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-200">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>
+            WhatsApp is still processing {catalogCounts.sending.toLocaleString()} product{catalogCounts.sending === 1 ? '' : 's'} sent to your catalog. Press “Sync catalog” to check on {catalogCounts.sending === 1 ? 'it' : 'them'} again.
+          </span>
         </p>
       )}
 

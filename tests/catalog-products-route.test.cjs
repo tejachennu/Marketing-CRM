@@ -12,10 +12,44 @@ const CATALOG = '700600500400300'
 const P1 = '11111111-1111-4111-8111-111111111111'
 const stub = (file, exports) => { require.cache[file] = { id: file, filename: file, loaded: true, exports } }
 
+/** A column, or a JSON path such as `metadata->catalog->>state`, read from a row. */
+const read = (row, column) => (column.includes('->') ? column.split(/->>?/).reduce((value, key) => (value == null ? null : value[key]), row) : row[column])
+
+function splitTopLevel(text) {
+  const parts = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') depth++
+    else if (text[i] === ')') depth--
+    else if (text[i] === ',' && depth === 0) { parts.push(text.slice(start, i)); start = i + 1 }
+  }
+  parts.push(text.slice(start))
+  return parts
+}
+
+/** A PostgREST filter string as a row predicate. A plain list is an `or`, as `.or(...)` sends it. */
+function parseFilter(text) {
+  const group = text.match(/^(and|or)\((.*)\)$/s)
+  if (group) {
+    const parts = splitTopLevel(group[2]).map(parseFilter)
+    return group[1] === 'and' ? (row) => parts.every((part) => part(row)) : (row) => parts.some((part) => part(row))
+  }
+  if (splitTopLevel(text).length > 1) return parseFilter(`or(${text})`)
+  const [column, op, ...rest] = text.split('.')
+  const value = rest.join('.')
+  switch (op) {
+    case 'eq': return (row) => String(read(row, column)) === value
+    // As in SQL, a missing value is neither equal nor unequal to anything
+    case 'neq': return (row) => read(row, column) != null && String(read(row, column)) !== value
+    case 'is': return (row) => (value === 'null' ? read(row, column) == null : String(read(row, column)) === value)
+    default: throw new Error(`Unsupported filter: ${text}`)
+  }
+}
+
 /** A stand-in for the Supabase client over in-memory tables: the part of the query builder these routes use. */
 function fakeDb(tables) {
   const data = Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, rows.map((row) => ({ ...row }))]))
-  const read = (row, column) => column.split(/->>?/).reduce((value, key) => (value == null ? null : value[key]), row)
   let inserted = 0
   return {
     tables: data,
@@ -62,7 +96,9 @@ function fakeDb(tables) {
         delete: () => { operation = { type: 'delete' }; return query },
         eq: (column, value) => { filters.push((row) => read(row, column) === value); return query },
         neq: (column, value) => { filters.push((row) => read(row, column) !== value); return query },
+        gt: (column, value) => { filters.push((row) => String(read(row, column)) > String(value)); return query },
         in: (column, values) => { filters.push((row) => values.includes(read(row, column))); return query },
+        or: (text) => { filters.push(parseFilter(text)); return query },
         order: () => query,
         limit: (count) => { window = [0, count - 1]; return query },
         range: (from, to) => { window = [from, to]; return query },
@@ -82,7 +118,8 @@ stub(path.join(PROJECT, 'lib/api-auth-helper.ts'), {
   verifyOrgAccess: async () => ({ authorized: true, user: { id: 'u1', role: 'org_admin', organization_id: ORG } }),
 })
 
-// Fake Meta: items_batch takes everything in, unless deletions are refused like an expired connection
+// Fake Meta: items_batch takes everything in, unless deletions are refused like an expired connection,
+// and every batch asked about has finished without complaint
 const meta = { refuseDelete: false, onBatch: null, calls: [] }
 global.fetch = async (input, init = {}) => {
   const url = new URL(String(input))
@@ -90,6 +127,7 @@ global.fetch = async (input, init = {}) => {
   const requests = body.requests ? JSON.parse(body.requests) : []
   meta.calls.push({ path: url.pathname, requests })
   const reply = (payload, status = 200) => new Response(JSON.stringify(payload), { status })
+  if (url.pathname.endsWith('/check_batch_request_status')) return reply({ data: [{ handle: url.searchParams.get('handle'), status: 'finished', errors: [], ids_of_invalid_requests: [] }] })
   if (!url.pathname.endsWith('/items_batch')) throw new Error('Unexpected Meta call: ' + url.pathname)
   if (meta.refuseDelete && requests.some((request) => request.method === 'DELETE')) {
     return reply({ error: { code: 190, message: 'Error validating access token: Session has expired' } }, 400)
@@ -106,7 +144,8 @@ const route = require(path.join(PROJECT, 'app/api/commerce/products/route.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 const BASE = 'https://wamacrm.example.com/api/commerce/products'
 const remove = (id, query = '') => route.DELETE(new NextRequest(`${BASE}?organizationId=${ORG}&id=${id}${query}`, { method: 'DELETE' }))
-const save = (product) => route.POST(new NextRequest(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: ORG, product }) }))
+const post = (body) => route.POST(new NextRequest(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: ORG, ...body }) }))
+const save = (product) => post({ product })
 
 const org = () => ({
   id: ORG, name: 'Asha Textiles', currency: 'INR', meta_catalog_id: CATALOG, whatsapp_api_token: 'TOKEN', whatsapp_graph_api_version: 'v25.0',
@@ -212,4 +251,51 @@ test('Products: an edit saved while the catalog is being copied back is kept', a
   assert.deepEqual(plain.catalog, { linked: false, state: null, errors: [], warnings: [] })
   assert.equal(db.tables.commerce_products[0].metadata.catalog, undefined)
   assert.equal(meta.calls.length, 0)
+})
+
+test('Products: "send all" goes on from where the last request stopped, and says how many are still waiting', async () => {
+  const id = (index) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`
+  // 3,003 products outside the catalog: one whose last send was turned down, then 3,002 never sent
+  reset([
+    shirt({ id: id(1), retailer_id: 'THERE', metadata: inCatalog }),
+    shirt({ id: id(2), retailer_id: 'SENDING', metadata: { catalog: { state: 'pending', handle: 'H0', catalog_id: CATALOG } } }),
+    shirt({ id: id(3), retailer_id: 'TURNED-DOWN', metadata: { catalog: { state: 'error', errors: ['Bad image'], catalog_id: CATALOG } } }),
+    ...Array.from({ length: 3002 }, (_, index) => shirt({ id: id(10 + index), retailer_id: `NEW-${index}`, metadata: {} })),
+  ])
+  const push = (after) => post({ action: 'push_meta', ...(after ? { after } : {}) })
+  const sizes = () => meta.calls.map((call) => call.requests.length)
+
+  const first = await (await push()).json()
+  assert.deepEqual([first.pushed, first.sent, first.rejected, first.remaining], [3000, 3000, 0, 3])
+  assert.equal(first.cursor, id(10 + 2998))                                 // the last product this request looked at
+  assert.deepEqual(sizes(), [1000, 1000, 1000])
+
+  const second = await (await push(first.cursor)).json()
+  assert.deepEqual([second.pushed, second.sent, second.remaining, second.cursor], [3, 3, 0, id(10 + 3001)])
+  assert.deepEqual(sizes(), [1000, 1000, 1000, 3])
+  assert.deepEqual(meta.calls[3].requests.map((request) => request.data.id), ['NEW-2999', 'NEW-3000', 'NEW-3001'])
+
+  // Nothing after the last one: the caller stops here
+  const third = await (await push(second.cursor)).json()
+  assert.deepEqual([third.pushed, third.sent, third.remaining, third.cursor], [0, 0, 0, null])
+  assert.equal(meta.calls.length, 4)
+
+  const byState = (state) => db.tables.commerce_products.filter((row) => row.metadata.catalog?.state === state).map((row) => row.retailer_id)
+  assert.equal(byState('pending').length, 3004)                             // the 3,003 just sent, and the one already on its way
+  assert.deepEqual([byState('synced'), byState('error')], [['THERE'], []])
+  assert.equal(db.tables.commerce_products.find((row) => row.retailer_id === 'SENDING').metadata.catalog.handle, 'H0')   // not sent again
+})
+
+test('Products: a refresh settles the batches Meta has finished', async () => {
+  const sending = { catalog: { state: 'pending', handle: 'H1', synced_at: new Date().toISOString(), catalog_id: CATALOG } }
+  reset([shirt({ metadata: sending }), shirt({ id: '11111111-1111-4111-8111-222222222222', retailer_id: 'SHIRT-002', metadata: sending })])
+  const res = await post({ action: 'refresh_catalog' })
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { success: true, accepted: 2, rejected: 0, pending: 0 })
+  assert.deepEqual(meta.calls.map((call) => call.path), [`/v25.0/${CATALOG}/check_batch_request_status`])
+  assert.deepEqual(db.tables.commerce_products.map((row) => row.metadata.catalog.state), ['synced', 'synced'])
+})
+
+test('Products: the route declares the two minutes a full catalog sync may take', () => {
+  assert.equal(route.maxDuration, 120)
 })

@@ -173,7 +173,12 @@ export function getCatalogItemDefaults(organization: Record<string, any> | null 
  */
 export function getCurrencyMismatch(currency: unknown, defaults: CatalogItemDefaults): string | null {
   const code = currencyCode(currency) || defaults.currency
-  return code === defaults.currency ? null : `Priced in ${code}, but the store sells in ${defaults.currency}.`
+  if (code === defaults.currency) return null
+  // `organizations.currency` was added with a database default of USD (scripts/db-migration-v27.js), and
+  // most stores sell in INR without ever setting it. USD against INR items is that default left in
+  // place, not a store that sells in dollars, so it gets no note; a currency the store chose does.
+  if (defaults.currency === 'USD' && code === 'INR') return null
+  return `Priced in ${code}, but the store sells in ${defaults.currency}.`
 }
 
 /** What stops a product from being sent to the catalog. Empty when it is ready. */
@@ -337,4 +342,59 @@ export function toCatalogProductRow(product: any, kept: ProductAttributes = {}, 
       },
     },
   }
+}
+
+/** What one "send all" request answers (the products route's `push_meta`): a few thousand products at a time. */
+export interface PushBatch {
+  sent?: number
+  rejected?: number
+  /** Products this request took on, sent or turned down. */
+  pushed?: number
+  /** Products still waiting after them. */
+  remaining?: number
+  /** Where the next request goes on from. */
+  cursor?: string | null
+  /** Set when Meta refused the request as a whole. */
+  requestError?: string
+  problems?: Array<{ title: string; errors: string[] }>
+}
+
+/** The dashboard's running total over one "send all" run, and where its next request goes on from: null once the run is over. */
+export interface PushRun {
+  sent: number
+  rejected: number
+  pushed: number
+  remaining: number
+  requestError: string
+  problems: Array<{ title: string; errors: string[] }>
+  next: string | null
+}
+
+export const EMPTY_PUSH_RUN: PushRun = { sent: 0, rejected: 0, pushed: 0, remaining: 0, requestError: '', problems: [], next: null }
+
+/**
+ * Add a request's answer to the run. It goes on while products still wait and the last request got
+ * somewhere: one Meta refused outright (an expired connection, no access) would refuse the next too.
+ */
+export function tallyPushBatch(run: PushRun, batch: PushBatch): PushRun {
+  const sent = Number(batch.sent) || 0
+  const pushed = Number(batch.pushed) || 0
+  const remaining = Math.max(0, Number(batch.remaining) || 0)
+  const cursor = typeof batch.cursor === 'string' && batch.cursor ? batch.cursor : null
+  const refused = Boolean(batch.requestError) && sent === 0
+  return {
+    sent: run.sent + sent,
+    rejected: run.rejected + (Number(batch.rejected) || 0),
+    pushed: run.pushed + pushed,
+    remaining,
+    requestError: run.requestError || String(batch.requestError || ''),
+    // A few examples are enough for the summary
+    problems: [...run.problems, ...(Array.isArray(batch.problems) ? batch.problems : [])].slice(0, 5),
+    next: remaining > 0 && pushed > 0 && !refused ? cursor : null,
+  }
+}
+
+/** The line shown while a run goes on: "3,000 of 10,000 sent…". */
+export function describePushRun(run: PushRun): string {
+  return `${run.pushed.toLocaleString()} of ${(run.pushed + run.remaining).toLocaleString()} sent…`
 }
