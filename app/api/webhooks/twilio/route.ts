@@ -138,53 +138,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Step 1: Find the organization
-    // Try to find via existing contact with this phone number first
+    // Step 1: Find the organization. This address names no workspace, so the workspace is the one
+    // whose Twilio WhatsApp number the customer wrote to. Guessing (a contact with the same number in
+    // any workspace, the most recently active user) would file one tenant's customer under another.
     let orgId: string | null = null
+    const toNumber = to.replace('whatsapp:', '').trim()
+    const toDigits = toNumber.replace(/\D/g, '')
+    if (toDigits) {
+      const { data: candidates } = await supabase
+        .from('organizations')
+        .select('id, twilio_whatsapp_number')
+        .not('twilio_whatsapp_number', 'is', null)
+      const owners = (candidates || []).filter((org: any) => String(org.twilio_whatsapp_number || '').replace(/\D/g, '') === toDigits)
+      if (owners.length === 1) orgId = owners[0].id
+    }
 
-    const { data: existingContact } = await supabase
-      .from('contacts')
-      .select('id, organization_id')
-      .eq('phone_number', phoneNumber)
-      .limit(1)
-      .maybeSingle()
-
-    if (existingContact) {
-      orgId = existingContact.organization_id
-    } else {
-      // No contact with this phone — find the most recently active real user (non-demo)
-      const { data: realUsers } = await supabase
-        .from('users')
-        .select('organization_id')
-        .not('email', 'like', '%@test.local')
-        .order('updated_at', { ascending: false })
-        .limit(1)
-
-      if (realUsers && realUsers.length > 0) {
-        orgId = realUsers[0].organization_id
+    if (!orgId) {
+      // A single-workspace installation keeps working without the number saved in Settings
+      const { data: orgs } = await supabase.from('organizations').select('id').limit(2)
+      if (orgs && orgs.length === 1) {
+        orgId = orgs[0].id
       } else {
-        // Fallback to the most recently active user overall
-        const { data: anyUsers } = await supabase
-          .from('users')
-          .select('organization_id')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-
-        if (anyUsers && anyUsers.length > 0) {
-          orgId = anyUsers[0].organization_id
-        } else {
-          // Absolute fallback: first organization in db
-          const { data: orgs } = await supabase
-            .from('organizations')
-            .select('id')
-            .limit(1)
-
-          if (!orgs || orgs.length === 0) {
-            console.error('[v0] No organization found in database')
-            return NextResponse.json({ error: 'No organization found' }, { status: 400 })
-          }
-          orgId = orgs[0].id
-        }
+        console.error(`[v0] No single workspace owns the Twilio number ${toNumber || '(none)'}; message ignored. Point Twilio at /api/webhooks/twilio/<workspace id> or save the number in Settings.`)
+        // Acknowledged, so Twilio does not retry a message no workspace can take
+        return NextResponse.json({ success: true, ignored: true, reason: 'No workspace owns this number' })
       }
     }
 
@@ -241,18 +218,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 2: Find or create the contact
+    // Step 2: Find or create the contact, in this workspace only
     let contact: any = null
 
-    if (existingContact) {
-      // We already found the contact above
-      const { data: fullContact } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('id', existingContact.id)
-        .single()
+    const { data: existingContact } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('phone_number', phoneNumber)
+      .limit(1)
+      .maybeSingle()
 
-      contact = fullContact
+    if (existingContact) {
+      contact = existingContact
     } else {
       // Auto-create a new contact for this unknown sender
       const { data: newContact, error: createError } = await supabase

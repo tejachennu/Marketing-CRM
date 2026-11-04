@@ -85,3 +85,29 @@ test('Twilio inbound: the address without a workspace refuses unsigned messages 
   assert.equal(res.status, 403)
   assert.deepEqual(writes, [])
 })
+
+test('Twilio inbound: the address without a workspace never guesses which workspace a message belongs to', async () => {
+  reset()
+  const OTHER = '88888888-8888-4888-8888-888888888888'
+  tables.organizations.push({ id: OTHER, whatsapp_provider: 'twilio', twilio_auth_token: 'other-token', twilio_whatsapp_number: '+15550002222' })
+  tables.contacts = [{ id: 'c-other', organization_id: OTHER, phone_number: '+14165550123' }] // the same customer, known elsewhere
+  const url = 'https://wamacrm.example.com/api/webhooks/twilio'
+  const unknownNumber = { ...fields, To: 'whatsapp:+15550009999' }
+  const res = await legacyRoute.POST(new NextRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilio.getExpectedTwilioSignature(TOKEN, url, unknownNumber) },
+    body: new URLSearchParams(unknownNumber).toString(),
+  }))
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).ignored, true)
+  assert.deepEqual(writes, [])
+
+  // The number names its workspace; a signature from another workspace's account is still refused
+  const known = await legacyRoute.POST(new NextRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilio.getExpectedTwilioSignature('other-token', url, fields) },
+    body: new URLSearchParams(fields).toString(),
+  }))
+  assert.equal(known.status, 403)
+  assert.deepEqual(writes, [])
+})
