@@ -6,6 +6,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const dns = require('node:dns')
+const http = require('node:http')
+const https = require('node:https')
+const { EventEmitter } = require('node:events')
+const { Readable } = require('node:stream')
 
 const PROJECT = path.join(__dirname, '..')
 const ORG = '99999999-9999-4999-8999-999999999999'
@@ -89,8 +93,8 @@ const db = {
 const meta = { fails: false }
 const metaSent = [] // payloads posted to /messages
 const uploads = [] // files posted to /media
-const fetched = [] // every GET of a media URL, with its options
-let mediaAnswers = {} // url → () => Response
+const fetched = [] // every GET of a media URL, with the URL and options it was opened with
+let mediaAnswers = {} // url → () => a fake response
 global.fetch = async (input, init = {}) => {
   const url = new URL(String(input))
   if (url.hostname === 'graph.facebook.com' && url.pathname.endsWith('/messages')) {
@@ -103,10 +107,28 @@ global.fetch = async (input, init = {}) => {
     uploads.push(init.body.get('file'))
     return new Response(JSON.stringify({ id: 'MEDIA_1' }))
   }
-  fetched.push({ url: url.href, init })
-  const answer = mediaAnswers[url.href]
-  if (!answer) throw new Error('Unexpected fetch: ' + url.href)
-  return answer()
+  throw new Error('Unexpected fetch: ' + url.href)
+}
+
+// Media is downloaded with node:http(s), each connection through a checked lookup: a fake transport
+// records how each request was opened and answers from mediaAnswers
+const originalRequests = { http: http.request, https: https.request }
+function fakeRequest(url, options, callback) {
+  fetched.push({ url: url.href, target: url, options })
+  const request = new EventEmitter()
+  request.end = () => setImmediate(() => {
+    const answer = mediaAnswers[url.href]
+    if (!answer) return request.emit('error', new Error('Unexpected request: ' + url.href))
+    callback(answer())
+  })
+  return request
+}
+http.request = fakeRequest
+https.request = fakeRequest
+test.after(() => { http.request = originalRequests.http; https.request = originalRequests.https })
+/** A response as http.request hands it over: a stream with a status and lower-case headers. */
+function mediaResponse(status, headers, body = Buffer.alloc(0)) {
+  return Object.assign(Readable.from(body.length ? [body] : []), { statusCode: status, statusMessage: status === 200 ? 'OK' : '', headers })
 }
 
 const twilio = { fails: false }
@@ -140,6 +162,7 @@ console.warn = () => {}
 console.error = () => {}
 
 const route = require(path.join(PROJECT, 'app/api/messages/send/route.ts'))
+const { lookupPublicAddress } = require(path.join(PROJECT, 'lib/utils.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 
 const manager = { id: MANAGER, role: 'org_manager', organization_id: ORG }
@@ -200,6 +223,32 @@ test('Send: an assigned-only agent who replies to a handed-off chat takes it, on
   assert.equal(chat().handed_off_at, null) // out of the hand-off queue
   assert.deepEqual(claim.where, [['eq', 'id', CHAT], ['eq', 'organization_id', ORG], ['is', 'assigned_to', null]])
   assert.equal(stored()[0].status, 'sent')
+})
+
+test('Send: before the hand-off migration an agent does not answer an unowned chat with the chatbot off', async () => {
+  // A row without handed_off_at: the chatbot being off may only mean a manager is answering, so it
+  // is no hand-off, and the agent neither reads, answers nor takes the chat
+  reset()
+  delete chat().handed_off_at
+  const answer = await send({ conversationId: CHAT, message: 'Hello from Ravi', channel: 'whatsapp' })
+  assert.equal(answer.status, 403)
+  assert.equal(metaSent.length, 0)
+  assert.equal(chat().assigned_to, null)
+  assert.equal(assignments().length, 0)
+
+  // The agent's own lead still lets them in, and their reply takes the chat
+  reset()
+  delete chat().handed_off_at
+  tables.leads = [{ id: 'lead-1', organization_id: ORG, contact_id: CONTACT, assigned_to: AGENT, status: 'active' }]
+  assert.equal((await send({ conversationId: CHAT, message: 'Hello from Ravi', channel: 'whatsapp' })).status, 200)
+  assert.equal(chat().assigned_to, AGENT)
+
+  // A manager answers as before
+  reset()
+  delete chat().handed_off_at
+  caller = manager
+  assert.equal((await send({ conversationId: CHAT, message: 'Hello', channel: 'whatsapp' })).status, 200)
+  assert.equal(chat().assigned_to, null)
 })
 
 test('Send: a send that fails leaves the chat unowned, the failed message still on record', async () => {
@@ -455,7 +504,7 @@ test('Send: outside the 24-hour window a free-form WhatsApp message is refused; 
 test("Send: the 24-hour window is the customer's, found across every chat row of theirs", async () => {
   const NEWEST_CHAT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
   const NEIGHBOUR = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' // another customer of the same organization
-  const row = (id, lastMessageHoursAgo, extra = {}) => ({ id, organization_id: ORG, contact_id: CONTACT, assigned_to: null, auto_reply_enabled: false, last_message_at: hoursAgo(lastMessageHoursAgo), ...extra })
+  const row = (id, lastMessageHoursAgo, extra = {}) => ({ id, organization_id: ORG, contact_id: CONTACT, assigned_to: null, auto_reply_enabled: false, handed_off_at: hoursAgo(2), last_message_at: hoursAgo(lastMessageHoursAgo), ...extra })
   const inbound = (conversationId, sentHoursAgo, organizationId = ORG) => ({ id: `in-${conversationId}-${sentHoursAgo}`, organization_id: organizationId, conversation_id: conversationId, sender_type: 'contact', body: 'Hi', created_at: hoursAgo(sentHoursAgo) })
   const windowReads = () => ({
     chats: reads.filter((read) => read.table === 'conversations' && read.where.some(([, column]) => column === 'contact_id')).at(-1),
@@ -531,8 +580,8 @@ test("Send: the 24-hour window is the customer's, found across every chat row of
 })
 
 test('Send: media is downloaded with each redirect checked, never from a private address, and never more than 16 MB', async () => {
-  const image = (bytes) => () => new Response(Buffer.alloc(bytes, 1), { status: 200, headers: { 'content-type': 'image/png' } })
-  const redirect = (to) => () => new Response(null, { status: 302, headers: { location: to } })
+  const image = (bytes) => () => mediaResponse(200, { 'content-type': 'image/png' }, Buffer.alloc(bytes, 1))
+  const redirect = (to) => () => mediaResponse(302, { location: to })
   const sendImage = (mediaUrl) => send({ conversationId: CHAT, message: 'Look', mediaUrl, channel: 'whatsapp' })
 
   // A public name: downloaded and uploaded to Meta, with redirects handled by hand and a time limit
@@ -543,8 +592,16 @@ test('Send: media is downloaded with each redirect checked, never from a private
   assert.equal(answer.status, 200)
   assert.deepEqual(fetched.map((call) => call.url), ['https://cdn.example.com/a.png', 'https://cdn.example.com/real/a.png'])
   for (const call of fetched) {
-    assert.equal(call.init.redirect, 'manual')
-    assert.ok(call.init.signal instanceof AbortSignal, 'a time limit is set')
+    // Connected only to an address the lookup accepted, on a connection of its own, with a time limit
+    assert.equal(call.options.lookup, lookupPublicAddress)
+    assert.equal(call.options.agent, false)
+    assert.ok(call.options.signal instanceof AbortSignal, 'a time limit is set')
+    // The name stays the name: TLS checks the certificate for it and the Host header carries it
+    assert.equal(call.target.hostname, 'cdn.example.com')
+    assert.equal(call.options.host, undefined)
+    assert.equal(call.options.servername, undefined)
+    // No Host override; a User-Agent, since some media hosts refuse a request without one
+    assert.deepEqual(call.options.headers, { 'user-agent': 'WAMA-CRM media fetch', accept: '*/*' })
   }
   assert.equal(uploads.length, 1)
   assert.equal(uploads[0].size, 2048)
@@ -581,7 +638,7 @@ test('Send: media is downloaded with each redirect checked, never from a private
 
   // Too large: announced up front, or discovered while reading
   reset()
-  mediaAnswers['https://cdn.example.com/big.png'] = () => new Response(Buffer.alloc(16), { status: 200, headers: { 'content-type': 'image/png', 'content-length': String(16 * 1024 * 1024 + 1) } })
+  mediaAnswers['https://cdn.example.com/big.png'] = () => mediaResponse(200, { 'content-type': 'image/png', 'content-length': String(16 * 1024 * 1024 + 1) }, Buffer.alloc(16))
   await sendImage('https://cdn.example.com/big.png')
   assert.equal(uploads.length, 0)
   assert.deepEqual(metaSent[0].image, { link: 'https://cdn.example.com/big.png', caption: 'Look' })
@@ -593,4 +650,11 @@ test('Send: media is downloaded with each redirect checked, never from a private
   mediaAnswers['https://cdn.example.com/big.png'] = image(16 * 1024 * 1024)
   await sendImage('https://cdn.example.com/big.png')
   assert.equal(uploads.length, 1, 'exactly 16 MB is still accepted')
+
+  // A failed answer is not uploaded either
+  reset()
+  mediaAnswers['https://cdn.example.com/gone.png'] = () => mediaResponse(404, {})
+  await sendImage('https://cdn.example.com/gone.png')
+  assert.equal(uploads.length, 0)
+  assert.deepEqual(metaSent[0].image, { link: 'https://cdn.example.com/gone.png', caption: 'Look' })
 })

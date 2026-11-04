@@ -38,7 +38,7 @@ const DB = {
   },
 }
 
-const { canAccessConversation, getAssignedConversationScope, verifyConversationAccess, HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff, onlyHandedOff, assignConversation, clearHandOff } = require(path.join(PROJECT, 'lib/record-visibility.ts'))
+const { canAccessConversation, getAssignedConversationScope, verifyConversationAccess, HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff, isStampedHandOff, onlyHandedOff, assignConversation, clearHandOff } = require(path.join(PROJECT, 'lib/record-visibility.ts'))
 const { describeDenied } = require(path.join(PROJECT, 'lib/rbac.ts'))
 const { NextRequest } = require(require.resolve('next/server', { paths: [PROJECT] }))
 
@@ -56,12 +56,19 @@ test('Hand-off: the rule names a chat a flow handed to the team that nobody has 
   assert.equal(isHandedOff({ assigned_to: null, handed_off_at: null, auto_reply_enabled: false }), false)
   assert.equal(isHandedOff({ assigned_to: null, handed_off_at: null, auto_reply_enabled: true }), false)
 
-  // A row without the column (the migration has not run): the old inferred rule
+  // A row without the column (the migration has not run): the old inferred rule, for what managers see
   assert.equal(isHandedOff({ assigned_to: null, auto_reply_enabled: false }), true)
   assert.equal(isHandedOff({ assigned_to: null, auto_reply_enabled: true }), false)
   assert.equal(isHandedOff({ assigned_to: null, auto_reply_enabled: null }), false)
   assert.equal(isHandedOff({ assigned_to: null }), false)
   assert.equal(LEGACY_HANDED_OFF_FILTER, 'and(assigned_to.is.null,auto_reply_enabled.eq.false)')
+
+  // What grants access: only a real stamp, never the inference
+  assert.equal(isStampedHandOff({ assigned_to: null, handed_off_at: NOW }), true)
+  assert.equal(isStampedHandOff({ assigned_to: undefined, handed_off_at: NOW }), true)
+  assert.equal(isStampedHandOff({ assigned_to: TEAMMATE, handed_off_at: NOW }), false)
+  assert.equal(isStampedHandOff({ assigned_to: null, handed_off_at: null, auto_reply_enabled: false }), false)
+  assert.equal(isStampedHandOff({ assigned_to: null, auto_reply_enabled: false }), false) // no column: no hand-off to open
 
   // The query form of the same rule, and of the legacy one
   const applied = []
@@ -89,7 +96,8 @@ test('Hand-off: the assigned scope is unchanged and the visible scope adds the q
   const bare = await getAssignedConversationScope(DB, TEAMMATE, ORG)
   assert.equal(bare.orFilter, `assigned_to.eq.${TEAMMATE}`)
   assert.equal(bare.visibleFilter, `assigned_to.eq.${TEAMMATE},and(handed_off_at.not.is.null,assigned_to.is.null)`)
-  assert.equal(bare.legacyVisibleFilter, `assigned_to.eq.${TEAMMATE},and(assigned_to.is.null,auto_reply_enabled.eq.false)`)
+  // Nothing in the scope widens it by the inferred rule of a database without the column
+  assert.equal('legacyVisibleFilter' in bare, false)
 })
 
 test('Hand-off: opening one chat follows the same rule', async () => {
@@ -100,7 +108,11 @@ test('Hand-off: opening one chat follows the same rule', async () => {
   assert.equal(await canAccessConversation(DB, agent, conv({ handed_off_at: null, auto_reply_enabled: false })), false)                       // a manager's reply is no hand-off
   assert.equal(await canAccessConversation(DB, agent, conv({ handed_off_at: null, auto_reply_enabled: true })), false)                        // the chatbot has it
   assert.equal(await canAccessConversation(DB, agent, conv({ assigned_to: TEAMMATE, handed_off_at: NOW, auto_reply_enabled: false })), false) // a teammate's chat
-  assert.equal(await canAccessConversation(DB, agent, conv({ auto_reply_enabled: false })), true)                                             // no column yet: the old rule
+  // No column yet: the chatbot being off is also what a manager's reply leaves behind, so it opens nothing
+  assert.equal(await canAccessConversation(DB, agent, conv({ auto_reply_enabled: false })), false)
+  tables.leads = [{ id: 'l2', organization_id: ORG, contact_id: CONTACT, assigned_to: AGENT, status: 'active' }]
+  assert.equal(await canAccessConversation(DB, agent, conv({ contact_id: CONTACT, auto_reply_enabled: false })), true) // the agent's own lead still does
+  tables.leads = []
   assert.equal(await canAccessConversation(DB, null, conv({ handed_off_at: NOW })), false)
 })
 
@@ -128,6 +140,19 @@ test('Hand-off: a single-chat request reads the chatbot state and lets an agent 
 
   caller = null
   assert.equal((await verifyConversationAccess(request, DB, CHAT)).status, 401)
+})
+
+test('Hand-off: before the migration a single-chat request does not let an agent into an unowned chat with the chatbot off', async () => {
+  const request = new NextRequest(`https://wamacrm.example.com/api/messages?conversationId=${CHAT}`)
+  caller = agent
+  tables.leads = []
+  tables.tickets = []
+  // The row as loadConversationRef reads it without the column: no handed_off_at key at all
+  tables.conversations = [conv({ auto_reply_enabled: false })]
+  const result = await verifyConversationAccess(request, DB, CHAT)
+  assert.equal(result.authorized, false)
+  assert.equal(result.status, 403)
+  caller = null
 })
 
 /** A fake update chain: records what was written and where, and can fail like a missing column. */

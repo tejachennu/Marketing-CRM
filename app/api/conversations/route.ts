@@ -100,9 +100,11 @@ export async function GET(request: NextRequest) {
       matchedContactIds = (matchedContacts || []).map((c: any) => c.id)
     }
 
-    // `legacy` reads the queue the old way, for a database the hand-off migration has not reached yet
+    // `legacy` reads the queue the old way, for a database the hand-off migration has not reached yet.
+    // That inferred queue (nobody assigned, chatbot off) also holds every chat a manager answered
+    // without taking, so it is only a manager's view: it never widens what an assigned-only user sees.
     const list = async (legacy: boolean): Promise<Listing> => {
-      const visibleFilter = scope ? (seeAll ? scope.orFilter : legacy ? scope.legacyVisibleFilter : scope.visibleFilter) : null
+      const visibleFilter = scope ? (seeAll || legacy ? scope.orFilter : scope.visibleFilter) : null
 
       let query = supabase
         .from('conversations')
@@ -127,8 +129,12 @@ export async function GET(request: NextRequest) {
         sumQuery = sumQuery.or(visibleFilter)
       }
 
-      // Every list answer carries the queue size, so the inbox shows its badge without another request
-      const needsAgentQuery = onlyHandedOff(supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId), legacy)
+      // Every list answer carries the queue size, so the inbox shows its badge without another request.
+      // An assigned-only user counts only the queued chats they can open (with the column, the whole queue).
+      let needsAgentQuery = onlyHandedOff(supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId), legacy)
+      if (visibleFilter && !seeAll) {
+        needsAgentQuery = needsAgentQuery.or(visibleFilter)
+      }
       const [{ data: sumData, error: sumError }, { count: waiting, error: waitingError }] = await Promise.all([sumQuery, needsAgentQuery])
       if (!legacy && (isHandOffColumnMissing(sumError) || isHandOffColumnMissing(waitingError))) throw sumError || waitingError
       const unreadMessagesCount = (sumData || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0)

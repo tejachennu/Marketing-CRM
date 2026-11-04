@@ -5,7 +5,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { canSeeAll, describeDenied } from '@/lib/rbac'
 import { assignConversation, canAccessConversation, clearHandOff, findOtherHandler } from '@/lib/record-visibility'
 import { MASTER_ORG_ID } from '@/lib/constants'
-import { assertPublicHttpUrl } from '@/lib/utils'
+import { downloadPublicHttpUrl } from '@/lib/utils'
 import { parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { isUuid } from '@/lib/record-visibility'
 import fs from 'fs'
@@ -40,43 +40,6 @@ const WINDOW_CHATS_LIMIT = 50
 
 /** A phone number as digits only, so "+1 (416) 555-0123" and "whatsapp:14165550123" compare equal. */
 const phoneDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '')
-
-/**
- * Fetch a media URL, following at most a few redirects and checking each one again: a public
- * host may answer with a Location on the private network, which `fetch` would follow on its own.
- */
-async function downloadMedia(url: string): Promise<Response> {
-  let current = url
-  for (let hop = 0; ; hop++) {
-    const res = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) })
-    const location = res.headers.get('location')
-    if (res.status < 300 || res.status >= 400 || !location) return res
-    await res.body?.cancel().catch(() => {})
-    if (hop >= MEDIA_MAX_REDIRECTS) throw new Error(`Media URL redirects more than ${MEDIA_MAX_REDIRECTS} times`)
-    current = new URL(location, current).toString()
-    await assertPublicHttpUrl(current)
-  }
-}
-
-/** The body of a response, refused before it is held in memory once it is known to exceed `maxBytes`. */
-async function readBodyUpTo(res: Response, maxBytes: number): Promise<Buffer> {
-  const tooLarge = () => new Error(`Media is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`)
-  if (Number(res.headers.get('content-length')) > maxBytes) throw tooLarge()
-  if (!res.body) return Buffer.alloc(0)
-
-  const chunks: Buffer[] = []
-  let total = 0
-  const reader = res.body.getReader()
-  for (let next = await reader.read(); !next.done; next = await reader.read()) {
-    total += next.value.byteLength
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {})
-      throw tooLarge()
-    }
-    chunks.push(Buffer.from(next.value))
-  }
-  return Buffer.concat(chunks)
-}
 
 async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
   try {
@@ -117,24 +80,27 @@ async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer
 
     // Fallback to fetch for external URLs or other paths
     let fullUrl = mediaUrl;
-    if (mediaUrl.startsWith('/')) {
+    const ownPath = mediaUrl.startsWith('/');
+    if (ownPath) {
       // A path on this app
       const runtimeUrl = process.env.V0_RUNTIME_URL || 'http://localhost:3000';
       fullUrl = `${runtimeUrl}${mediaUrl}`;
-    } else {
-      // The server downloads this address, so it must not point at this machine or the private
-      // network, whatever name it hides behind; a refusal throws and is logged below
-      await assertPublicHttpUrl(mediaUrl);
     }
 
+    // The server downloads this address, so it must not point at this machine or the private
+    // network, whatever name it hides behind: every hop is checked, and connected only to the
+    // address that was checked (a name cannot change its answer in between). Only this app's own
+    // base URL is trusted, never a redirect from it. A refusal throws and is logged below.
     console.log(`[Messages Send] Fetching external media URL: ${fullUrl}`);
-    const res = await downloadMedia(fullUrl);
-    if (!res.ok) {
-      throw new Error(`Failed to download media: ${res.status} ${res.statusText}`);
-    }
+    const download = await downloadPublicHttpUrl(fullUrl, {
+      maxBytes: MEDIA_MAX_BYTES,
+      maxRedirects: MEDIA_MAX_REDIRECTS,
+      timeoutMs: MEDIA_TIMEOUT_MS,
+      trustFirstHop: ownPath,
+    });
 
-    const mimeType = res.headers.get('content-type') || 'image/png';
-    const buffer = await readBodyUpTo(res, MEDIA_MAX_BYTES);
+    const mimeType = download.contentType || 'image/png';
+    const buffer = download.buffer;
     const filename = fullUrl.split('/').pop()?.split('?')[0] || 'file';
 
     return { buffer, mimeType, filename };

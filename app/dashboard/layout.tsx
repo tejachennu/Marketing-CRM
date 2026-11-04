@@ -11,7 +11,7 @@ import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
 import { isModuleDisabledByPlatform, isModuleEnabled, moduleForPath } from '@/lib/feature-flags'
-import { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from '@/lib/handoff'
+import { HANDED_OFF_FILTER, isHandedOff, isStampedHandOff } from '@/lib/handoff'
 
 export default function DashboardLayout({
   children,
@@ -67,8 +67,9 @@ export default function DashboardLayout({
   const [showTickets, setShowTickets] = useState(false)
   const [activeTicketsCount, setActiveTicketsCount] = useState(0)
   const [unreadChatsCount, setUnreadChatsCount] = useState(0)
-  // The hand-off queue's filter; falls back to the inferred rule on a database without handed_off_at
-  const handOffFilterRef = useRef<string>(HANDED_OFF_FILTER)
+  // The hand-off queue's filter for an agent limited to their own work. Null on a database without
+  // handed_off_at: the queue inferred there also holds managers' chats, so it adds nothing for them.
+  const handOffFilterRef = useRef<string | null>(HANDED_OFF_FILTER)
   const [activeLeadsCount, setActiveLeadsCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
   // Start restricted: nothing role-gated is shown until the profile has loaded
@@ -479,7 +480,8 @@ export default function DashboardLayout({
           const ticketConvIds = (openTickets || []).map(t => t.conversation_id).filter(Boolean)
 
           // Chats the chatbot handed to the team count for everyone (lib/handoff.ts)
-          let orConditions = `assigned_to.eq.${userId},${handOffFilterRef.current}`
+          let orConditions = `assigned_to.eq.${userId}`
+          if (handOffFilterRef.current) orConditions += `,${handOffFilterRef.current}`
           if (contactIds.length > 0) {
             orConditions += `,contact_id.in.(${contactIds.map(id => `"${id}"`).join(',')})`
           }
@@ -490,9 +492,9 @@ export default function DashboardLayout({
         }
 
         let { data, error } = await query
-        // A database without the hand-off column: count the queue the old way from now on
+        // A database without the hand-off column: no stamped hand-offs to count, from now on
         if (error && handOffFilterRef.current === HANDED_OFF_FILTER && /handed_off_at/.test(error.message || '')) {
-          handOffFilterRef.current = LEGACY_HANDED_OFF_FILTER
+          handOffFilterRef.current = null
           return fetchUnreadChatsCount()
         }
         if (error) throw error
@@ -592,8 +594,10 @@ export default function DashboardLayout({
           // Chat auto-reply notification check
           if (payload.eventType === 'UPDATE') {
             const isAssignedToMe = payload.new.assigned_to === userId
-            // A chat the chatbot handed to the team belongs to nobody yet, so every agent hears about it
-            const handedOff = isHandedOff(payload.new)
+            // A chat the chatbot handed to the team belongs to nobody yet, so every agent hears about it.
+            // An agent limited to their own work hears only of a real (stamped) hand-off: the inferred
+            // rule of a database without the column also matches chats a manager is answering.
+            const handedOff = seeAll ? isHandedOff(payload.new) : isStampedHandOff(payload.new)
             if (!seeAll && !isAssignedToMe && !handedOff) return
 
             const oldVal = payload.old?.auto_reply_enabled

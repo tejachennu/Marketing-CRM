@@ -4,16 +4,18 @@
  * Admins, managers and employees granted "see all" see every conversation. Everyone else
  * sees the conversations they work on: assigned to them directly, or belonging to one of
  * their active leads or open tickets. They also see the chats the chatbot handed to the team
- * (the hand-off queue, see lib/handoff.ts), so a customer waiting for a person can be picked up.
+ * (the hand-off queue, see lib/handoff.ts), so a customer waiting for a person can be picked up,
+ * but only chats stamped with `handed_off_at`: on a database without that column the queue is
+ * inferred from the chatbot being off, which every manager reply also causes, so it grants nothing.
  */
 
 import type { NextRequest } from 'next/server'
 import { verifyRecordAccess, type AccessOptions } from './api-auth-helper'
-import { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from './handoff'
+import { HANDED_OFF_FILTER, isStampedHandOff } from './handoff'
 import { canSeeAll, describeDenied, isSuperAdmin, type RoleSubject } from './rbac'
 import { isMissingColumn } from './scheduler/schema-errors'
 
-export { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff } from './handoff'
+export { HANDED_OFF_FILTER, LEGACY_HANDED_OFF_FILTER, isHandedOff, isStampedHandOff } from './handoff'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -48,10 +50,11 @@ export interface ConversationScope {
   conversationIds: string[]
   /** PostgREST `or` filter selecting the conversations assigned to the user. */
   orFilter: string
-  /** `orFilter` plus the chats handed to the team: everything an assigned-only user may see. */
+  /**
+   * `orFilter` plus the chats handed to the team: everything an assigned-only user may see. A
+   * database without the hand-off column has no stamped hand-offs, so there it is `orFilter` alone.
+   */
   visibleFilter: string
-  /** `visibleFilter` for a database without the hand-off column. */
-  legacyVisibleFilter: string
 }
 
 /** The conversations `userId` works on in an organization. */
@@ -72,7 +75,7 @@ export async function getAssignedConversationScope(supabase: any, userId: string
   if (conversationIds.length > 0) parts.push(`id.in.(${conversationIds.join(',')})`)
 
   const orFilter = parts.join(',')
-  return { contactIds, conversationIds, orFilter, visibleFilter: `${orFilter},${HANDED_OFF_FILTER}`, legacyVisibleFilter: `${orFilter},${LEGACY_HANDED_OFF_FILTER}` }
+  return { contactIds, conversationIds, orFilter, visibleFilter: `${orFilter},${HANDED_OFF_FILTER}` }
 }
 
 export interface ConversationRef {
@@ -103,8 +106,9 @@ export async function canAccessConversation(supabase: any, user: RoleSubject, co
   if (!user?.id) return false
   if (canSeeAll(user)) return true
   if (conversation.assigned_to === user.id) return true
-  // Handed to the team by the chatbot: whichever agent opens it may take it
-  if (isHandedOff(conversation)) return true
+  // Handed to the team by the chatbot: whichever agent opens it may take it. Only a real stamp
+  // counts; the inferred queue of a database without the column also holds managers' chats.
+  if (isStampedHandOff(conversation)) return true
 
   if (conversation.contact_id) {
     const { data: leads } = await supabase

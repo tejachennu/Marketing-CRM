@@ -57,7 +57,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
     }
 
-    if (conversation.assigned_to === target) {
+    // Nothing to do only when the owner stays the same and, for "nobody", the chat is not waiting in
+    // the hand-off queue: leaving a queued chat with nobody still takes it out of the queue
+    if (conversation.assigned_to === target && (target !== null || conversation.handed_off_at == null)) {
       return NextResponse.json({ success: true, changed: false, conversation: { id, assigned_to: target } })
     }
     // Taking a chat a teammate holds is reassigning it, which only managers do

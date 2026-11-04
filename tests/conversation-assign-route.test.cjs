@@ -188,13 +188,54 @@ test('Assign: a manager gives a chat to a teammate, reassigns it, or leaves it w
   assert.equal(chat().assigned_to, null)
 })
 
+test('Assign: a manager leaving a queued chat with nobody takes it out of the queue', async () => {
+  reset()
+  caller = manager
+  const answer = await assign({ assignedTo: null })
+  assert.equal(answer.status, 200)
+  assert.equal(answer.changed, true)
+  assert.equal(chat().assigned_to, null)
+  assert.equal(chat().handed_off_at, null)
+  assert.deepEqual(writes, [{ table: 'conversations', values: { assigned_to: null, handed_off_at: null } }])
+
+  // Out of the queue already: nothing changes, nothing is written
+  writes.length = 0
+  const again = await assign({ assignedTo: null })
+  assert.equal(again.status, 200)
+  assert.equal(again.changed, false)
+  assert.equal(writes.length, 0)
+})
+
 test('Assign: works before the hand-off migration', async () => {
+  // An agent's own chat (through their lead) is still theirs to take
   reset()
   delete chat().handed_off_at
   fake.noHandOffColumn = true
+  tables.leads = [{ id: 'l0', organization_id: ORG, contact_id: CONTACT, assigned_to: AGENT, status: 'active' }]
   const answer = await assign()
   assert.equal(answer.status, 200)
   assert.equal(chat().assigned_to, AGENT)
+
+  // An unowned chat with the chatbot off is no hand-off without the column (a manager may be
+  // answering it), so an agent limited to their own work cannot open or take it
+  reset()
+  delete chat().handed_off_at
+  fake.noHandOffColumn = true
+  assert.equal((await assign()).status, 403)
+  assert.equal(chat().assigned_to, null)
+
+  // A manager can, and "nobody" on an unowned chat changes nothing
+  caller = manager
+  assert.equal((await assign()).status, 200)
+  assert.equal(chat().assigned_to, MANAGER)
+  reset()
+  delete chat().handed_off_at
+  fake.noHandOffColumn = true
+  caller = manager
+  const unchanged = await assign({ assignedTo: null })
+  assert.equal(unchanged.status, 200)
+  assert.equal(unchanged.changed, false)
+  assert.equal(writes.length, 0)
 })
 
 test('Chatbot switch: back on ends the hand-off, off by hand is no hand-off', async () => {
@@ -216,10 +257,14 @@ test('Chatbot switch: back on ends the hand-off, off by hand is no hand-off', as
   assert.equal((await call(chatRoute, 'PATCH', { auto_reply_enabled: true })).status, 403)
   assert.equal(chat().auto_reply_enabled, false)
 
-  // Without the column, the switch still works
+  // Without the column, the switch still works, for whoever may open the chat: an unowned chat with
+  // the chatbot off is then no hand-off an agent limited to their own work may open
   reset()
   delete chat().handed_off_at
   fake.noHandOffColumn = true
+  assert.equal((await call(chatRoute, 'PATCH', { auto_reply_enabled: true })).status, 403)
+  assert.equal(chat().auto_reply_enabled, false)
+  caller = manager
   assert.equal((await call(chatRoute, 'PATCH', { auto_reply_enabled: true })).status, 200)
   assert.equal(chat().auto_reply_enabled, true)
 })

@@ -185,3 +185,145 @@ export async function assertPublicHttpUrl(value: unknown): Promise<URL> {
   }
   return url
 }
+
+// ── Downloading what a user pointed at ───────────────────────────────────────
+// `assertPublicHttpUrl` resolves the name once; a plain `fetch` would then resolve it again when it
+// connects, and a name with a zero TTL can answer "public" to the first lookup and "private" to the
+// second. The download below checks the address in the lookup the socket itself uses, so the
+// address that was checked is the address connected to. The name is never replaced by the address,
+// so TLS still verifies the certificate for the name (SNI) and the Host header stays the name.
+
+/**
+ * A `lookup` for `http(s).request` (and `net.connect`) that refuses to connect when any address
+ * the name resolves to is off the public internet. IP literals never reach a lookup, so callers
+ * still check the URL itself with `assertPublicHttpUrl` on every hop.
+ */
+export const lookupPublicAddress: import('node:net').LookupFunction = (hostname, options, callback) => {
+  // On an error the socket reads no address; '' only satisfies the callback's type
+  const refuse = (error: NodeJS.ErrnoException) => callback(error, '')
+  const dns = nodeDns()
+  if (!dns) return refuse(new Error('Cannot check where this address points: DNS is not available here'))
+  const lookupOptions = { ...(options || {}), all: true } as import('node:dns').LookupAllOptions
+  dns.lookup(hostname, lookupOptions, (error, addresses) => {
+    if (error) return refuse(error)
+    if (!addresses || addresses.length === 0) return refuse(Object.assign(new Error(`Could not resolve ${hostname}`), { code: 'ENOTFOUND' }))
+    // One private answer is enough to refuse: the socket would use whichever address it gets
+    if (addresses.some(({ address }) => isPrivateIpAddress(address))) {
+      return refuse(Object.assign(new Error(`${hostname} points at a private network address`), { code: 'EPRIVATEADDRESS' }))
+    }
+    if (options?.all) return callback(null, addresses)
+    callback(null, addresses[0].address, addresses[0].family)
+  })
+}
+
+export interface PublicDownloadLimits {
+  maxBytes: number
+  maxRedirects: number
+  /** For the whole download: every hop and the body together. */
+  timeoutMs: number
+  /**
+   * The first address is this app's own (a path on it, joined to its configured base URL), so it
+   * is neither checked nor pinned. Every redirect from it still is.
+   */
+  trustFirstHop?: boolean
+}
+
+export interface PublicDownload {
+  buffer: Buffer
+  contentType: string | null
+  /** The address the body came from, after redirects. */
+  url: string
+}
+
+type NodeIncoming = import('node:http').IncomingMessage
+
+/** One GET, connected only to an address `lookupPublicAddress` accepted unless `trusted`. */
+function openHttp(url: URL, trusted: boolean, signal: AbortSignal): Promise<NodeIncoming> {
+  const builtin = typeof process !== 'undefined' && typeof process.getBuiltinModule === 'function' ? process.getBuiltinModule : null
+  const client = builtin ? (url.protocol === 'https:' ? builtin('node:https') : builtin('node:http')) : null
+  if (!client) return Promise.reject(new Error('Downloads are not available here'))
+  return new Promise((resolve, reject) => {
+    const request = client.request(url, {
+      method: 'GET',
+      signal,
+      // A connection of its own: a pooled socket may have been opened without the check
+      agent: false,
+      // fetch() sent these; some media hosts refuse a request without a User-Agent. No
+      // Accept-Encoding: node:http does not decompress, so the body must arrive as stored
+      headers: { 'user-agent': 'WAMA-CRM media fetch', accept: '*/*' },
+      ...(trusted ? {} : { lookup: lookupPublicAddress }),
+    }, resolve)
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+/** The body of a response, refused before it is held in memory once it is known to exceed `maxBytes`. */
+function readBodyUpTo(res: NodeIncoming, maxBytes: number, signal: AbortSignal): Promise<Buffer> {
+  const tooLarge = () => new Error(`Media is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`)
+  if (Number(res.headers['content-length']) > maxBytes) {
+    res.destroy()
+    return Promise.reject(tooLarge())
+  }
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let total = 0
+    let settled = false
+    const finish = (error: Error | null) => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      if (error) {
+        res.destroy()
+        reject(error)
+      } else {
+        resolve(Buffer.concat(chunks))
+      }
+    }
+    // The time limit covers the body too: a server trickling bytes is cut off
+    const onAbort = () => finish(new Error('The download took too long'))
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort)
+    res.on('data', (chunk: Buffer) => {
+      total += chunk.length
+      if (total > maxBytes) return finish(tooLarge())
+      chunks.push(chunk)
+    })
+    res.on('end', () => finish(null))
+    res.on('error', (error) => finish(error))
+    res.on('close', () => finish(new Error('The download was cut off')))
+  })
+}
+
+/**
+ * Download an http(s) URL supplied by a user, without ever connecting to this machine or the
+ * private network: each hop is checked with `assertPublicHttpUrl` (a friendly refusal, and the
+ * only check an IP literal gets) and then connected through `lookupPublicAddress`. Redirects are
+ * followed by hand, at most `maxRedirects` of them. Rejects with an Error on any refusal, a
+ * non-2xx answer, a body over `maxBytes`, or the time limit.
+ */
+export async function downloadPublicHttpUrl(value: string, limits: PublicDownloadLimits): Promise<PublicDownload> {
+  const signal = AbortSignal.timeout(limits.timeoutMs)
+  let current = value
+  for (let hop = 0; ; hop++) {
+    const trusted = hop === 0 && limits.trustFirstHop === true
+    const url = trusted ? new URL(current) : await assertPublicHttpUrl(current)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Only an http(s) address can be downloaded')
+    const res = await openHttp(url, trusted, signal)
+    const status = res.statusCode || 0
+    const location = res.headers.location
+    if (status >= 300 && status < 400 && location) {
+      res.destroy()
+      if (hop >= limits.maxRedirects) throw new Error(`The address redirects more than ${limits.maxRedirects} times`)
+      current = new URL(location, url).toString()
+      continue
+    }
+    if (status < 200 || status >= 300) {
+      res.destroy()
+      throw new Error(`Failed to download: ${status} ${res.statusMessage || ''}`.trim())
+    }
+    const buffer = await readBodyUpTo(res, limits.maxBytes, signal)
+    const contentType = res.headers['content-type']
+    return { buffer, contentType: typeof contentType === 'string' ? contentType : null, url: url.toString() }
+  }
+}

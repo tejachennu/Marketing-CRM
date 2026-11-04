@@ -224,17 +224,34 @@ test('Inbox: when the queue cannot be counted the list still loads, with one war
   assert.match(warnings[0], /Needs-agent count unavailable/)
 })
 
-test('Inbox: before the hand-off migration the queue is inferred from the chatbot being off, with one warning', async () => {
+test('Inbox: before the hand-off migration the queue is inferred for managers only, with one warning', async () => {
   reset()
   fake.noHandOffColumn = true
   caller = agent
   const answer = await list()
   assert.equal(answer.status, 200)
-  // The old rule: the chat a manager answered shows up as well
-  assert.deepEqual(ids(answer), ['mine', 'waiting-newer', 'waiting-older', 'answered'])
-  assert.equal(answer.needsAgentCount, 3)
+  // The inferred queue also holds the chat a manager answered, so an agent limited to their own
+  // work sees only their own chats until the column exists
+  assert.deepEqual(ids(answer), ['mine'])
+  assert.equal(answer.unreadMessagesCount, 2)
+  assert.equal(answer.needsAgentCount, 0)
+  assert.deepEqual(ids(await list({ filter: 'needs_agent' })), [])
+  assert.deepEqual(ids(await list({ id: 'answered' })), [])
+  assert.deepEqual(ids(await list({ id: 'waiting-newer' })), [])
   assert.ok(warnings.some((warning) => /20261104_handoff_state\.sql/.test(warning)))
 
+  // A chat of the agent's own lead still shows, and counts in their queue when nobody has it
+  const LEAD_CONTACT = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  tables.conversations.find((conversation) => conversation.id === 'answered').contact_id = LEAD_CONTACT
+  tables.leads = [{ id: 'lead-1', organization_id: ORG, contact_id: LEAD_CONTACT, assigned_to: AGENT, status: 'active' }]
+  const withLead = await list()
+  assert.deepEqual(ids(withLead), ['mine', 'answered'])
+  assert.equal(withLead.needsAgentCount, 1)
+  assert.deepEqual(ids(await list({ filter: 'needs_agent' })), ['answered'])
+
+  // Managers keep the inferred queue as their badge and filter
   caller = manager
-  assert.deepEqual(ids(await list({ filter: 'needs_agent' })), ['waiting-newer', 'waiting-older', 'answered'])
+  const managed = await list({ filter: 'needs_agent' })
+  assert.deepEqual(ids(managed), ['waiting-newer', 'waiting-older', 'answered'])
+  assert.equal(managed.needsAgentCount, 3)
 })
