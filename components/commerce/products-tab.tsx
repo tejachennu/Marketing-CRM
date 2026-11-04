@@ -5,7 +5,7 @@ import { AlertCircle, BookOpen, Loader2, Pencil, Plus, RefreshCw, Search, Send, 
 import type { CommerceProduct } from '@/lib/types'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
-import { formatMoney } from '@/lib/commerce/commerce-utils'
+import { formatMoney, isStockTracked } from '@/lib/commerce/commerce-utils'
 import { EMPTY_PUSH_RUN, PRODUCT_CONDITIONS, describePushRun, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, tallyPushBatch, type CatalogState, type PushBatch } from '@/lib/commerce/catalog-items'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
@@ -340,7 +340,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       image_url: product.image_url || '',
       website_url: product.website_url || '',
       category: product.category || '',
-      inventory_count: product.inventory_count === null || product.inventory_count === undefined ? '' : String(product.inventory_count),
+      // Untracked stock (empty, or the old 100 placeholder on a row from before the stock migration) edits as empty
+      inventory_count: isStockTracked(product) ? String(product.inventory_count) : '',
       is_available: product.is_available !== false,
       brand: attributes.brand || '',
       condition: attributes.condition || 'new',

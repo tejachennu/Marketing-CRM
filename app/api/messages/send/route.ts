@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
@@ -763,7 +764,8 @@ export async function POST(request: NextRequest) {
         }
 
         const fbData = await fbRes.json()
-        twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+        // A unique stand-in when Meta returns no id: messages are unique per workspace and provider id
+        twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_local_${randomUUID()}`
         console.log('[Messages Send] Message sent successfully via Facebook Meta API:', twilioMessageSid)
       } else {
         // ── Twilio path (WhatsApp via Twilio OR SMS) ──────────────

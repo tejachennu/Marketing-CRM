@@ -19,12 +19,13 @@ missing.
 | `20261104_commerce_reminders.sql` | commerce tables | Checkout reminders and their store switch. Marks open orders older than 7 days as already reminded, so launch day does not message old carts |
 | `20261104_commerce_status_template.sql` | | The order-update template setting (status messages after 24 hours) |
 | `20261104_commerce_stock.sql` | commerce tables | Stock taken once per order and given back on cancel |
+| `20261104_commerce_untracked_stock.sql` | commerce tables; skips with a notice without them | Products with no stock entered are stored as "not tracked" (empty) instead of 100, so they are never counted down or taken off sale. Converts existing rows at exactly 100 once. **Apply it before or with `20261104_commerce_stock.sql`** |
 | `20261104_commerce_transactions_unique.sql` | commerce tables | One ledger row per payment. **Fails if duplicate rows exist**: keep the earliest row per `(organization_id, transaction_id)` and run it again |
 | `20261104_enable_flows.sql` | | Per-workspace Flow Builder switch for super admins |
 | `20261104_flow_sessions_form_token.sql` | flow tables (`scripts/db-migration-v31-flows.js`); skips with a notice without them | Late form answers filed under their flow; faster in-progress counts |
 | `20261104_flow_sessions_idle_index.sql` | flow tables; skips with a notice without them | Cheap idle-session expiry |
 | `20261104_handoff_queue.sql`, then `20261104_handoff_state.sql` | | Explicit hand-off state (`conversations.handed_off_at`); carries over open hand-offs |
-| `20261104_messages_provider_sid_unique.sql` | | Each inbound message stored once. **Deletes redelivered inbound messages** (same workspace, provider id, chat and text; keeps the earliest) and renames any other rows sharing a provider id so the unique index can be built; take a backup first |
+| `20261104_messages_provider_sid_unique.sql` | | Each inbound message stored once. **Deletes redelivered inbound messages** (same workspace, provider id, chat and text; keeps the earliest) and renames any other rows sharing a provider id so the unique index can be built; take a backup first. Its index build locks `messages` against inserts while it runs, so apply it in a quiet hour |
 | `20261104_scheduler_pg_cron.sql` | | Nothing when applied as is: a commented template for running the scheduler from Supabase |
 | `20261104_whatsapp_app_secret.sql` | | Webhook signature checks for workspaces on their own Meta app |
 | `20261104_workflows_pause_reason.sql` | flow tables; skips with a notice without them | Shows why a live flow was paused automatically |
@@ -72,7 +73,12 @@ campaigns. See the README section "Scheduled jobs".
 - **Module switches**: switching the Flow Builder off for a workspace (super admin console) stops
   its flows in the webhook and refuses changes through the API, not only the dashboard pages.
 - **Inbox**: "Needs an agent" lists only chats a flow handed to the team. A manager's reply no
-  longer puts a chat in that queue or shows it to every agent.
+  longer puts a chat in that queue or shows it to every agent. Until `20261104_handoff_state.sql`
+  is applied, agents who see only their own chats do not see the queue at all; managers still do.
+- **Store switch**: switching the store off refuses new carts only. Orders already in checkout can
+  still be paid or confirmed for Cash on Delivery, and their payments are recorded.
+- **Stock**: only products with a stock number entered are counted down; products left empty are
+  "not tracked" and stay on sale.
 - Commerce and the Flow Builder are on for every workspace. Super admins can switch either off per
   workspace.
 
@@ -81,7 +87,8 @@ campaigns. See the README section "Scheduled jobs".
 1. Send a cart from WhatsApp to a test store: address form, payment choice, payment card.
 2. Pay a small amount online; check the receipt, the order status and the stock count.
 3. Place a COD order; press **Cash collected** on it; ship it with a tracking link.
-4. Switch the store off in Store settings with an unpaid card open: the card is withdrawn.
+4. Switch the store off in Store settings with an unpaid card open: a new cart is refused, while
+   paying the open card still marks that order paid.
 5. Run a flow with a form, a hand-off to the team queue, and a knowledge-assistant step.
 6. Take the handed-off chat with **Assign to me** as an agent who sees only their own chats.
 7. Call the tick by hand and check the JSON summary:
