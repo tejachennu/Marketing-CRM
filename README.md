@@ -253,6 +253,22 @@ Sends a WhatsApp message and stores it in database.
 4. Set `NEXT_PUBLIC_APP_URL` to your domain
 5. Update Twilio webhook URL in console
 
+## ⏰ Scheduled jobs
+
+`GET /api/cron/tick` runs the background work, every 10 minutes per `vercel.json`:
+
+- starts scheduled campaigns whose time has come and resumes campaigns whose worker stopped (the Campaigns page polls the same code every 25 seconds while it is open, so nothing changes there);
+- reminds customers about WhatsApp checkouts they left unfinished: at most two reminders per order, one per day, and only within Meta's 24-hour messaging window. Needs `supabase/migrations/20261104_commerce_reminders.sql` (until then the job reports `skipped`); a store switches reminders off with `organizations.commerce_reminders_enabled`;
+- expires chatbot sessions idle for more than 24 hours.
+
+Setting it up:
+
+1. Set `CRON_SECRET` in Vercel (Settings → Environment Variables) to a long random value. Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>`; any other scheduler can send `x-cron-secret: <CRON_SECRET>`. Without it the route answers 503 and nothing runs.
+2. Vercel Cron on the Hobby plan runs a job at most once a day, so change the schedule in `vercel.json` to something like `0 3 * * *` there; the Pro plan supports `*/10 * * * *`.
+3. Alternative on any plan: Supabase `pg_cron` + `pg_net` calling the same URL every 10 minutes. See the commented template in `supabase/migrations/20261104_scheduler_pg_cron.sql`.
+
+Each run answers with a JSON summary, `{ ok, ran_at, jobs }`, with the duration and any error per job. To run it by hand: `curl -H "x-cron-secret: $CRON_SECRET" https://your-app/api/cron/tick`.
+
 ## 🔄 Real-time Features
 
 ### Supabase Realtime
