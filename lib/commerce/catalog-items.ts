@@ -68,6 +68,10 @@ function text(value: unknown, max: number): string {
   return String(value ?? '').trim().slice(0, max)
 }
 
+function currencyCode(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase()
+}
+
 export function getProductAttributes(product: { metadata?: Record<string, any> | null } | null | undefined): ProductAttributes {
   const attributes = product?.metadata?.attributes
   return attributes && typeof attributes === 'object' && !Array.isArray(attributes) ? attributes : {}
@@ -147,16 +151,29 @@ export interface CatalogItemDefaults {
   brand: string
   /** Used when the product has no page of its own. Meta requires a link on every item. */
   link: string
+  /** The currency the store sells in. A product priced in another one is pointed out, never converted. */
+  currency: string
 }
 
 /** What the store falls back to for the fields Meta requires and a product may leave empty. */
 export function getCatalogItemDefaults(organization: Record<string, any> | null | undefined): CatalogItemDefaults {
   const digits = String(organization?.whatsapp_default_phone || '').replace(/\D/g, '')
+  const currency = currencyCode(organization?.currency)
   return {
     brand: text(organization?.name, 100) || 'Store',
     // A store without a website still needs a link: the product then opens a chat with the business
     link: digits.length >= 8 ? `https://wa.me/${digits}` : '',
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : 'INR',
   }
+}
+
+/**
+ * A note for a product priced in a different currency from the store, or null. Orders are totalled
+ * in the store's currency, so such a price must be seen and corrected rather than converted quietly.
+ */
+export function getCurrencyMismatch(currency: unknown, defaults: CatalogItemDefaults): string | null {
+  const code = currencyCode(currency) || defaults.currency
+  return code === defaults.currency ? null : `Priced in ${code}, but the store sells in ${defaults.currency}.`
 }
 
 /** What stops a product from being sent to the catalog. Empty when it is ready. */
@@ -174,7 +191,7 @@ export function getCatalogProblems(product: CatalogProduct, defaults: CatalogIte
  */
 export function toCatalogItem(product: CatalogProduct, defaults: CatalogItemDefaults, options: { endSale?: boolean } = {}): Record<string, any> {
   const attributes = getProductAttributes(product)
-  const currency = String(product.currency || 'INR').toUpperCase()
+  const currency = String(product.currency || defaults.currency).toUpperCase()
   // Meta's price format: the amount, a space and the ISO currency, e.g. "9.99 USD"
   const money = (amount: number) => `${amount.toFixed(2)} ${currency}`
 
@@ -206,7 +223,8 @@ export function toCatalogItem(product: CatalogProduct, defaults: CatalogItemDefa
     item.image_link = image
   }
   if (onSale || options.endSale) item.sale_price = money(price)
-  if (Number.isInteger(inventory) && Number(inventory) > 0) item.quantity_to_sell_on_facebook = Number(inventory)
+  // 0 is sent too: Meta then shows the item sold out and lists its stock as 0, as this table has it
+  if (Number.isInteger(inventory) && Number(inventory) >= 0) item.quantity_to_sell_on_facebook = Number(inventory)
 
   const category = text(product.category, 750)
   if (category && category !== 'General') item.product_type = category
@@ -292,6 +310,8 @@ export function toCatalogProductRow(product: any, kept: ProductAttributes = {}, 
     .filter(Boolean)
     .slice(0, 5)
   const reviewStatus = String(product.review_status || '').toLowerCase()
+  const available = AVAILABLE_STATES.has(String(product.availability || '').toLowerCase())
+  const stock = typeof product.inventory === 'number' && product.inventory > 0 ? product.inventory : null
 
   return {
     retailer_id: retailerId,
@@ -302,8 +322,10 @@ export function toCatalogProductRow(product: any, kept: ProductAttributes = {}, 
     image_url: product.image_url || null,
     // A chat link is what a product without a page is given when it is sent to the catalog
     website_url: product.url && !/^https?:\/\/(wa\.me|api\.whatsapp\.com)\//i.test(product.url) ? product.url : null,
-    is_available: AVAILABLE_STATES.has(String(product.availability || '').toLowerCase()),
-    inventory_count: typeof product.inventory === 'number' ? product.inventory : 100,
+    is_available: available,
+    // An item in stock without a quantity has untracked stock, which this table keeps as 100. Copying it
+    // as 0 would show it sold out here and, once sent back, make it so in the catalog.
+    inventory_count: stock ?? (available ? 100 : 0),
     metadata: {
       source: 'meta',
       attributes,

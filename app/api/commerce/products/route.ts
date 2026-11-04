@@ -9,7 +9,7 @@ import { pullCatalogToDatabase, pushProductsToCatalog, refreshCatalogStatus, rem
 import { isUuid } from '@/lib/record-visibility'
 
 /** What a catalog call needs from the organization. */
-const CATALOG_ORG_COLUMNS = 'id, name, meta_catalog_id, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_default_phone, whatsapp_business_account_id, whatsapp_phone_number_id'
+const CATALOG_ORG_COLUMNS = 'id, name, currency, meta_catalog_id, whatsapp_api_token, whatsapp_graph_api_version, whatsapp_default_phone, whatsapp_business_account_id, whatsapp_phone_number_id'
 /** The most products one "send to catalog" request handles. */
 const MAX_PUSH = 3000
 
@@ -238,12 +238,17 @@ export async function POST(request: NextRequest) {
     // The catalog knows an item by its SKU, so a product given a new SKU starts again as a new item
     const skuChanged = Boolean(existing && existing.retailer_id !== input.retailer_id)
     const { source: _source, catalog: _catalog, ...keptMetadata } = (existing?.metadata || {}) as Record<string, any>
+    const now = new Date().toISOString()
+    // A product bound for the catalog is saved as "sending" in the same write as the edit, so a catalog
+    // pull running at this moment keeps the edit instead of copying the older catalog item over it
+    const org = await loadOrg()
     const metadata = {
       ...(skuChanged ? keptMetadata : existing?.metadata || {}),
       attributes: { ...attributes, ...(stillOnSale ? { list_price: listPrice } : {}) },
+      ...(hasCatalog(org) ? { catalog: { state: 'pending', synced_at: now, catalog_id: String(org.meta_catalog_id).trim() } } : {}),
     }
 
-    const values = { ...input, metadata, updated_at: new Date().toISOString() }
+    const values = { ...input, metadata, updated_at: now }
     const { data: saved, error } = productId
       ? await supabase.from('commerce_products').update(values).eq('id', productId).eq('organization_id', organizationId).select()
       : await supabase.from('commerce_products').insert({ organization_id: organizationId, ...values }).select()
@@ -255,16 +260,19 @@ export async function POST(request: NextRequest) {
     const savedProduct = saved[0]
 
     // Send the product to the Meta catalog, so it can be shared and ordered in WhatsApp
-    const org = await loadOrg()
     const catalog: { linked: boolean; state: 'pending' | 'error' | null; errors: string[]; warnings: string[] } = { linked: hasCatalog(org), state: null, errors: [], warnings: [] }
     if (hasCatalog(org)) {
       try {
-        if (skuChanged && existing && isInCatalog(existing)) await removeFromCatalog(org, [existing.retailer_id])
+        // The item under the old SKU has to leave the catalog, or customers could still order it there
+        const removal = skuChanged && existing && isInCatalog(existing) ? await removeFromCatalog(org, [existing.retailer_id]) : { removed: true, error: undefined }
         const summary = await pushProductsToCatalog(supabase, org, [savedProduct], {
           endSaleIds: listPrice > 0 && !stillOnSale ? new Set([savedProduct.id]) : undefined,
         })
         const outcome = summary.outcomes.get(savedProduct.id)
         if (outcome) Object.assign(catalog, { state: outcome.state, errors: outcome.errors, warnings: outcome.warnings })
+        if (removal.error) {
+          Object.assign(catalog, { state: 'error', errors: [`The old SKU “${existing?.retailer_id}” is still in your WhatsApp catalog, where customers could order it: ${removal.error}`, ...catalog.errors] })
+        }
       } catch (catalogErr) {
         Object.assign(catalog, { state: 'error', errors: [describeCatalogError(catalogErr).message] })
       }
@@ -300,7 +308,7 @@ export async function DELETE(request: NextRequest) {
     const supabase = getSupabase()
     const { data: product } = await supabase
       .from('commerce_products')
-      .select('id, retailer_id, metadata')
+      .select('id, retailer_id, title, metadata')
       .eq('id', productId)
       .eq('organization_id', orgId)
       .maybeSingle()
@@ -311,6 +319,13 @@ export async function DELETE(request: NextRequest) {
     if (isInCatalog(product)) {
       const { data: org } = await supabase.from('organizations').select(CATALOG_ORG_COLUMNS).eq('id', orgId).single()
       if (hasCatalog(org)) catalog = await removeFromCatalog(org, [product.retailer_id])
+      // Still orderable in WhatsApp, so it stays here too, unless the caller chose to remove it here regardless
+      if (catalog.error && searchParams.get('force') !== 'true') {
+        return NextResponse.json(
+          { error: `“${product.title}” was not removed: it is still in your WhatsApp catalog, where customers could order it. ${catalog.error}`, inCatalog: true, catalogRemoved: false, catalogError: catalog.error },
+          { status: 409 }
+        )
+      }
     }
 
     const { error } = await supabase

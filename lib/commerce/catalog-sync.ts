@@ -8,6 +8,7 @@ import {
   getCatalogItemDefaults,
   getCatalogProblems,
   getCatalogSync,
+  getCurrencyMismatch,
   getProductAttributes,
   toCatalogProductRow,
   toDeleteRequest,
@@ -112,6 +113,13 @@ export async function pushProductsToCatalog(
         outcomes.set(product.id, { state: 'pending', errors: [], warnings: item?.warnings || [], handle })
       }
     }
+  }
+
+  // A price in another currency goes to the catalog as it is, with a note the owner sees on the product
+  for (const product of products) {
+    const outcome = outcomes.get(product.id)
+    const note = getCurrencyMismatch(product.currency, defaults)
+    if (outcome && note && !outcome.warnings.includes(note)) outcome.warnings = [...outcome.warnings, note]
   }
 
   await inChunks(products, WRITE_CONCURRENCY, async (product) => {
@@ -240,6 +248,10 @@ export interface PullSummary {
   removed: number
   /** Kept as they are because a change made here is still being processed, or was turned down by Meta. */
   skipped: number
+  /** Priced in a currency other than the store's. */
+  otherCurrency: number
+  /** The listing stopped before the end of the catalog (its size, or a slow Meta): nothing was removed. */
+  incomplete: boolean
   error: string | null
 }
 
@@ -257,11 +269,14 @@ export function wasDeletedInCatalog(product: { metadata?: Record<string, any> | 
 
 /**
  * Copy the Meta catalog into `commerce_products`. Items that have left the catalog are removed from
- * the copy; products that were never in it are left alone.
+ * the copy, but only after the whole catalog was read; products that were never in it are left alone.
  */
 export async function pullCatalogToDatabase(supabase: any, organization: Record<string, any>, fetcher?: typeof fetch): Promise<PullSummary> {
   const catalogId = linkedCatalogId(organization)
-  const items = await fetchCatalogItems(getCatalogCredentials(organization), catalogId, fetcher)
+  const listing = await fetchCatalogItems(getCatalogCredentials(organization), catalogId, fetcher)
+  const items = listing.items
+  const incomplete = !listing.complete
+  const defaults = getCatalogItemDefaults(organization)
   const now = new Date().toISOString()
 
   // What is stored now: for details Meta's listing does not return, and to find what has left the catalog
@@ -273,7 +288,7 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
       .eq('organization_id', organization.id)
       .order('id', { ascending: true })
       .range(from, from + 999)
-    if (error) return { total: items.length, synced: 0, removed: 0, skipped: 0, error: error.message }
+    if (error) return { total: items.length, synced: 0, removed: 0, skipped: 0, otherCurrency: 0, incomplete, error: error.message }
     for (const product of data || []) stored.set(product.retailer_id, product)
     if (!data || data.length < 1000) break
   }
@@ -281,12 +296,18 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
   const inCatalog = new Set<string>()
   const rows: CatalogProductRow[] = []
   let skipped = 0
+  let otherCurrency = 0
   for (const item of items) {
     const current = stored.get(String(item?.retailer_id || item?.id || '').trim())
     const row = toCatalogProductRow(item, getProductAttributes(current), now)
     if (!row || inCatalog.has(row.retailer_id)) continue
     inCatalog.add(row.retailer_id)
     row.metadata = { ...row.metadata, catalog: { ...(row.metadata?.catalog || { state: 'synced' }), catalog_id: catalogId } }
+    const note = getCurrencyMismatch(row.currency, defaults)
+    if (note) {
+      otherCurrency++
+      row.metadata.catalog.warnings = [...(row.metadata.catalog.warnings || []), note]
+    }
     // A change made here that Meta has not applied must not be overwritten by the older catalog copy
     const state = current?.metadata?.catalog?.state
     if (state === 'pending' || state === 'error') skipped++
@@ -306,7 +327,7 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
 
   // Only after a complete, error-free read, so a partial sync can never empty the product list
   let removed = 0
-  if (!firstError && inCatalog.size > 0) {
+  if (!firstError && !incomplete && inCatalog.size > 0) {
     const stale = [...stored.values()].filter((product) => !inCatalog.has(product.retailer_id) && wasDeletedInCatalog(product, catalogId)).map((product) => product.id)
     for (let start = 0; start < stale.length; start += 100) {
       const ids = stale.slice(start, start + 100)
@@ -315,7 +336,7 @@ export async function pullCatalogToDatabase(supabase: any, organization: Record<
     }
   }
 
-  return { total: inCatalog.size, synced, removed, skipped, error: firstError }
+  return { total: inCatalog.size, synced, removed, skipped, otherCurrency, incomplete, error: firstError }
 }
 
 /**

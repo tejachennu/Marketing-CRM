@@ -19,7 +19,10 @@ const DEFAULT_GRAPH_VERSION = 'v25.0'
 
 /** Meta accepts 5,000 items a call and recommends staying under 3,000. */
 export const MAX_BATCH_ITEMS = 1000
-const MAX_CATALOG_PAGES = 50 // 5,000 products
+/** Pages of 100 items. A larger catalog is read this far and the listing reported as incomplete. */
+export const MAX_CATALOG_PAGES = 200 // 20,000 products
+/** How long one page of the listing may take: shorter than metaRequest's own limit, so a slow page ends the read as incomplete instead of failing it. */
+const PAGE_TIMEOUT_MS = 15000
 
 const CATALOG_FIELDS = 'id,name,vertical,product_count'
 const ITEM_FIELDS = 'id,retailer_id,name,description,price,sale_price,currency,image_url,url,availability,inventory'
@@ -403,28 +406,63 @@ export async function checkBatch(credentials: MetaCredentials, catalogId: string
   return { finished: status === 'finished', status, errors, warnings: group(data.warnings), invalidIds }
 }
 
-async function readItems(credentials: MetaCredentials, firstPath: string, fetcher: typeof fetch): Promise<any[]> {
+export interface CatalogListing {
+  items: any[]
+  /** False when the catalog has more than was read: the page cap was reached, or Meta was slow with a page. */
+  complete: boolean
+}
+
+export interface ListingOptions {
+  /** Pages of 100 items to read before stopping. */
+  maxPages?: number
+  /** How long one page may take. */
+  pageTimeoutMs?: number
+}
+
+/** Settles like `promise`, or rejects with a TimeoutError once `ms` have passed. metaRequest sets its own signal, so the wait is wrapped instead. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`Meta did not answer within ${Math.round(ms / 1000)} seconds`), { name: 'TimeoutError' })), ms)
+  })
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer))
+}
+
+async function readItems(credentials: MetaCredentials, firstPath: string, fetcher: typeof fetch, options: ListingOptions): Promise<CatalogListing> {
   const items: any[] = []
   let path: string | null = firstPath
+  const maxPages = options.maxPages ?? MAX_CATALOG_PAGES
   // Follow Graph API paging so catalogs with more than 100 products are read completely
-  for (let page = 0; path && page < MAX_CATALOG_PAGES; page++) {
-    const response: any = await metaRequest(credentials, path, {}, fetcher)
+  for (let page = 0; path && page < maxPages; page++) {
+    let response: any
+    try {
+      response = await withTimeout(metaRequest(credentials, path, {}, fetcher), options.pageTimeoutMs ?? PAGE_TIMEOUT_MS)
+    } catch (error) {
+      // A later page Meta is slow with: what was read so far is still a usable, if incomplete, listing
+      if (page > 0 && describeCatalogError(error).kind === 'timeout') return { items, complete: false }
+      throw error
+    }
     items.push(...(response?.data || []))
     const after: string | undefined = response?.paging?.next ? response?.paging?.cursors?.after : undefined
     path = after ? `${firstPath}&after=${encodeURIComponent(after)}` : null
   }
-  return items
+  // A path left over means Meta still had a page when the cap was reached
+  return { items, complete: path === null }
 }
 
-/** Every item in a catalog, with WhatsApp's review status where the API version provides it. */
-export async function fetchCatalogItems(credentials: MetaCredentials, catalogId: string, fetcher: typeof fetch = fetch): Promise<any[]> {
+/**
+ * Every item in a catalog, with WhatsApp's review status where the API version provides it.
+ * When `complete` is false the listing stopped short of the end: it is then a sample of the
+ * catalog, never proof that an item has left it.
+ */
+export async function fetchCatalogItems(credentials: MetaCredentials, catalogId: string, fetcher: typeof fetch = fetch, options: ListingOptions = {}): Promise<CatalogListing> {
   const id = requireId(catalogId, 'The catalog ID')
   try {
-    return await readItems(credentials, `${id}/products?fields=${ITEM_FIELDS_WITH_REVIEW}&limit=100`, fetcher)
+    return await readItems(credentials, `${id}/products?fields=${ITEM_FIELDS_WITH_REVIEW}&limit=100`, fetcher, options)
   } catch (error: any) {
     // "Invalid parameter": a field this Graph API version does not know. The basic fields are enough to sell.
     if (Number(error?.details?.[0]?.code) !== 100 || describeCatalogError(error).kind === 'not_found') throw error
-    return readItems(credentials, `${id}/products?fields=${ITEM_FIELDS}&limit=100`, fetcher)
+    return readItems(credentials, `${id}/products?fields=${ITEM_FIELDS}&limit=100`, fetcher, options)
   }
 }
 

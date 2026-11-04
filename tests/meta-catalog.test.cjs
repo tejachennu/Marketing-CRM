@@ -13,7 +13,7 @@ const PHONE = '106850078877666'
 const BUSINESS = '777000111222333'
 const ORG = { id: 'org-1', name: 'Asha Textiles', meta_catalog_id: CATALOG, whatsapp_api_token: 'TOKEN', whatsapp_graph_api_version: 'v25.0', whatsapp_business_account_id: WABA, whatsapp_phone_number_id: PHONE, whatsapp_default_phone: '+91 98765 43210' }
 const CREDENTIALS = { token: 'TOKEN', version: 'v25.0', businessAccountId: WABA, phoneNumberId: PHONE }
-const DEFAULTS = { brand: 'Asha Textiles', link: 'https://wa.me/919876543210' }
+const DEFAULTS = { brand: 'Asha Textiles', link: 'https://wa.me/919876543210', currency: 'INR' }
 
 const product = (overrides = {}) => ({
   id: 'p1', retailer_id: 'SHIRT-001', title: 'White linen shirt', description: 'Breathable summer shirt', price: 1499, currency: 'INR',
@@ -117,7 +117,7 @@ test('Catalog items: empty optional details fall back to what the store has', ()
   assert.equal('product_type' in item, false)
 
   assert.deepEqual(items.getCatalogItemDefaults(ORG), DEFAULTS)
-  assert.deepEqual(items.getCatalogItemDefaults({ name: '' }), { brand: 'Store', link: '' })
+  assert.deepEqual(items.getCatalogItemDefaults({ name: '' }), { brand: 'Store', link: '', currency: 'INR' })
 })
 
 test('Catalog items: availability follows the switch and the stock', () => {
@@ -290,12 +290,14 @@ test('Catalog API: reading items follows paging and survives an unknown field', 
     { data: [{ retailer_id: 'A' }], paging: { cursors: { after: 'CUR+1' }, next: 'https://graph.facebook.com/next' } },
     { data: [{ retailer_id: 'B' }], paging: { cursors: { after: 'CUR2' } } }
   )
-  assert.deepEqual((await meta.fetchCatalogItems(CREDENTIALS, CATALOG, paged)).map((item) => item.retailer_id), ['A', 'B'])
+  const listing = await meta.fetchCatalogItems(CREDENTIALS, CATALOG, paged)
+  assert.deepEqual(listing.items.map((item) => item.retailer_id), ['A', 'B'])
+  assert.equal(listing.complete, true)
   assert.match(paged.calls[0].url, /review_status/)
   assert.match(paged.calls[1].url, /&after=CUR%2B1$/)
 
   const older = graph({ error: { code: 100, message: '(#100) Tried accessing nonexisting field (review_status)' } }, { data: [{ retailer_id: 'A' }] })
-  assert.equal((await meta.fetchCatalogItems(CREDENTIALS, CATALOG, older)).length, 1)
+  assert.equal((await meta.fetchCatalogItems(CREDENTIALS, CATALOG, older)).items.length, 1)
   assert.doesNotMatch(older.calls[1].url, /review_status/)
 
   // A catalog that cannot be opened is an error, not a reason to retry
@@ -496,7 +498,7 @@ test('Catalog sync: copying the catalog back keeps local work and drops what lef
     { retailer_id: 'FRESH', name: 'Added in Commerce Manager', price: '250 INR', review_status: 'pending' },
   ] })
   const summary = await sync.pullCatalogToDatabase(db, ORG, fetcher)
-  assert.deepEqual(summary, { total: 4, synced: 2, removed: 1, skipped: 2, error: null })
+  assert.deepEqual(summary, { total: 4, synced: 2, removed: 1, skipped: 2, otherCurrency: 0, incomplete: false, error: null })
 
   const byKey = Object.fromEntries(db.rows.map((row) => [`${row.organization_id}/${row.retailer_id}`, row]))
   assert.equal(byKey['org-1/KEPT'].title, 'New title')
@@ -543,12 +545,124 @@ test('Catalog sync: a product deleted in Commerce Manager is deleted here too, w
 test('Catalog sync: an empty or failed read never empties the product list', async () => {
   const rows = [{ id: 'a', organization_id: 'org-1', retailer_id: 'KEPT', title: 'Kurta', metadata: { source: 'meta' } }]
   const empty = fakeDb(rows)
-  assert.deepEqual(await sync.pullCatalogToDatabase(empty, ORG, graph({ data: [] })), { total: 0, synced: 0, removed: 0, skipped: 0, error: null })
+  assert.deepEqual(await sync.pullCatalogToDatabase(empty, ORG, graph({ data: [] })), { total: 0, synced: 0, removed: 0, skipped: 0, otherCurrency: 0, incomplete: false, error: null })
   assert.equal(empty.rows.length, 1)
 
   const failing = fakeDb(rows)
   await assert.rejects(() => sync.pullCatalogToDatabase(failing, ORG, graph({ error: { code: 190, message: 'expired' } })))
   assert.equal(failing.rows.length, 1)
+})
+
+test('Catalog API: a listing cut short by the page cap or a slow page says so', async () => {
+  // Meta always has a next page: the read ends at the cap, which covers 20,000 products
+  let page = 0
+  const endless = graph(() => ({ data: [{ retailer_id: `P${++page}` }], paging: { cursors: { after: `C${page}` }, next: 'https://graph.facebook.com/next' } }))
+  const capped = await meta.fetchCatalogItems(CREDENTIALS, CATALOG, endless)
+  assert.equal(meta.MAX_CATALOG_PAGES, 200)
+  assert.equal(endless.calls.length, 200)
+  assert.equal(capped.items.length, 200)
+  assert.equal(capped.complete, false)
+
+  // A later page Meta is slow with: what was read is kept, as an incomplete listing
+  const first = { data: [{ retailer_id: 'A' }], paging: { cursors: { after: 'C1' }, next: 'https://graph.facebook.com/next' } }
+  let calls = 0
+  const slow = async () => (++calls === 1 ? { ok: true, status: 200, json: async () => first } : new Promise(() => {}))
+  assert.deepEqual(await meta.fetchCatalogItems(CREDENTIALS, CATALOG, slow, { pageTimeoutMs: 20 }), { items: [{ retailer_id: 'A' }], complete: false })
+  // A first page that never comes is a failure, not an empty catalog
+  await assert.rejects(() => meta.fetchCatalogItems(CREDENTIALS, CATALOG, async () => new Promise(() => {}), { pageTimeoutMs: 20 }), { name: 'TimeoutError' })
+  assert.equal(meta.describeCatalogError({ name: 'TimeoutError' }).kind, 'timeout')
+})
+
+test('Catalog sync: an incomplete read updates what it saw and removes nothing', async () => {
+  const confirmed = { source: 'meta', catalog: { state: 'synced', review_status: 'approved', catalog_id: CATALOG } }
+  const db = fakeDb([
+    { id: 'a', organization_id: 'org-1', retailer_id: 'SEEN', title: 'Old title', metadata: confirmed },
+    { id: 'b', organization_id: 'org-1', retailer_id: 'UNSEEN', title: 'Beyond the pages read', metadata: confirmed },
+  ])
+  // Every page says there is another: the listing stops at the cap without reaching UNSEEN
+  const endless = graph({ data: [{ retailer_id: 'SEEN', name: 'New title', price: '100 INR', review_status: 'approved' }], paging: { cursors: { after: 'C' }, next: 'https://graph.facebook.com/next' } })
+  const summary = await sync.pullCatalogToDatabase(db, ORG, endless)
+  assert.equal(endless.calls.length, meta.MAX_CATALOG_PAGES)
+  assert.deepEqual(summary, { total: 1, synced: 1, removed: 0, skipped: 0, otherCurrency: 0, incomplete: true, error: null })
+  assert.deepEqual(db.rows.map((row) => [row.retailer_id, row.title]), [['SEEN', 'New title'], ['UNSEEN', 'Beyond the pages read']])
+
+  // The same catalog read to the end: UNSEEN has really left it
+  const complete = await sync.pullCatalogToDatabase(db, ORG, graph({ data: [{ retailer_id: 'SEEN', name: 'New title', price: '100 INR' }] }))
+  assert.deepEqual([complete.incomplete, complete.removed], [false, 1])
+  assert.deepEqual(db.rows.map((row) => row.retailer_id), ['SEEN'])
+})
+
+test('Catalog items: stock, availability and a sale survive the round trip through the catalog', () => {
+  // Sold out here: the catalog's own stock count says so too, not only its availability
+  const soldOut = items.toCatalogItem(product({ inventory_count: 0 }), DEFAULTS)
+  assert.deepEqual([soldOut.availability, soldOut.quantity_to_sell_on_facebook], ['out of stock', 0])
+  assert.equal('quantity_to_sell_on_facebook' in items.toCatalogItem(product({ inventory_count: null }), DEFAULTS), false)
+
+  const back = (item) => {
+    const row = items.toCatalogProductRow({ retailer_id: 'X', price: '100 INR', currency: 'INR', ...item })
+    return [row.is_available, row.inventory_count]
+  }
+  assert.deepEqual(back({ availability: 'out of stock', inventory: 0 }), [false, 0])
+  assert.deepEqual(back({ availability: 'in stock', inventory: 7 }), [true, 7])
+  assert.deepEqual(back({ availability: 'out of stock', inventory: 12 }), [false, 12])            // "available to sell" unticked, stock still counted
+  // An item in stock with no stock count is not sold out: it comes back as untracked stock, as this table keeps it
+  assert.deepEqual(back({ availability: 'in stock', inventory: 0 }), [true, 100])
+  assert.deepEqual(back({ availability: 'in stock' }), [true, 100])
+  assert.deepEqual(back({ availability: 'out of stock' }), [false, 0])
+
+  // What was sent comes back as it went: a sale keeps its full price, an ended sale brings none
+  const onSale = items.toCatalogItem(product({ price: 999, metadata: { attributes: { list_price: 1499 } } }), DEFAULTS)
+  const saleRow = items.toCatalogProductRow({ retailer_id: 'SHIRT-001', currency: 'INR', price: onSale.price, sale_price: onSale.sale_price, availability: onSale.availability, inventory: onSale.quantity_to_sell_on_facebook })
+  assert.deepEqual([saleRow.price, saleRow.metadata.attributes.list_price, saleRow.inventory_count], [999, 1499, 12])
+  const ended = items.toCatalogItem(product({ price: 1599 }), DEFAULTS, { endSale: true })
+  const endedRow = items.toCatalogProductRow({ retailer_id: 'SHIRT-001', currency: 'INR', price: ended.price, sale_price: ended.sale_price, availability: ended.availability })
+  assert.deepEqual([endedRow.price, 'list_price' in endedRow.metadata.attributes], [1599, false])
+})
+
+test('Catalog items: a price in another currency is pointed out, never converted', async () => {
+  assert.equal(items.getCurrencyMismatch('INR', DEFAULTS), null)
+  assert.equal(items.getCurrencyMismatch('', DEFAULTS), null)
+  assert.equal(items.getCurrencyMismatch('usd', DEFAULTS), 'Priced in USD, but the store sells in INR.')
+  assert.equal(items.getCatalogItemDefaults({ ...ORG, currency: 'aed' }).currency, 'AED')
+  assert.equal(items.getCatalogItemDefaults({ ...ORG, currency: 'rupees' }).currency, 'INR')
+  assert.equal(items.toCatalogItem(product({ currency: '' }), { ...DEFAULTS, currency: 'AED' }).price, '1499.00 AED')
+
+  // Sent as it is, with the note recorded on the product
+  assert.equal(items.toCatalogItem(product({ currency: 'USD', price: 20 }), DEFAULTS).price, '20.00 USD')
+  const db = fakeDb([{ id: 'p1', organization_id: 'org-1', ...product({ currency: 'USD', price: 20 }) }])
+  const summary = await sync.pushProductsToCatalog(db, ORG, db.rows.map((row) => ({ ...row })), { fetcher: graph({ handles: ['H1'], validation_status: [] }) })
+  assert.deepEqual(summary.outcomes.get('p1').warnings, ['Priced in USD, but the store sells in INR.'])
+  assert.deepEqual(db.rows[0].metadata.catalog.warnings, ['Priced in USD, but the store sells in INR.'])
+
+  // Copied back from the catalog with the note, and counted
+  const pulled = fakeDb([])
+  const pull = await sync.pullCatalogToDatabase(pulled, ORG, graph({ data: [
+    { retailer_id: 'US-1', name: 'Imported', price: '$20.00', currency: 'USD' },
+    { retailer_id: 'IN-1', name: 'Local', price: '₹500.00', currency: 'INR' },
+  ] }))
+  assert.equal(pull.otherCurrency, 1)
+  const byKey = Object.fromEntries(pulled.rows.map((row) => [row.retailer_id, row]))
+  assert.deepEqual([byKey['US-1'].currency, byKey['US-1'].price], ['USD', 20])
+  assert.deepEqual(byKey['US-1'].metadata.catalog.warnings, ['Priced in USD, but the store sells in INR.'])
+  assert.equal(byKey['IN-1'].metadata.catalog.warnings, undefined)
+})
+
+test('Catalog sync: Meta’s answer for each item lands on that product, across batches', async () => {
+  const last = meta.MAX_BATCH_ITEMS + 1
+  const many = Array.from({ length: last + 1 }, (_, index) => ({ organization_id: 'org-1', ...product({ id: `p${index}`, retailer_id: `SKU-${index}` }) }))
+  const db = fakeDb(many)
+  // The last item, sent in the second call, is turned down; the first call's handle is not given to it
+  const fetcher = graph(
+    { handles: ['A'], validation_status: [{ retailer_id: 'SKU-1', warnings: [{ message: 'Long title' }] }] },
+    { handles: ['B'], validation_status: [{ retailer_id: `SKU-${last}`, errors: [{ message: 'Invalid image' }] }] }
+  )
+  const summary = await sync.pushProductsToCatalog(db, ORG, many.map((row) => ({ ...row })), { fetcher })
+  assert.deepEqual([summary.sent, summary.rejected], [last, 1])
+  const saved = Object.fromEntries(db.rows.map((row) => [row.retailer_id, row.metadata.catalog]))
+  assert.deepEqual([saved['SKU-0'].state, saved['SKU-0'].handle], ['pending', 'A'])
+  assert.deepEqual([saved['SKU-1'].handle, saved['SKU-1'].warnings], ['A', ['Long title']])
+  assert.equal(saved[`SKU-${meta.MAX_BATCH_ITEMS}`].handle, 'B')
+  assert.deepEqual(saved[`SKU-${last}`], { state: 'error', errors: ['Invalid image'], synced_at: saved['SKU-0'].synced_at, catalog_id: CATALOG })
 })
 
 // ── Onboarding a business through Embedded Signup ───────────────────────────

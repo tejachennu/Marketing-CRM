@@ -111,11 +111,12 @@ export async function POST(request: NextRequest) {
       }
       const { data: conversation } = await supabase
         .from('conversations')
-        .select('id')
+        .select('id, contact_id')
         .eq('id', body.conversationId)
         .eq('organization_id', organizationId)
         .maybeSingle()
-      if (!conversation) {
+      // Another contact's chat would show the send in the wrong conversation
+      if (!conversation || (contactId && conversation.contact_id !== contactId)) {
         return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
       }
       conversationId = conversation.id

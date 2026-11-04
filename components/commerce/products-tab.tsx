@@ -59,6 +59,9 @@ interface Recipient {
 
 const inStock = (product: CommerceProduct) => product.is_available && (product.inventory_count ?? 1) > 0
 
+/** After a sync that could not read the whole catalog: what was read is up to date, and nothing was removed. */
+const incompleteNotice = (total: number) => `Only the first ${total} products were read from your WhatsApp catalog; nothing was removed.`
+
 interface ProductsTabProps {
   orgId: string
   currency: string
@@ -87,6 +90,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>('all')
   // Store-wide: how many products are outside the catalog, need a look, or are still being processed by Meta
   const [catalogCounts, setCatalogCounts] = useState({ sending: 0, attention: 0, notSent: 0 })
+  // Set while the last sync could not read the whole catalog
+  const [syncNotice, setSyncNotice] = useState('')
   const refreshTriesRef = useRef(0)
 
   // Products selected for a collection. Kept by id so the selection survives paging and searching.
@@ -172,7 +177,12 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ organizationId: orgId, action: 'sync_meta' }),
     })
-      .then((res) => (res.ok ? load(1, { silent: true }) : undefined))
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        setSyncNotice(data.incomplete ? incompleteNotice(data.total || 0) : '')
+        load(1, { silent: true })
+      })
       .catch(() => {
         // Store settings show why the catalog cannot be read
       })
@@ -199,11 +209,13 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The catalog could not be synced')
       refreshTriesRef.current = 0
+      setSyncNotice(data.incomplete ? incompleteNotice(data.total || 0) : '')
       await load(1, { silent: true })
       const removed = data.removed ? ` ${data.removed} no longer in the catalog ${data.removed === 1 ? 'was' : 'were'} removed.` : ''
       const skipped = data.skipped ? ` ${data.skipped} with changes of your own ${data.skipped === 1 ? 'was' : 'were'} left as ${data.skipped === 1 ? 'it is' : 'they are'}.` : ''
+      const otherCurrency = data.otherCurrency ? ` ${data.otherCurrency} ${data.otherCurrency === 1 ? 'is' : 'are'} priced in a different currency from the store.` : ''
       if (data.error) showToast('error', `Synced ${data.synced || 0} of ${data.total || 0} products. Some could not be saved: ${data.error}`)
-      else showToast('success', `${data.synced || 0} product${data.synced === 1 ? '' : 's'} synced from your WhatsApp catalog.${removed}${skipped}`)
+      else showToast('success', `${data.synced || 0} product${data.synced === 1 ? '' : 's'} synced from your WhatsApp catalog.${removed}${skipped}${otherCurrency}`)
     } catch (err: any) {
       showToast('error', err.message)
     } finally {
@@ -324,8 +336,21 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     })
     if (!confirmed) return
     try {
-      const res = await fetch(`/api/commerce/products?organizationId=${orgId}&id=${product.id}`, { method: 'DELETE' })
-      const data = await res.json().catch(() => ({}))
+      const remove = (force: boolean) => fetch(`/api/commerce/products?organizationId=${orgId}&id=${product.id}${force ? '&force=true' : ''}`, { method: 'DELETE' })
+      let res = await remove(false)
+      let data = await res.json().catch(() => ({}))
+      // Still in the WhatsApp catalog: removing it here alone is a second, informed decision
+      if (res.status === 409) {
+        const anyway = await confirm({
+          title: 'Still in your WhatsApp catalog',
+          message: `${data.error || 'It could not be removed from your WhatsApp catalog.'}\n\nRemove it here anyway? Customers can still order it in WhatsApp until it is removed in Commerce Manager, and the next sync brings it back here.`,
+          confirmLabel: 'Remove here anyway',
+          destructive: true,
+        })
+        if (!anyway) return
+        res = await remove(true)
+        data = await res.json().catch(() => ({}))
+      }
       if (!res.ok) throw new Error(data.error || 'The product could not be removed')
       if (data.inCatalog && !data.catalogRemoved) {
         showToast('error', `Removed here, but it is still in your WhatsApp catalog${data.catalogError ? `: ${data.catalogError}` : '.'} The next sync brings it back.`)
@@ -424,6 +449,13 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
           )}
         </div>
       </div>
+
+      {syncNotice && (
+        <p role="status" className="flex items-start gap-2 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-200">
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <span>{syncNotice}</span>
+        </p>
+      )}
 
       {/* Products ticked for one message */}
       {picked.size > 0 && (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { can, describeDenied } from '@/lib/rbac'
 import { forgetCatalog } from '@/lib/commerce/catalog-sync'
 import {
   canEditCatalog,
@@ -111,6 +112,8 @@ export async function POST(request: NextRequest) {
     if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     if (!['connect', 'create', 'unlink', 'rename', 'delete'].includes(action)) return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    // Deleting removes the catalog and every item in it from Meta for good: an admin's decision, not store upkeep
+    if (action === 'delete' && !can(auth.user, 'settings.manage')) return NextResponse.json({ error: describeDenied('settings.manage') }, { status: 403 })
 
     const org = await loadOrganization(organizationId)
     if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
