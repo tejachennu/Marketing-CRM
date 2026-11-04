@@ -134,6 +134,9 @@ function database(seed = {}) {
     const query = {
       select() { return this }, eq(key, value) { filters.push(row => read(row, key) === value); return this },
       in(key, list) { filters.push(row => list.includes(read(row, key))); return this },
+      neq(key, value) { filters.push(row => read(row, key) !== value); return this },
+      gte(key, value) { filters.push(row => read(row, key) >= value); return this },
+      lt(key, value) { filters.push(row => read(row, key) < value); return this },
       not(key, operator, value) { filters.push(row => operator === 'is' && value === null ? read(row, key) != null : true); return this },
       order(key, options = {}) { sort = { key, ascending: options.ascending !== false }; return this }, limit(count) { max = count; return this },
       maybeSingle() { singular = true; return this }, single() { singular = true; return this },
@@ -609,7 +612,12 @@ test('conditions compare amounts as numbers and words as text', async () => {
   assert.equal(await branch('not_equals', '10', { answer: 10 }), 'no')
   assert.equal(await branch('greater_than', '5', { answer: 'abc' }), 'no')
   assert.equal(await branch('greater_than', '5', {}), 'no')
-  assert.equal(await branch('equals', 'Pro', { answer: 'pro' }), 'no')
+  // Words match the way a customer means them: case and surrounding spaces do not count
+  assert.equal(await branch('equals', 'Pro', { answer: 'pro' }), 'yes')
+  assert.equal(await branch('equals', 'Pro', { answer: ' PRO ' }), 'yes')
+  assert.equal(await branch('equals', 'Pro', { answer: 'Pro plan' }), 'no')
+  assert.equal(await branch('not_equals', 'Pro', { answer: 'pro' }), 'no')
+  assert.equal(await branch('not_equals', 'Pro', { answer: 'Basic' }), 'yes')
   assert.equal(await branch('contains', 'pro', { answer: 'Pro plan' }), 'yes')
   assert.equal(await branch('is_set', '', { answer: 0 }), 'yes')
 })
@@ -639,10 +647,10 @@ test('tickets and leads are inserted the way their tables expect', async () => {
   assert.equal(noConversation.actionTaken, 'failed')
   assert.match(db.tables.flow_sessions[0].state_data._last_error, /conversation is required/)
   assert.equal(db.tables.tickets.length, 0)
-  // Leads land in this organization's first stage by position, with a numeric value
-  const leadFlow = workflow([baseNodes[0], node('lead', 'crm_deal_action', { deal_name: 'Quote for {{contact.name}}', monetary_value: '{{budget}}' })], [edge('trigger', 'lead')])
+  // Leads land in this organization's first stage by position, with a numeric value taken from a variable set earlier
+  const leadFlow = workflow([baseNodes[0], node('budget', 'set_variable', { variable_name: 'budget', value_expression: '2500', value_type: 'number' }), node('lead', 'crm_deal_action', { deal_name: 'Quote for {{contact.name}}', monetary_value: '{{budget}}' })], [edge('trigger', 'budget'), edge('budget', 'lead')])
   db = database({ whatsapp_workflows: [leadFlow], pipeline_stages: [{ id: 'later', organization_id: 'org', name: 'Qualified', position: 2 }, { id: 'first', organization_id: 'org', name: 'New', position: 1 }, { id: 'foreign', organization_id: 'other-org', name: 'New', position: 0 }] })
-  await executeFlowRuntime({ ...input, contactData: { ...input.contactData, budget: '2500' } }, db)
+  await executeFlowRuntime(input, db)
   assert.equal(db.tables.leads[0].pipeline_stage_id, 'first')
   assert.equal(db.tables.leads[0].value, 2500)
   assert.equal(db.tables.leads[0].status, 'active')
@@ -682,7 +690,7 @@ test('activation checks refuse unpublished or foreign forms, unconnected options
   ] })
   const check = (nodes, edges) => getWorkflowReadiness(db, workflow(nodes, edges))
   assert.match((await check(baseNodes, baseEdges)).join(), /publish the selected form/)
-  assert.match((await check([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'foreign' })], [edge('trigger', 'f')])).join(), /belongs to this organization/)
+  assert.match((await check([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'foreign' })], [edge('trigger', 'f')])).join(), /no longer exists \(it was deleted, or belongs to another organization\)/)
   assert.match((await check([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'odd' })], [edge('trigger', 'f')])).join(), /Meta Flow ID/)
   const menu = node('m', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'one', title: 'One' }, { id: 'two', title: 'Two' }] })
   assert.match((await check([baseNodes[0], menu, node('x', 'message', { body: 'x' })], [edge('trigger', 'm'), edge('m', 'x', 'one')])).join(), /connect the "Two" choice/)
@@ -692,4 +700,274 @@ test('activation checks refuse unpublished or foreign forms, unconnected options
   // With everything in place the flow can go live
   db.tables.whatsapp_native_flows[0] = { id: 'native', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '123456', flow_json: { screens: [{ id: 'LEAD_DETAILS' }] } }
   assert.deepEqual(await check(baseNodes, baseEdges), [])
+})
+
+// ── Round 2: keyword collisions, AI readiness, the assistant's prompt, late forms, placeholders, outputs ──
+const { getTriggerConflicts, getWorkflowIssues, getVariablesByNode, listOfferedVariables, getOutputHandles } = require('../lib/flows/flow-graph.ts')
+const { suggestKeywords } = require('../lib/flows/flow-templates.ts')
+const { AI_REQUIRED_MESSAGE } = require('../lib/flows/flow-readiness.ts')
+const { FORM_WAIT_LIMIT_MS, SESSION_IDLE_LIMIT_MS } = require('../lib/flows/flow-executor.ts')
+const { listSelectableForms } = require('../lib/flows/native-forms.ts')
+const hoursAgo = hours => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+
+test('activation is refused while another live flow starts on the same keyword or first message', async () => {
+  const keywordFlow = (id, name, keywords, extra = {}) => ({ ...workflow([node('trigger', 'trigger', { keywords, trigger_type: 'keyword', match_mode: 'contains', ...extra }), node('m', 'message', { body: 'x' })], [edge('trigger', 'm')]), id, name })
+  const pricing = keywordFlow('wf-pricing', 'Pricing', ['Hi', 'pricing'])
+  const support = keywordFlow('wf-support', 'Support desk', ['hi ', 'help'])
+  const conflicts = getTriggerConflicts(pricing, [support])
+  assert.equal(conflicts.length, 1)
+  assert.deepEqual(conflicts[0].keywords, ['hi'])
+  assert.match(conflicts[0].message, /"hi" already starts "Support desk"/)
+  assert.match(conflicts[0].note, /also used by "Support desk"/)
+  // Different match modes never take the same message; a flow never conflicts with itself
+  assert.deepEqual(getTriggerConflicts(pricing, [keywordFlow('wf-exact', 'Exact', ['hi'], { match_mode: 'exact' }), pricing]), [])
+  const welcome = (id, name) => ({ ...workflow([node('trigger', 'trigger', { trigger_type: 'first_message' }), node('m', 'message', { body: 'x' })], [edge('trigger', 'm')]), id, name })
+  assert.match(getTriggerConflicts(welcome('w1', 'Welcome'), [welcome('w2', 'Onboarding')])[0].message, /"Onboarding" already starts on a customer's first message/)
+  assert.deepEqual(getTriggerConflicts(welcome('w1', 'Welcome'), [support]), [])
+  // Activation names the other live flow; a paused one is no obstacle
+  const db = database({ whatsapp_workflows: [{ ...support, is_active: true }] })
+  assert.match((await getWorkflowReadiness(db, pricing)).join(), /"hi" already starts "Support desk"; change the keywords in one of the two flows/)
+  db.tables.whatsapp_workflows[0].is_active = false
+  assert.deepEqual(await getWorkflowReadiness(db, pricing), [])
+})
+test('new flows start on keywords taken from their name instead of the same "hi" as every other flow', () => {
+  assert.deepEqual(suggestKeywords('Pricing enquiry flow'), ['pricing enquiry', 'pricing'])
+  assert.deepEqual(suggestKeywords('Book a demo'), ['book demo', 'book'])
+  assert.deepEqual(suggestKeywords('The new WhatsApp bot'), ['start'])
+  assert.deepEqual(suggestKeywords(''), ['start'])
+  assert.deepEqual(createFormWorkflow({ id: 'native', name: 'Lead form' }).canvas_nodes[0].data.keywords, ['lead'])
+  assert.deepEqual(createStarterWorkflow(suggestKeywords('Book a demo')).canvas_nodes[0].data.keywords, ['book demo', 'book'])
+  // A generated graph without keywords gets the flow's own; one that has them keeps them
+  assert.deepEqual(sanitizeWorkflowGraph([node('a', 'message', { body: 'Hello' })], [], { keywords: ['quote'] }).canvas_nodes[0].data.keywords, ['quote'])
+  assert.deepEqual(sanitizeWorkflowGraph([node('t', 'trigger', { keywords: ['own'] }), node('a', 'message', { body: 'Hello' })], [edge('t', 'a')], { keywords: ['quote'] }).canvas_nodes[0].data.keywords, ['own'])
+})
+test('a knowledge assistant block needs AI enabled for the organization', async () => {
+  const flow = workflow([baseNodes[0], node('ai', 'ai_rag_node', { title: 'Assistant' })], [edge('trigger', 'ai')])
+  const platformKey = process.env.OPENAI_API_KEY
+  delete process.env.OPENAI_API_KEY
+  try {
+    const db = database({ whatsapp_workflows: [] })
+    assert.deepEqual(await getWorkflowReadiness(db, flow), [AI_REQUIRED_MESSAGE])
+    db.tables.organizations[0].openai_api_key = 'sk-test'
+    assert.deepEqual(await getWorkflowReadiness(db, flow), [])
+    db.tables.organizations[0].enable_ai = false
+    assert.deepEqual(await getWorkflowReadiness(db, flow), [AI_REQUIRED_MESSAGE])
+    // The platform's key counts as well
+    delete db.tables.organizations[0].openai_api_key
+    db.tables.organizations[0].enable_ai = true
+    process.env.OPENAI_API_KEY = 'sk-platform'
+    assert.deepEqual(await getWorkflowReadiness(db, flow), [])
+    delete process.env.OPENAI_API_KEY
+    // A flow without the block does not need AI
+    assert.deepEqual(await getWorkflowReadiness(db, workflow([baseNodes[0], node('m', 'message', { body: 'x' })], [edge('trigger', 'm')])), [])
+    // Before the AI columns exist the check is skipped with one warning, never a failure
+    const legacy = database({ whatsapp_workflows: [] })
+    const from = legacy.from
+    let failedOnce = false
+    legacy.from = table => {
+      const query = from(table)
+      if (table === 'organizations' && !failedOnce) {
+        failedOnce = true
+        query.then = (resolve, reject) => Promise.resolve({ data: null, error: { code: '42703', message: 'column organizations.enable_ai does not exist' } }).then(resolve, reject)
+      }
+      return query
+    }
+    const warn = console.warn
+    const warnings = []
+    console.warn = message => warnings.push(String(message))
+    try { assert.deepEqual(await getWorkflowReadiness(legacy, flow), []) } finally { console.warn = warn }
+    assert.equal(warnings.filter(message => /knowledge assistant check is skipped/.test(message)).length, 1)
+  } finally {
+    if (platformKey === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = platformKey
+  }
+})
+test('every way into the knowledge assistant asks for the question first', async () => {
+  // Straight from the trigger: the keyword is not the question
+  const direct = workflow([baseNodes[0], node('ai', 'ai_rag_node', { title: 'Assistant', promptText: 'What would you like to know, {{contact.name}}?' })], [edge('trigger', 'ai')])
+  let db = database({ whatsapp_workflows: [direct] })
+  const sent = []
+  const started = await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(started.handled, true)
+  assert.equal(started.actionTaken, 'waiting_for_question')
+  assert.equal(sent.at(-1).body, 'What would you like to know, Asha?')
+  assert.equal(db.tables.flow_sessions[0].status, 'PAUSED_RAG')
+  const question = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'Do you ship to Pune?' }, db)
+  assert.equal(question.handled, false)
+  assert.equal(question.isRagFallback, true)
+  assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
+  // After a form: the answers are not the question either
+  const afterForm = workflow([...baseNodes.slice(0, 3), node('ai', 'ai_rag_node', { title: 'Assistant' })], [edge('trigger', 'intro'), edge('intro', 'form'), edge('form', 'ai')])
+  db = database({ whatsapp_workflows: [afterForm] })
+  await executeFlowRuntime(input, db)
+  const token = db.tables.flow_sessions[0].state_data._flow_token
+  const submitted = await executeFlowRuntime({ ...input, messageId: 'form-1', flowSubmissionData: { flow_token: token, full_name: 'Asha' } }, db)
+  assert.equal(submitted.actionTaken, 'waiting_for_question')
+  assert.match(submitted.replyMessage.body, /Type your question/)
+  assert.equal(db.tables.flow_sessions[0].status, 'PAUSED_RAG')
+  assert.equal(db.tables.flow_submissions.length, 1)
+})
+test('a form answered after its session ended is filed under that session, and the customer is thanked', async () => {
+  const db = database()
+  await executeFlowRuntime(input, db)
+  const token = db.tables.flow_sessions[0].state_data._flow_token
+  db.tables.flow_sessions[0].status = 'EXPIRED' // as the scheduler does after a long silence
+  const sent = []
+  const late = await executeFlowRuntime({ ...input, messageId: 'form-late', flowSubmissionData: { flow_token: token, full_name: 'Asha' }, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(late.handled, true)
+  assert.equal(late.actionTaken, 'saved_late_submission')
+  assert.equal(late.executedWorkflowId, 'workflow')
+  assert.equal(sent[0].body, 'Thanks, we received your form.')
+  const saved = db.tables.flow_submissions[0]
+  assert.equal(saved.session_id, db.tables.flow_sessions[0].id)
+  assert.equal(saved.workflow_id, 'workflow')
+  assert.equal(saved.flow_id, 'native')
+  assert.equal(saved.response_payload.full_name, 'Asha')
+  // The ended session does not resume: no lead, no new session
+  assert.equal(db.tables.leads.length, 0)
+  assert.equal(db.tables.flow_sessions.length, 1)
+  assert.equal(db.tables.flow_sessions[0].status, 'EXPIRED')
+  // A paused flow: its session is closed, and the answers still land under it
+  const paused = database()
+  await executeFlowRuntime(input, paused)
+  const pausedToken = paused.tables.flow_sessions[0].state_data._flow_token
+  paused.tables.whatsapp_workflows[0].is_active = false
+  const result = await executeFlowRuntime({ ...input, messageId: 'form-paused', flowSubmissionData: { flow_token: pausedToken, full_name: 'Ravi' } }, paused)
+  assert.equal(result.actionTaken, 'saved_late_submission')
+  assert.equal(paused.tables.flow_sessions[0].status, 'EXPIRED')
+  assert.equal(paused.tables.flow_submissions[0].session_id, paused.tables.flow_sessions[0].id)
+  assert.equal(paused.tables.flow_submissions[0].flow_id, 'native')
+  // A token nothing sent is still kept, without a session
+  const stray = await executeFlowRuntime({ ...input, messageId: 'form-stray', flowSubmissionData: { flow_token: 'unknown-token', full_name: 'Who' } }, paused)
+  assert.equal(stray.actionTaken, 'saved_submission')
+  assert.equal(paused.tables.flow_submissions[1].session_id, undefined)
+})
+test('a session waiting on a form keeps waiting for three days; other waits end after one', async () => {
+  assert.equal(FORM_WAIT_LIMIT_MS, 72 * 60 * 60 * 1000)
+  assert.equal(SESSION_IDLE_LIMIT_MS, 24 * 60 * 60 * 1000)
+  const db = database()
+  await executeFlowRuntime(input, db)
+  const token = db.tables.flow_sessions[0].state_data._flow_token
+  db.tables.flow_sessions[0].last_interaction_at = hoursAgo(30)
+  const done = await executeFlowRuntime({ ...input, messageId: 'form-30h', flowSubmissionData: { flow_token: token, full_name: 'Asha' } }, db)
+  assert.equal(done.handled, true)
+  assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
+  assert.equal(db.tables.leads.length, 1)
+  // Past three days the form wait is over too
+  const stale = database()
+  await executeFlowRuntime(input, stale)
+  stale.tables.flow_sessions[0].last_interaction_at = hoursAgo(80)
+  assert.equal((await executeFlowRuntime({ ...input, messageId: 'later', userInput: 'unmatched text' }, stale)).handled, false)
+  assert.equal(stale.tables.flow_sessions[0].status, 'EXPIRED')
+  // A menu wait still ends after a day
+  const menu = database({ whatsapp_workflows: [menuFlow([{ id: 'yes', title: 'Yes' }], [node('ok', 'message', { body: 'ok' })], [edge('menu', 'ok', 'yes')])] })
+  await executeFlowRuntime(input, menu)
+  menu.tables.flow_sessions[0].last_interaction_at = hoursAgo(30)
+  assert.equal((await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'unmatched text' }, menu)).handled, false)
+  assert.equal(menu.tables.flow_sessions[0].status, 'EXPIRED')
+})
+test('placeholders are checked against the variables that exist at each block', () => {
+  const trigger = node('trigger', 'trigger', { keywords: ['hi'] })
+  const issuesOf = (nodes, edges) => validateWorkflow(nodes, edges).join('\n')
+  const form = node('form', 'native_flow_trigger', { native_flow_id: 'native' })
+  // A form answer before the form, a typo in a contact field, and a bare {{form}}
+  assert.match(issuesOf([trigger, node('m', 'message', { title: 'Thanks', body: 'Thanks {{form.full_name}}' }), form], [edge('trigger', 'm'), edge('m', 'form')]), /Thanks: \{\{form\.full_name\}\} is only available after a WhatsApp form block/)
+  assert.match(issuesOf([trigger, node('m', 'message', { body: 'Hi {{contact.firstname}}' })], [edge('trigger', 'm')]), /\{\{contact\.firstname\}\} is not a known field/)
+  assert.match(issuesOf([trigger, form, node('m', 'message', { body: 'Thanks {{form}}' })], [edge('trigger', 'form'), edge('form', 'm')]), /\{\{form\}\} needs the answer's name/)
+  assert.match(issuesOf([trigger, node('m', 'message', { body: 'Score {{score}}' })], [edge('trigger', 'm')]), /\{\{score\}\} is not set by any block before this one/)
+  // After the form any answer name is fine, and so are the built-ins and variables set earlier
+  const fine = [trigger, form, node('tier', 'set_variable', { variable_name: 'tier', value_expression: 'gold' }), node('m', 'message', { body: 'Thanks {{form.full_name}} from {{org.name}}, tier {{tier}}, you said {{last_input}} ({{contact.first_name}}, {{name}})' })]
+  const fineEdges = [edge('trigger', 'form'), edge('form', 'tier'), edge('tier', 'm')]
+  assert.equal(issuesOf(fine, fineEdges), '')
+  // A choice is known after a menu, not in the menu's own question
+  const menu = node('menu', 'interactive_buttons', { body: 'Pick {{last_choice_title}}', buttons: [{ id: 'a', title: 'A' }] })
+  const after = node('after', 'message', { body: 'You chose {{last_choice_title}}' })
+  const menuIssues = issuesOf([trigger, menu, after], [edge('trigger', 'menu'), edge('menu', 'after', 'a')])
+  assert.match(menuIssues, /menu: \{\{last_choice_title\}\} is only available after a buttons or list block/)
+  assert.doesNotMatch(menuIssues, /after:/)
+  // Conditions read a variable the same way
+  const condition = node('c', 'condition_branch', { title: 'Check', variable_name: 'form.budget', operator: 'equals', compare_value: '10' })
+  assert.match(issuesOf([trigger, condition, node('x', 'message', { body: 'x' })], [edge('trigger', 'c'), edge('c', 'x', 'true'), edge('c', 'x', 'false')]), /Check: the value "form\.budget" is only available after a WhatsApp form block/)
+  // The builder offers exactly what exists at a block
+  const variables = getVariablesByNode(fine, fineEdges)
+  assert.ok(listOfferedVariables(variables.get('m')).includes('tier'))
+  assert.ok(variables.get('m').roots.includes('form'))
+  assert.ok(!listOfferedVariables(variables.get('form')).includes('tier'))
+  assert.ok(!listOfferedVariables(variables.get('m')).includes('trigger_text'), 'older spellings keep working but are not offered')
+})
+test('connections only leave outputs a block has, and a form at the end still thanks the customer', async () => {
+  const trigger = node('trigger', 'trigger', { keywords: ['hi'] })
+  // A generator may put a handle on a plain block, or name a button that does not exist
+  const graph = sanitizeWorkflowGraph(
+    [trigger, node('m', 'message', { body: 'Hello' }), node('menu', 'interactive_buttons', { body: 'Pick', buttons: [{ id: 'yes', title: 'Yes' }] }), node('end', 'message', { body: 'Bye' })],
+    [edge('trigger', 'm'), { id: 'e1', source: 'm', target: 'menu', sourceHandle: 'next' }, edge('menu', 'end', 'yes'), edge('menu', 'end', 'maybe')],
+  )
+  assert.deepEqual(graph.canvas_edges.map(item => [item.source, item.target, item.sourceHandle]), [['trigger', 'm', undefined], ['m', 'menu', undefined], ['menu', 'end', 'yes']])
+  assert.deepEqual(validateWorkflow(graph.canvas_nodes, graph.canvas_edges), [])
+  assert.equal(getOutputHandles(node('m', 'message')), null)
+  assert.deepEqual(getOutputHandles(node('c', 'condition_branch')), ['true', 'false'])
+  // Saved as-is, such a connection is reported instead of silently never being taken
+  const unknown = validateWorkflow([trigger, node('m', 'message', { title: 'Hello', body: 'Hello' }), node('end', 'message', { body: 'Bye' })], [edge('trigger', 'm'), edge('m', 'end', 'next')]).join()
+  assert.match(unknown, /Hello: a connection leaves an output this block does not have \("next"\)/)
+  // The text above a form travels in an interactive message
+  const long = node('form', 'native_flow_trigger', { title: 'Form', native_flow_id: 'native', description: 'x'.repeat(1025) })
+  assert.match(validateWorkflow([trigger, long, node('end', 'message', { body: 'Bye' })], [edge('trigger', 'form'), edge('form', 'end')]).join(), /Form: the message above the form must be at most 1024 characters/)
+  // A form as the last block is a warning, not a blocker
+  const last = [trigger, node('form', 'native_flow_trigger', { title: 'Form', native_flow_id: 'native' })]
+  const issues = getWorkflowIssues(last, [edge('trigger', 'form')])
+  assert.equal(issues.filter(issue => issue.warning).length, 1)
+  assert.match(issues.find(issue => issue.warning).text, /Form: nothing follows this form/)
+  assert.deepEqual(validateWorkflow(last, [edge('trigger', 'form')]), [])
+  // ...and at run time the customer still gets an acknowledgement
+  const db = database({ whatsapp_workflows: [workflow(last, [edge('trigger', 'form')])] })
+  await executeFlowRuntime(input, db)
+  const token = db.tables.flow_sessions[0].state_data._flow_token
+  const sent = []
+  const done = await executeFlowRuntime({ ...input, messageId: 'form-1', flowSubmissionData: { flow_token: token, full_name: 'Asha' }, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(done.handled, true)
+  assert.equal(sent.at(-1).body, 'Thanks, we received your form.')
+  assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
+  assert.equal(db.tables.flow_submissions.length, 1)
+})
+test('a lead block needs a pipeline stage: activation says so, and a run without one fails visibly', async () => {
+  const flow = workflow([baseNodes[0], node('lead', 'crm_deal_action', { title: 'Create lead', deal_name: 'Quote', pipeline_stage: 'lead_in' })], [edge('trigger', 'lead')])
+  const db = database({ whatsapp_workflows: [flow], pipeline_stages: [{ id: 'foreign', organization_id: 'other-org', name: 'New', position: 0 }] })
+  assert.match((await getWorkflowReadiness(db, flow)).join(), /Create lead: add a pipeline stage under Leads before this flow can create leads/)
+  const result = await executeFlowRuntime(input, db)
+  assert.equal(result.actionTaken, 'failed')
+  assert.match(db.tables.flow_sessions[0].state_data._last_error, /add a pipeline stage under Leads/i)
+  assert.equal(db.tables.leads.length, 0)
+})
+test('activation tells a deleted form from an unpublished or retired one, and the picker hides retired forms', async () => {
+  const forms = [
+    { id: 'draft', organization_id: 'org', status: 'DRAFT', flow_id_meta: null, flow_json: { screens: [] } },
+    { id: 'retired', organization_id: 'org', status: 'DEPRECATED', flow_id_meta: '55', flow_json: { screens: [{ id: 'A' }] } },
+  ]
+  const db = database({ whatsapp_native_flows: forms })
+  const check = id => getWorkflowReadiness(db, workflow([baseNodes[0], node('f', 'native_flow_trigger', { title: 'Form', native_flow_id: id })], [edge('trigger', 'f')]))
+  assert.match((await check('draft')).join(), /Form: publish the selected form to Meta first/)
+  assert.match((await check('retired')).join(), /Form: the selected form was retired on WhatsApp; select another form/)
+  assert.match((await check('deleted')).join(), /Form: the selected form no longer exists/)
+  // Sending a retired form fails the run with the reason
+  const flow = workflow([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'retired' })], [edge('trigger', 'f')])
+  const run = database({ whatsapp_workflows: [flow], whatsapp_native_flows: forms })
+  assert.equal((await executeFlowRuntime(input, run)).actionTaken, 'failed')
+  assert.match(run.tables.flow_sessions[0].state_data._last_error, /retired on WhatsApp/)
+  // The picker never offers a retired form, except the one a block already uses
+  const list = [{ id: 'draft', status: 'DRAFT' }, { id: 'retired', status: 'DEPRECATED' }, { id: 'live', status: 'PUBLISHED', flow_id_meta: '1' }]
+  assert.deepEqual(listSelectableForms(list).map(form => form.id), ['draft', 'live'])
+  assert.deepEqual(listSelectableForms(list, 'retired').map(form => form.id), ['draft', 'retired', 'live'])
+})
+test('the builder catalog offers no ticket priority and gives the assistant a prompt', () => {
+  // The catalog is a .tsx module without JSX; compile it like the .ts files
+  const ts = require('typescript')
+  const fs = require('node:fs')
+  require.extensions['.tsx'] = (module, filename) => {
+    const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX } })
+    module._compile(output.outputText, filename)
+  }
+  const { getNodeDefinition } = require('../components/flows/node-catalog.tsx')
+  assert.equal(getNodeDefinition('ticket_action').createData({}).priority, undefined)
+  assert.match(getNodeDefinition('ai_rag_node').createData({}).promptText, /Type your question/)
+  assert.equal(createStarterWorkflow().canvas_nodes.find(item => item.type === 'ticket_action').data.priority, undefined)
 })

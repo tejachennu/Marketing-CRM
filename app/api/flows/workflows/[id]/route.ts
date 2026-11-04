@@ -52,18 +52,22 @@ export async function GET(
     // Fetch related active sessions & submissions count. Customers' phones and answers need the
     // same permission as /api/flows/submissions; without it only run failures are shown.
     const canViewResponses = can(authResult.user, 'records.view_all')
-    const [sessionsRes, submissionsRes, stagesRes] = await Promise.all([
+    const [sessionsRes, submissionsRes, stagesRes, organizationRes] = await Promise.all([
       supabase.from('flow_sessions').select('id, status, created_at, last_interaction_at, contact_phone, current_node_id, state_data').eq('workflow_id', id).order('last_interaction_at', { ascending: false }).limit(20),
       canViewResponses ? supabase.from('flow_submissions').select('id, created_at, contact_phone, response_payload').eq('workflow_id', id).order('created_at', { ascending: false }).limit(20) : { data: [], error: null },
       supabase.from('pipeline_stages').select('id,name').eq('organization_id', workflow.organization_id).order('position'),
+      // The test panel fills in {{org.name}} with it
+      supabase.from('organizations').select('name').eq('id', workflow.organization_id).maybeSingle(),
     ])
 
     if (sessionsRes.error) throw sessionsRes.error
     if (submissionsRes.error) throw submissionsRes.error
     if (stagesRes.error) throw stagesRes.error
+    if (organizationRes.error) throw organizationRes.error
     const readinessErrors = await getWorkflowReadiness(supabase, workflow)
     return NextResponse.json({
       workflow,
+      organizationName: organizationRes.data?.name || null,
       readinessErrors,
       environmentErrors: withoutGraphErrors(readinessErrors, workflow),
       pipelineStages: stagesRes.data || [],

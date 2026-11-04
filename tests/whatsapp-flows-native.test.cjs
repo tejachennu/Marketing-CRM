@@ -28,6 +28,9 @@ function run(table, ops) {
     if (op === 'select') count = args[1]?.count === 'exact'
     else if (['eq', 'in'].includes(op) && unknown(args[0])) return unknown(args[0])
     else if (op === 'eq') rows = rows.filter((row) => row[args[0]] === args[1])
+    else if (op === 'neq') rows = rows.filter((row) => row[args[0]] !== args[1])
+    else if (op === 'gte') rows = rows.filter((row) => row[args[0]] >= args[1])
+    else if (op === 'lt') rows = rows.filter((row) => row[args[0]] < args[1])
     else if (op === 'in') rows = rows.filter((row) => args[1].includes(row[args[0]]))
     else if (op === 'is') rows = rows.filter((row) => row[args[0]] == null)
     else if (op === 'not') rows = rows.filter((row) => row[args[0]] != null)
@@ -70,6 +73,7 @@ let user = MANAGER
 stub(path.join(PROJECT, 'lib/api-auth-helper.ts'), {
   verifyOrgAccess: async () => ({ authorized: true, user }),
   verifyRecordAccess: async () => ({ authorized: true, user }),
+  getAuthenticatedUser: async () => user,
 })
 
 // Fake Meta: reports every form as whatever `metaStatus` is
@@ -306,13 +310,13 @@ test('Forms: creating a form Meta would reject is a 400 with the reason, and cat
   assert.equal((await nativeRoute.POST(json('/api/flows/native', 'POST', { organizationId: ORG, name: 'Default' }))).status, 201)
 })
 
-test('Forms: saving a form Meta already published is refused, and the stored status catches up', async () => {
+test('Forms: validating a form Meta already published is refused, and the stored status catches up', async () => {
   reset()
   Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'DRAFT' })
   metaStatus = 'PUBLISHED'
   const edited = structuredClone(tables.whatsapp_native_flows[0].screens)
   edited[0].title = 'Changed'
-  const res = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: edited }), params('form'))
+  const res = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: edited, action: 'validate' }), params('form'))
   assert.equal(res.status, 409)
   const body = await res.json()
   assert.equal(body.error, "This form is published on Meta, so it can't be edited. Duplicate it to make changes.")
@@ -406,4 +410,192 @@ test('AI generation: prompts are capped, the OpenAI call is bounded, and generat
     global.fetch = defaultFetch
     user = MANAGER
   }
+})
+
+test('AI generation: the prompt describes blocks the way the runtime executes them', async () => {
+  reset()
+  tables.organizations[0].openai_api_key = 'sk-test'
+  user = { id: 'prompt-reader', role: 'org_manager', organization_id: ORG }
+  let system = ''
+  global.fetch = async (url, init) => {
+    system = JSON.parse(init.body).messages[0].content
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ name: 'X', canvas_nodes: [], canvas_edges: [] }) } }] }))
+  }
+  try {
+    await generate(ORG, 'A flow')
+    assert.doesNotMatch(system, /priority/, 'tickets have no priority column')
+    assert.match(system, /"ai_rag_node": data: \{ title, promptText: string \}/)
+    assert.match(system, /Only edges leaving interactive_buttons, list_menu and condition_branch carry a sourceHandle/)
+    assert.match(system, /Only use variables that exist at that step/)
+  } finally {
+    global.fetch = defaultFetch
+    user = MANAGER
+  }
+})
+
+// ── Round 2: saving drafts, retiring forms, keyword collisions, the list's counts and the simulator ──
+
+test('Forms: a plain save never calls Meta; credential and network problems are reported, not 500s', async () => {
+  reset()
+  Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'DRAFT' })
+  let requests = 0
+  global.fetch = async () => { requests++; return new Response(JSON.stringify({ id: 'meta-1', status: 'DRAFT' })) }
+  try {
+    const edited = structuredClone(tables.whatsapp_native_flows[0].screens)
+    edited[0].title = 'Changed'
+    const saved = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: edited }), params('form'))
+    assert.equal(saved.status, 200)
+    assert.equal((await saved.json()).validated, false)
+    assert.equal(requests, 0, 'a plain save stays local')
+    assert.equal(tables.whatsapp_native_flows[0].screens[0].title, 'Changed')
+    // Without WhatsApp Cloud API credentials, validating is the caller's problem to fix
+    tables.organizations[0].whatsapp_provider = 'twilio'
+    const refused = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: edited, action: 'validate' }), params('form'))
+    assert.equal(refused.status, 400)
+    assert.match((await refused.json()).error, /Connect WhatsApp Cloud API in Settings/)
+    assert.equal(requests, 0)
+    // Meta unreachable while creating the remote draft: the draft is saved and the answer says so
+    reset()
+    const fresh = structuredClone(tables.whatsapp_native_flows[0].screens)
+    fresh[0].title = 'Kept'
+    global.fetch = async () => { throw new TypeError('fetch failed') }
+    const down = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: fresh, action: 'validate' }), params('form'))
+    assert.equal(down.status, 502)
+    assert.match((await down.json()).error, /could not be reached/)
+    assert.equal(tables.whatsapp_native_flows[0].screens[0].title, 'Kept')
+    global.fetch = async () => { const error = new Error('The operation was aborted due to timeout'); error.name = 'TimeoutError'; throw error }
+    const slow = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: fresh, action: 'validate' }), params('form'))
+    assert.equal(slow.status, 504)
+    assert.match((await slow.json()).error, /did not answer in time/)
+  } finally { global.fetch = defaultFetch }
+})
+
+test('Forms: retiring a published form deprecates it on Meta, frees it for deletion, and spares the store\'s address form', async () => {
+  reset()
+  Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'PUBLISHED' })
+  const requests = []
+  global.fetch = async (url, init) => { requests.push([init?.method || 'GET', url.split('/').slice(-2).join('/')]); return new Response(JSON.stringify({ success: true })) }
+  try {
+    const retired = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { action: 'deprecate' }), params('form'))
+    assert.equal(retired.status, 200)
+    const body = await retired.json()
+    assert.equal(body.flow.status, 'DEPRECATED')
+    assert.equal(body.retired, true)
+    assert.deepEqual(requests, [['POST', 'meta-1/deprecate']])
+    assert.equal(tables.whatsapp_native_flows[0].status, 'DEPRECATED')
+    // A retired form is frozen for good
+    const edit = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { screens: tables.whatsapp_native_flows[0].screens }), params('form'))
+    assert.equal(edit.status, 409)
+    assert.match((await edit.json()).error, /retired/)
+    assert.equal((await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { action: 'publish', screens: tables.whatsapp_native_flows[0].screens }), params('form'))).status, 409)
+    // ...but can be deleted here without asking Meta, unless a flow (even a paused one) still sends it
+    tables.whatsapp_workflows[0].canvas_nodes = [{ id: 'f', type: 'native_flow_trigger', data: { native_flow_id: 'form' } }]
+    tables.whatsapp_workflows[0].is_active = false
+    const used = await nativeIdRoute.DELETE(get('/api/flows/native/form'), params('form'))
+    assert.equal(used.status, 409)
+    assert.match((await used.json()).error, /used by the flow "Workflow"\. Remove it from that flow/)
+    assert.equal(tables.whatsapp_native_flows.length, 1)
+    tables.whatsapp_workflows[0].canvas_nodes = []
+    const deleted = await nativeIdRoute.DELETE(get('/api/flows/native/form'), params('form'))
+    assert.equal(deleted.status, 200)
+    assert.equal(requests.length, 1, 'Meta is not asked to delete a retired form')
+    assert.equal(tables.whatsapp_native_flows.length, 0)
+    // The store's delivery address form is Commerce's to change first
+    reset()
+    Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'PUBLISHED' })
+    tables.organizations[0].commerce_address_flow_id = 'meta-1'
+    const guarded = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { action: 'deprecate' }), params('form'))
+    assert.equal(guarded.status, 409)
+    assert.equal((await guarded.json()).error, "This form is the store's delivery address form; change it in Commerce → Store settings first")
+    assert.equal(tables.whatsapp_native_flows[0].status, 'PUBLISHED')
+    tables.whatsapp_native_flows[0].status = 'DEPRECATED'
+    const guardedDelete = await nativeIdRoute.DELETE(get('/api/flows/native/form'), params('form'))
+    assert.equal(guardedDelete.status, 409)
+    assert.match((await guardedDelete.json()).error, /delivery address form/)
+    assert.equal(tables.whatsapp_native_flows.length, 1)
+    assert.equal(requests.length, 1)
+    // Only a published form can be retired
+    reset()
+    const draft = await nativeIdRoute.PUT(json('/api/flows/native/form', 'PUT', { action: 'deprecate' }), params('form'))
+    assert.equal(draft.status, 409)
+    assert.match((await draft.json()).error, /Only a published form can be retired/)
+  } finally { global.fetch = defaultFetch }
+})
+
+const workflowsRoute = require(path.join(PROJECT, 'app/api/flows/workflows/route.ts'))
+const simulateRoute = require(path.join(PROJECT, 'app/api/flows/simulate/route.ts'))
+const canvasNode = (id, type, data) => ({ id, type, position: { x: 0, y: 0 }, data })
+
+test('Flows: going live is refused while another live flow starts on the same keyword', async () => {
+  reset()
+  const graph = (keywords) => ({ canvas_nodes: [canvasNode('t', 'trigger', { trigger_type: 'keyword', keywords, match_mode: 'contains' }), canvasNode('m', 'message', { body: 'Hello' })], canvas_edges: [{ id: 'e', source: 't', target: 'm' }] })
+  tables.whatsapp_workflows = [
+    { id: 'wf', organization_id: ORG, name: 'Pricing', is_active: false, ...graph(['hi', 'pricing']) },
+    { id: 'other', organization_id: ORG, name: 'Support desk', is_active: true, ...graph(['Hi']) },
+    { id: 'foreign', organization_id: OTHER_ORG, name: 'Elsewhere', is_active: true, ...graph(['pricing']) },
+  ]
+  const res = await workflowIdRoute.PUT(json('/api/flows/workflows/wf', 'PUT', { is_active: true }), params('wf'))
+  assert.equal(res.status, 422)
+  const body = await res.json()
+  assert.equal(body.validationErrors.length, 1)
+  assert.match(body.validationErrors[0], /The keyword "hi" already starts "Support desk"/)
+  assert.equal(tables.whatsapp_workflows[0].is_active, false)
+  // Pausing the other flow clears the way
+  tables.whatsapp_workflows[1].is_active = false
+  const ok = await workflowIdRoute.PUT(json('/api/flows/workflows/wf', 'PUT', { is_active: true }), params('wf'))
+  assert.equal(ok.status, 200)
+  assert.equal(tables.whatsapp_workflows[0].is_active, true)
+})
+
+test('Flows list: conversations in progress are counted in the database, per flow, within the last day', async () => {
+  reset()
+  const hoursAgo = (hours) => new Date(Date.now() - hours * 3600000).toISOString()
+  tables.whatsapp_workflows = [
+    { id: 'wf', organization_id: ORG, name: 'A', canvas_nodes: [], canvas_edges: [] },
+    { id: 'wf2', organization_id: ORG, name: 'B', canvas_nodes: [], canvas_edges: [] },
+  ]
+  tables.flow_sessions = [
+    { id: 's1', organization_id: ORG, workflow_id: 'wf', status: 'IN_PROGRESS', last_interaction_at: hoursAgo(1) },
+    { id: 's2', organization_id: ORG, workflow_id: 'wf', status: 'PAUSED_RAG', last_interaction_at: hoursAgo(2) },
+    { id: 's3', organization_id: ORG, workflow_id: 'wf', status: 'COMPLETED', last_interaction_at: hoursAgo(1) },
+    { id: 's4', organization_id: ORG, workflow_id: 'wf', status: 'IN_PROGRESS', last_interaction_at: hoursAgo(30) },
+    { id: 's5', organization_id: OTHER_ORG, workflow_id: 'wf', status: 'IN_PROGRESS', last_interaction_at: hoursAgo(1) },
+    { id: 's6', organization_id: ORG, workflow_id: 'wf2', status: 'IN_PROGRESS', last_interaction_at: hoursAgo(1) },
+  ]
+  const res = await workflowsRoute.GET(get(`/api/flows/workflows?organizationId=${ORG}`))
+  assert.equal(res.status, 200)
+  const { workflows } = await res.json()
+  assert.deepEqual(Object.fromEntries(workflows.map((w) => [w.id, w.active_sessions_count])), { wf: 2, wf2: 1 })
+  const counts = calls.filter((c) => c.table === 'flow_sessions')
+  assert.equal(counts.length, 2, 'one count per flow, never a read of every session row')
+  assert.deepEqual(counts[0].ops.find(([op]) => op === 'select'), ['select', 'id', { count: 'exact', head: true }])
+  assert.ok(counts[0].ops.some(([op, column, values]) => op === 'in' && column === 'status' && values.includes('PAUSED_RAG')))
+  assert.ok(counts[0].ops.some(([op, column]) => op === 'gte' && column === 'last_interaction_at'))
+  assert.ok(counts[0].ops.some(([op, column, value]) => op === 'eq' && column === 'organization_id' && value === ORG))
+})
+
+test('Simulator: reaching the knowledge assistant shows its prompt, with the organization name filled in; a final form is acknowledged', async () => {
+  reset()
+  const nodes = [canvasNode('t', 'trigger', { keywords: ['hi'] }), canvasNode('ai', 'ai_rag_node', { title: 'Assistant', promptText: 'Ask {{org.name}} anything, {{contact.name}}' })]
+  const edges = [{ id: 'e', source: 't', target: 'ai' }]
+  const res = await simulateRoute.POST(json('/api/flows/simulate', 'POST', { nodes, edges, organizationName: 'Acme' }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.reply, 'Ask Acme anything, Test Customer')
+  assert.equal(body.isCompleted, false)
+  assert.equal(body.currentNodeId, 'ai')
+  // The next message is the question: live it goes to the assistant, and the test ends there
+  const next = await (await simulateRoute.POST(json('/api/flows/simulate', 'POST', { nodes, edges, currentNodeId: 'ai', userInput: 'Do you ship?', simulatedState: body.simulatedState }))).json()
+  assert.equal(next.isCompleted, true)
+  assert.match(next.reply, /knowledge assistant answers/)
+  // Without a name the placeholder still reads naturally
+  assert.equal((await (await simulateRoute.POST(json('/api/flows/simulate', 'POST', { nodes, edges }))).json()).reply, 'Ask Your business anything, Test Customer')
+  // A form as the last block is acknowledged in the test, as it is live
+  const formNodes = [nodes[0], canvasNode('f', 'native_flow_trigger', { native_flow_id: 'form' })]
+  const formEdges = [{ id: 'e', source: 't', target: 'f' }]
+  const sent = await (await simulateRoute.POST(json('/api/flows/simulate', 'POST', { nodes: formNodes, edges: formEdges }))).json()
+  assert.equal(sent.isNativeFlow, true)
+  const done = await (await simulateRoute.POST(json('/api/flows/simulate', 'POST', { nodes: formNodes, edges: formEdges, currentNodeId: 'f', simulatedState: sent.simulatedState, flowSubmissionData: { full_name: 'Asha' } }))).json()
+  assert.equal(done.reply, 'Thanks, we received your form.')
+  assert.equal(done.isCompleted, true)
 })

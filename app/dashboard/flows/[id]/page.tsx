@@ -20,7 +20,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import type { NodeType, WorkflowEdge, WorkflowNode } from '@/lib/flows/flow-types'
-import { getWorkflowIssues } from '@/lib/flows/flow-graph'
+import { getVariablesByNode, getWorkflowIssues, listOfferedVariables } from '@/lib/flows/flow-graph'
 import {
   BODY_PADDING,
   HEADER_HEIGHT,
@@ -39,7 +39,7 @@ import {
   getOutputAnchor,
   uid,
 } from '@/components/flows/node-catalog'
-import { NodeInspector } from '@/components/flows/node-inspector'
+import { NodeInspector, type InspectorTeammate } from '@/components/flows/node-inspector'
 import { FlowSimulator, type SimulatorMessage } from '@/components/flows/flow-simulator'
 
 type Panel = 'inspector' | 'simulator' | 'issues' | null
@@ -101,6 +101,9 @@ export default function FlowCanvasBuilderPage() {
   const [recentSessions, setRecentSessions] = useState<any[]>([])
   const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; name: string }>>([])
   const [nativeForms, setNativeForms] = useState<any[]>([])
+  const [teammates, setTeammates] = useState<InspectorTeammate[]>([])
+  // Fills in {{org.name}} in the test panel, the way the webhook does live
+  const [organizationName, setOrganizationName] = useState('')
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -165,11 +168,20 @@ export default function FlowCanvasBuilderPage() {
         setPausedNote(describePause(workflow))
         setRecentSessions(data.recentSessions || [])
         setPipelineStages(data.pipelineStages || [])
+        setOrganizationName(data.organizationName || '')
         setLoadState('ready')
 
         if (workflow.organization_id) {
-          const formsRes = await fetch(`/api/flows/native?organizationId=${workflow.organization_id}`)
+          // The forms a form block can send, and the people a hand-off block can name
+          const [formsRes, teamRes] = await Promise.all([
+            fetch(`/api/flows/native?organizationId=${workflow.organization_id}`),
+            fetch(`/api/teammates?organizationId=${workflow.organization_id}`),
+          ])
           if (formsRes.ok && !cancelled) setNativeForms((await formsRes.json()).flows || [])
+          if (teamRes.ok && !cancelled) {
+            const team: any[] = (await teamRes.json()).teammates || []
+            setTeammates(team.map((member) => ({ id: String(member.id), name: member.full_name || member.email || 'Teammate' })))
+          }
         }
       } catch {
         if (!cancelled) setLoadState('missing')
@@ -183,6 +195,9 @@ export default function FlowCanvasBuilderPage() {
 
   // ── Validation: computed live from the canvas, so problems show as they are made ──
   const graphIssues = useMemo(() => getWorkflowIssues(nodes, edges), [nodes, edges])
+  // Only errors keep a flow from going live; warnings are shown but never block
+  const graphErrors = useMemo(() => graphIssues.filter((issue) => !issue.warning), [graphIssues])
+  const graphWarnings = useMemo(() => graphIssues.filter((issue) => issue.warning), [graphIssues])
   const issuesByNode = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const issue of graphIssues) {
@@ -191,22 +206,25 @@ export default function FlowCanvasBuilderPage() {
     }
     return map
   }, [graphIssues])
-  const issueCount = graphIssues.length + environmentIssues.length
+  const issueCount = graphErrors.length + environmentIssues.length
   const hasTrigger = nodes.some((node) => node.type === 'trigger')
 
-  // Variables the inspector can offer: built-ins, variables set in this flow and form answers
-  const variables = useMemo(() => {
-    const list = ['contact.name', 'contact.phone', 'org.name', 'last_choice_title', 'last_input']
-    for (const node of nodes) {
-      const data: Record<string, any> = node.data || {}
-      if (node.type === 'set_variable' && (data.variableName || data.variable_name)) list.push(String(data.variableName || data.variable_name))
-      if (node.type === 'native_flow_trigger') {
+  // The variables that exist at each block: built-ins everywhere, and whatever earlier blocks set
+  const variablesByNode = useMemo(() => getVariablesByNode(nodes, edges), [nodes, edges])
+  // What the inspector offers for the selected block; form answers are named from the forms this flow sends
+  const variablesForNode = (nodeId: string): string[] => {
+    const available = variablesByNode.get(nodeId)
+    const list = listOfferedVariables(available)
+    if (available?.roots.includes('form')) {
+      for (const node of nodes) {
+        if (node.type !== 'native_flow_trigger') continue
+        const data: Record<string, any> = node.data || {}
         const form = nativeForms.find((item) => item.id === (data.flowId || data.native_flow_id || data.flow_id))
         for (const field of getFormFields(form)) list.push(`form.${field.name}`)
       }
     }
     return [...new Set(list)]
-  }, [nodes, nativeForms])
+  }
 
   const markDirty = () => setDirty(true)
 
@@ -555,7 +573,7 @@ export default function FlowCanvasBuilderPage() {
       const res = await fetch('/api/flows/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes, edges, ...payload }),
+        body: JSON.stringify({ nodes, edges, organizationName, ...payload }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The test could not run')
@@ -584,7 +602,7 @@ export default function FlowCanvasBuilderPage() {
     setSimulatedNodeId(null)
     setSimulatedState({})
     setSimulatorInput('')
-    if (graphIssues.length === 0) runSimulatorStep({})
+    if (graphErrors.length === 0) runSimulatorStep({})
   }
 
   const sendSimulatorMessage = (text: string, buttonId?: string, flowSubmissionData?: Record<string, any>) => {
@@ -723,8 +741,8 @@ export default function FlowCanvasBuilderPage() {
             <button
               type="button"
               onClick={toggleActive}
-              disabled={saving || (!isActive && graphIssues.length > 0)}
-              title={!isActive && graphIssues.length > 0 ? 'Fix the problems listed under “to fix” before going live' : undefined}
+              disabled={saving || (!isActive && graphErrors.length > 0)}
+              title={!isActive && graphErrors.length > 0 ? 'Fix the problems listed under “to fix” before going live' : undefined}
               className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-bold shadow-sm disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed ${
                 isActive ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#008069] hover:bg-[#006d59] text-white'
               }`}
@@ -1094,7 +1112,8 @@ export default function FlowCanvasBuilderPage() {
               issues={issuesByNode.get(selectedNode.id) || []}
               nativeForms={nativeForms}
               pipelineStages={pipelineStages}
-              variables={variables}
+              teammates={teammates}
+              variables={variablesForNode(selectedNode.id)}
               onChange={(updates) => updateNodeData(selectedNode.id, updates)}
               onRemoveOutput={(handleId) => removeOutputEdge(selectedNode.id, handleId)}
               onDelete={() => deleteNode(selectedNode.id)}
@@ -1120,7 +1139,7 @@ export default function FlowCanvasBuilderPage() {
                     No problems found. Use <strong>Test</strong> to try the conversation, then <strong>Go live</strong>.
                   </div>
                 )}
-                {graphIssues.map((issue) => {
+                {graphErrors.map((issue) => {
                   const node = issue.nodeId ? nodes.find((item) => item.id === issue.nodeId) : undefined
                   return (
                     <button
@@ -1157,6 +1176,36 @@ export default function FlowCanvasBuilderPage() {
                     <p className="px-1 text-[11px] text-slate-500 dark:text-slate-400">These are checked on the server. Save again after fixing them.</p>
                   </>
                 )}
+                {graphWarnings.length > 0 && (
+                  <>
+                    <h4 className="pt-2 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Worth a look (does not block going live)</h4>
+                    {graphWarnings.map((issue) => {
+                      const node = issue.nodeId ? nodes.find((item) => item.id === issue.nodeId) : undefined
+                      return (
+                        <button
+                          key={issue.text}
+                          type="button"
+                          disabled={!node}
+                          onClick={() => {
+                            if (!node) return
+                            setSelectedNodeId(node.id)
+                            setPanel('inspector')
+                            centerOnNode(node.id)
+                          }}
+                          className="w-full text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-sky-400 disabled:hover:border-slate-200 dark:disabled:hover:border-slate-700 cursor-pointer disabled:cursor-default"
+                        >
+                          <span className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-sky-500" />
+                            <span className="min-w-0">
+                              {node && <span className="block text-xs font-bold text-slate-900 dark:text-white truncate">{node.data?.title || getNodeDefinition(node.type).label}</span>}
+                              <span className="block text-xs leading-relaxed text-slate-600 dark:text-slate-300 first-letter:uppercase">{issue.message}</span>
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
               </div>
             </aside>
           )}
@@ -1167,8 +1216,8 @@ export default function FlowCanvasBuilderPage() {
               busy={simulatorBusy}
               completed={simulationCompleted}
               blockedReason={
-                graphIssues.length > 0
-                  ? `This flow has ${graphIssues.length} problem${graphIssues.length === 1 ? '' : 's'}. Fix ${graphIssues.length === 1 ? 'it' : 'them'} (see “to fix” at the top), then run the test again.`
+                graphErrors.length > 0
+                  ? `This flow has ${graphErrors.length} problem${graphErrors.length === 1 ? '' : 's'}. Fix ${graphErrors.length === 1 ? 'it' : 'them'} (see “to fix” at the top), then run the test again.`
                   : undefined
               }
               input={simulatorInput}

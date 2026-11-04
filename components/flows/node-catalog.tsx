@@ -137,7 +137,8 @@ const DEFINITIONS: NodeDefinition[] = [
   {
     type: 'ticket_action', label: 'Create ticket', description: 'Open a support ticket',
     group: 'CRM actions', icon: Ticket, tone: 'amber', supported: true,
-    createData: () => ({ title: 'Create ticket', subject: 'Support request from {{contact.name}}', priority: 'medium' }),
+    // Tickets have no priority column, so the block offers none
+    createData: () => ({ title: 'Create ticket', subject: 'Support request from {{contact.name}}' }),
   },
   {
     type: 'tag_action', label: 'Tag contact', description: 'Add or remove contact tags',
@@ -152,7 +153,7 @@ const DEFINITIONS: NodeDefinition[] = [
   {
     type: 'ai_rag_node', label: 'Knowledge assistant', description: 'Let the AI answer from your knowledge base',
     group: 'Handoff', icon: Sparkles, tone: 'sky', supported: true, terminal: true,
-    createData: () => ({ title: 'Knowledge assistant' }),
+    createData: () => ({ title: 'Knowledge assistant', promptText: 'Sure! Type your question and I’ll answer it right here.' }),
   },
   // Not runnable yet. Kept so flows saved with these blocks still open and can be cleaned up.
   {
@@ -291,7 +292,7 @@ export function getNodeSummary(node: WorkflowNode, context: { formName?: (id: st
       return 'Pauses automation and hands the chat to your team'
     }
     case 'ai_rag_node':
-      return 'Ends the flow and lets the knowledge assistant reply'
+      return 'Asks for the customer’s question, then the knowledge assistant answers it'
     default:
       return 'This block is not available yet. Remove it to go live.'
   }

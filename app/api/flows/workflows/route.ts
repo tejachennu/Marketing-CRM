@@ -2,7 +2,11 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
-import { createStarterWorkflow, sanitizeWorkflowGraph, getTriggerSummary } from '@/lib/flows/flow-templates'
+import { createStarterWorkflow, sanitizeWorkflowGraph, getTriggerSummary, suggestKeywords } from '@/lib/flows/flow-templates'
+
+/** A conversation counts as in progress while its session is open and the customer answered within the day. */
+const OPEN_STATUSES = ['IN_PROGRESS', 'PAUSED_RAG']
+const IN_PROGRESS_WINDOW_MS = 24 * 60 * 60 * 1000
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -11,6 +15,22 @@ function getSupabaseClient() {
     throw new Error('Missing Supabase environment variables')
   }
   return createClient(supabaseUrl, supabaseKey)
+}
+
+/** Open sessions per workflow, counted in the database rather than by reading every row (PostgREST caps a read at 1000). */
+async function countConversationsInProgress(supabase: any, orgId: string, workflowIds: string[]): Promise<Record<string, number>> {
+  const since = new Date(Date.now() - IN_PROGRESS_WINDOW_MS).toISOString()
+  const counts = await Promise.all(workflowIds.map(async (workflowId): Promise<[string, number]> => {
+    const { count, error } = await supabase.from('flow_sessions').select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId).eq('workflow_id', workflowId).in('status', OPEN_STATUSES).gte('last_interaction_at', since)
+    if (error) {
+      // The list is still useful without this number
+      console.warn(`[Flows GET] Could not count the conversations of workflow ${workflowId}:`, error.message)
+      return [workflowId, 0]
+    }
+    return [workflowId, count ?? 0]
+  }))
+  return Object.fromEntries(counts)
 }
 
 export async function GET(request: NextRequest) {
@@ -36,23 +56,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    // Fetch active session counts for each workflow
     const workflowIds = (workflows || []).map((w: any) => w.id)
-    let sessionCounts: Record<string, number> = {}
-    
-    if (workflowIds.length > 0) {
-      const { data: sessions } = await supabase
-        .from('flow_sessions')
-        .select('workflow_id')
-        .in('workflow_id', workflowIds)
-        .eq('status', 'IN_PROGRESS')
-
-      if (sessions) {
-        sessions.forEach((s: any) => {
-          sessionCounts[s.workflow_id] = (sessionCounts[s.workflow_id] || 0) + 1
-        })
-      }
-    }
+    const sessionCounts = workflowIds.length ? await countConversationsInProgress(supabase, orgId, workflowIds) : {}
 
     const enrichedWorkflows = (workflows || []).map((w: any) => ({
       ...w,
@@ -85,16 +90,21 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
+    const flowName = String(name).trim().slice(0, 120)
 
+    // Keywords of the caller's choosing, or else ones taken from the flow's name: two flows that both
+    // start on "hi" would fight over every greeting, with the older one silently winning
+    const chosenKeywords: string[] = Array.isArray(trigger_config?.keywords)
+      ? [...new Set(trigger_config.keywords.map((keyword: unknown) => String(keyword ?? '').trim().slice(0, 50)).filter(Boolean))].slice(0, 20) as string[]
+      : []
+    const keywords = chosenKeywords.length ? chosenKeywords : suggestKeywords(flowName)
     // A blank flow starts from a complete, valid starter; a supplied graph is cleaned up first
     const supplied = Array.isArray(canvas_nodes) && canvas_nodes.length > 0
-    const graph = supplied
-      ? sanitizeWorkflowGraph(canvas_nodes, canvas_edges)
-      : createStarterWorkflow(Array.isArray(trigger_config?.keywords) && trigger_config.keywords.length ? trigger_config.keywords : undefined)
+    const graph = supplied ? sanitizeWorkflowGraph(canvas_nodes, canvas_edges, { keywords }) : createStarterWorkflow(keywords)
 
     const insertPayload: Record<string, any> = {
       organization_id: organizationId,
-      name: String(name).trim().slice(0, 120),
+      name: flowName,
       description: typeof description === 'string' && description.trim() ? description.trim().slice(0, 500) : null,
       is_active: false,
       ...getTriggerSummary(graph.canvas_nodes),

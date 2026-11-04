@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import type { WhatsAppWorkflow, WorkflowNode, FlowSession } from './flow-types'
 import { getStartNode, getNextNode, resolveReply, matchesTrigger, readNodeField, interpolateVariables, validateWorkflow, normalizeTags } from './flow-graph'
-import { runFlow, type FlowReply } from './flow-runner'
+import { runFlow, type FlowReply, type RunResult } from './flow-runner'
 import { isReadOnly } from '@/lib/rbac'
 export { getStartNode, getNextNode, getOutgoingEdges, interpolateVariables } from './flow-graph'
 
@@ -41,7 +41,10 @@ export class FlowLockBusyError extends Error {
   }
 }
 
-const SESSION_IDLE_LIMIT_MS = 24 * 60 * 60 * 1000
+/** A session the customer stopped answering ends after a day. */
+export const SESSION_IDLE_LIMIT_MS = 24 * 60 * 60 * 1000
+/** A session waiting on a WhatsApp form gets three days: forms are opened later than a quick reply, and a late answer is still wanted. */
+export const FORM_WAIT_LIMIT_MS = 72 * 60 * 60 * 1000
 const OPEN_STATUSES = ['IN_PROGRESS', 'PAUSED_RAG']
 const EXIT_WORDS = ['stop', 'cancel', 'exit']
 const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype']
@@ -74,6 +77,12 @@ function warnOnce(key: string, message: string) {
 const safeAnswers = (answers: Record<string, any>) => Object.fromEntries(Object.entries(answers).filter(([key]) => !UNSAFE_KEYS.includes(key)))
 const withProcessed = (state: Record<string, any>, messageId?: string) => ({ ...state, _processed_messages: [...(state._processed_messages || []), messageId].filter(Boolean).slice(-100) })
 const client = (database?: any) => database || createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+/** How long this session may wait for the customer: longer while it waits on a form. Sessions keep the flow they started with, so the step is read from there. */
+function idleLimitFor(session: FlowSession): number {
+  const nodes = session.state_data?._workflow?.canvas_nodes
+  const current = Array.isArray(nodes) ? nodes.find((node: any) => node?.id === session.current_node_id) : undefined
+  return current?.type === 'native_flow_trigger' ? FORM_WAIT_LIMIT_MS : SESSION_IDLE_LIMIT_MS
+}
 
 export async function executeFlowRuntime(input: FlowRuntimeInput, database?: any): Promise<FlowExecutionResult> {
   const supabase = client(database)
@@ -116,14 +125,14 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
   const superseded = sessions.filter(candidate => OPEN_STATUSES.includes(candidate.status) && candidate.id !== session?.id)
   const expire = (ids: string[]) => checked(supabase.from('flow_sessions').update({ status: 'EXPIRED' }).eq('organization_id', organizationId).in('id', ids))
   if (superseded.length) await expire(superseded.map(candidate => candidate.id))
-  if (session && Date.now() - Date.parse(session.last_interaction_at) > SESSION_IDLE_LIMIT_MS) {
+  if (session && Date.now() - Date.parse(session.last_interaction_at) > idleLimitFor(session)) {
     await expire([session.id])
     session = undefined
   }
   let workflow: WhatsAppWorkflow | undefined
   let target: WorkflowNode | undefined
   let state: Record<string, any> = { ...input.contactData, last_input: text }
-  let answeredChoice = false
+  let completedForm = false
   const updateSession = (run: FlowSession, values: Record<string, any>) => checked(supabase.from('flow_sessions').update(values).eq('id', run.id).eq('organization_id', organizationId))
   // Once the session and its flow are known, a problem with the data ends this run as FAILED and tells the
   // customer. The webhook must not fail over it: Meta would retry the same message for days.
@@ -155,8 +164,8 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
         const ownsForm = Boolean(form) && current.type === 'native_flow_trigger' && form!.flow_token === state._flow_token
         if (form && !ownsForm) {
           // A form from a template button, an earlier step or a replay: keep the answers, and keep the flow where it is
-          const saved = await saveUnownedSubmission(input, supabase)
-          return await stay(FORM_RECEIVED, saved.actionTaken || 'saved_submission')
+          const saved = await storeUnownedSubmission(input, supabase)
+          return await stay(FORM_RECEIVED, saved.actionTaken)
         }
         // The flow asked the customer to type their question: this message is it, for the AI to answer
         if (run.status === 'PAUSED_RAG' && current.type === 'ai_rag_node') {
@@ -173,7 +182,6 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
         }
         if (choiceNode) {
           if (!resolution?.matched) return await stay(CHOOSE_AGAIN, 'waiting_for_choice')
-          answeredChoice = true
           const choice = resolution.choice!
           state.last_choice = choice.id
           state.last_choice_title = choice.title
@@ -187,6 +195,7 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           const submission = await storeSubmission(supabase, { organization_id: organizationId, flow_id: state._native_flow_id, workflow_id: flow.id, session_id: run.id, flow_token,
             conversation_id: conversationId, contact_phone: contactPhone, response_payload: { ...clean, flow_token } })
           state = { ...state, form: clean, submission: clean, submission_id: submission?.id || state.submission_id }
+          completedForm = true
           const successId = current.data?.onSuccessNodeId
           target = successId ? flow.canvas_nodes.find(node => node.id === successId) : getNextNode(flow.canvas_nodes, flow.canvas_edges, current.id)
         } else {
@@ -227,11 +236,12 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
     await updateSession(activeSession, { current_node_id: nodeId, state_data: data, status, last_interaction_at: now() })
   }
   try {
-    const result = target ? await runFlow(activeWorkflow.canvas_nodes, activeWorkflow.canvas_edges, target, state, {
+    const result: RunResult = target ? await runFlow(activeWorkflow.canvas_nodes, activeWorkflow.canvas_edges, target, state, {
       send: input.sendReply || (async () => {}), checkpoint,
       nativeFlow: async (node, data) => {
         const id = readNodeField(node.data, 'flowId', 'native_flow_id', 'flow_id')
         const native = await checked(supabase.from('whatsapp_native_flows').select('*').eq('id', id).eq('organization_id', organizationId).maybeSingle())
+        if (native?.status === 'DEPRECATED') throw new Error('The selected form was retired on WhatsApp; select another form in this workflow')
         if (!native?.flow_id_meta || native.status !== 'PUBLISHED') throw new Error('Publish the selected form to Meta before activating this workflow')
         const screen = readNodeField(node.data, 'screenId', 'screen_id') || native.flow_json?.screens?.[0]?.id
         if (!native.flow_json?.screens?.some((item: any) => item.id === screen)) throw new Error('Native form starting screen does not exist')
@@ -252,12 +262,13 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           const configured = readNodeField(node.data, 'stageId', 'pipeline_stage', 'stage_id')
           const normalize = (value: string) => String(value).toLowerCase().replace(/[^a-z0-9]/g, '')
           const stage = !configured || configured === 'lead_in' ? stages[0] : stages.find(stage => stage.id === configured || normalize(stage.name) === normalize(configured))
-          if (configured && configured !== 'lead_in' && !stage) throw new Error('The selected pipeline stage does not exist in this organization')
+          // A lead without a stage is invisible on the pipeline board; say so instead of creating one
+          if (!stage) throw new Error(configured && configured !== 'lead_in' ? 'The selected pipeline stage does not exist in this organization' : 'Add a pipeline stage under Leads before this flow can create leads')
           const amount = Number(text(readNodeField(node.data, 'dealValue', 'monetary_value', 'deal_value') ?? 0))
           const deal = await checked(supabase.from('leads').insert({ organization_id: organizationId, contact_id: contact.id,
             title: text(readNodeField(node.data, 'dealTitle', 'deal_name', 'deal_title')) || `Lead from ${contactPhone}`,
             value: Number.isFinite(amount) ? amount : 0, status: 'active',
-            source: node.data?.source || 'WhatsApp Flow', pipeline_stage_id: stage?.id || null,
+            source: node.data?.source || 'WhatsApp Flow', pipeline_stage_id: stage.id,
             notes: data.form ? JSON.stringify(data.form, null, 2) : null }).select().single())
           if (conversationId) await checked(supabase.from('conversations').update({ lead_id: deal.id }).eq('id', conversationId).eq('organization_id', organizationId))
           if (data.submission_id) await checked(supabase.from('flow_submissions').update({ lead_id: deal.id }).eq('id', data.submission_id).eq('organization_id', organizationId))
@@ -301,10 +312,16 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
         // The round-robin pointer lives in this session's state, where the next hand-off looks for it
         return { handed_off: true, assigned_user_id: userId, ...(assignment === 'round_robin' && userId ? { _round_robin_user: userId } : {}) }
       },
-    }) : { currentNodeId: activeSession.current_node_id, state, status: 'COMPLETED' as const, replies: [], isRagFallback: false }
+    }) : { currentNodeId: activeSession.current_node_id, state, status: 'COMPLETED', replies: [], isRagFallback: false }
+    // A form as the last block would otherwise leave the customer without any reply
+    if (!target && completedForm) {
+      await input.sendReply?.(FORM_RECEIVED)
+      result.replies.push(FORM_RECEIVED)
+    }
     const finalState = withProcessed(result.state, input.messageId)
-    if (result.isRagFallback && answeredChoice) {
-      // "Ask a question" was a menu choice, not the question: ask for it, and let the AI answer the next message
+    if (result.isRagFallback) {
+      // Reaching the assistant is never the question itself (it was a keyword, a button or a form):
+      // ask for it, and let the AI answer the customer's next message
       const node = activeWorkflow.canvas_nodes.find(item => item.id === result.currentNodeId)
       const prompt: FlowReply = { type: 'text', body: interpolateVariables(readNodeField(node?.data, 'promptText', 'prompt', 'description') || ASK_QUESTION, finalState).trim() || ASK_QUESTION }
       await input.sendReply?.(prompt)
@@ -312,9 +329,8 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
       return { handled: true, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name, currentNodeId: result.currentNodeId,
         replyMessages: [...result.replies, prompt], replyMessage: prompt, actionTaken: 'waiting_for_question' }
     }
-    // AI nodes delegate to the existing real knowledge assistant and finish this graph.
-    await checkpoint(result.currentNodeId, finalState, result.isRagFallback ? 'COMPLETED' : result.status)
-    return { handled: !result.isRagFallback, isRagFallback: result.isRagFallback, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name,
+    await checkpoint(result.currentNodeId, finalState, result.status)
+    return { handled: true, executedWorkflowId: activeWorkflow.id, workflowName: activeWorkflow.name,
       currentNodeId: result.currentNodeId, replyMessages: result.replies, replyMessage: result.replies.at(-1), dealCreatedId: state.deal_id, ticketCreatedId: state.ticket_id }
   } catch (error: any) {
     return fail(activeSession, activeWorkflow, checkpointNode, error)
@@ -370,18 +386,42 @@ async function nextRoundRobinUser(supabase: any, organizationId: string, workflo
 }
 
 /**
+ * The session that sent the form with this token, whatever became of it since (expired, paused
+ * flow, handed off). A lookup that fails only costs the link, never the answers.
+ */
+async function findSessionByToken(supabase: any, organizationId: string, token: string): Promise<{ id: string; workflow_id: string; state_data?: Record<string, any> } | null> {
+  const result = await supabase.from('flow_sessions').select('id,workflow_id,state_data').eq('organization_id', organizationId)
+    .eq('state_data->>_flow_token', token).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (!result.error) return result.data || null
+  warnOnce('session_by_token', `[Flow] Could not look up the session of a late form submission: ${result.error.message}`)
+  return null
+}
+
+/** Saves the answers of a form no running flow is waiting for, under the session that sent it when there was one. */
+async function storeUnownedSubmission(input: FlowRuntimeInput, supabase: any): Promise<{ actionTaken: string; session?: { id: string; workflow_id: string } }> {
+  const { flow_token, ...answers } = input.flowSubmissionData || {}
+  const token = String(flow_token || '')
+  if (!token) return { actionTaken: 'ignored_submission_without_token' }
+  // Campaign flow buttons name the form: campaign:<campaign>:<recipient>:<Meta flow id>
+  const metaFlowId = token.startsWith('campaign:') ? token.split(':')[3] : undefined
+  // A flow's own form answered late (the session expired, the flow was paused): the answers belong to that session and its form
+  const session = metaFlowId ? null : await findSessionByToken(supabase, input.organizationId, token)
+  const form = metaFlowId ? await checked(supabase.from('whatsapp_native_flows').select('id').eq('organization_id', input.organizationId).eq('flow_id_meta', metaFlowId).maybeSingle()) : null
+  await storeSubmission(supabase, { organization_id: input.organizationId, flow_id: session?.state_data?._native_flow_id || form?.id || null, flow_token: token,
+    ...(session ? { workflow_id: session.workflow_id, session_id: session.id } : {}),
+    conversation_id: input.conversationId, contact_phone: input.contactPhone, response_payload: { ...safeAnswers(answers), flow_token: token } })
+  return session ? { actionTaken: 'saved_late_submission', session: { id: session.id, workflow_id: session.workflow_id } } : { actionTaken: 'saved_submission' }
+}
+
+/**
  * A form answered outside a running flow: sent from a template's flow button, after a hand-off to an
- * agent, or after the flow ended. The answers are still saved, so they show up under Form submissions.
+ * agent, or after the flow ended. The answers are still saved, so they show up under Form submissions,
+ * and a customer whose flow has already moved on is still thanked.
  */
 export async function saveUnownedSubmission(input: FlowRuntimeInput, database?: any): Promise<FlowExecutionResult> {
   const supabase = client(database)
-  const { flow_token, ...answers } = input.flowSubmissionData || {}
-  const token = String(flow_token || '')
-  if (!token) return { handled: true, actionTaken: 'ignored_submission_without_token' }
-  // Campaign flow buttons name the form: campaign:<campaign>:<recipient>:<Meta flow id>
-  const metaFlowId = token.startsWith('campaign:') ? token.split(':')[3] : undefined
-  const form = metaFlowId ? await checked(supabase.from('whatsapp_native_flows').select('id').eq('organization_id', input.organizationId).eq('flow_id_meta', metaFlowId).maybeSingle()) : null
-  await storeSubmission(supabase, { organization_id: input.organizationId, flow_id: form?.id || null, flow_token: token,
-    conversation_id: input.conversationId, contact_phone: input.contactPhone, response_payload: { ...safeAnswers(answers), flow_token: token } })
-  return { handled: true, actionTaken: 'saved_submission' }
+  const saved = await storeUnownedSubmission(input, supabase)
+  if (!saved.session) return { handled: true, actionTaken: saved.actionTaken }
+  await input.sendReply?.(FORM_RECEIVED)
+  return { handled: true, actionTaken: saved.actionTaken, executedWorkflowId: saved.session.workflow_id, replyMessages: [FORM_RECEIVED], replyMessage: FORM_RECEIVED }
 }

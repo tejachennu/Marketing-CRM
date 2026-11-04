@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { isSuperAdmin } from '@/lib/rbac'
@@ -8,8 +8,10 @@ import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { fetchModuleSwitches, isModuleEnabled } from '@/lib/feature-flags'
-import { validateWorkflow } from '@/lib/flows/flow-graph'
-import { createFormWorkflow, getTriggerSummary } from '@/lib/flows/flow-templates'
+import { getTriggerConflicts, validateWorkflow } from '@/lib/flows/flow-graph'
+import { createFormWorkflow, getTriggerSummary, suggestKeywords } from '@/lib/flows/flow-templates'
+import { isFormPublished, isFormRetired } from '@/lib/flows/native-forms'
+import { ChipsInput } from '@/components/flows/chips-input'
 import {
   Workflow,
   Plus,
@@ -76,6 +78,8 @@ export default function FlowsHubPage() {
   const [showAiModal, setShowAiModal] = useState(false)
   const [newFlowName, setNewFlowName] = useState('')
   const [newFlowDescription, setNewFlowDescription] = useState('')
+  // null until edited: the keywords then follow the name, so two new flows do not both start on "hi"
+  const [newFlowKeywords, setNewFlowKeywords] = useState<string[] | null>(null)
   const [aiPrompt, setAiPrompt] = useState('')
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -238,6 +242,19 @@ export default function FlowsHubPage() {
     }
   }
 
+  // The keywords a new flow starts on, and the existing flows that already use one of them
+  const createKeywords = newFlowKeywords ?? suggestKeywords(newFlowName.trim() || 'Untitled flow')
+  const createConflicts = useMemo(
+    () => getTriggerConflicts({ canvas_nodes: [], trigger_type: 'keyword', trigger_config: { keywords: createKeywords, match_mode: 'contains' } }, workflows),
+    [createKeywords, workflows]
+  )
+  const closeCreateModal = () => {
+    setShowCreateModal(false)
+    setNewFlowName('')
+    setNewFlowDescription('')
+    setNewFlowKeywords(null)
+  }
+
   // Create workflow manually
   const handleCreateWorkflow = async () => {
     if (!orgId) return
@@ -250,14 +267,13 @@ export default function FlowsHubPage() {
           organizationId: orgId,
           name: newFlowName.trim() || 'Untitled flow',
           description: newFlowDescription.trim() || undefined,
+          trigger_config: { keywords: createKeywords },
         }),
       })
 
       if (res.ok) {
         const data = await res.json()
-        setShowCreateModal(false)
-        setNewFlowName('')
-        setNewFlowDescription('')
+        closeCreateModal()
         router.push(`/dashboard/flows/${data.workflow.id}`)
       } else {
         const err = await res.json()
@@ -518,6 +534,8 @@ export default function FlowsHubPage() {
                 {filteredWorkflows.map((workflow) => {
                   const trigger = getTriggerSummary(workflow.canvas_nodes || [])
                   const problems = validateWorkflow(workflow.canvas_nodes || [], workflow.canvas_edges || []).length
+                  // Another flow starting on the same keyword: only one of them would ever answer
+                  const conflicts = getTriggerConflicts(workflow, workflows)
                   return (
                   <div
                     key={workflow.id}
@@ -581,6 +599,22 @@ export default function FlowsHubPage() {
                           </span>
                         )}
                       </div>
+                      {conflicts.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {conflicts.map((conflict) => {
+                            const otherIsLive = workflows.some((item) => item.id === conflict.workflowId && item.is_active)
+                            return (
+                              <li key={conflict.workflowId} className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                                <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />
+                                <span>
+                                  {conflict.note}
+                                  {otherIsLive ? ' (live): only one of them can be live at a time' : ''}
+                                </span>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
 
                       {/* Stats badge */}
                       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -709,16 +743,23 @@ export default function FlowsHubPage() {
                         </span>
                         <button
                           onClick={() => toggleNativeFlowStatus(flow)}
-                          title={flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? 'Approved and published on Meta WhatsApp Cloud API' : 'Click to open Screen Designer and publish'}
+                          title={isFormRetired(flow) ? 'Retired on WhatsApp: it can no longer be sent' : isFormPublished(flow) ? 'Approved and published on Meta WhatsApp Cloud API' : 'Click to open Screen Designer and publish'}
                           className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1.5 ${
-                            flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta)
+                            isFormRetired(flow)
+                              ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/20'
+                              : isFormPublished(flow)
                               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
                               : flow.flow_id_meta
                               ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
-                          {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
+                          {isFormRetired(flow) ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              <span>Retired</span>
+                            </>
+                          ) : isFormPublished(flow) ? (
                             <>
                               <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                               <span>Published</span>
@@ -747,7 +788,11 @@ export default function FlowsHubPage() {
 
                       {/* Approval Status Confirmation */}
                       <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                        {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
+                        {isFormRetired(flow) ? (
+                          <span className="text-[10px] text-rose-600 dark:text-rose-300">
+                            Retired on WhatsApp: flows need another form. Delete it once its responses are no longer needed.
+                          </span>
+                        ) : isFormPublished(flow) ? (
                           <>
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
@@ -783,14 +828,16 @@ export default function FlowsHubPage() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => createWorkflowForNativeFlow(flow)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-medium transition-colors"
-                          title="Create a flow that sends this form and saves the answers as a lead"
-                        >
-                          <Zap className="w-3.5 h-3.5 text-amber-500" />
-                          <span className="hidden sm:inline">Use in a flow</span>
-                        </button>
+                        {!isFormRetired(flow) && (
+                          <button
+                            onClick={() => createWorkflowForNativeFlow(flow)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-medium transition-colors"
+                            title="Create a flow that sends this form and saves the answers as a lead"
+                          >
+                            <Zap className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="hidden sm:inline">Use in a flow</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -985,11 +1032,25 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
                   className="w-full mt-1 p-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
+
+              <div>
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Starts when a message contains</span>
+                <ChipsInput ariaLabel="Add a keyword" placeholder="Type a keyword, press Enter" values={createKeywords} onChange={setNewFlowKeywords} />
+                <span className="block mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Suggested from the name, so this flow does not start on the same word as your other flows. You can change them in the builder.
+                </span>
+                {createConflicts.map((conflict) => (
+                  <span key={conflict.workflowId} className="flex items-start gap-1.5 mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />
+                    {conflict.note}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={closeCreateModal}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 Cancel

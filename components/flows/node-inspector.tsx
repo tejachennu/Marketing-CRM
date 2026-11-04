@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AlertCircle, Plus, Trash2, X } from 'lucide-react'
 import type { WorkflowNode } from '@/lib/flows/flow-types'
+import { isFormPublished, isFormRetired, listSelectableForms } from '@/lib/flows/native-forms'
 import { ChipsInput } from './chips-input'
 import { getNodeDefinition, TONE_CLASSES, uid } from './node-catalog'
 
@@ -12,6 +13,14 @@ export interface InspectorForm {
   status: string
   flow_id_meta?: string | null
 }
+
+/** A teammate a hand-off block can name. */
+export interface InspectorTeammate {
+  id: string
+  name: string
+}
+
+const ASSISTANT_PROMPT_LIMIT = 4096
 
 const fieldClass =
   'w-full mt-1 px-2.5 py-2 text-[13px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20'
@@ -82,6 +91,7 @@ export function NodeInspector({
   issues,
   nativeForms,
   pipelineStages,
+  teammates = [],
   variables,
   onChange,
   onRemoveOutput,
@@ -93,7 +103,9 @@ export function NodeInspector({
   issues: string[]
   nativeForms: InspectorForm[]
   pipelineStages: Array<{ id: string; name: string }>
-  /** Variable paths that exist at runtime, e.g. `contact.name` or `form.budget`. */
+  /** The organization's users, for a hand-off to one agent. */
+  teammates?: InspectorTeammate[]
+  /** Variable paths that exist at this block, e.g. `contact.name` or `form.budget`. */
   variables: string[]
   onChange: (updates: Record<string, any>) => void
   /** Called when a button / list row is deleted so its connection is removed too. */
@@ -119,8 +131,22 @@ export function NodeInspector({
   const setRows = (next: typeof rows) => onChange({ sections: [{ title: data.sections?.[0]?.title || 'Options', rows: next }] })
 
   const triggerType = read('triggerType', 'trigger_type') || 'keyword'
-  const selectedForm = nativeForms.find((form) => form.id === read('flowId', 'native_flow_id', 'flow_id'))
-  const isPublished = (form: InspectorForm) => form.status === 'PUBLISHED' && Boolean(form.flow_id_meta)
+  const selectedFormId = read('flowId', 'native_flow_id', 'flow_id') || ''
+  const selectedForm = nativeForms.find((form) => form.id === selectedFormId)
+  // Retired forms cannot be sent any more, so they are not offered; one already selected stays visible until it is changed
+  const selectableForms = listSelectableForms(nativeForms, selectedFormId)
+  const formHint = nativeForms.length === 0
+    ? 'You have no forms yet. Create one from Flows → WhatsApp forms.'
+    : selectedForm && isFormRetired(selectedForm)
+    ? 'This form was retired on WhatsApp and can no longer be sent. Select another form.'
+    : selectedForm && !isFormPublished(selectedForm)
+    ? 'This form is still a draft. Publish it to WhatsApp before going live.'
+    : undefined
+
+  const assignmentType = ['round_robin', 'specific_user'].includes(read('assignmentType', 'assignment_type')) ? read('assignmentType', 'assignment_type') : 'team_queue'
+  const assignedUserId = read('assignedUserId', 'assigned_user_id') || ''
+  const assistantPrompt = String(read('promptText', 'prompt', 'description') ?? '')
+  const setAssistantPrompt = (value: string) => onChange({ promptText: value, prompt: undefined })
 
   return (
     <aside className="w-[340px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#11181c] flex flex-col z-10">
@@ -310,26 +336,17 @@ export function NodeInspector({
 
         {node.type === 'native_flow_trigger' && (
           <>
-            <Field
-              label="Form to send"
-              hint={
-                nativeForms.length === 0
-                  ? 'You have no forms yet. Create one from Flows → WhatsApp forms.'
-                  : selectedForm && !isPublished(selectedForm)
-                  ? 'This form is still a draft. Publish it to WhatsApp before going live.'
-                  : undefined
-              }
-            >
-              <select value={read('flowId', 'native_flow_id', 'flow_id') || ''} onChange={(event) => onChange({ native_flow_id: event.target.value, flowId: undefined, flow_id: undefined })} className={fieldClass}>
+            <Field label="Form to send" hint={formHint}>
+              <select value={selectedFormId} onChange={(event) => onChange({ native_flow_id: event.target.value, flowId: undefined, flow_id: undefined })} className={fieldClass}>
                 <option value="">Select a form…</option>
-                {nativeForms.map((form) => (
+                {selectableForms.map((form) => (
                   <option key={form.id} value={form.id}>
-                    {form.name} {isPublished(form) ? '' : '(draft)'}
+                    {form.name} {isFormRetired(form) ? '(retired)' : isFormPublished(form) ? '' : '(draft)'}
                   </option>
                 ))}
               </select>
             </Field>
-            {selectedForm && !isPublished(selectedForm) && (
+            {selectedForm && !isFormPublished(selectedForm) && !isFormRetired(selectedForm) && (
               <Link href={`/dashboard/flows/native/${selectedForm.id}`} className="inline-block text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
                 Open the form designer to publish it →
               </Link>
@@ -456,16 +473,34 @@ export function NodeInspector({
           <>
             <Field label="Assign the conversation to" hint="Round-robin takes turns through every teammate who can work conversations (read-only accounts are skipped).">
               <select
-                value={['round_robin', 'specific_user'].includes(read('assignmentType', 'assignment_type')) ? read('assignmentType', 'assignment_type') : 'team_queue'}
+                value={assignmentType}
                 onChange={(event) => onChange({ assignmentType: event.target.value, assignment_type: undefined })}
                 className={fieldClass}
               >
                 <option value="team_queue">The shared team queue</option>
                 <option value="round_robin">Teammates in turn (round-robin)</option>
-                {/* Only flows created outside the builder name one agent; there is no agent picker here yet */}
-                {read('assignmentType', 'assignment_type') === 'specific_user' && <option value="specific_user">The selected agent</option>}
+                <option value="specific_user">One specific agent</option>
               </select>
             </Field>
+            {assignmentType === 'specific_user' && (
+              <Field
+                label="Agent"
+                hint={teammates.length === 0 ? 'No teammates found. Invite them under Settings → Team, or choose the team queue.' : undefined}
+              >
+                <select value={assignedUserId} onChange={(event) => onChange({ assignedUserId: event.target.value, assigned_user_id: undefined })} className={fieldClass}>
+                  <option value="">Select an agent…</option>
+                  {/* An agent removed from the team stays listed until another one is chosen, so the problem is visible */}
+                  {assignedUserId && !teammates.some((teammate) => teammate.id === assignedUserId) && (
+                    <option value={assignedUserId}>No longer in your team</option>
+                  )}
+                  {teammates.map((teammate) => (
+                    <option key={teammate.id} value={teammate.id}>
+                      {teammate.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
               Turns automatic replies off for the conversation so a person can take over in the inbox. The flow ends here.
             </p>
@@ -473,9 +508,26 @@ export function NodeInspector({
         )}
 
         {node.type === 'ai_rag_node' && (
-          <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-            Your knowledge assistant answers the customer&apos;s message using the knowledge base and prompt from Settings. The flow ends here.
-          </p>
+          <>
+            <Field
+              label="Ask for the question"
+              hint="Sent when the flow reaches this block. The customer's next message is the question the assistant answers."
+              count={assistantPrompt.length}
+              max={ASSISTANT_PROMPT_LIMIT}
+            >
+              <textarea
+                rows={3}
+                value={assistantPrompt}
+                placeholder="Sure! Type your question and I’ll answer it right here."
+                onChange={(event) => setAssistantPrompt(event.target.value)}
+                className={`${fieldClass} leading-relaxed resize-y`}
+              />
+            </Field>
+            <VariableChips variables={variables} onInsert={(token) => setAssistantPrompt(assistantPrompt ? `${assistantPrompt} ${token}` : token)} />
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              Your knowledge assistant answers using the knowledge base and prompt from Settings, so AI must be enabled there. The flow ends here.
+            </p>
+          </>
         )}
 
         {!definition.supported && (

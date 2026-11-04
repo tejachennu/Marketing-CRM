@@ -88,6 +88,8 @@ export interface NativeFlowNodeData extends BaseNodeData {
 
 export interface AiRagNodeData extends BaseNodeData {
   nodeType: 'ai_rag_node'
+  /** What the flow says when it reaches this block; the customer's next message is the question the assistant answers. */
+  promptText?: string
   systemPrompt?: string
   matchThreshold?: number
   allowFlowInterruptionRecovery: boolean
@@ -114,10 +116,10 @@ export interface CrmDealActionNodeData extends BaseNodeData {
   source?: string
 }
 
+// Tickets have no priority column, so the block does not offer one
 export interface TicketActionNodeData extends BaseNodeData {
   nodeType: 'ticket_action'
   subject: string
-  priority: 'low' | 'medium' | 'high' | 'urgent'
   department?: string
   slaMinutes?: number
 }

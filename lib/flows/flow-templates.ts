@@ -1,5 +1,5 @@
 import type { WorkflowNode, WorkflowEdge, FlowNodeType } from './flow-types'
-import { SUPPORTED_NODE_TYPES } from './flow-graph'
+import { SUPPORTED_NODE_TYPES, getOutputHandles } from './flow-graph'
 
 export interface WorkflowGraph {
   canvas_nodes: WorkflowNode[]
@@ -8,12 +8,30 @@ export interface WorkflowGraph {
 
 const COLUMN = 340
 const column = (index: number) => 80 + index * COLUMN
+const DEFAULT_KEYWORDS = ['hi', 'hello', 'start']
+
+// Words that say nothing about what a flow is for, so they make poor trigger keywords
+const KEYWORD_STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'for', 'to', 'in', 'on', 'at', 'with', 'from', 'by', 'my', 'our', 'your', 'new', 'flow', 'flows', 'workflow', 'form', 'bot', 'chatbot', 'automation', 'whatsapp', 'test', 'untitled'])
+const WORD_CHARACTERS = new RegExp('[^\\p{L}\\p{N}\\s]', 'gu')
+
+/**
+ * Default trigger keywords for a flow called `name`: the name itself and its first distinctive
+ * word, so two new flows do not both start on "hi" (the oldest would silently win). A name
+ * without a usable word falls back to "start".
+ */
+export function suggestKeywords(name: string): string[] {
+  const words = String(name || '').toLowerCase().replace(WORD_CHARACTERS, ' ').split(/\s+/)
+    .filter(word => word.length > 1 && !/^\d+$/.test(word) && !KEYWORD_STOP_WORDS.has(word))
+  const phrase = words.slice(0, 4).join(' ')
+  const keywords = [...new Set([phrase, words[0]].filter(keyword => keyword && keyword.length <= 50))]
+  return keywords.length ? keywords : ['start']
+}
 
 /**
  * The canvas a new workflow starts with. Every branch is connected, so it passes
  * validation and can be activated as-is, then edited.
  */
-export function createStarterWorkflow(keywords: string[] = ['hi', 'hello', 'start']): WorkflowGraph {
+export function createStarterWorkflow(keywords: string[] = DEFAULT_KEYWORDS): WorkflowGraph {
   return {
     canvas_nodes: [
       { id: 'node-trigger', type: 'trigger', position: { x: column(0), y: 260 },
@@ -31,13 +49,13 @@ export function createStarterWorkflow(keywords: string[] = ['hi', 'hello', 'star
       { id: 'node-lead-reply', type: 'message', position: { x: column(4), y: 40 },
         data: { title: 'Confirm quote request', body: 'Thanks! Our sales team will contact you shortly with a quote.' } },
       { id: 'node-ticket', type: 'ticket_action', position: { x: column(3), y: 300 },
-        data: { title: 'Create ticket', subject: 'Support request from {{contact.name}}', priority: 'medium' } },
+        data: { title: 'Create ticket', subject: 'Support request from {{contact.name}}' } },
       { id: 'node-handoff-reply', type: 'message', position: { x: column(4), y: 300 },
         data: { title: 'Confirm handoff', body: 'We are connecting you with a teammate. They will reply here soon.' } },
       { id: 'node-handoff', type: 'assign_agent_action', position: { x: column(5), y: 300 },
         data: { title: 'Hand off to team', assignmentType: 'team_queue' } },
       { id: 'node-assistant', type: 'ai_rag_node', position: { x: column(3), y: 560 },
-        data: { title: 'Knowledge assistant' } },
+        data: { title: 'Knowledge assistant', promptText: 'Sure! Type your question and I’ll answer it right here.' } },
     ],
     canvas_edges: [
       { id: 'edge-trigger-welcome', source: 'node-trigger', target: 'node-welcome' },
@@ -52,12 +70,12 @@ export function createStarterWorkflow(keywords: string[] = ['hi', 'hello', 'star
   }
 }
 
-/** A workflow that greets the customer, sends one native form and saves the answers as a lead. */
+/** A workflow that greets the customer, sends one native form and saves the answers as a lead. It starts on keywords taken from the form's name. */
 export function createFormWorkflow(form: { id: string; name: string }): WorkflowGraph {
   return {
     canvas_nodes: [
       { id: 'node-trigger', type: 'trigger', position: { x: column(0), y: 180 },
-        data: { title: 'Customer message', trigger_type: 'keyword', keywords: ['form', 'apply', 'start'], match_mode: 'contains' } },
+        data: { title: 'Customer message', trigger_type: 'keyword', keywords: suggestKeywords(form.name), match_mode: 'contains' } },
       { id: 'node-intro', type: 'message', position: { x: column(1), y: 180 },
         data: { title: 'Introduce the form', body: 'Hello {{contact.name}}! 👋 Please complete the short form below.' } },
       { id: 'node-form', type: 'native_flow_trigger', position: { x: column(2), y: 180 },
@@ -79,11 +97,13 @@ export function createFormWorkflow(form: { id: string; name: string }): Workflow
 /**
  * Clean up a graph produced outside the builder (the AI generator) so it can be opened
  * and edited: unknown node types, malformed nodes and dangling connections are dropped,
- * and exactly one trigger is kept. Remaining problems are left for validation to report.
+ * exactly one trigger is kept, and connections only leave outputs the runtime follows.
+ * `keywords` seed a trigger that has none. Remaining problems are left for validation to report.
  */
-export function sanitizeWorkflowGraph(rawNodes: unknown, rawEdges: unknown): WorkflowGraph {
+export function sanitizeWorkflowGraph(rawNodes: unknown, rawEdges: unknown, options: { keywords?: string[] } = {}): WorkflowGraph {
   const supported = new Set<string>(SUPPORTED_NODE_TYPES)
-  const seen = new Set<string>()
+  const keywords = options.keywords?.length ? options.keywords : DEFAULT_KEYWORDS
+  const seen = new Map<string, WorkflowNode>()
   const nodes: WorkflowNode[] = []
   let hasTrigger = false
 
@@ -96,23 +116,28 @@ export function sanitizeWorkflowGraph(rawNodes: unknown, rawEdges: unknown): Wor
       if (hasTrigger) continue
       hasTrigger = true
     }
-    seen.add(id)
+    const data = candidate.data && typeof candidate.data === 'object' && !Array.isArray(candidate.data) ? { ...candidate.data } : {}
+    // A keyword trigger without keywords could never fire; give it the flow's own
+    if (candidate.type === 'trigger' && (data.triggerType || data.trigger_type || 'keyword') === 'keyword' && !(Array.isArray(data.keywords) && data.keywords.some((keyword: unknown) => String(keyword ?? '').trim()))) data.keywords = keywords
     const x = Number(candidate.position?.x)
     const y = Number(candidate.position?.y)
-    nodes.push({
+    const node: WorkflowNode = {
       id,
       type: candidate.type as FlowNodeType,
       // Fall back to a simple left-to-right layout when positions are missing
       position: { x: Number.isFinite(x) ? x : column(index), y: Number.isFinite(y) ? y : 200 },
-      data: candidate.data && typeof candidate.data === 'object' && !Array.isArray(candidate.data) ? candidate.data : {},
-    })
+      data,
+    }
+    seen.set(id, node)
+    nodes.push(node)
   }
 
   if (!hasTrigger) {
     const first = nodes[0]
-    nodes.unshift({ id: 'node-trigger', type: 'trigger', position: { x: (first?.position.x ?? column(1)) - COLUMN, y: first?.position.y ?? 200 },
-      data: { title: 'Customer message', trigger_type: 'keyword', keywords: ['hi', 'hello', 'start'], match_mode: 'contains' } })
-    seen.add('node-trigger')
+    const trigger: WorkflowNode = { id: 'node-trigger', type: 'trigger', position: { x: (first?.position.x ?? column(1)) - COLUMN, y: first?.position.y ?? 200 },
+      data: { title: 'Customer message', trigger_type: 'keyword', keywords, match_mode: 'contains' } }
+    nodes.unshift(trigger)
+    seen.set('node-trigger', trigger)
   }
 
   const edges: WorkflowEdge[] = []
@@ -120,8 +145,14 @@ export function sanitizeWorkflowGraph(rawNodes: unknown, rawEdges: unknown): Wor
   for (const [index, raw] of (Array.isArray(rawEdges) ? rawEdges : []).slice(0, 300).entries()) {
     if (!raw || typeof raw !== 'object') continue
     const candidate = raw as Record<string, any>
-    if (!seen.has(candidate.source) || !seen.has(candidate.target) || candidate.source === candidate.target) continue
-    const sourceHandle = typeof candidate.sourceHandle === 'string' && candidate.sourceHandle ? candidate.sourceHandle : undefined
+    const source = seen.get(candidate.source)
+    if (!source || !seen.has(candidate.target) || candidate.source === candidate.target) continue
+    let sourceHandle = typeof candidate.sourceHandle === 'string' && candidate.sourceHandle ? candidate.sourceHandle : undefined
+    // The runtime only follows a handle that names a real output: on a single-output block the
+    // handle is dropped, and a connection from a choice that does not exist is discarded
+    const outputs = getOutputHandles(source)
+    if (sourceHandle && !outputs) sourceHandle = undefined
+    else if (sourceHandle && outputs && !outputs.includes(sourceHandle)) continue
     const output = `${candidate.source}::${sourceHandle || ''}`
     if (usedOutputs.has(output)) continue // one connection per output
     usedOutputs.add(output)

@@ -31,9 +31,14 @@ export function formatStateValue(value: unknown): string {
   }
   return String(value)
 }
+const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g
 /** Fills in {{variables}}. A missing one renders as nothing: a customer never sees "undefined" or a raw placeholder. */
 export function interpolateVariables(template: string, state: Record<string, any>): string {
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_match, key) => formatStateValue(getStateValue(state || {}, key)))
+  return String(template || '').replace(PLACEHOLDER, (_match, key) => formatStateValue(getStateValue(state || {}, key)))
+}
+/** The variable names a text refers to, as written between the braces. */
+export function getPlaceholders(template: unknown): string[] {
+  return Array.from(String(template ?? '').matchAll(PLACEHOLDER), match => match[1])
 }
 export interface Choice { id: string; title: string; description?: string; targetNodeId?: string }
 export function getChoices(node: WorkflowNode): Choice[] {
@@ -42,6 +47,12 @@ export function getChoices(node: WorkflowNode): Choice[] {
     ? (Array.isArray(data.sections) ? data.sections : []).flatMap((section: any) => (Array.isArray(section?.rows) ? section.rows : []))
     : Array.isArray(data.buttons) ? data.buttons : []
   return choices.filter((choice): choice is Choice => Boolean(choice) && typeof choice === 'object')
+}
+/** The labelled outputs of a branching block (its choice IDs, or true/false), or null for a block with one "next" output. */
+export function getOutputHandles(node: WorkflowNode): string[] | null {
+  if (node?.type === 'interactive_buttons' || node?.type === 'list_menu') return getChoices(node).map(choice => String(choice.id ?? ''))
+  if (node?.type === 'condition_branch') return ['true', 'false']
+  return null
 }
 export function resolveReply(node: WorkflowNode, nodes: WorkflowNode[], edges: WorkflowEdge[], text: string, buttonId?: string) {
   const input = String(buttonId || text || '').trim().toLowerCase()
@@ -64,10 +75,12 @@ export function evaluateCondition(data: Record<string, any>, state: Record<strin
   // "10", 10 and "10.0" are the same amount; when either side is not a number both compare as text
   const numeric = left !== null && right !== null
   const text = formatStateValue(value)
+  // "Pro" and " pro " are the same answer: a customer's typing or a button label never differ by case or spacing on purpose
+  const same = text.trim().toLowerCase() === comparison.trim().toLowerCase()
   switch (data?.operator) {
     case 'is_set': return value !== undefined && value !== null && value !== ''
-    case 'equals': return numeric ? left === right : text === comparison
-    case 'not_equals': return numeric ? left !== right : text !== comparison
+    case 'equals': return numeric ? left === right : same
+    case 'not_equals': return numeric ? left !== right : !same
     case 'contains': return text.toLowerCase().includes(comparison.toLowerCase())
     case 'greater_than': return numeric && left! > right!
     case 'less_than': return numeric && left! < right!
@@ -85,17 +98,66 @@ export function matchesTrigger(workflow: WhatsAppWorkflow, input: string, isFirs
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const normalizeKeyword = (keyword: unknown) => String(keyword ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 /**
  * Whether a message matches one trigger keyword. "contains" matches whole words or phrases, so
  * "hi" fires on "Hi there" but not on "Which size?" or "Do you ship?"; "fuzzy" matches anywhere.
  */
 export function keywordMatches(input: string, keyword: string, mode = 'contains'): boolean {
-  const key = String(keyword || '').trim().toLowerCase().replace(/\s+/g, ' ')
-  const text = String(input || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const key = normalizeKeyword(keyword)
+  const text = normalizeKeyword(input)
   if (!key || !text) return false
   if (mode === 'exact') return text === key
   if (mode === 'fuzzy') return text.includes(key)
   return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(key)}($|[^\\p{L}\\p{N}])`, 'u').test(text)
+}
+
+type TriggerSource = Pick<WhatsAppWorkflow, 'canvas_nodes'> & Partial<Pick<WhatsAppWorkflow, 'trigger_type' | 'trigger_config'>>
+/** A workflow's trigger as the runtime reads it: the trigger node first, the summary columns as a fallback. */
+export function getTriggerSettings(workflow: TriggerSource): { type: string; mode: string; keywords: string[] } {
+  const data: Record<string, any> = { ...(workflow?.trigger_config || {}), ...(getStartNode(workflow)?.data || {}) }
+  const type = readNodeField(data, 'triggerType', 'trigger_type') || workflow?.trigger_type || 'keyword'
+  const mode = readNodeField(data, 'matchType', 'match_mode') || 'contains'
+  const keywords = type === 'keyword' && Array.isArray(data.keywords) ? [...new Set(data.keywords.map(normalizeKeyword).filter(Boolean))] : []
+  return { type, mode, keywords }
+}
+export interface TriggerConflict {
+  /** The other flow that would take the same messages. */
+  workflowId: string
+  workflowName: string
+  /** The keywords both flows start on, under the same match mode; empty when both start on the first message. */
+  keywords: string[]
+  /** One sentence for the activation refusal. */
+  message: string
+  /** A short form for the list page. */
+  note: string
+}
+/**
+ * Why this flow and another live flow would fight over the same message: a keyword both use under
+ * the same match mode, or two first-message triggers. The oldest flow would silently win, so
+ * activation refuses these instead.
+ */
+export function getTriggerConflicts(workflow: TriggerSource & { id?: string }, others: Array<TriggerSource & { id: string; name: string }>): TriggerConflict[] {
+  const own = getTriggerSettings(workflow)
+  const conflicts: TriggerConflict[] = []
+  for (const other of others) {
+    if (!other || other.id === workflow.id) continue
+    const theirs = getTriggerSettings(other)
+    if (own.type === 'first_message' && theirs.type === 'first_message') {
+      conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: [],
+        message: `"${other.name}" already starts on a customer's first message; pause it, or start this flow on a keyword instead`,
+        note: `First-message trigger also used by "${other.name}"` })
+      continue
+    }
+    if (own.type !== 'keyword' || theirs.type !== 'keyword' || own.mode !== theirs.mode) continue
+    const shared = own.keywords.filter(keyword => theirs.keywords.includes(keyword))
+    if (!shared.length) continue
+    const list = shared.map(keyword => `"${keyword}"`).join(', ')
+    conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: shared,
+      message: `The keyword${shared.length > 1 ? 's' : ''} ${list} already start${shared.length > 1 ? '' : 's'} "${other.name}"; change the keywords in one of the two flows`,
+      note: `Keyword${shared.length > 1 ? 's' : ''} ${list} also used by "${other.name}"` })
+  }
+  return conflicts
 }
 
 /** Node types the runtime can execute. The builder only offers these; anything else fails validation. */
@@ -103,6 +165,8 @@ export const SUPPORTED_NODE_TYPES = ['trigger', 'message', 'interactive_buttons'
 const supported = new Set<string>(SUPPORTED_NODE_TYPES)
 /** How a hand-off picks the person: the shared queue, teammates in turn, or one chosen agent. */
 export const ASSIGNMENT_TYPES = ['team_queue', 'round_robin', 'specific_user'] as const
+/** The longest text WhatsApp shows above an interactive message, a form included. */
+export const INTERACTIVE_BODY_LIMIT = 1024
 
 /** State written by the engine itself; a workflow must not be able to overwrite it. */
 const RESERVED_VARIABLE_ROOTS = ['contact', 'org']
@@ -128,15 +192,117 @@ export function normalizeTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return []
   return [...new Set(tags.map(tag => String(tag ?? '').trim()).filter(Boolean))].slice(0, 20)
 }
+
+// ── Which variables exist at each block ───────────────────────────────────────
+/** The variables every block can use, in the order the builder offers them. */
+export const BUILT_IN_VARIABLES = ['contact.name', 'contact.phone', 'contact.first_name', 'contact.last_name', 'contact.email', 'contact.company', 'org.name', 'last_input']
+// The engine also passes the rest of the contact row, the customer as {{name}} / {{phone}} and the first message as
+// {{trigger_text}}; older flows use these, and a live flow must never be paused over a column that really exists
+const OTHER_BUILT_INS = ['contact.id', 'contact.organization_id', 'contact.phone_number', 'contact.whatsapp_number', 'contact.tags', 'contact.created_by', 'contact.created_at', 'contact.updated_at', 'name', 'phone', 'trigger_text']
+const CONTACT_FIELDS_HINT = 'contact.name, contact.phone, contact.first_name, contact.last_name, contact.email or contact.company'
+export interface NodeVariables {
+  /** The exact variable paths a placeholder can name at this block. */
+  paths: string[]
+  /** Roots whose every field is available, such as "form" once a form has been answered. */
+  roots: string[]
+}
+/** What a block adds to the state for the blocks after it. */
+function getProvidedVariables(node: WorkflowNode): NodeVariables {
+  const data: Record<string, any> = node.data || {}
+  switch (node.type) {
+    case 'interactive_buttons': case 'list_menu': {
+      const variable = String(readNodeField(data, 'variableName', 'variable_name') || '').trim()
+      return { paths: ['last_choice', 'last_choice_title', ...(variable ? [variable] : [])], roots: [] }
+    }
+    case 'native_flow_trigger': return { paths: ['submission_id'], roots: ['form', 'submission'] }
+    case 'set_variable': {
+      const name = String(readNodeField(data, 'variableName', 'variable_name') || '').trim()
+      return { paths: name ? [name] : [], roots: [] }
+    }
+    case 'crm_deal_action': return { paths: ['deal_id'], roots: [] }
+    case 'ticket_action': return { paths: ['ticket_id'], roots: [] }
+    case 'tag_action': return { paths: ['contact_tags'], roots: [] }
+    default: return { paths: [], roots: [] }
+  }
+}
+/** Every block one step can lead to: its connections, branch targets and choice targets. */
+function getSuccessorIds(node: WorkflowNode, edges: WorkflowEdge[]): string[] {
+  const data: Record<string, any> = node.data || {}
+  const targets: unknown[] = [...getOutgoingEdges(edges, node.id).map(edge => edge.target), data.trueTargetNodeId, data.falseTargetNodeId, data.onSuccessNodeId, ...getChoices(node).map(choice => choice.targetNodeId)]
+  return targets.filter((id): id is string => typeof id === 'string' && Boolean(id))
+}
+/**
+ * The variables available at each block: the built-ins everywhere, plus whatever the blocks before
+ * it set (a choice, a form's answers, a variable, a created lead). A value set on any path into a
+ * block counts, so a step after a menu is not refused an answer that one of the branches collects.
+ */
+export function getVariablesByNode(nodes: WorkflowNode[], edges: WorkflowEdge[]): Map<string, NodeVariables> {
+  const list = Array.isArray(nodes) ? nodes.filter(node => node && typeof node.id === 'string') : []
+  const available = new Map<string, { paths: Set<string>; roots: Set<string> }>()
+  for (const node of list) available.set(node.id, { paths: new Set([...BUILT_IN_VARIABLES, ...OTHER_BUILT_INS]), roots: new Set() })
+  // Propagate until nothing changes: the graph may loop back through blocks that wait for the customer
+  let changed = true
+  for (let round = 0; changed && round <= list.length; round++) {
+    changed = false
+    for (const node of list) {
+      const own = available.get(node.id)!
+      const provided = getProvidedVariables(node)
+      for (const id of getSuccessorIds(node, edges)) {
+        const next = available.get(id)
+        if (!next || id === node.id) continue
+        for (const path of [...own.paths, ...provided.paths]) if (!next.paths.has(path)) { next.paths.add(path); changed = true }
+        for (const root of [...own.roots, ...provided.roots]) if (!next.roots.has(root)) { next.roots.add(root); changed = true }
+      }
+    }
+  }
+  return new Map([...available].map(([id, value]) => [id, { paths: [...value.paths], roots: [...value.roots] }]))
+}
+/** The variables worth offering in the builder at a block: without the older spellings the engine only keeps for existing flows. */
+export function listOfferedVariables(variables: NodeVariables | undefined): string[] {
+  return (variables?.paths || BUILT_IN_VARIABLES).filter(path => !OTHER_BUILT_INS.includes(path))
+}
+/** Why a variable cannot be used at a block, or null when it can. */
+function getVariableProblem(path: string, variables: NodeVariables): string | null {
+  if (variables.paths.includes(path)) return null
+  const [root] = path.split('.')
+  const nested = path.includes('.')
+  if (variables.roots.includes(root)) return nested ? null : `needs the answer's name, for example {{${root}.full_name}}`
+  if (root === 'form' || root === 'submission') return 'is only available after a WhatsApp form block'
+  if (root === 'contact' || root === 'org') return nested ? `is not a known field; use ${root === 'org' ? 'org.name' : CONTACT_FIELDS_HINT}` : `needs a field name, for example {{${root}.name}}`
+  if (root === 'last_choice' || root === 'last_choice_title') return 'is only available after a buttons or list block'
+  if (root === 'deal_id') return 'is only available after a "Create lead" block'
+  if (root === 'ticket_id') return 'is only available after a "Create ticket" block'
+  return 'is not set by any block before this one'
+}
+/** The texts of a block that are filled in with {{variables}} before they reach the customer or the CRM. */
+function getTemplateTexts(node: WorkflowNode): string[] {
+  const data: Record<string, any> = node.data || {}
+  const texts: unknown[] = []
+  switch (node.type) {
+    case 'message': texts.push(readNodeField(data, 'messageText', 'body', 'message_text')); break
+    case 'interactive_buttons': case 'list_menu': texts.push(readNodeField(data, 'bodyText', 'body', 'body_text')); break
+    case 'native_flow_trigger': texts.push(data.description); break
+    case 'ai_rag_node': texts.push(readNodeField(data, 'promptText', 'prompt', 'description')); break
+    case 'condition_branch': texts.push(readNodeField(data, 'compareValue', 'compare_value', 'value')); break
+    case 'set_variable': texts.push(readNodeField(data, 'valueExpression', 'value_expression')); break
+    case 'crm_deal_action': texts.push(readNodeField(data, 'dealTitle', 'deal_name', 'deal_title'), readNodeField(data, 'dealValue', 'monetary_value', 'deal_value')); break
+    case 'ticket_action': texts.push(data.subject); break
+    case 'tag_action': texts.push(...(Array.isArray(data.tags) ? data.tags : [])); break
+  }
+  return texts.filter((text): text is string => typeof text === 'string')
+}
+
 export interface WorkflowIssue {
   /** The block the problem belongs to; absent for problems with the flow as a whole. */
   nodeId?: string
   message: string
   /** The same text validateWorkflow reports: "<block title>: <message>". */
   text: string
+  /** Worth fixing, but the flow still runs: a warning never blocks activation. */
+  warning?: true
 }
 
-/** Everything that stops a workflow from running, attached to the block it concerns. */
+/** Everything that stops a workflow from running, attached to the block it concerns, plus warnings about what it could do better. */
 export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowIssue[] {
   const issues: WorkflowIssue[] = []
   const errors = { push: (message: string) => issues.push({ message, text: message }) }
@@ -149,14 +315,32 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
   const ids = new Set(nodes.map(node => node.id))
   if (ids.size !== nodes.length) errors.push('Node IDs must be unique')
   for (const edge of edges) if (!ids.has(edge.source) || !ids.has(edge.target)) errors.push('A connection points to a missing node')
+  const variablesByNode = getVariablesByNode(nodes, edges)
   for (const node of nodes) {
     const data = node.data || {}
     const label = data.title || node.id
     const fail = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}` })
+    const warn = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}`, warning: true })
     if (!supported.has(node.type)) fail('this action is not supported yet')
     const outgoing = getOutgoingEdges(edges, node.id)
     const handles = outgoing.map(edge => edge.sourceHandle || '')
     if (new Set(handles).size !== handles.length) fail('each output must have only one connection')
+    // The runtime follows a handle only when it names a real output; any other connection would never be taken
+    const outputs = getOutputHandles(node)
+    for (const edge of outgoing) {
+      if (edge.sourceHandle && (!outputs || !outputs.includes(edge.sourceHandle))) fail(`a connection leaves an output this block does not have ("${edge.sourceHandle}"); remove it and connect the block again`)
+    }
+    // A placeholder nothing fills in reaches the customer as a blank
+    const variables = variablesByNode.get(node.id) || { paths: BUILT_IN_VARIABLES, roots: [] }
+    const seenPlaceholders = new Set<string>()
+    for (const text of getTemplateTexts(node)) {
+      for (const placeholder of getPlaceholders(text)) {
+        if (seenPlaceholders.has(placeholder)) continue
+        seenPlaceholders.add(placeholder)
+        const problem = getVariableProblem(placeholder, variables)
+        if (problem) fail(`{{${placeholder}}} ${problem}`)
+      }
+    }
     if (node.type === 'trigger') {
       if (!getNextNode(nodes, edges, node.id)) fail('connect the trigger to an action')
       const type = readNodeField(data, 'triggerType', 'trigger_type') || 'keyword'
@@ -168,7 +352,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     if (['message', 'interactive_buttons', 'list_menu'].includes(node.type)) {
       const body = String(readNodeField(data, 'messageText', 'bodyText', 'body', 'message_text', 'body_text') ?? '')
       if (!body.trim()) fail('enter a message')
-      if (body.length > (node.type === 'message' ? 4096 : 1024)) fail('message is too long for WhatsApp')
+      if (body.length > (node.type === 'message' ? 4096 : INTERACTIVE_BODY_LIMIT)) fail('message is too long for WhatsApp')
     }
     if (['interactive_buttons', 'list_menu'].includes(node.type)) {
       const choices = getChoices(node)
@@ -195,9 +379,17 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     if (node.type === 'native_flow_trigger') {
       if (!readNodeField(data, 'flowId', 'native_flow_id', 'flow_id')) fail('select a published native form')
       if (String(readNodeField(data, 'flowCtaText', 'cta_text', 'flow_cta_text') || 'Open Form').length > 30) fail('form button must be at most 30 characters')
+      // The text above the form travels in the same interactive message as a question would
+      if (String(data.description || '').length > INTERACTIVE_BODY_LIMIT) fail(`the message above the form must be at most ${INTERACTIVE_BODY_LIMIT} characters`)
+      if (!data.onSuccessNodeId && !getNextNode(nodes, edges, node.id)) warn('nothing follows this form, so the customer only gets a short "Thanks, we received your form." after submitting it')
     }
     if (node.type === 'condition_branch') {
-      if (!readNodeField(data, 'variableName', 'variable_name', 'variable')) fail('select a variable')
+      const variable = readNodeField(data, 'variableName', 'variable_name', 'variable')
+      if (!variable) fail('select a variable')
+      else {
+        const problem = getVariableProblem(String(variable), variables)
+        if (problem) fail(`the value "${variable}" ${problem}`)
+      }
       if (!['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].includes(data.operator)) fail('select a condition operator')
       // Each outcome needs its own connection; one plain connection would send both outcomes to the same block
       for (const branch of ['true', 'false']) {
@@ -240,13 +432,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     const queue = [trigger]
     while (queue.length) {
       const node = queue.shift()!
-      const data = node.data || {}
-      const targets = [
-        ...getOutgoingEdges(edges, node.id).map(edge => edge.target),
-        data.trueTargetNodeId, data.falseTargetNodeId, data.onSuccessNodeId,
-        ...getChoices(node).map(choice => choice.targetNodeId),
-      ].filter(Boolean)
-      for (const id of targets) {
+      for (const id of getSuccessorIds(node, edges)) {
         const next = nodes.find(item => item.id === id)
         if (next && !reached.has(next.id)) { reached.add(next.id); queue.push(next) }
       }
@@ -259,6 +445,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
   return issues.filter(issue => !seen.has(issue.text) && Boolean(seen.add(issue.text)))
 }
 
+/** The problems that keep a workflow from going live; warnings are left out. */
 export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
-  return getWorkflowIssues(nodes, edges).map(issue => issue.text)
+  return getWorkflowIssues(nodes, edges).filter(issue => !issue.warning).map(issue => issue.text)
 }

@@ -29,7 +29,8 @@ import {
 } from 'lucide-react'
 import { MetaFlowScreen, MetaFormField } from '@/lib/flows/flow-types'
 import { compileMetaFlowJSON } from '@/lib/flows/meta-flows-spec'
-import { useAlert } from '@/lib/dialog-context'
+import { isFormPublished, isFormRetired } from '@/lib/flows/native-forms'
+import { useAlert, useConfirm } from '@/lib/dialog-context'
 
 // The categories Meta accepts for a WhatsApp Flow
 const FORM_CATEGORIES: Array<{ value: string; label: string }> = [
@@ -48,6 +49,7 @@ const DISPLAY_ONLY_TYPES = ['TextCaption', 'TextSubheading', 'TextBody']
 
 export default function NativeFlowDesignerPage() {
   const alert = useAlert()
+  const confirm = useConfirm()
   const params = useParams()
   const flowId = params?.flowId as string
 
@@ -67,7 +69,10 @@ export default function NativeFlowDesignerPage() {
   const [feedback, setFeedback] = useState('')
   const [saveError, setSaveError] = useState('')
   const [submissions, setSubmissions] = useState<any[]>([])
-  const isPublished = status === 'PUBLISHED' && Boolean(nativeFlow?.flow_id_meta)
+  const formState = { status, flow_id_meta: nativeFlow?.flow_id_meta }
+  const isRetired = isFormRetired(formState)
+  // Published and retired forms are both frozen: Meta no longer accepts changes to either
+  const isPublished = isFormPublished(formState) || isRetired
   const [copiedJson, setCopiedJson] = useState(false)
   const [showJsonModal, setShowJsonModal] = useState(false)
 
@@ -103,8 +108,14 @@ export default function NativeFlowDesignerPage() {
     loadFlow()
   }, [flowId])
 
-  // Save Native Flow
-  const saveFlow = async (action?: 'validate' | 'publish') => {
+  const FEEDBACK: Record<string, string> = {
+    publish: 'Published on WhatsApp. You can now activate a workflow using this form.',
+    validate: 'Meta accepted this draft. Review the form before publishing.',
+    deprecate: 'Retired on WhatsApp. Flows that send this form need another form before they can go live; you can delete it from the forms list.',
+  }
+
+  // Save Native Flow. A plain save only stores the draft; "validate" and "publish" send it to Meta, "deprecate" retires it there.
+  const saveFlow = async (action?: 'validate' | 'publish' | 'deprecate') => {
     if (!flowId) return
     setSaving(true)
     setSaveError('')
@@ -113,12 +124,8 @@ export default function NativeFlowDesignerPage() {
       const res = await fetch(`/api/flows/native/${flowId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: flowName,
-          action,
-          categories: [category],
-          screens,
-        }),
+        // Retiring changes nothing in the form itself
+        body: JSON.stringify(action === 'deprecate' ? { action } : { name: flowName, action, categories: [category], screens }),
       })
 
       const data = await res.json()
@@ -131,12 +138,33 @@ export default function NativeFlowDesignerPage() {
       setNativeFlow(data.flow)
       setStatus(data.flow.status)
       setDirty(false)
-      setFeedback(action === 'publish' ? 'Published on WhatsApp. You can now activate a workflow using this form.' : action === 'validate' ? 'Meta accepted this draft. Review the form before publishing.' : 'Draft saved.')
+      setFeedback((action && FEEDBACK[action]) || 'Draft saved.')
     } catch (err: any) {
       setSaveError(err.message)
     } finally {
       setSaving(false)
     }
+  }
+
+  // Publication cannot be undone, so it is confirmed first
+  const publishFlow = async () => {
+    const confirmed = await confirm({
+      title: 'Publish this form on WhatsApp?',
+      message: 'A published form can no longer be edited. To change it later you will need to create a new form and update the flows that send this one.',
+      confirmLabel: 'Publish',
+    })
+    if (confirmed) await saveFlow('publish')
+  }
+
+  // Retiring is final too: Meta never republishes a deprecated form
+  const retireFlow = async () => {
+    const confirmed = await confirm({
+      title: 'Retire this form?',
+      message: 'The form stops working on WhatsApp for good. Flows that send it must switch to another form before they can go live, and customers who open an old message with it will see an error. Its responses stay here until you delete the form.',
+      confirmLabel: 'Retire form',
+      destructive: true,
+    })
+    if (confirmed) await saveFlow('deprecate')
   }
 
   // Every edit to the form goes through here so unsaved work is tracked
@@ -366,11 +394,27 @@ export default function NativeFlowDesignerPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {isPublished ? (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold shadow-2xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Published on WhatsApp</span>
+          {isRetired ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-xs font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              <span>Retired</span>
             </div>
+          ) : isPublished ? (
+            <>
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold shadow-2xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Published on WhatsApp</span>
+              </div>
+              <button
+                type="button"
+                disabled={saving}
+                title="Stops the form on WhatsApp for good, so it can be deleted here"
+                onClick={retireFlow}
+                className="text-xs px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50 transition-colors font-medium cursor-pointer disabled:cursor-not-allowed"
+              >
+                Retire form
+              </button>
+            </>
           ) : nativeFlow?.flow_id_meta ? (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -385,7 +429,7 @@ export default function NativeFlowDesignerPage() {
 
           {!isPublished && <>
             <button type="button" disabled={saving || Boolean(compileError)} title={compileError ? 'Fix the problem shown below first' : 'Uploads a draft so Meta can check it. Nothing goes live.'} onClick={() => saveFlow('validate')} className="text-xs px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors font-medium cursor-pointer disabled:cursor-not-allowed">Check with Meta</button>
-            <button type="button" disabled={saving || Boolean(compileError)} title={compileError ? 'Fix the problem shown below first' : 'A published form can no longer be edited'} onClick={() => saveFlow('publish')} className="text-xs px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-medium cursor-pointer disabled:cursor-not-allowed">Publish</button>
+            <button type="button" disabled={saving || Boolean(compileError)} title={compileError ? 'Fix the problem shown below first' : 'A published form can no longer be edited'} onClick={publishFlow} className="text-xs px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-medium cursor-pointer disabled:cursor-not-allowed">Publish</button>
           </>}
           <button
             onClick={() => setShowJsonModal(true)}
@@ -415,7 +459,14 @@ export default function NativeFlowDesignerPage() {
       </header>
 
       {/* Meta Approval & Status Banner */}
-      {isPublished && !saveError && !feedback && (
+      {isRetired && !saveError && !feedback && (
+        <div role="status" className="px-5 py-2.5 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-b border-rose-200 dark:border-rose-800/60 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+          <span className="font-bold">Retired.</span>
+          <span>This form no longer works on WhatsApp and cannot be edited or published again. Flows that send it need another form. Delete it from the forms list once its responses are no longer needed.</span>
+        </div>
+      )}
+      {isPublished && !isRetired && !saveError && !feedback && (
         <div className="px-5 py-2.5 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border-b border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
