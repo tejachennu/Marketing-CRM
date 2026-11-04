@@ -17,17 +17,22 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://db.example.com'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role'
 process.env.CRON_SECRET = SECRET
 
-// In-memory stand-in for the parts of supabase-js the worker uses: filters, ordering, limits,
-// head counts, maybeSingle, inserts, and updates that return the rows they changed.
+// In-memory stand-in for the parts of supabase-js the worker (and the rerun route) use:
+// filters, ordering, limits, head counts, maybeSingle/single, inserts, and updates that return
+// the rows they changed.
 function createDb(tables) {
   const db = { tables, calls: [], beforeQuery: null, seq: 0 }
+  // PostgREST's list syntax in .not('status', 'in', '("A","B")')
+  const list = (value) => (Array.isArray(value) ? value : String(value).replace(/^\(|\)$/g, '').split(',').map((item) => item.replace(/^"|"$/g, '')))
   const test = (operator, actual, expected) => {
     switch (operator) {
       case 'eq': return actual === expected
-      case 'in': return expected.includes(actual)
+      case 'neq': return actual !== expected
+      case 'in': return list(expected).includes(actual)
       default: throw new Error(`Unsupported operator ${operator}`)
     }
   }
+  const matches = (row, [op, column, ...args]) => (op === 'not' ? !test(args[0], row[column], args[1]) : test(op, row[column], args[0]))
   function execute(table, ops) {
     const error = db.beforeQuery && db.beforeQuery(table, ops)
     if (error) return { data: null, error }
@@ -39,7 +44,7 @@ function createDb(tables) {
       else if (op === 'insert') { action = 'insert'; values = args[0] }
       else if (op === 'order') order = { column: args[0], ascending: !(args[1] && args[1].ascending === false) }
       else if (op === 'limit') limit = args[0]
-      else if (op === 'maybeSingle') single = true
+      else if (op === 'maybeSingle' || op === 'single') single = true
       else filters.push([op, ...args])
     }
     if (action === 'insert') {
@@ -47,7 +52,7 @@ function createDb(tables) {
       ;(db.tables[table] = db.tables[table] || []).push(...rows)
       return { data: single ? rows[0] : rows, error: null }
     }
-    let rows = (db.tables[table] || []).filter((row) => filters.every(([op, column, expected]) => test(op, row[column], expected)))
+    let rows = (db.tables[table] || []).filter((row) => filters.every((filter) => matches(row, filter)))
     if (order) rows = [...rows].sort((a, b) => (a[order.column] < b[order.column] ? -1 : a[order.column] > b[order.column] ? 1 : 0) * (order.ascending ? 1 : -1))
     rows = rows.slice(0, limit)
     if (action === 'update') {
@@ -87,21 +92,29 @@ const nextServerPath = require.resolve('next/server', { paths: [PROJECT] })
 const nextServer = require(nextServerPath)
 stub(nextServerPath, { ...nextServer, after: (task) => afterTasks.push(task) })
 
-// Meta accepts every message; the statuses of the batch are noted as it is called
+// Meta (and SendGrid) accept every message; the statuses of the batch are noted as it is called.
+// `providerAnswer` overrides the answer.
 let metaCalls = []
+let providerAnswer = null
 global.fetch = async (url, init) => {
   const sending = db.tables.campaign_logs.filter((row) => row.status === 'SENDING').map((row) => row.id)
   metaCalls.push({ url, init, body: JSON.parse(init.body), sending })
   if (metaCalls.onCall) metaCalls.onCall()
+  if (providerAnswer) return providerAnswer(url, init)
   return new Response(JSON.stringify({ messages: [{ id: `wamid.${metaCalls.length}` }] }), { status: 200 })
 }
+let workerErrors = []
 for (const level of ['log', 'warn', 'error']) {
   const original = console[level]
-  console[level] = (...args) => { if (!/^\[Campaign (Worker|Run|Dispatcher)/.test(String(args[0]))) original(...args) }
+  console[level] = (...args) => {
+    if (level === 'error' && /^\[Campaign Worker\]/.test(String(args[0]))) workerErrors.push(String(args[0]))
+    if (!/^\[Campaign (Worker|Run|Dispatcher|Rerun)/.test(String(args[0]))) original(...args)
+  }
 }
 
 const route = require(path.join(PROJECT, 'app/api/campaigns/run/worker/route.ts'))
 const runRoute = require(path.join(PROJECT, 'app/api/campaigns/run/route.ts'))
+const rerunRoute = require(path.join(PROJECT, 'app/api/campaigns/rerun/route.ts'))
 const { NextRequest } = nextServer
 const { runCampaignWorker } = route
 
@@ -134,6 +147,8 @@ function reset() {
   authChecks = []
   afterTasks = []
   metaCalls = []
+  providerAnswer = null
+  workerErrors = []
   delete process.env.CAMPAIGN_WORKER_MAX_SECONDS
 }
 
@@ -308,4 +323,165 @@ test('Run route: a campaign run from the dashboard also gets the invocation\'s d
   await afterTasks[0]()
   assert.equal(metaCalls.length, 0)
   assert.equal(campaign().updated_at, EPOCH, 'paused at once for the watchdog rather than cut off')
+})
+
+const ORG_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
+/** An email campaign of organization A to the given addresses, sent through SendGrid. */
+function emailFixtures(addresses) {
+  const fresh = fixtures({ pending: addresses.length })
+  Object.assign(fresh.tables.campaigns[0], { channel: 'email', template_body: 'Hello {{name}}', subject: 'Diwali' })
+  fresh.tables.campaign_logs.forEach((log, i) => { log.email_address = addresses[i]; log.phone_number = null })
+  Object.assign(fresh.tables.organizations[0], { email_provider: 'sendgrid', sendgrid_api_key: 'SG.test-key', sendgrid_from_email: 'shop@a.example.com' })
+  return fresh
+}
+
+test('Worker: an email campaign only finds and changes contacts of its own organization', async () => {
+  reset()
+  db = emailFixtures(['shared@x.example.com', 'mine@x.example.com'])
+  db.tables.contacts.push(
+    // Another workspace's customer with the same address, never to be touched or linked
+    { id: 'b-contact', organization_id: ORG_B, email: 'shared@x.example.com', first_name: 'Campaign', last_name: '', tags: ['B tag'], created_at: '2026-01-01T00:00:00.000Z' },
+    // Two of our own for the second address: the oldest is used, no third is created
+    { id: 'a-newer', organization_id: ORG_A, email: 'mine@x.example.com', first_name: 'Ravi', last_name: 'K', tags: [], created_at: '2026-06-01T00:00:00.000Z' },
+    { id: 'a-older', organization_id: ORG_A, email: 'mine@x.example.com', first_name: 'Ravi', last_name: 'K', tags: [], created_at: '2026-02-01T00:00:00.000Z' },
+  )
+  const bBefore = JSON.stringify(db.tables.contacts[0])
+  await runCampaignWorker('camp-1')
+
+  assert.deepEqual(statuses(), { SENT: 2 })
+  assert.equal(JSON.stringify(db.tables.contacts[0]), bBefore, 'the other organization\'s contact is unchanged')
+  const created = db.tables.contacts.filter((c) => c.email === 'shared@x.example.com' && c.organization_id === ORG_A)
+  assert.equal(created.length, 1, 'organization A gets a contact of its own')
+  assert.equal(db.tables.contacts.length, 4)
+  assert.deepEqual(db.tables.contacts.find((c) => c.id === 'a-older').tags, ['Diwali offer'])
+  assert.deepEqual(db.tables.contacts.find((c) => c.id === 'a-newer').tags, [])
+
+  // Every conversation and message stays inside organization A, on A's contacts
+  assert.ok(db.tables.conversations.every((c) => c.organization_id === ORG_A && c.contact_id !== 'b-contact'))
+  assert.deepEqual(db.tables.conversations.map((c) => c.contact_id).sort(), [created[0].id, 'a-older'].sort())
+  assert.ok(db.tables.messages.every((m) => m.organization_id === ORG_A))
+
+  const lookups = db.calls.filter(({ table, ops }) => table === 'contacts' && ops[0][0] === 'select')
+  assert.ok(lookups.length >= 2)
+  for (const { ops } of lookups) {
+    assert.deepEqual(ops.find(([op, column]) => op === 'eq' && column === 'organization_id'), ['eq', 'organization_id', ORG_A])
+    assert.ok(!ops.some(([op]) => op === 'maybeSingle'), 'two contacts with one address are not an error')
+  }
+  const updates = db.calls.filter(({ table, ops }) => table === 'contacts' && ops[0][0] === 'update')
+  assert.ok(updates.length >= 1)
+  for (const { ops } of updates) assert.ok(ops.some(([op, column, value]) => op === 'eq' && column === 'organization_id' && value === ORG_A))
+})
+
+test('Worker: every sent message gets an id of its own, even when the provider gives none', async () => {
+  reset()
+  db = emailFixtures(['one@x.example.com', 'two@x.example.com', 'three@x.example.com'])
+  // SendGrid names the request in a header; without it the worker makes up a unique id
+  providerAnswer = (url, init) => {
+    const to = JSON.parse(init.body).personalizations[0].to[0].email
+    return new Response('', { status: 202, headers: to === 'one@x.example.com' ? { 'X-Message-Id': 'sg-abc' } : {} })
+  }
+  await runCampaignWorker('camp-1')
+  const ids = db.tables.campaign_logs.map((log) => log.message_sid)
+  assert.equal(ids[0], 'SG_sg-abc')
+  assert.match(ids[1], /^SG_[0-9a-f-]{36}$/)
+  assert.equal(new Set(ids).size, 3, 'sends that finish in the same millisecond still differ')
+  assert.deepEqual(db.tables.messages.map((m) => m.twilio_message_sid).sort(), [...ids].sort())
+
+  // Meta without a message id
+  reset()
+  db = fixtures({ pending: 3 })
+  providerAnswer = () => new Response(JSON.stringify({ messages: [] }), { status: 200 })
+  await runCampaignWorker('camp-1')
+  const metaIds = db.tables.campaign_logs.map((log) => log.message_sid)
+  assert.ok(metaIds.every((id) => /^FB_local_[0-9a-f-]{36}$/.test(id)), metaIds.join())
+  assert.equal(new Set(metaIds).size, 3)
+})
+
+test('Worker: a message that cannot be noted in the chat is logged; the send still counts', async () => {
+  reset()
+  db = fixtures({ pending: 1 })
+  db.beforeQuery = (table, ops) => (table === 'messages' && ops[0][0] === 'insert' ? { code: '23505', message: 'duplicate key value violates unique constraint "messages_org_provider_sid_key"' } : null)
+  const result = await runCampaignWorker('camp-1')
+  assert.equal(result.success, true)
+  assert.deepEqual(statuses(), { SENT: 1 })
+  assert.ok(workerErrors.some((line) => line.includes('could not be recorded in conversation')), workerErrors.join('\n'))
+})
+
+test('Worker: a campaign stopped before its worker starts is not sent, and stays stopped', async () => {
+  for (const status of ['STOPPED', 'CANCELLED', 'COMPLETED']) {
+    reset()
+    campaign().status = status
+    const result = await runCampaignWorker('camp-1')
+    assert.equal(result.success, true)
+    assert.match(result.message, /not runnable/)
+    assert.equal(metaCalls.length, 0, status)
+    assert.equal(campaign().status, status)
+    assert.deepEqual(statuses(), { PENDING: 20 })
+  }
+  // The start is a conditional update, so the Stop cannot be lost between the check and the write
+  const [start] = db.calls.filter(({ table, ops }) => table === 'campaigns' && ops[0][0] === 'update')
+  assert.deepEqual(start.ops.slice(1), [['eq', 'id', 'camp-1'], ['in', 'status', ['PENDING', 'PROCESSING']], ['select', 'id']])
+
+  // A new campaign (PENDING) and a dispatched one (PROCESSING) run as before
+  reset()
+  campaign().status = 'PENDING'
+  await runCampaignWorker('camp-1')
+  assert.equal(campaign().status, 'COMPLETED')
+})
+
+test('Worker: a Stop that lands after the last batch is not overwritten by COMPLETED', async () => {
+  reset()
+  db.beforeQuery = (table, ops) => {
+    // The user stops the campaign just as the worker writes its final status
+    if (table === 'campaigns' && ops[0][0] === 'update' && ops[0][1].status === 'COMPLETED') campaign().status = 'STOPPED'
+  }
+  await runCampaignWorker('camp-1')
+  assert.equal(campaign().status, 'STOPPED')
+})
+
+/** POST /api/campaigns/rerun, signed in. */
+const rerun = (body) => rerunRoute.POST(new NextRequest('https://wamacrm.example.com/api/campaigns/rerun', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
+
+test('Rerun: logs a worker may still be sending are not handed to a second worker', async () => {
+  for (const rerunType of ['failed_only', 'all']) {
+    reset()
+    // Just stopped: the old worker is finishing its batch (the Stop refreshed the heartbeat)
+    Object.assign(campaign(), { status: 'STOPPED', updated_at: new Date().toISOString() })
+    db.tables.campaign_logs.forEach((log, i) => { log.status = i < 3 ? 'SENDING' : i < 5 ? 'FAILED' : 'SENT' })
+    const res = await rerun({ campaignId: 'camp-1', rerunType })
+    assert.equal(res.status, 200)
+    const expected = rerunType === 'all' ? { SENDING: 3, PENDING: 17 } : { SENDING: 3, PENDING: 2, SENT: 15 }
+    assert.deepEqual(statuses(), expected, rerunType)
+    assert.equal(campaign().status, 'PENDING')
+  }
+
+  // Long after the worker died, its unsettled logs are retried with the rest
+  reset()
+  Object.assign(campaign(), { status: 'STOPPED', updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+  db.tables.campaign_logs.forEach((log, i) => { log.status = i < 3 ? 'SENDING' : 'SENT' })
+  await rerun({ campaignId: 'camp-1', rerunType: 'failed_only' })
+  assert.deepEqual(statuses(), { PENDING: 3, SENT: 17 })
+
+  // A paused worker's epoch heartbeat says nothing about another worker's batch
+  reset()
+  Object.assign(campaign(), { status: 'PROCESSING', updated_at: EPOCH })
+  db.tables.campaign_logs.forEach((log, i) => { log.status = i < 3 ? 'SENDING' : 'SENT' })
+  await rerun({ campaignId: 'camp-1', rerunType: 'failed_only' })
+  assert.deepEqual(statuses(), { SENDING: 3, SENT: 17 })
+})
+
+test('Rerun: its worker knows when the invocation ends, and pauses instead of being cut off', async () => {
+  reset()
+  assert.equal(rerunRoute.maxDuration, 300)
+  process.env.CAMPAIGN_WORKER_MAX_SECONDS = '0.001'
+  campaign().status = 'STOPPED'
+  const res = await rerun({ campaignId: 'camp-1', rerunType: 'failed_only' })
+  assert.equal(res.status, 200)
+  assert.deepEqual(authChecks, [['campaigns', 'camp-1', { permission: 'campaigns.manage' }]])
+  assert.equal(afterTasks.length, 1)
+  await afterTasks[0]()
+  assert.equal(metaCalls.length, 0)
+  assert.equal(campaign().status, 'PROCESSING')
+  assert.equal(campaign().updated_at, EPOCH, 'paused at once for the watchdog')
 })

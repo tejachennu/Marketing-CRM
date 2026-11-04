@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser, verifyRecordAccess } from '@/lib/api-auth-helper'
 import { isSuperAdmin } from '@/lib/rbac'
 import { dispatchDueCampaigns, startWorkerAfterResponse } from '@/lib/campaigns/dispatcher'
+import { workerDeadline } from '@/lib/scheduler/campaign-worker'
+
+// Workers started here (claims, resumes and "send now") run in this invocation, so it gets as
+// long as Vercel allows, and each worker is told when it ends: it pauses cleanly before then
+// instead of being cut off mid-batch with messages already accepted but still marked SENDING
+export const maxDuration = 300
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,6 +32,8 @@ function getSupabaseClient() {
  * details are only returned to a signed-in caller, limited to their own organization.
  */
 export async function GET(request: NextRequest) {
+  // First, so the time spent below counts against it
+  const deadline = workerDeadline(maxDuration)
   try {
     const supabase = getSupabaseClient()
     const now = new Date()
@@ -35,7 +43,13 @@ export async function GET(request: NextRequest) {
       !!viewer && (isSuperAdmin(viewer) || viewer.organization_id === organizationId)
 
     // 1. Start due campaigns and resume stuck ones
-    const dispatched = await dispatchDueCampaigns({ supabase, origin: new URL(request.url).origin, now })
+    const dispatched = await dispatchDueCampaigns({
+      supabase,
+      origin: new URL(request.url).origin,
+      now,
+      deadline,
+      startWorker: (campaignId, context) => startWorkerAfterResponse(campaignId, context, { deadline }),
+    })
     const visibleTriggered = dispatched.campaigns
       .filter((campaign) => canSee(campaign.organization_id))
       .map(({ id, name, scheduled_at }) => ({ id, name, scheduled_at }))
@@ -78,6 +92,7 @@ export async function GET(request: NextRequest) {
  * Allows manual action on a scheduled campaign (e.g., 'send_now' or 'cancel_schedule')
  */
 export async function POST(request: NextRequest) {
+  const deadline = workerDeadline(maxDuration)
   try {
     const body = await request.json()
     const { campaignId, action } = body
@@ -119,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'send_now') {
-      startWorkerAfterResponse(campaignId, 'Immediate dispatch error')
+      startWorkerAfterResponse(campaignId, 'Immediate dispatch error', { deadline })
 
       return NextResponse.json({
         success: true,

@@ -9,6 +9,7 @@
 import { OPEN_CHECKOUT_STATUSES, type OrderStatus } from '@/lib/commerce/commerce-utils'
 import { resendCheckoutStep } from '@/lib/commerce/commerce-webhook-handler'
 import { parseCommerceMessage } from '@/lib/chat-commerce'
+import { isModuleDisabledByPlatform, isModuleEnabled } from '@/lib/feature-flags'
 import { isMissingColumn } from './schema-errors'
 
 type Database = any
@@ -35,11 +36,12 @@ export const CUSTOMER_WINDOW_MS = 23 * HOUR
 /** A chat with a message in the last hour is live; a reminder (with a fresh payment request) would land in the middle of it. */
 export const LIVE_CHAT_MS = 1 * HOUR
 /**
- * How long a step may take to send. The WhatsApp call behind it has no timeout of its own, and
- * one that hangs would otherwise hold the whole run; a step not accepted by then counts as
- * refused and is tried again later.
+ * How long a step may take to send. Each WhatsApp call behind it gives up after 15 seconds
+ * (WHATSAPP_SEND_TIMEOUT_MS), so a single slow send still gets its answer; a step that falls
+ * through to the next message can take longer. A step not settled by then may still reach the
+ * customer, so it is recorded as sent (see remindOrder), never retried within the day.
  */
-export const SEND_TIMEOUT_MS = 10 * 1000
+export const SEND_TIMEOUT_MS = 20 * 1000
 /** Candidates read per query. */
 const CHUNK_SIZE = 50
 /** Candidates examined per run at most, so a backlog can never make a tick run long. */
@@ -51,7 +53,7 @@ export const MIGRATION_HINT = 'Checkout reminders need the 20261104_commerce_rem
 const REMINDER_COLUMNS = ['reminder_count', 'next_reminder_at', 'commerce_reminders_enabled']
 
 const ORGANIZATION_COLUMNS = [
-  'id', 'name', 'currency', 'enable_commerce', 'commerce_reminders_enabled',
+  'id', 'name', 'currency', 'enable_commerce', 'enable_messages', 'commerce_reminders_enabled',
   'whatsapp_api_token', 'whatsapp_phone_number_id', 'whatsapp_graph_api_version',
   'commerce_address_flow_id', 'commerce_payment_gateway', 'commerce_gateway_config_name', 'commerce_enable_cod',
 ].join(', ')
@@ -64,8 +66,11 @@ const isOpen = (status: string) => OPEN_CHECKOUT_STATUSES.includes(status as Ord
 export interface ReminderRunResult {
   /** The migration is not applied: nothing was read or sent. */
   skipped?: true
+  /** The commerce module is switched off for the whole platform (NEXT_PUBLIC_DISABLED_MODULES): nothing was read or sent. */
+  disabled?: true
   /** Orders examined. */
   scanned: number
+  /** Includes steps WhatsApp did not confirm in time, which may still have reached the customer. */
   sent: number
   /** WhatsApp refused the message (or did not answer in time); the order is tried again in six hours. */
   failed: number
@@ -113,6 +118,9 @@ export async function sendCheckoutReminders({
   const outOfTime = () => Boolean(deadline && Date.now() >= deadline)
   let cursor: string | null = null
 
+  // The platform's kill switch for commerce stops the reminders with the rest of the module
+  if (isModuleDisabledByPlatform('commerce')) return { disabled: true, ...result }
+
   while (result.sent + result.failed < limit && result.scanned < MAX_SCANNED) {
     if (outOfTime()) {
       result.out_of_time = true
@@ -120,7 +128,8 @@ export async function sendCheckoutReminders({
     }
 
     // Open checkouts begun in the last week that have sat untouched for an hour and are due a
-    // reminder, for stores that sell on WhatsApp and have not switched reminders off. Only the
+    // reminder, for stores that sell on WhatsApp (commerce and messaging both on, as
+    // lib/feature-flags.ts defines the module) and have not switched reminders off. Only the
     // inner join on the organization lets the database apply the store settings.
     let query = supabase
       .from('commerce_orders')
@@ -133,6 +142,7 @@ export async function sendCheckoutReminders({
       .lte('created_at', abandonedBefore)
       .lte('updated_at', abandonedBefore)
       .not('organizations.enable_commerce', 'is', false)
+      .not('organizations.enable_messages', 'is', false)
       .not('organizations.commerce_reminders_enabled', 'is', false)
       .order('created_at', { ascending: true })
       .limit(CHUNK_SIZE)
@@ -172,8 +182,9 @@ export async function sendCheckoutReminders({
 async function remindOrder(supabase: Database, order: any, now: Date, sendTimeoutMs: number): Promise<Outcome | 'migration'> {
   const organization = order.organizations
   // The query already leaves these out; a reminder must never reach a canceled, paid or
-  // confirmed order, so the rule is checked here as well.
+  // confirmed order, or a store whose commerce module is off, so the rules are checked here as well.
   if (!organization || !isOpen(order.status) || order.payment_status === 'paid') return 'skipped'
+  if (organization.enable_commerce === false || !isModuleEnabled(organization, 'commerce')) return 'skipped'
 
   // Claim the order for this run first. With a second scheduler running (pg_cron next to
   // Vercel Cron, or a slow tick overlapping the next one) a customer could otherwise be
@@ -242,11 +253,17 @@ async function remindOrder(supabase: Database, order: any, now: Date, sendTimeou
     return hold(order, 'the team wrote last')
   }
 
-  const outcome = await withTimeout(resendCheckoutStep({ organization, order, database: supabase }), sendTimeoutMs, () => ({
-    step: 'not_sent' as const,
-    error: `WhatsApp did not answer within ${Math.round(sendTimeoutMs / 1000)} seconds`,
-  }))
-  if (outcome.step === 'not_sent') {
+  const outcome = await withTimeout<{ step: string; error?: string; timedOut?: true }>(
+    resendCheckoutStep({ organization, order, database: supabase }),
+    sendTimeoutMs,
+    () => ({ step: 'not_sent', timedOut: true })
+  )
+  if (outcome.timedOut) {
+    // The send carries on without us and may well reach the customer (and move the order on).
+    // Counting it as failed would remind them again in six hours, past the limits; counted as
+    // sent, the worst case is one reminder fewer.
+    console.warn(`[Checkout Reminders] Order #${order.order_number} (${order.id}): WhatsApp did not answer within ${Math.round(sendTimeoutMs / 1000)} seconds; the reminder may still arrive, so it is counted as sent.`)
+  } else if (outcome.step === 'not_sent') {
     console.warn(`[Checkout Reminders] Order #${order.order_number} (${order.id}): ${outcome.error || 'not sent'}; trying again in 6 hours.`)
     return 'failed'
   }
@@ -262,7 +279,7 @@ async function remindOrder(supabase: Database, order: any, now: Date, sendTimeou
     .eq('organization_id', order.organization_id)
   // The customer has the message either way; the six-hour hold from the claim still applies
   if (doneErr) console.error(`[Checkout Reminders] Order #${order.order_number} (${order.id}): reminder sent but not recorded:`, doneErr)
-  else console.log(`[Checkout Reminders] Reminder ${reminderCount + 1} sent for order #${order.order_number} (${outcome.step}).`)
+  else console.log(`[Checkout Reminders] Reminder ${reminderCount + 1} ${outcome.timedOut ? 'possibly sent' : 'sent'} for order #${order.order_number} (${outcome.timedOut ? 'unconfirmed' : outcome.step}).`)
   return 'sent'
 }
 

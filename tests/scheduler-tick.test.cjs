@@ -14,6 +14,7 @@ let calls = []
 let failing = {}
 let remindersSkipped = false
 let databaseMissing = false
+let campaignErrors = 0
 let afterStarts = []
 const fakeDb = { from() { throw new Error('the faked jobs never query') } }
 
@@ -24,7 +25,7 @@ stub(path.join(PROJECT, 'lib/campaigns/dispatcher.ts'), {
   dispatchDueCampaigns: async (args) => {
     calls.push(['campaigns', args])
     if (failing.campaigns) throw new Error('campaigns table is locked')
-    return { claimed: 1, restarted: 0, errors: 0, campaigns: [] }
+    return { claimed: 1, restarted: 0, errors: campaignErrors, campaigns: [] }
   },
   startWorkerAfterResponse: (id, context, options) => afterStarts.push([id, context, options]),
 })
@@ -64,6 +65,7 @@ function reset() {
   failing = {}
   remindersSkipped = false
   databaseMissing = false
+  campaignErrors = 0
   afterStarts = []
   fetches = []
   fetchAnswer = () => new Response(JSON.stringify({ success: true }), { status: 202 })
@@ -214,6 +216,29 @@ test('Cron tick: a failing job makes the answer a 500 with its error, and the ot
   reset()
   failing = { flow_sessions: true }
   assert.equal((await tick({ authorization: `Bearer ${SECRET}` })).status, 500)
+})
+
+test('Cron tick: dispatch errors the dispatcher carried on past (a failed claim or watchdog query) make the answer a 500', async () => {
+  reset()
+  campaignErrors = 2
+  const res = await tick({ authorization: `Bearer ${SECRET}` })
+  assert.equal(res.status, 500)
+  const body = await res.json()
+  assert.equal(body.ok, false)
+  assert.equal(body.jobs.campaigns.ok, false)
+  assert.equal(body.jobs.campaigns.errors, 2)
+  assert.equal(body.jobs.campaigns.claimed, 1, 'what did work is still reported')
+  assert.match(body.jobs.campaigns.error, /2 campaign dispatch error/)
+  assert.equal(body.jobs.checkout_reminders.ok, true)
+  assert.equal(body.jobs.flow_sessions.ok, true)
+})
+
+test('Cron tick: a reminder started at the end of its budget still finishes inside the minute', async () => {
+  reset()
+  const startedAt = Date.now()
+  await tick({ authorization: `Bearer ${SECRET}` })
+  // 20 s: the reminders' SEND_TIMEOUT_MS, pinned in tests/scheduler-checkout-reminders.test.cjs
+  assert.ok(calls[1][1].deadline - startedAt + 20 * 1000 <= 55 * 1000, 'budget plus one send leaves the tick time to answer')
 })
 
 test('Cron tick: a job that skips (its migration is not applied yet) is a 200, and is listed', async () => {

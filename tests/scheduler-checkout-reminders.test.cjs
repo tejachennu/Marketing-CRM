@@ -25,7 +25,7 @@ for (const level of ['log', 'warn', 'error']) {
   console[level] = (...args) => { if (String(args[0]).startsWith('[Checkout Reminders]')) warnings.push(String(args[0])); else original(...args) }
 }
 
-const { sendCheckoutReminders, MIGRATION_HINT } = require(path.join(PROJECT, 'lib/scheduler/checkout-reminders.ts'))
+const { sendCheckoutReminders, MIGRATION_HINT, SEND_TIMEOUT_MS } = require(path.join(PROJECT, 'lib/scheduler/checkout-reminders.ts'))
 
 // In-memory stand-in for the parts of supabase-js the job uses: filters (also on the inner-joined
 // organization), ordering, limits, maybeSingle and updates that return the rows they changed.
@@ -230,19 +230,77 @@ test('Reminders: when WhatsApp refuses the message, the order is tried again in 
   assert.ok(warnings.some((line) => line.includes('ORD-refused') && line.includes('6 hours')))
 })
 
-test('Reminders: a step WhatsApp does not accept in time counts as refused, and the run moves on', async () => {
+test('Reminders: a step WhatsApp does not confirm in time may still arrive, so it counts as sent, and the run moves on', async () => {
   reset()
+  // One WhatsApp call gives up after 15 s (WHATSAPP_SEND_TIMEOUT_MS); a step that answers just
+  // before that must not be cut off and counted as refused
+  assert.ok(SEND_TIMEOUT_MS > 15 * 1000, 'longer than a single WhatsApp send')
   const db = setup([order('hanging'), order('fine', { created_at: hoursAgo(3) })])
   // WhatsApp never answers for one of them
   resendResult = ({ order }) => (order.id === 'hanging' ? new Promise(() => {}) : { step: 'address' })
   const result = await sendCheckoutReminders({ supabase: db, now: NOW, sendTimeoutMs: 20 })
-  assert.deepEqual(result, { scanned: 2, sent: 1, failed: 1, waiting: 0, held: 0 })
+  assert.deepEqual(result, { scanned: 2, sent: 2, failed: 0, waiting: 0, held: 0 })
   assert.deepEqual(resends.map((r) => r.order.id), ['fine', 'hanging'], 'oldest first; the hanging send did not stop the next')
   const hanging = byId(db, 'hanging')
-  assert.equal(hanging.reminder_count, 0)
-  assert.equal(hanging.next_reminder_at, hoursAgo(-6), 'tried again in six hours')
-  assert.ok(warnings.some((line) => line.includes('ORD-hanging') && line.includes('did not answer')))
+  assert.equal(hanging.reminder_count, 1, 'counted: the customer is not reminded again six hours later')
+  assert.equal(hanging.next_reminder_at, hoursAgo(-20), 'the next reminder is a day away, as for a confirmed one')
+  assert.ok(warnings.some((line) => line.includes('ORD-hanging') && line.includes('did not answer') && line.includes('may still arrive')))
   assert.equal(byId(db, 'fine').reminder_count, 1)
+})
+
+test('Reminders: a send that answers late is recorded once, and a second reminder within the day never follows', async () => {
+  reset()
+  const db = setup([order('slow', { reminder_count: 1, next_reminder_at: hoursAgo(1), created_at: hoursAgo(22), updated_at: hoursAgo(21) })], { lastInbound: { slow: hoursAgo(21) } })
+  let deliver
+  resendResult = () => new Promise((resolve) => { deliver = resolve })
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW, sendTimeoutMs: 20 })
+  assert.equal(result.sent, 1)
+  deliver({ step: 'payment' }) // Meta answers after the run gave up on it
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(byId(db, 'slow').reminder_count, 2, 'the second and last reminder')
+  // Six hours later the order is not picked up again
+  const later = await sendCheckoutReminders({ supabase: db, now: new Date(NOW.getTime() + 6 * HOUR) })
+  assert.equal(later.scanned, 0)
+  assert.equal(resends.length, 1)
+})
+
+test('Reminders: a store whose commerce module is off, or the platform kill switch, sends nothing', async () => {
+  reset()
+  const OFF = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  const NO_MESSAGING = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  const db = setup([order('commerce_off', { organization_id: OFF }), order('messaging_off', { organization_id: NO_MESSAGING }), order('on')])
+  db.tables.organizations.push({ ...STORE, id: OFF, enable_commerce: false }, { ...STORE, id: NO_MESSAGING, enable_messages: false })
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW })
+  assert.deepEqual(result, { scanned: 1, sent: 1, failed: 0, waiting: 0, held: 0 })
+  assert.deepEqual(resends.map((r) => r.order.id), ['on'])
+  assert.equal(byId(db, 'commerce_off').next_reminder_at, null, 'not even claimed')
+  assert.equal(byId(db, 'messaging_off').next_reminder_at, null, 'not even claimed')
+  const [candidates] = queriesOf(db, 'commerce_orders')
+  assert.ok(candidates.ops.some(([op, column, operator, value]) => op === 'not' && column === 'organizations.enable_commerce' && operator === 'is' && value === false))
+  assert.ok(candidates.ops.some(([op, column, operator, value]) => op === 'not' && column === 'organizations.enable_messages' && operator === 'is' && value === false))
+  assert.match(candidates.ops[0][1], /enable_messages/, 'the switch is read with the store')
+
+  // The platform's kill switch for commerce: nothing is read or sent
+  reset()
+  const fresh = setup([order('on')])
+  const previous = process.env.NEXT_PUBLIC_DISABLED_MODULES
+  process.env.NEXT_PUBLIC_DISABLED_MODULES = 'flows, Commerce'
+  try {
+    const off = await sendCheckoutReminders({ supabase: fresh, now: NOW })
+    assert.deepEqual(off, { disabled: true, scanned: 0, sent: 0, failed: 0, waiting: 0, held: 0 })
+    assert.equal(resends.length, 0)
+    assert.equal(fresh.calls.length, 0)
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_DISABLED_MODULES
+    else process.env.NEXT_PUBLIC_DISABLED_MODULES = previous
+  }
+  process.env.NEXT_PUBLIC_DISABLED_MODULES = 'flows'
+  try {
+    assert.equal((await sendCheckoutReminders({ supabase: fresh, now: NOW })).sent, 1, 'another module switched off changes nothing here')
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_DISABLED_MODULES
+    else process.env.NEXT_PUBLIC_DISABLED_MODULES = previous
+  }
 })
 
 test('Reminders: an order with no conversation, or a store without WhatsApp, waits instead of failing', async () => {

@@ -136,8 +136,10 @@ test('Dispatcher: the watchdog resumes stuck campaigns with pending logs, oldest
     ['stuck', 'Failed to resume stuck campaign'],
   ])
   assert.equal(byId(db, 'pending_old').status, 'PROCESSING')
-  assert.equal(byId(db, 'drained').status, 'PROCESSING', 'nothing pending: left for the worker to finish')
-  assert.equal(updatesOf(db, 'drained').length, 0)
+  assert.equal(result.finished, 1)
+  assert.equal(byId(db, 'drained').status, 'COMPLETED', 'nothing pending or in flight: its worker died before closing it')
+  assert.equal(byId(db, 'drained').sent_count, 1)
+  assert.equal(byId(db, 'drained').failed_count, 0)
   assert.equal(updatesOf(db, 'alive').length, 0, 'a worker that reported in a minute ago is not touched')
 
   // More candidates are read than resumed, so a drained campaign cannot block a stuck one
@@ -150,7 +152,7 @@ test('Dispatcher: the watchdog resumes stuck campaigns with pending logs, oldest
     ['limit', 10],
   ])
   const pendingCount = db.calls.find(({ table, ops }) => table === 'campaign_logs' && ops[0][0] === 'select' && ops.some(([, , value]) => value === 'stuck'))
-  assert.deepEqual(pendingCount.ops, [['select', 'id', { count: 'exact', head: true }], ['eq', 'campaign_id', 'stuck'], ['eq', 'status', 'PENDING']])
+  assert.deepEqual(pendingCount.ops, [['select', 'id', { count: 'exact', head: true }], ['eq', 'campaign_id', 'stuck'], ['in', 'status', ['PENDING']]])
   const [resume] = updatesOf(db, 'stuck')
   assert.deepEqual(resume.ops.slice(1), [['eq', 'id', 'stuck'], ['eq', 'status', 'PROCESSING'], ['eq', 'updated_at', minutesAgo(10)], ['select', 'id']])
 
@@ -206,6 +208,7 @@ test('Dispatcher: logs a killed worker left SENDING go back to PENDING once the 
   const result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id) => started.push(id) })
 
   assert.deepEqual(result, { claimed: 0, restarted: 2, errors: 0, campaigns: [] })
+  assert.equal(byId(db, 'live').updated_at, minutesAgo(1))
   assert.deepEqual(logsOf(db, 'killed'), ['PENDING', 'PENDING', 'SENT'], 'given back, then resumed')
   assert.deepEqual(logsOf(db, 'busy'), ['SENDING', 'PENDING'], 'a worker may still be on b1; only the pending log is a reason to resume')
   assert.deepEqual(logsOf(db, 'live'), ['SENDING'])
@@ -289,4 +292,116 @@ test('Dispatcher: a claim the database refuses is counted and the next campaign 
   assert.equal(result.claimed, 1)
   assert.equal(result.errors, 1)
   assert.deepEqual(started.slice(0, 1), ['due2'])
+})
+
+test('Dispatcher: a paused worker\'s epoch heartbeat never gives back logs another worker is still sending', async () => {
+  const db = createDb({
+    campaigns: [
+      // W1 paused on purpose while W2 still has a batch in flight; more is pending
+      { id: 'shared', name: 'Two workers', status: 'PROCESSING', updated_at: EPOCH, organization_id: ORG_A },
+      // Only W2's batch is left
+      { id: 'tail', name: 'Last batch', status: 'PROCESSING', updated_at: EPOCH, organization_id: ORG_A },
+    ],
+    campaign_logs: [
+      { id: 's1', campaign_id: 'shared', status: 'SENDING' },
+      { id: 's2', campaign_id: 'shared', status: 'PENDING' },
+      { id: 't1', campaign_id: 'tail', status: 'SENDING' },
+      { id: 't2', campaign_id: 'tail', status: 'SENT' },
+    ],
+  })
+  const started = []
+  const result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id) => started.push(id) })
+
+  assert.equal(result.errors, 0)
+  assert.deepEqual(started, ['shared'], 'the pending log is a reason to resume')
+  assert.deepEqual(logsOf(db, 'shared'), ['SENDING', 'PENDING'], 'W2\'s message is not handed to the resumed worker')
+  assert.deepEqual(logsOf(db, 'tail'), ['SENDING', 'SENT'])
+  assert.equal(logUpdatesOf(db, 'shared').length, 0)
+  assert.equal(logUpdatesOf(db, 'tail').length, 0)
+  // With nothing to resume, the paused campaign gets a real heartbeat: if W2 died, its log is
+  // given back ten minutes from now; meanwhile it no longer sorts ahead of everything else
+  assert.equal(byId(db, 'tail').status, 'PROCESSING')
+  assert.equal(byId(db, 'tail').updated_at, NOW.toISOString())
+  const [bump] = updatesOf(db, 'tail')
+  assert.deepEqual(bump.ops, [['update', { updated_at: NOW.toISOString() }], ['eq', 'id', 'tail'], ['eq', 'status', 'PROCESSING'], ['eq', 'updated_at', EPOCH], ['select', 'id']])
+
+  // Ten minutes later nobody settled it: the normal rule gives it back and the campaign resumes
+  const later = new Date(NOW.getTime() + 11 * 60 * 1000)
+  const again = await dispatchDueCampaigns({ supabase: db, now: later, startWorker: (id) => started.push(id) })
+  assert.equal(again.restarted >= 1, true)
+  assert.deepEqual(logsOf(db, 'tail'), ['PENDING', 'SENT'])
+  assert.ok(started.includes('tail'))
+})
+
+test('Dispatcher: a stuck campaign with nothing left to send is closed, not left to block the watchdog', async () => {
+  const campaigns = [
+    // Ten zombies with the oldest heartbeats would otherwise fill every examined slot
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `zombie-${i}`, name: `Zombie ${i}`, status: i % 2 ? 'PENDING' : 'PROCESSING', updated_at: minutesAgo(600 - i), organization_id: ORG_A })),
+    { id: 'killed', name: 'Killed mid-run', status: 'PROCESSING', updated_at: minutesAgo(30), organization_id: ORG_A },
+    { id: 'in_flight', name: 'Mid-batch', status: 'PROCESSING', updated_at: minutesAgo(5), organization_id: ORG_A },
+  ]
+  const campaign_logs = [
+    ...campaigns.slice(0, 10).flatMap((c, i) => [{ id: `${c.id}-a`, campaign_id: c.id, status: 'SENT' }, { id: `${c.id}-b`, campaign_id: c.id, status: i === 0 ? 'FAILED' : 'DELIVERED' }]),
+    { id: 'killed-1', campaign_id: 'killed', status: 'PENDING' },
+    { id: 'in_flight-1', campaign_id: 'in_flight', status: 'SENDING' },
+  ]
+  const db = createDb({ campaigns, campaign_logs })
+  const started = []
+  const first = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id) => started.push(id) })
+  assert.equal(first.finished, 10)
+  assert.equal(first.errors, 0)
+  assert.deepEqual(byId(db, 'zombie-0'), { id: 'zombie-0', name: 'Zombie 0', status: 'COMPLETED', updated_at: NOW.toISOString(), organization_id: ORG_A, sent_count: 1, failed_count: 1 })
+  assert.equal(byId(db, 'zombie-1').sent_count, 2, 'DELIVERED and READ count as sent')
+  const [close] = updatesOf(db, 'zombie-1')
+  assert.deepEqual(close.ops.slice(1), [['eq', 'id', 'zombie-1'], ['eq', 'status', 'PENDING'], ['eq', 'updated_at', minutesAgo(599)], ['select', 'id']], 'guarded on the heartbeat that was read')
+
+  const second = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id) => started.push(id) })
+  assert.equal(second.restarted, 1)
+  assert.deepEqual(started, ['killed'], 'the next call reaches the campaign that really needs a worker')
+  assert.equal(byId(db, 'in_flight').status, 'PROCESSING', 'a log may still be on its way: not closed')
+  assert.equal(byId(db, 'in_flight').updated_at, minutesAgo(5), 'and its heartbeat is left to age, so the log is given back at ten minutes')
+})
+
+test('Dispatcher: a stopped campaign is not closed or resumed by a watchdog that read it before the Stop', async () => {
+  const db = fixtures()
+  // The Stop lands between the watchdog's read and its write
+  db.beforeQuery = (table, ops) => { if (table === 'campaigns' && ops[0][0] === 'update' && ops.some(([op, , value]) => op === 'eq' && value === 'drained')) byId(db, 'drained').status = 'STOPPED' }
+  const result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: () => {} })
+  assert.equal(result.finished, undefined)
+  assert.equal(byId(db, 'drained').status, 'STOPPED')
+})
+
+test('Dispatcher: a failed log count or resume claim is counted, not mistaken for "nothing to do"', async () => {
+  let db = fixtures()
+  db.beforeQuery = (table, ops) => (table === 'campaign_logs' && ops[0][0] === 'select' ? { message: 'campaign_logs timed out' } : null)
+  let result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: () => {} })
+  assert.equal(result.errors, 3, 'one per stuck campaign: pending_old, stuck and drained')
+  assert.equal(result.restarted, 0)
+  assert.equal(byId(db, 'drained').status, 'PROCESSING', 'not closed on a count it could not read')
+
+  db = fixtures()
+  db.beforeQuery = (table, ops) => (table === 'campaigns' && ops[0][0] === 'update' && ops.some(([op, , value]) => op === 'eq' && value === 'pending_old') ? { message: 'deadlock' } : null)
+  const started = []
+  result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id) => started.push(id) })
+  assert.equal(result.errors, 1)
+  assert.ok(!started.includes('pending_old'))
+  assert.ok(started.includes('stuck'), 'the campaigns behind the refused claim are still resumed')
+})
+
+test('Dispatcher: a stuck campaign whose count fails on every call does not starve the ones behind it', async () => {
+  const db = fixtures()
+  // pending_old has the oldest heartbeat, so it is examined first on every call
+  db.beforeQuery = (table, ops) => (table === 'campaign_logs' && ops[0][0] === 'select' && ops.some(([op, column, value]) => op === 'eq' && column === 'campaign_id' && value === 'pending_old') ? { message: 'canceling statement due to statement timeout' } : null)
+  const started = []
+  warnings = []
+  const result = await dispatchDueCampaigns({ supabase: db, now: NOW, startWorker: (id, context) => { if (context !== 'Execution error') started.push(id) } })
+
+  assert.equal(result.errors, 1)
+  assert.deepEqual(started, ['stuck'], 'the next stuck campaign is still resumed')
+  assert.equal(result.restarted, 1)
+  assert.equal(result.finished, 1)
+  assert.equal(byId(db, 'drained').status, 'COMPLETED')
+  assert.equal(byId(db, 'pending_old').status, 'PENDING', 'left untouched for the next call')
+  assert.equal(byId(db, 'pending_old').updated_at, minutesAgo(60))
+  assert.ok(warnings.some((line) => line.includes('Watchdog could not handle campaign Never started (pending_old)')))
 })

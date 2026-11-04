@@ -11,7 +11,9 @@ import { runJob, type JobReport } from '@/lib/scheduler/run-job'
 export const maxDuration = 60
 /** When each job must stop starting new work, counted from the start of the tick. */
 const CAMPAIGNS_BUDGET_MS = 25 * 1000
-const REMINDERS_BUDGET_MS = 35 * 1000
+// A reminder started just before this may take up to its send timeout (20 s), so the job ends
+// by 50 s at the latest, inside the minute
+const REMINDERS_BUDGET_MS = 30 * 1000
 const EXPIRY_BUDGET_MS = 45 * 1000
 const REMINDERS_PER_TICK = 50
 
@@ -52,6 +54,13 @@ async function tick(request: NextRequest) {
   jobs.campaigns = await runJob('campaigns', () =>
     dispatchDueCampaigns({ supabase, origin, now, startWorker, deadline: startedAt + CAMPAIGNS_BUDGET_MS })
   )
+  // The dispatcher carries on past a failed claim or watchdog query (the dashboard poll wants
+  // what did work), but for the scheduler's monitoring those runs failed
+  const campaignErrors = Number(jobs.campaigns.errors) || 0
+  if (jobs.campaigns.ok && campaignErrors > 0) {
+    jobs.campaigns.ok = false
+    jobs.campaigns.error = `${campaignErrors} campaign dispatch error(s); see the logs`
+  }
   jobs.checkout_reminders = await runJob('checkout_reminders', () =>
     sendCheckoutReminders({ supabase, now, limit: REMINDERS_PER_TICK, deadline: startedAt + REMINDERS_BUDGET_MS })
   )

@@ -54,8 +54,37 @@ test('Deployment: the reminders migration marks the old open carts as already re
 })
 
 test('Deployment: the idle-session sweep has its partial index', () => {
-  const migration = squash(read('supabase/migrations/20261104_flow_sessions_idle_index.sql'))
-  assert.equal(migration, "create index if not exists flow_sessions_idle_idx on public.flow_sessions (last_interaction_at) where status in ('in_progress','paused_rag');")
+  const raw = read('supabase/migrations/20261104_flow_sessions_idle_index.sql')
+  const migration = squash(raw)
+  assert.ok(migration.includes("create index if not exists flow_sessions_idle_idx on public.flow_sessions (last_interaction_at) where status in ('in_progress','paused_rag')"), migration)
+  // Guarded: it only prints a notice until the Flow Builder tables exist
+  assert.ok(migration.includes("if to_regclass('public.flow_sessions') is null then raise notice"), migration)
+  // squash() lower-cases; the index only serves the sweep if its statuses are the ones the job reads
+  assert.match(raw, /where status in \('IN_PROGRESS', 'PAUSED_RAG'\)/)
+  assert.match(read('lib/scheduler/flow-sessions.ts'), /const ACTIVE_STATUSES = \['IN_PROGRESS', 'PAUSED_RAG'\]/)
+})
+
+test('Deployment: the provider-id index removes only real redeliveries, and keeps every other message under an id of its own', () => {
+  const migration = squash(read('supabase/migrations/20261104_messages_provider_sid_unique.sql'))
+  const deleteAt = migration.indexOf('delete from public.messages')
+  const renameAt = migration.indexOf('update public.messages m set twilio_message_sid')
+  const indexAt = migration.indexOf('create unique index if not exists messages_org_provider_sid_key on public.messages (organization_id,twilio_message_sid);')
+  assert.ok(deleteAt > 0 && renameAt > deleteAt && indexAt > renameAt, 'delete, then rename, then the index')
+
+  // Only an inbound message stored again: same customer message, conversation and text
+  const deletion = migration.slice(deleteAt, renameAt)
+  assert.ok(deletion.includes('partition by organization_id,twilio_message_sid,conversation_id,body'), deletion)
+  assert.ok(deletion.includes("where twilio_message_sid is not null and sender_type = 'contact'"), deletion)
+  assert.ok(deletion.includes('where ranked.duplicate_rank > 1'), deletion)
+
+  // Different messages that shared a synthetic id (campaign sends in one batch) get unique ids
+  const rename = migration.slice(renameAt, indexAt)
+  assert.ok(rename.includes("set twilio_message_sid = m.twilio_message_sid || '_dup_' || m.id::text"), rename)
+  assert.ok(rename.includes('partition by organization_id,twilio_message_sid order by created_at asc,id asc'), rename)
+  assert.ok(rename.includes('where m.id = ranked.id and ranked.duplicate_rank > 1'), rename)
+  assert.ok(!rename.includes('delete'), 'nothing else is deleted')
+  // Applied twice, the second run finds no duplicates and the index already exists
+  assert.ok(migration.includes('create unique index if not exists'))
 })
 
 test('Hand-off: the worker gets the plan\'s limit, or the configured one', () => {

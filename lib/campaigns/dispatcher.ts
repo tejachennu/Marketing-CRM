@@ -5,7 +5,7 @@
  */
 import { after } from 'next/server'
 import { runCampaignWorker } from '@/app/api/campaigns/run/worker/route'
-import { SENDING_RESET_AFTER_MS } from '@/lib/scheduler/campaign-worker'
+import { RESUME_REQUESTED_AT, SENDING_RESET_AFTER_MS } from '@/lib/scheduler/campaign-worker'
 
 type Database = any
 
@@ -21,6 +21,8 @@ export interface DispatchResult {
   claimed: number
   /** Campaigns whose worker had stopped with messages still pending, started again. */
   restarted: number
+  /** Stuck campaigns with nothing left to send, closed as COMPLETED (their worker died before it could). */
+  finished?: number
   /** Database errors met on the way, and workers that could not be started; they are reported and stop nothing else. */
   errors: number
   /** The claimed campaigns, for callers that show them (the dashboard poll). */
@@ -152,9 +154,11 @@ export async function dispatchDueCampaigns({
   // 2. Watchdog: resume campaigns stuck in PENDING or PROCESSING with pending logs left.
   //    Oldest heartbeat first, which puts a worker that paused on purpose (heartbeat at the
   //    epoch, lib/scheduler/campaign-worker.ts) ahead of everything else.
+  // Only the query below aborts the watchdog; each campaign is handled on its own further down.
+  let stuckCampaigns: { id: string; name: string; status: string; updated_at: string }[] = []
   try {
     const stuckBefore = new Date(now.getTime() - STUCK_AFTER_MS).toISOString()
-    const { data: stuckCampaigns, error: stuckErr } = await supabase
+    const { data, error: stuckErr } = await supabase
       .from('campaigns')
       .select('id, name, status, updated_at')
       .in('status', ['PENDING', 'PROCESSING'])
@@ -162,15 +166,40 @@ export async function dispatchDueCampaigns({
       .order('updated_at', { ascending: true })
       .limit(MAX_EXAMINED)
     if (stuckErr) throw stuckErr
+    stuckCampaigns = data || []
+  } catch (watchdogErr) {
+    console.warn('[Campaign Dispatcher] Watchdog check encountered non-fatal error:', watchdogErr)
+    result.errors++
+    return result
+  }
 
-    const resetBefore = now.getTime() - SENDING_RESET_AFTER_MS
-    for (const stuck of stuckCampaigns || []) {
-      if (result.restarted >= MAX_RESUMES || outOfTime()) break
+  const resetBefore = now.getTime() - SENDING_RESET_AFTER_MS
+  const resumeRequested = Date.parse(RESUME_REQUESTED_AT)
+  const countLogs = async (campaignId: string, statuses: string[]): Promise<number> => {
+    const { count, error } = await supabase
+      .from('campaign_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .in('status', statuses)
+    if (error) throw error
+    return count || 0
+  }
+
+  for (const stuck of stuckCampaigns) {
+    if (result.restarted >= MAX_RESUMES || outOfTime()) break
+    // A failed query or write on one campaign (a statement timeout on a very large one, a
+    // held lock) is counted and logged, and the watchdog moves on: the oldest heartbeat sorts
+    // first, so aborting here would leave every campaign behind it unattended on every call.
+    try {
+      const heartbeat = Date.parse(stuck.updated_at)
+      // A worker that paused on purpose leaves the epoch: it settled its own batch first, so any
+      // log still SENDING belongs to another worker that may be alive, whatever the heartbeat says
+      const pausedOnPurpose = heartbeat === resumeRequested
 
       // Logs claimed by a worker that was killed mid-batch (before Meta or Twilio answered)
       // go back to PENDING, so the resumed worker sends them. Only once the heartbeat is old
       // enough that no worker can still be busy with them.
-      if (Date.parse(stuck.updated_at) <= resetBefore) {
+      if (heartbeat <= resetBefore && !pausedOnPurpose) {
         const { data: reset, error: resetErr } = await supabase
           .from('campaign_logs')
           .update({ status: 'PENDING' })
@@ -183,33 +212,54 @@ export async function dispatchDueCampaigns({
         }
       }
 
-      const { count: pendingCount } = await supabase
-        .from('campaign_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', stuck.id)
-        .eq('status', 'PENDING')
-
-      if (!pendingCount || pendingCount <= 0) continue
-
-      // Same atomic claim: the heartbeat must be unchanged since we read it, so a concurrent
-      // poll (or a worker that just woke up) cannot double-resume.
-      const { data: claimed } = await supabase
+      // Every write below is guarded on the heartbeat read above, so a concurrent poll (or a
+      // worker that just woke up, or a Stop) is never overwritten.
+      const guarded = (values: Record<string, unknown>) => supabase
         .from('campaigns')
-        .update({ status: 'PROCESSING', updated_at: now.toISOString() })
+        .update(values)
         .eq('id', stuck.id)
         .eq('status', stuck.status)
         .eq('updated_at', stuck.updated_at)
         .select('id')
 
+      const pendingCount = await countLogs(stuck.id, ['PENDING'])
+      if (pendingCount <= 0) {
+        const sendingCount = await countLogs(stuck.id, ['SENDING'])
+        if (sendingCount > 0) {
+          // Another worker's logs, or a dead one's that are not old enough to give back yet. A
+          // paused campaign gets a real heartbeat now, so they are given back ten minutes from
+          // now if nobody settles them, and it stops sorting ahead of everything else.
+          if (pausedOnPurpose) {
+            const { error: bumpErr } = await guarded({ updated_at: now.toISOString() })
+            if (bumpErr) throw bumpErr
+          }
+          continue
+        }
+        // Nothing left to send: the worker died before it could close the campaign. Left as it
+        // is, it would keep its old heartbeat and hold a place among the campaigns examined.
+        const [sentCount, failedCount] = await Promise.all([countLogs(stuck.id, ['SENT', 'DELIVERED', 'READ']), countLogs(stuck.id, ['FAILED'])])
+        const { data: closed, error: closeErr } = await guarded({ status: 'COMPLETED', sent_count: sentCount, failed_count: failedCount, updated_at: now.toISOString() })
+        if (closeErr) throw closeErr
+        if (closed && closed.length > 0) {
+          result.finished = (result.finished || 0) + 1
+          console.warn(`[Campaign Dispatcher] Watchdog closed campaign ${stuck.name} (${stuck.id}) as COMPLETED: nothing left to send${where}.`)
+        }
+        continue
+      }
+
+      // Same atomic claim: the heartbeat must be unchanged since we read it, so a concurrent
+      // poll (or a worker that just woke up) cannot double-resume.
+      const { data: claimed, error: resumeErr } = await guarded({ status: 'PROCESSING', updated_at: now.toISOString() })
+      if (resumeErr) throw resumeErr
       if (!claimed || claimed.length === 0) continue
 
       console.log(`[Campaign Dispatcher] Watchdog resuming stuck campaign ${stuck.name} (${stuck.id}) with ${pendingCount} pending logs${where}.`)
       await start(stuck.id, 'Failed to resume stuck campaign')
       result.restarted++
+    } catch (campaignErr) {
+      console.warn(`[Campaign Dispatcher] Watchdog could not handle campaign ${stuck.name} (${stuck.id})${where}:`, campaignErr)
+      result.errors++
     }
-  } catch (watchdogErr) {
-    console.warn('[Campaign Dispatcher] Watchdog check encountered non-fatal error:', watchdogErr)
-    result.errors++
   }
 
   return result

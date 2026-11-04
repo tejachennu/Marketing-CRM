@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 import twilio from 'twilio'
 import nodemailer from 'nodemailer'
 import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
@@ -16,6 +17,8 @@ import { RESUME_REQUESTED_AT, STOP_MARGIN_MS, workerDeadline } from '@/lib/sched
 export const maxDuration = 300
 /** No provider call may hold a batch for longer than this; a stalled one fails its message and the campaign moves on. */
 const PROVIDER_TIMEOUT_MS = 15 * 1000
+/** The statuses a worker may run (and finish) a campaign from; STOPPED and CANCELLED are the user's to keep. */
+const RUNNABLE_STATUSES = ['PENDING', 'PROCESSING']
 
 export interface WorkerOptions {
   /** When this invocation ends (a Date.now() value); the worker stops between batches shortly before it. */
@@ -89,11 +92,21 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
     const supabase = getSupabaseClient()
     const outOfTime = () => deadline !== undefined && now() >= deadline - STOP_MARGIN_MS
 
-    // 1. Update status to PROCESSING
-    await supabase
+    // 1. Take the campaign: PENDING (new or rerun) or PROCESSING (claimed by the dispatcher).
+    //    Only from those, so a Stop that lands between the dispatch and this start (the
+    //    hand-off to another invocation takes seconds) is not overwritten and ignored.
+    const { data: started, error: startErr } = await supabase
       .from('campaigns')
       .update({ status: 'PROCESSING', updated_at: new Date().toISOString() })
       .eq('id', campaignId)
+      .in('status', RUNNABLE_STATUSES)
+      .select('id')
+    if (startErr) {
+      // Not a reason to leave the campaign unsent; the status check in the loop still applies
+      console.error(`[Campaign Worker] Could not mark campaign ${campaignId} PROCESSING:`, startErr)
+    } else if (!started || started.length === 0) {
+      return { success: true, message: 'Campaign is not runnable (stopped, cancelled, completed or not found); worker not started.' }
+    }
 
     // 2. Fetch campaign details
     const { data: campaign, error: campaignError } = await supabase
@@ -142,6 +155,7 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
         .eq('campaign_id', campaignId)
         .eq('status', 'FAILED')
 
+      // A Stop that came in meanwhile stands
       await supabase
         .from('campaigns')
         .update({
@@ -151,6 +165,7 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
           updated_at: new Date().toISOString()
         })
         .eq('id', campaignId)
+        .in('status', RUNNABLE_STATUSES)
 
       return { success: true, message: 'No pending logs remaining. Campaign marked as COMPLETED.' }
     }
@@ -535,7 +550,9 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
                 }
 
                 const fbData = await fbRes.json()
-                twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
+                // Without Meta's id the message still needs one of its own: the batch sends in
+                // parallel, so a timestamp would be shared, and messages are unique per id
+                twilioMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_local_${randomUUID()}`
                 sentCount++
               } else {
                 // Twilio WhatsApp
@@ -622,7 +639,7 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
                   connectionTimeout: PROVIDER_TIMEOUT_MS, greetingTimeout: PROVIDER_TIMEOUT_MS, socketTimeout: PROVIDER_TIMEOUT_MS
                 })
                 const info = await transporter.sendMail({ from: fromEmail, to: recipientEmail, subject: subjectText, text: plainTextBody, html: htmlBody })
-                twilioMessageSid = info.messageId || `SMTP_${Date.now()}`
+                twilioMessageSid = info.messageId || `SMTP_${randomUUID()}`
               } else {
                 const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
                   method: 'POST',
@@ -631,7 +648,8 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
                   signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
                 })
                 if (!response.ok) throw new Error(`SendGrid API error: ${response.status}`)
-                twilioMessageSid = `SG_${Date.now()}`
+                // SendGrid's own id for the request (one recipient each); unique either way
+                twilioMessageSid = `SG_${response.headers.get('x-message-id') || randomUUID()}`
               }
               sentCount++
             }
@@ -702,7 +720,17 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
               let contactId = null
               if (channel === 'email') {
                 const cleanEmail = recipientEmail ? recipientEmail.toLowerCase().trim() : ''
-                const { data: existingContact } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('email', cleanEmail).maybeSingle()
+                // Only this organization's contacts: another workspace may have one with the same
+                // address. The oldest wins when there are several (maybeSingle() would error on two).
+                const contactByEmail = () => supabase
+                  .from('contacts')
+                  .select('id, first_name, last_name, tags')
+                  .eq('organization_id', campaign.organization_id)
+                  .eq('email', cleanEmail)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                const { data: matchedByEmail } = await contactByEmail()
+                const existingContact = matchedByEmail?.[0] || null
                 if (existingContact) {
                   contactId = existingContact.id
                   const existingTags = Array.isArray(existingContact.tags) ? existingContact.tags : []
@@ -710,14 +738,14 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
                   const needsNameUpdate = (!existingContact.first_name || existingContact.first_name === 'Campaign') && firstName !== 'Campaign'
 
                   if (needsNameUpdate || mergedTags.length > existingTags.length) {
-                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
+                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id).eq('organization_id', campaign.organization_id)
                   }
                 } else {
                   const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, email: cleanEmail, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) contactId = newContact.id
                   else {
-                    const { data: fallbackContact } = await supabase.from('contacts').select('id').eq('email', cleanEmail).maybeSingle()
-                    if (fallbackContact) contactId = fallbackContact.id
+                    const { data: retryByEmail } = await contactByEmail()
+                    if (retryByEmail?.[0]) contactId = retryByEmail[0].id
                   }
                 }
               } else {
@@ -747,7 +775,7 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
                   const needsNameUpdate = (!existingContact.first_name || existingContact.first_name === 'Campaign') && firstName !== 'Campaign'
 
                   if (needsNameUpdate || mergedTags.length > existingTags.length) {
-                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
+                    await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id).eq('organization_id', campaign.organization_id)
                   }
                 } else {
                   const stdPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`
@@ -808,7 +836,9 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
 
                   const recordBody = channel === 'email' ? `[Email Subject: ${campaignSubject || `Campaign: ${campaign.name}`}]\n\n${finalBody}` : finalBody
 
-                  await supabase.from('messages').insert([{ organization_id: campaign.organization_id, conversation_id: conversationId, sender_type: 'user', body: recordBody, twilio_message_sid: twilioMessageSid, status: 'sent' }])
+                  const { error: messageErr } = await supabase.from('messages').insert([{ organization_id: campaign.organization_id, conversation_id: conversationId, sender_type: 'user', body: recordBody, twilio_message_sid: twilioMessageSid, status: 'sent' }])
+                  // The message went out; only its line in the chat is missing
+                  if (messageErr) console.error(`[Campaign Worker] Sent message for log ${log.id} could not be recorded in conversation ${conversationId}:`, messageErr)
                   await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId)
                 }
               }
@@ -871,7 +901,7 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
     // A worker that paused on purpose asks for an immediate resume with a heartbeat at the
     // epoch; one that is done, or stopped, leaves a current one
     const resumeNow = paused && terminalStatus === 'PROCESSING'
-    await supabase
+    let finalUpdate = supabase
       .from('campaigns')
       .update({
         status: terminalStatus,
@@ -880,6 +910,10 @@ export async function runCampaignWorker(campaignId: string, { deadline, now = Da
         updated_at: resumeNow ? RESUME_REQUESTED_AT : new Date().toISOString()
       })
       .eq('id', campaignId)
+    // A Stop that lands between the read above and this write must not become COMPLETED or PROCESSING
+    if (terminalStatus === 'COMPLETED' || terminalStatus === 'PROCESSING') finalUpdate = finalUpdate.in('status', RUNNABLE_STATUSES)
+    const { error: finalErr } = await finalUpdate
+    if (finalErr) console.error(`[Campaign Worker] Could not record the final status of campaign ${campaignId}:`, finalErr)
 
     return {
       success: true,

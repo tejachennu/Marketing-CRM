@@ -50,7 +50,7 @@ let dispatchResult = null
 let started = []
 stub(path.join(PROJECT, 'lib/campaigns/dispatcher.ts'), {
   dispatchDueCampaigns: async (args) => { dispatchArgs = args; if (dispatchResult instanceof Error) throw dispatchResult; return dispatchResult },
-  startWorkerAfterResponse: (id, context) => started.push([id, context]),
+  startWorkerAfterResponse: (id, context, options) => started.push([id, context, options]),
 })
 const originalError = console.error
 console.error = (...args) => { if (!String(args[0]).startsWith('[Scheduled')) originalError(...args) }
@@ -97,6 +97,27 @@ test('Scheduled route: the poll dispatches without a session and reports only th
   assert.equal(dispatchArgs.now.toISOString(), body.timestamp)
 })
 
+test('Scheduled route: workers started by the poll know when this invocation ends, so they pause instead of being cut off', async () => {
+  reset()
+  assert.equal(route.maxDuration, 300)
+  const before = Date.now()
+  await get()
+  assert.ok(dispatchArgs.deadline >= before + 300 * 1000 && dispatchArgs.deadline <= Date.now() + 300 * 1000)
+  assert.equal(typeof dispatchArgs.startWorker, 'function')
+  await dispatchArgs.startWorker('c1', 'Execution error')
+  assert.deepEqual(started, [['c1', 'Execution error', { deadline: dispatchArgs.deadline }]], 'every worker of this invocation shares its end')
+
+  // A plan with a lower limit is honoured
+  reset()
+  process.env.CAMPAIGN_WORKER_MAX_SECONDS = '60'
+  try {
+    await get()
+    assert.ok(dispatchArgs.deadline <= Date.now() + 60 * 1000)
+  } finally {
+    delete process.env.CAMPAIGN_WORKER_MAX_SECONDS
+  }
+})
+
 test('Scheduled route: a signed-in member sees the campaigns of their own organization', async () => {
   reset()
   viewer = { id: 'user-1', role: 'org_manager', organization_id: ORG_A }
@@ -125,7 +146,9 @@ test('Scheduled route: "send now" starts the worker once the campaign is claimed
   const res = await post({ campaignId: 'a2', action: 'send_now' })
   assert.equal(res.status, 200)
   assert.equal(campaigns.find((c) => c.id === 'a2').status, 'PROCESSING')
-  assert.deepEqual(started, [['a2', 'Immediate dispatch error']])
+  assert.equal(started.length, 1)
+  assert.deepEqual(started[0].slice(0, 2), ['a2', 'Immediate dispatch error'])
+  assert.ok(started[0][2].deadline > Date.now() + 200 * 1000 && started[0][2].deadline <= Date.now() + 300 * 1000, 'the worker pauses before the invocation ends')
 
   const again = await post({ campaignId: 'a2', action: 'send_now' })
   assert.equal(again.status, 409)
