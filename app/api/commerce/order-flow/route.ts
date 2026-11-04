@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
 
     const withTrail = await Promise.all((orders || []).map(async (order: any) => {
       if (!order.conversation_id) return { ...order, trail: [] }
-      // Every checkout line names its order ("Order #ORD-…"); the cart itself is matched by its WhatsApp id
-      const filters = [`body.ilike.%#${order.order_number}%`]
+      // Every checkout line names its order ("Order #ORD-…") and is written by the server, never by the
+      // customer, who could type one; the cart itself is the customer's message, matched by its WhatsApp id
+      const filters = [`and(body.ilike.%#${order.order_number}%,sender_type.neq.contact)`]
       if (order.meta_order_id) filters.push(`twilio_message_sid.eq.FB_${order.meta_order_id}`)
       const { data: trail } = await supabase
         .from('messages')

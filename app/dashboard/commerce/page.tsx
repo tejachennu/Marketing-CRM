@@ -44,8 +44,10 @@ export default function CommercePage() {
         const user = authSessionManager.getUser()
         if (!user?.id) return
 
-        const { data: profile } = await supabase.from('users').select('organization_id, role, see_all, read_only').eq('id', user.id).maybeSingle()
-        if (!profile?.organization_id) return
+        const { data: profile, error: profileError } = await supabase.from('users').select('organization_id, role, see_all, read_only').eq('id', user.id).maybeSingle()
+        if (profileError) throw new Error('Your profile could not be loaded. Refresh the page to try again.')
+        // Without an organization there is no store to show; say so rather than leave the page empty
+        if (!profile?.organization_id) throw new Error('Your account is not linked to an organization yet. Sign out and back in, or ask your admin for access.')
         const organizationId = profile.organization_id
         setViewer({ id: user.id, role: profile.role, see_all: profile.see_all, read_only: profile.read_only })
 

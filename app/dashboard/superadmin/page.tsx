@@ -75,6 +75,8 @@ interface Organization {
   enable_messages: boolean
   enable_phone_calls: boolean
   enable_sms: boolean
+  /** Missing before the enable_flows migration, which counts as on */
+  enable_flows?: boolean | null
   twilio_account_sid?: string | null
   twilio_auth_token?: string | null
   twilio_whatsapp_number?: string | null
@@ -411,7 +413,7 @@ export default function SuperAdminPage() {
     }
   }
 
-  async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls' | 'enable_sms', value: boolean) {
+  async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls' | 'enable_sms' | 'enable_flows', value: boolean) {
     if (!selectedOrgSettings) return
     
     // Optimistic update
@@ -1562,6 +1564,27 @@ export default function SuperAdminPage() {
                         <span
                           className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
                             selectedOrgSettings.enable_messages !== false ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Flow Builder toggle */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
+                      <div className="flex flex-col gap-0.5 pr-2">
+                        <span className="text-xs font-bold text-[#111b21] dark:text-white">Flow Builder</span>
+                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Automated WhatsApp conversations and forms; also needs Messaging</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFeature('enable_flows', selectedOrgSettings.enable_flows !== false ? false : true)}
+                        className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
+                          selectedOrgSettings.enable_flows !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
+                            selectedOrgSettings.enable_flows !== false ? 'translate-x-5' : 'translate-x-0'
                           }`}
                         />
                       </button>

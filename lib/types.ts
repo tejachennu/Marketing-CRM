@@ -9,6 +9,8 @@ export interface Organization {
   enable_messages?: boolean
   enable_phone_calls?: boolean
   enable_sms?: boolean
+  /** The Flow Builder's switch, set by a super admin; exists after supabase/migrations/20261104_enable_flows.sql */
+  enable_flows?: boolean | null
   contact_name?: string | null
   contact_email?: string | null
   contact_phone?: string | null

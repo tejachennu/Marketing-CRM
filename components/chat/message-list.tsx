@@ -112,7 +112,8 @@ export const MessageList = memo(function MessageList({
         const quoted = replyToId ? byId.get(replyToId) : undefined
         const failed = message.status === 'failed' || message.status === 'undelivered'
         const isVisual = mediaType === 'image' || mediaType === 'video'
-        const commerceMessage = message.media_url ? null : parseCommerceMessage(message.body)
+        // The sender decides which lines count: a customer cannot send the team's checkout notes
+        const commerceMessage = message.media_url ? null : parseCommerceMessage(message.body, message.sender_type)
         const order = commerceMessage?.kind === 'order' ? cards.ordersByMessage.get(whatsappMessageId(message.twilio_message_sid) || '') : undefined
         const product = commerceMessage?.kind === 'product'
           ? (commerceMessage.sku && cards.productsBySku.get(commerceMessage.sku)) || cards.productsByTitle.get(commerceMessage.title.toLowerCase())

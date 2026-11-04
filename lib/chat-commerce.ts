@@ -55,8 +55,27 @@ const SENT_WEBSITE = /^\[Sent website link: ([\s\S]+)\]$/
 // The webhook's cart line; the total and note after the count are optional
 const CART_ORDER = /^🛒 \[WhatsApp Cart Order\]: (\d+) item\(s\) selected(?: · [^(]+?)?(?: \(Note: "([\s\S]*)"\))?$/
 
-/** What commerce message a body is, or null for an ordinary message. */
-export function parseCommerceMessage(body: string | null | undefined): CommerceMessage | null {
+// The customer's own messages (sender_type "contact") are the cart and a completed form; every
+// other line is a note the server stores as sent by the team. A customer typing a checkout line
+// must stay plain text, or the inbox would show a "Payment received" card nobody paid for.
+const CUSTOMER_KINDS: ReadonlySet<CommerceMessage['kind']> = new Set(['order', 'form'])
+
+/** Whether a sender can have produced a kind of commerce message; any sender can when it is unknown. */
+export function canSenderProduce(senderType: string | null | undefined, kind: CommerceMessage['kind']): boolean {
+  if (!senderType) return true
+  return (senderType === 'contact') === CUSTOMER_KINDS.has(kind)
+}
+
+/**
+ * What commerce message a body is, or null for an ordinary message. With `senderType` (the
+ * message's sender_type) a line that sender cannot legitimately have written is ordinary text.
+ */
+export function parseCommerceMessage(body: string | null | undefined, senderType?: string | null): CommerceMessage | null {
+  const parsed = parseCommerceLine(body)
+  return parsed && canSenderProduce(senderType, parsed.kind) ? parsed : null
+}
+
+function parseCommerceLine(body: string | null | undefined): CommerceMessage | null {
   const text = (body ?? '').replace(REPLY_PREFIX, '').trim()
   if (!text) return null
 
@@ -143,11 +162,11 @@ export function whatsappMessageId(storedId: string | null | undefined): string |
 }
 
 /** The product titles and SKUs a list of messages refers to, to look them up in one request. */
-export function collectProductRefs(messages: Array<{ body?: string | null }>): { titles: string[]; skus: string[] } {
+export function collectProductRefs(messages: Array<{ body?: string | null; sender_type?: string | null }>): { titles: string[]; skus: string[] } {
   const titles = new Set<string>()
   const skus = new Set<string>()
   for (const message of messages) {
-    const parsed = parseCommerceMessage(message.body)
+    const parsed = parseCommerceMessage(message.body, message.sender_type)
     if (parsed?.kind !== 'product') continue
     if (parsed.sku) skus.add(parsed.sku)
     else if (parsed.title) titles.add(parsed.title)

@@ -7,7 +7,7 @@ import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
-import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { fetchModuleSwitches, isModuleEnabled } from '@/lib/feature-flags'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createFormWorkflow, getTriggerSummary } from '@/lib/flows/flow-templates'
 import {
@@ -90,12 +90,13 @@ export default function FlowsHubPage() {
 
         const { data: profile } = await supabase
           .from('users')
-          .select('organization_id, role, organizations(name, slug)')
+          .select('organization_id, role')
           .eq('id', user.id)
           .maybeSingle()
 
-        const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
+        // The organization's switches; the Flow Builder is on unless a super admin turned it off
+        const org = profile?.organization_id ? await fetchModuleSwitches(profile.organization_id, authSessionManager.getSession()?.access_token) : null
+        const isAllowed = Boolean(profile) && (isModuleEnabled(org, 'flows') || isSuperAdmin(profile))
 
         if (!isAllowed) {
           router.replace('/dashboard')
@@ -105,10 +106,13 @@ export default function FlowsHubPage() {
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
         } else {
+          // Nothing can be listed or created without an organization: say so rather than show an empty "No flows yet"
+          setLoadError('Your account is not linked to an organization yet. Sign out and back in, or ask your admin for access.')
           setLoading(false)
         }
       } catch (err) {
         console.error('Failed to init user in flows page:', err)
+        setLoadError('Your flows could not be loaded. Refresh the page to try again.')
         setLoading(false)
       }
     }

@@ -3,6 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  canSenderProduce,
   collectProductRefs,
   formFieldLabel,
   describeCart,
@@ -83,4 +84,37 @@ test('Chat commerce: a submitted address form is read as an address, without the
   assert.equal(parseCommerceMessage('[Completed Native Form]: {not json'), null)
   assert.equal(formFieldLabel('delivery_speed'), 'Delivery speed')
   assert.equal(formFieldLabel('pincode'), 'PIN code')
+})
+
+test('Chat commerce: a line only counts from the side that writes it', () => {
+  const paid = '[Payment received for Order #ORD-1 (₹1,050); receipt sent]'
+  const cart = '🛒 [WhatsApp Cart Order]: 1 item(s) selected'
+  const form = '[Completed Native Form]: {"rating":"5"}'
+  const product = formatSentProduct('Gitanjali', 'BK-001')
+  // The server notes checkout steps and sent products as the team ("user"); typed by a customer they are plain text
+  assert.equal(parseCommerceMessage(paid, 'contact'), null)
+  assert.equal(parseCommerceMessage(product, 'contact'), null)
+  assert.equal(parseCommerceMessage('[Sent the full catalog]', 'contact'), null)
+  assert.equal(parseCommerceMessage('[Told customer Order #ORD-1 is canceled]', 'contact'), null)
+  assert.equal(parseCommerceMessage(paid, 'user').event, 'paid')
+  assert.equal(parseCommerceMessage(product, 'user').kind, 'product')
+  // The cart and a completed form are the customer's own messages, never the team's
+  assert.equal(parseCommerceMessage(cart, 'contact').kind, 'order')
+  assert.equal(parseCommerceMessage(form, 'contact').kind, 'form')
+  assert.equal(parseCommerceMessage(cart, 'user'), null)
+  assert.equal(parseCommerceMessage(form, 'user'), null)
+  // Any other sender the server may store (a system note) counts as the team
+  assert.equal(parseCommerceMessage(paid, 'system').event, 'paid')
+  assert.equal(parseCommerceMessage(cart, 'system'), null)
+  // Without a sender, as callers that do not know it pass, nothing changes
+  assert.equal(parseCommerceMessage(paid).event, 'paid')
+  assert.equal(parseCommerceMessage(cart, null).kind, 'order')
+  assert.equal(canSenderProduce('contact', 'order'), true)
+  assert.equal(canSenderProduce('contact', 'checkout'), false)
+  assert.equal(canSenderProduce(undefined, 'checkout'), true)
+  // Product cards are looked up only for products the team actually sent
+  assert.deepEqual(
+    collectProductRefs([{ body: product, sender_type: 'contact' }, { body: '[Sent product: B]', sender_type: 'user' }, { body: '[Sent product: C]' }]),
+    { titles: ['B', 'C'], skus: [] }
+  )
 })

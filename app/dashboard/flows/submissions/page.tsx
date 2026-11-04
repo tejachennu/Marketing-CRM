@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { fetchModuleSwitches, isModuleEnabled } from '@/lib/feature-flags'
 import { formAnswerText, formSubmissionsCsv } from '@/lib/flows/meta-flows-spec'
 import { useAlert } from '@/lib/dialog-context'
 import {
@@ -158,12 +158,13 @@ export default function SubmittedResponsesPage() {
 
         const { data: profile } = await supabase
           .from('users')
-          .select('organization_id, role, organizations(name, slug)')
+          .select('organization_id, role')
           .eq('id', user.id)
           .maybeSingle()
 
-        const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
+        // The organization's switches; the Flow Builder is on unless a super admin turned it off
+        const org = profile?.organization_id ? await fetchModuleSwitches(profile.organization_id, authSessionManager.getSession()?.access_token) : null
+        const isAllowed = Boolean(profile) && (isModuleEnabled(org, 'flows') || isSuperAdmin(profile))
 
         if (!isAllowed) {
           router.replace('/dashboard')

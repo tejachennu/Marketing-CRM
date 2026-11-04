@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
 import { MASTER_ORG_ID } from '@/lib/constants'
 import { isUuid } from '@/lib/record-visibility'
+import { isMissingColumn } from '@/lib/scheduler/schema-errors'
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/
 
@@ -33,6 +34,8 @@ export async function PUT(
       'enable_messages',
       'enable_phone_calls',
       'enable_sms',
+      // Exists after supabase/migrations/20261104_enable_flows.sql
+      'enable_flows',
       'twilio_account_sid',
       'twilio_auth_token',
       'twilio_whatsapp_number',
@@ -102,6 +105,10 @@ export async function PUT(
       .select()
       .single()
 
+    // The Flow Builder switch is a newer column: name the missing migration instead of failing
+    if (error && updateData.enable_flows !== undefined && isMissingColumn(error, ['enable_flows'])) {
+      return NextResponse.json({ error: 'Apply the enable_flows migration first' }, { status: 400 })
+    }
     if (error) throw error
 
     return NextResponse.json({ success: true, organization: org })
