@@ -11,29 +11,40 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { isBsuid } from '@/lib/whatsapp-bsuid'
+import { buildSendComponents } from '@/lib/whatsapp-templates/send-components'
 import {
   buildAddressFlowMessage,
   buildButtonsMessage,
   buildOrderDetailsMessage,
   buildOrderStatusMessage,
+  buildTemplateMessage,
   buildTextMessage,
   OrderDetailsItem,
 } from './commerce-messages'
+import { isInCatalog } from './catalog-items'
+import { pushProductsToCatalog } from './catalog-sync'
+import { getCatalogCredentials } from './meta-catalog'
 import { fetchMetaProductsBySku } from './meta-commerce'
 import {
   ORDER_STATUS_LABELS,
   CHECKOUT_TEXT,
+  DEFAULT_TIME_ZONE,
+  IN_CHAT_PAYMENT_CURRENCY,
   OPEN_CHECKOUT_STATUSES,
   calculateOrderTotals,
   chooseUnitPrice,
+  describeTracking,
   describeWhatsAppError,
   findPaymentRequest,
   formatAddress,
   formatMoney,
   fromMinorUnits,
   getExpressFee,
+  getFulfillment,
+  getOrganizationTimeZone,
   getPaymentGateway,
   getPaymentRequests,
+  getStatusTemplate,
   hasPaymentRequest,
   isMissingColumnError,
   isUniqueViolation,
@@ -66,11 +77,29 @@ const isOpen = (status: string) => OPEN_CHECKOUT_STATUSES.includes(status as Ord
 const ORDER_NUMBER_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O or 1/I look-alikes
 
 /**
- * Human-readable order number: ORD-YYMMDD-XXXX.
+ * "YYMMDD" on the store's own calendar. The UTC date would give an Indian order placed before
+ * 05:30 yesterday's date. An unknown zone falls back to India's, then to UTC.
+ */
+function localDateDigits(now: Date, timeZone: string): string {
+  for (const zone of [timeZone, DEFAULT_TIME_ZONE]) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: '2-digit', month: '2-digit', day: '2-digit' }).formatToParts(now)
+      const part = (type: string) => parts.find((entry) => entry.type === type)?.value || ''
+      const digits = `${part('year')}${part('month')}${part('day')}`
+      if (/^\d{6}$/.test(digits)) return digits
+    } catch {
+      // Not a time zone Intl knows: try the next one
+    }
+  }
+  return now.toISOString().slice(2, 10).replace(/-/g, '')
+}
+
+/**
+ * Human-readable order number: ORD-YYMMDD-XXXX, dated in the store's time zone.
  * The previous "last six digits of the timestamp" scheme repeated every ~17 minutes.
  */
-export function generateOrderNumber(now: Date = new Date()): string {
-  const datePart = now.toISOString().slice(2, 10).replace(/-/g, '')
+export function generateOrderNumber(now: Date = new Date(), timeZone: string = DEFAULT_TIME_ZONE): string {
+  const datePart = localDateDigits(now, timeZone)
   let suffix = ''
   for (let i = 0; i < 4; i++) {
     suffix += ORDER_NUMBER_ALPHABET[Math.floor(Math.random() * ORDER_NUMBER_ALPHABET.length)]
@@ -79,9 +108,11 @@ export function generateOrderNumber(now: Date = new Date()): string {
 }
 
 /** An order number no other order of this store has. Payments are matched to orders by it. */
-async function createOrderNumber(supabase: Database, organizationId: string): Promise<string> {
+async function createOrderNumber(supabase: Database, organization: any): Promise<string> {
+  const organizationId = organization.id
+  const timeZone = getOrganizationTimeZone(organization)
   for (let attempt = 0; attempt < 6; attempt++) {
-    const candidate = generateOrderNumber()
+    const candidate = generateOrderNumber(new Date(), timeZone)
     const { data: taken } = await supabase
       .from('commerce_orders')
       .select('id')
@@ -91,7 +122,7 @@ async function createOrderNumber(supabase: Database, organizationId: string): Pr
     if (!taken || taken.length === 0) return candidate
   }
   // Practically unreachable: six collisions in a million-wide space
-  return `${generateOrderNumber()}${ORDER_NUMBER_ALPHABET[Math.floor(Math.random() * ORDER_NUMBER_ALPHABET.length)]}`
+  return `${generateOrderNumber(new Date(), timeZone)}${ORDER_NUMBER_ALPHABET[Math.floor(Math.random() * ORDER_NUMBER_ALPHABET.length)]}`
 }
 
 // ── Reading a payment update ────────────────────────────────────────────────
@@ -151,8 +182,16 @@ export interface SendResult {
   ok: boolean
   /** Why WhatsApp refused, in words for the store owner. */
   error?: string
+  /** WhatsApp's error code, when it gave one (131047: outside the 24-hour window). */
+  code?: number
   messageId?: string | null
+  /** The same message is being sent by a parallel run (a redelivered or double tap); this one sent nothing. */
+  superseded?: boolean
 }
+
+/** Meta error: a free-form message more than 24 hours after the customer's last message. */
+const OUTSIDE_WINDOW_CODE = 131047
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /**
  * Send a message through the WhatsApp Cloud API.
@@ -180,7 +219,8 @@ export async function sendWhatsAppMessage(organization: any, payload: unknown): 
     if (!res.ok || data?.error) {
       const error = describeWhatsAppError(data?.error, `WhatsApp returned HTTP ${res.status}`)
       console.error('[Commerce] WhatsApp send failed:', data?.error?.code || res.status, data?.error?.message || '')
-      return { ok: false, error }
+      const code = Number(data?.error?.code)
+      return { ok: false, error, ...(Number.isFinite(code) && code > 0 ? { code } : {}) }
     }
     return { ok: true, messageId: data?.messages?.[0]?.id || null }
   } catch (err: any) {
@@ -260,13 +300,22 @@ async function loadOrderItems(supabase: Database, orderId: string): Promise<Orde
  * payment that comes back finds its order and is checked against the right amount. The earlier
  * card is withdrawn first (best effort: WhatsApp may have expired it already), so the customer
  * has one card to pay, not two.
+ *
+ * The reference is claimed on the order row before anything is sent: Meta delivers a tap twice
+ * and customers double-tap, and both deliveries run at once. Only the one whose claim went
+ * through sends; the other returns `superseded` and says nothing.
  */
 async function sendPaymentRequest(context: CheckoutContext, order: any, items: OrderDetailsItem[], intro: string): Promise<SendResult> {
   const gateway = getPaymentGateway(context.organization)
   if (!gateway) return { ok: false, error: 'No payment gateway is set up in Store settings.' }
   if (!items.length) return { ok: false, error: 'This order has no items to charge for.' }
 
-  const currency = order.currency || context.organization.currency || 'INR'
+  const currency = String(order.currency || context.organization.currency || IN_CHAT_PAYMENT_CURRENCY).toUpperCase()
+  // WhatsApp Payments only takes rupees; a card in another currency is refused by Meta with an
+  // unhelpful error, so the refusal is made here, in words, and the checkout moves on
+  if (currency !== IN_CHAT_PAYMENT_CURRENCY) {
+    return { ok: false, error: `In-chat WhatsApp payments are only available in ${IN_CHAT_PAYMENT_CURRENCY}; this order is in ${currency}. Offer Cash on Delivery or a payment link instead.` }
+  }
   const reference = nextPaymentReference(order)
 
   let payload: ReturnType<typeof buildOrderDetailsMessage>
@@ -288,14 +337,33 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
   // What WhatsApp will ask for: worked out from the lines, the way WhatsApp checks it
   const requestedAmount = fromMinorUnits(payload.interactive.action.parameters.total_amount.value)
 
-  const previousReference = hasPaymentRequest(order) ? String(order.meta_payment_reference) : null
+  // Claim the reference: the update only matches while the column still holds what this run
+  // read (null, the previous request, or an old transaction id), so parallel runs claim it once
+  const claimedAt = new Date().toISOString()
+  const before = order.meta_payment_reference ?? null
+  let claim = context.supabase
+    .from('commerce_orders')
+    .update({ meta_payment_reference: reference, updated_at: claimedAt })
+    .eq('id', order.id)
+    .eq('organization_id', context.organization.id)
+  claim = before === null ? claim.is('meta_payment_reference', null) : claim.eq('meta_payment_reference', before)
+  const { data: claimed, error: claimErr } = await claim.select('id')
+  if (claimErr) return { ok: false, error: claimErr.message || 'The payment request could not be recorded.' }
+  if (!claimed || claimed.length === 0) {
+    console.log(`[Commerce] Payment request for Order #${order.order_number} is already being sent; nothing sent twice`)
+    return { ok: false, superseded: true, error: 'A payment request for this order is already on its way.' }
+  }
+  order.meta_payment_reference = reference
+
+  const previousReference = before && hasPaymentRequest({ order_number: order.order_number, meta_payment_reference: before }) ? String(before) : null
   const withdrawn = previousReference
     ? await voidPaymentRequest({
         organization: context.organization,
-        order,
+        order: { ...order, meta_payment_reference: previousReference },
         database: context.supabase,
         phone: context.customerPhone,
         description: `This payment request for Order #${order.order_number} was replaced by a new one.`,
+        record: false,
       })
     : false
 
@@ -314,10 +382,32 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
       { meta_payment_reference: reference, payment_requests: requests, updated_at: now },
       (row) => context.supabase.from('commerce_orders').update(row).eq('id', order.id)
     )
-    order.meta_payment_reference = reference
     order.payment_requests = requests
+  } else {
+    // Nothing reached the customer: the claim is given back, so the order does not point at a
+    // request that was never sent (a later request gets the next reference anyway)
+    await context.supabase
+      .from('commerce_orders')
+      .update({ meta_payment_reference: before, updated_at: new Date().toISOString() })
+      .eq('id', order.id)
+      .eq('meta_payment_reference', reference)
+    order.meta_payment_reference = before
   }
   return result
+}
+
+/** When the last live payment request of an order went out, in ms since the epoch; null when none did. */
+function lastPaymentRequestAt(order: any): number | null {
+  const live = getPaymentRequests(order).filter((entry) => !entry.voided_at)
+  const latest = live[live.length - 1]
+  if (latest) {
+    const at = Date.parse(latest.requested_at || '')
+    return Number.isFinite(at) ? at : null
+  }
+  // Before the payment_requests column: the reference was written when the request went out
+  if (!hasPaymentRequest(order)) return null
+  const at = Date.parse(order.updated_at || '')
+  return Number.isFinite(at) ? at : null
 }
 
 export type CheckoutStep = 'address' | 'choice' | 'payment' | 'cod' | 'acknowledged' | 'not_sent'
@@ -337,13 +427,14 @@ async function sendNextCheckoutStep(
   order: any,
   items: OrderDetailsItem[],
   intro: string,
-  options: { preferred?: 'payment' } = {}
+  options: { preferred?: 'payment'; /** The address form just came back unusable: do not send it again. */ skipAddress?: boolean } = {}
 ): Promise<{ step: CheckoutStep; error?: string }> {
   const { organization, customerPhone } = context
-  const currency = order.currency || organization.currency || 'INR'
+  const currency = String(order.currency || organization.currency || IN_CHAT_PAYMENT_CURRENCY).toUpperCase()
   const total = formatMoney(order.total_amount, currency)
-  const hasAddress = Boolean(order.shipping_address?.address_line_1)
+  const hasAddress = Boolean(order.shipping_address?.address_line_1) || Boolean(options.skipAddress)
   let lastError: string | undefined
+  let paymentError: string | undefined
 
   if (organization.commerce_address_flow_id && !hasAddress) {
     const result = await sendAndLog(
@@ -363,8 +454,11 @@ async function sendNextCheckoutStep(
 
   const canPayOnline = Boolean(getPaymentGateway(organization)) && items.length > 0 && Number(order.total_amount) > 0
   const offersCod = organization.commerce_enable_cod !== false
+  // A "Pay online" button for an order WhatsApp Payments cannot take (not in rupees) would only
+  // fail when tapped; the payment step itself says why below, and the checkout moves on
+  const payableInChat = currency === IN_CHAT_PAYMENT_CURRENCY
 
-  if (canPayOnline && offersCod && options.preferred !== 'payment') {
+  if (canPayOnline && payableInChat && offersCod && options.preferred !== 'payment') {
     const result = await sendAndLog(
       context,
       buildButtonsMessage(customerPhone, `${intro}\n\n${CHECKOUT_TEXT.askHowToPay(total)}`, [
@@ -380,7 +474,16 @@ async function sendNextCheckoutStep(
   if (canPayOnline) {
     const result = await sendPaymentRequest(context, order, items, intro)
     if (result.ok) return { step: 'payment' }
-    lastError = result.error
+    // A parallel run (a redelivered cart or tap) is sending the request: nothing more to send here
+    if (result.superseded) return { step: 'payment' }
+    lastError = paymentError = result.error
+  }
+
+  // Whatever is sent from here on is sent instead of a payment request, and the team should
+  // see why (a gateway name Meta refuses, a currency WhatsApp cannot take) rather than wonder
+  // why customers are only offered Cash on Delivery
+  const noteFallback = async () => {
+    if (paymentError) await logSystemLine(context, `[Online payment for Order #${order.order_number} could not be started: ${paymentError}]`)
   }
 
   if (offersCod) {
@@ -391,7 +494,10 @@ async function sendNextCheckoutStep(
       ]),
       `[Sent Cash on Delivery confirmation for Order #${order.order_number} (${total})]`
     )
-    if (result.ok) return { step: 'cod' }
+    if (result.ok) {
+      await noteFallback()
+      return { step: 'cod' }
+    }
     lastError = result.error
   }
 
@@ -400,7 +506,10 @@ async function sendNextCheckoutStep(
     buildTextMessage(customerPhone, `${intro}\n\n${CHECKOUT_TEXT.acknowledge}`),
     `[Sent order acknowledgement for Order #${order.order_number} (${total})]`
   )
-  if (result.ok) return { step: 'acknowledged' }
+  if (result.ok) {
+    await noteFallback()
+    return { step: 'acknowledged' }
+  }
 
   // Nothing reached the customer. Say so in the chat, with WhatsApp's reason, so the team sees a
   // stalled checkout instead of what looks like no reply at all.
@@ -477,10 +586,18 @@ export async function handleInboundCommerceOrder({
 
   // Products the dashboard has not synced yet are looked up in the Meta catalog, so the order
   // shows real names instead of "Item #SKU". Best effort: an order is never delayed for it.
+  // The catalog is read with the access the store gave for it ("Connect catalog with Meta"
+  // stores a catalog token; the WhatsApp token otherwise).
   const unknownSkus = retailerIds.filter((sku) => !productsBySku.has(sku))
   const catalogId = orderPayload.catalog_id || organization.meta_catalog_id
-  if (unknownSkus.length > 0 && catalogId && organization.whatsapp_api_token) {
-    const found = await fetchMetaProductsBySku(catalogId, organization.whatsapp_api_token, unknownSkus, organization.whatsapp_graph_api_version || 'v25.0')
+  let catalogAccess: { token: string; version: string } | null = null
+  try {
+    catalogAccess = getCatalogCredentials(organization)
+  } catch {
+    // Not connected: the cart's own item names are used
+  }
+  if (unknownSkus.length > 0 && catalogId && catalogAccess) {
+    const found = await fetchMetaProductsBySku(catalogId, catalogAccess.token, unknownSkus, catalogAccess.version)
     for (const product of found) {
       const { data: saved } = await supabase
         .from('commerce_products')
@@ -511,8 +628,9 @@ export async function handleInboundCommerceOrder({
   })
   const currency = String(rawItems[0]?.currency || organization.currency || 'INR').toUpperCase()
 
-  // 3. Create Commerce Order in DB
-  const orderNumber = await createOrderNumber(supabase, organization.id)
+  // 3. Create Commerce Order in DB. The status follows the step the customer actually gets
+  //    (below): an order must not say "awaiting address" when the address form could not be sent
+  const orderNumber = await createOrderNumber(supabase, organization)
   const { data: newOrder, error: orderErr } = await supabase
     .from('commerce_orders')
     .insert([
@@ -521,7 +639,7 @@ export async function handleInboundCommerceOrder({
         contact_id: contact.id,
         conversation_id: conversation.id,
         order_number: orderNumber,
-        status: organization.commerce_address_flow_id ? 'awaiting_address' : 'payment_pending',
+        status: 'cart_submitted',
         checkout_type: 'in_chat',
         catalog_id: orderPayload.catalog_id || null,
         subtotal: totals.subtotal,
@@ -580,7 +698,7 @@ export async function handleInboundCommerceOrder({
 
   console.log(`[Commerce] Created Order ${newOrder.order_number} for Contact ${contact.id}`)
 
-  // 5. Tell the customer what happens next
+  // 5. Tell the customer what happens next, and record what the order is now waiting on
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const { step } = await sendNextCheckoutStep(
     { supabase, organization, conversationId: conversation.id, customerPhone },
@@ -588,8 +706,42 @@ export async function handleInboundCommerceOrder({
     items,
     CHECKOUT_TEXT.received(newOrder.order_number, itemCount, formatMoney(totals.grandTotal, currency))
   )
+  await recordCheckoutStep(supabase, newOrder, step)
 
   return { order: newOrder, items, step }
+}
+
+/**
+ * What an open order is waiting on, from the step the customer was sent: the address form, a
+ * payment or a Cash on Delivery confirmation. When nothing could be sent the status is left as it is.
+ */
+export function statusForCheckoutStep(step: CheckoutStep): OrderStatus | null {
+  switch (step) {
+    case 'address':
+      return 'awaiting_address'
+    case 'choice':
+    case 'payment':
+    case 'cod':
+      return 'payment_pending'
+    case 'acknowledged':
+      return 'cart_submitted'
+    default:
+      return null
+  }
+}
+
+/** Move an open order to the status its last checkout step implies (see statusForCheckoutStep). */
+async function recordCheckoutStep(supabase: Database, order: any, step: CheckoutStep): Promise<void> {
+  const status = statusForCheckoutStep(step)
+  if (!status || status === order.status || !isOpen(order.status)) return
+  const { error } = await supabase
+    .from('commerce_orders')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', order.id)
+    .eq('organization_id', order.organization_id)
+    .in('status', OPEN_CHECKOUT_STATUSES)
+  if (error) console.error(`[Commerce] Order #${order.order_number} could not be moved to ${status}:`, error)
+  else order.status = status
 }
 
 // ── 2. The delivery address comes back ──────────────────────────────────────
@@ -606,6 +758,8 @@ export function orderIdFromFlowToken(flowToken: string | null | undefined): stri
  * Handle address form submission via WhatsApp Flow (`nfm_reply`).
  * Returns the order the address was saved to, or null when the form does not belong to an
  * order of this customer (so the caller can pass it on to whatever else handles forms).
+ * A customer who sent a form is always answered: a corrected address on a confirmed order is
+ * saved, an order that has already shipped is explained, a form without an address is said so.
  */
 export async function handleInboundAddressSubmission({
   organization,
@@ -626,11 +780,11 @@ export async function handleInboundAddressSubmission({
 }) {
   const supabase = database || getSupabase()
   const addressLine = clean(submissionData?.address_line_1, 200)
-  if (!addressLine) return null
-
   // 1. Locate the order: the one named by the form's token, otherwise the customer's latest
-  //    order that is still waiting for an address.
+  //    order that is still waiting for an address. A form that names no order and carries no
+  //    address is some other form, left to whatever handles those.
   const tokenOrderId = orderIdFromFlowToken(flowToken || submissionData?.flow_token)
+  if (!addressLine && !tokenOrderId) return null
   let order: any = null
   if (tokenOrderId) {
     const { data } = await supabase
@@ -658,11 +812,47 @@ export async function handleInboundAddressSubmission({
     return null
   }
 
-  // A customer can reopen an old address form. Never pull a paid or fulfilled order
-  // back to "payment pending" or send a second payment request for it.
-  if (order.payment_status === 'paid' || !isOpen(order.status)) {
-    console.log(`[Commerce] Ignoring address submission for Order #${order.order_number} in status ${order.status}`)
+  const context: CheckoutContext = { supabase, organization, conversationId: conversation?.id || order.conversation_id || null, customerPhone }
+  const reply = (text: string, logLine: string) => sendAndLog(context, buildTextMessage(customerPhone, text), logLine)
+  const currency = order.currency || organization.currency || 'INR'
+  const confirmed = order.payment_status === 'paid' || !isOpen(order.status)
+
+  // The store's address form is not the standard one (its answers carry no address_line_1):
+  // the customer is told, and the checkout goes on without an address rather than stalling
+  if (!addressLine) {
+    console.warn(`[Commerce] Address form for Order #${order.order_number} returned no address_line_1; check commerce_address_flow_id in Store settings`)
+    if (confirmed) {
+      await reply(
+        `We could not read a delivery address from that form. Reply here with your address and our team will update order #${order.order_number}.`,
+        `[Told customer Order #${order.order_number} is on file but the address form could not be read; the form in Store settings is not an address form]`
+      )
+      return order
+    }
+    await logSystemLine(context, `[Address form for Order #${order.order_number} could not be read; the form in Store settings is not an address form]`)
+    const { step } = await sendNextCheckoutStep(
+      context,
+      order,
+      toOrderItems(order.items),
+      `We could not read a delivery address from that form; our team will ask you for it. Order #${order.order_number} total: ${formatMoney(order.total_amount, currency)}.`,
+      { skipAddress: true }
+    )
+    await recordCheckoutStep(supabase, order, step)
     return order
+  }
+
+  // A customer can reopen an old address form. A paid or confirmed order is never pulled back
+  // to "payment pending" (no second payment request), but a corrected address still counts
+  // until the parcel has left; after that the team has to help.
+  if (confirmed) {
+    if (order.status === 'shipped' || order.status === 'delivered' || order.status === 'canceled') {
+      const what = order.status === 'canceled' ? 'was canceled' : 'has already been shipped'
+      await reply(
+        `Order #${order.order_number} ${what}; reply here and our team will help with the delivery address.`,
+        `[Told customer Order #${order.order_number} is already ${order.status}; the new address was not applied]`
+      )
+      return order
+    }
+    return updateConfirmedOrderAddress(context, order, submissionData, addressLine)
   }
 
   // 2. Update order with address and advance status
@@ -705,12 +895,11 @@ export async function handleInboundAddressSubmission({
 
   // 3. Ask for payment (or COD confirmation) now that the address is on file
   const updatedOrder = { ...order, shipping_address: shippingAddress, shipping_fee: updatedShippingFee, total_amount: updatedTotal, status: 'payment_pending' }
-  const currency = order.currency || organization.currency || 'INR'
   const deliveryNote = isExpress
     ? expressFee > 0 ? ` Express delivery adds ${formatMoney(expressFee, currency)}.` : ' You chose express delivery.'
     : ''
   await sendNextCheckoutStep(
-    { supabase, organization, conversationId: conversation?.id || order.conversation_id || null, customerPhone },
+    context,
     updatedOrder,
     toOrderItems(order.items),
     `Thanks, your delivery address is saved.${deliveryNote} Order #${order.order_number} total: ${formatMoney(updatedTotal, currency)}.`
@@ -719,16 +908,64 @@ export async function handleInboundAddressSubmission({
   return updatedOrder
 }
 
+/**
+ * A corrected address for an order that is paid or confirmed but not yet shipped. The address
+ * is replaced; the status, the totals and the delivery option that was paid for stay as they
+ * are (an express surcharge cannot be added or removed once the money is settled).
+ */
+async function updateConfirmedOrderAddress(context: CheckoutContext, order: any, submissionData: Record<string, any>, addressLine: string) {
+  const previous = order.shipping_address || {}
+  const shippingAddress = {
+    ...previous,
+    full_name: clean(submissionData.full_name, 100) || previous.full_name || '',
+    phone_number: clean(submissionData.phone_number, 30) || previous.phone_number || context.customerPhone,
+    address_line_1: addressLine,
+    address_line_2: clean(submissionData.address_line_2, 200),
+    city: clean(submissionData.city, 80),
+    state: clean(submissionData.state, 80),
+    pincode: clean(submissionData.pincode, 12),
+    delivery_speed: previous.delivery_speed || 'standard',
+    express_fee: Number(previous.express_fee) || 0,
+    notes: clean(submissionData.instructions, 300) || previous.notes || '',
+  }
+  const { error } = await context.supabase
+    .from('commerce_orders')
+    .update({ shipping_address: shippingAddress, updated_at: new Date().toISOString() })
+    .eq('id', order.id)
+    .eq('organization_id', context.organization.id)
+  if (error) throw error
+  console.log(`[Commerce] Updated the delivery address of confirmed Order #${order.order_number}`)
+
+  const askedForExpress = String(submissionData.delivery_speed || '').toLowerCase() === 'express' && shippingAddress.delivery_speed !== 'express'
+  const line = `[Delivery address updated for Order #${order.order_number}]`
+  const sent = await sendAndLog(
+    context,
+    buildTextMessage(
+      context.customerPhone,
+      `Thanks, the delivery address for order #${order.order_number} is updated: ${formatAddress(shippingAddress)}.${askedForExpress ? ' The order keeps standard delivery, as it is already confirmed; reply here if you need it faster.' : ''}`
+    ),
+    line
+  )
+  // The change is noted for the team whether or not the confirmation reached the customer
+  if (!sent.ok) await logSystemLine(context, line)
+  return { ...order, shipping_address: shippingAddress }
+}
+
 // ── 3. The customer taps a checkout button ──────────────────────────────────
 
 export type CheckoutButtonOutcome =
   | 'cod_confirmed'
   | 'payment_requested'
+  /** A payment request went out moments ago (a double tap or a redelivered one): nothing sent. */
+  | 'already_requested'
   | 'already_done'
   | 'canceled'
   | 'unavailable'
   | 'not_found'
   | 'failed'
+
+/** A second "Pay online" tap within this time gets no second card: the first one is still fresh. */
+export const RECENT_PAYMENT_REQUEST_MS = 2 * 60 * 1000
 
 /**
  * Handle the buttons this checkout sends: "Cash on Delivery" / "Confirm order"
@@ -785,12 +1022,20 @@ export async function handleCheckoutButton({
   }
 
   if (action === 'pay_online') {
+    // A card that went out moments ago is still in the chat: a double tap gets no second one
+    const lastRequestAt = lastPaymentRequestAt(order)
+    if (order.status === 'payment_pending' && lastRequestAt !== null && Date.now() - lastRequestAt < RECENT_PAYMENT_REQUEST_MS) {
+      console.log(`[Commerce] Order #${order.order_number} got a payment request less than two minutes ago; not sending another`)
+      return { handled: true, outcome: 'already_requested', order }
+    }
     const items = await loadOrderItems(supabase, order.id)
     const result = await sendPaymentRequest(context, order, items, `Order #${order.order_number}: ${total}.`)
     if (result.ok) {
       await supabase.from('commerce_orders').update({ status: 'payment_pending', updated_at: new Date().toISOString() }).eq('id', order.id).in('status', OPEN_CHECKOUT_STATUSES)
       return { handled: true, outcome: 'payment_requested', order }
     }
+    // The same tap, delivered twice: the other delivery is sending the card
+    if (result.superseded) return { handled: true, outcome: 'already_requested', order }
     console.error(`[Commerce] Payment request for Order #${order.order_number} failed: ${result.error}`)
     await reply(
       `We could not start the online payment for order #${order.order_number}. Our team will contact you shortly to help.`,
@@ -806,6 +1051,18 @@ export async function handleCheckoutButton({
     return { handled: true, outcome: 'unavailable', order }
   }
 
+  // A "Review and pay" card from an earlier "Pay online" tap must not stay payable once the
+  // customer chooses cash, or they can pay twice (or be asked for cash after paying)
+  if (hasPaymentRequest(order) && order.payment_status !== 'paid') {
+    await voidPaymentRequest({
+      organization,
+      order,
+      database: supabase,
+      phone: customerPhone,
+      description: `Online payment withdrawn: your order #${order.order_number} is confirmed for Cash on Delivery.`,
+    })
+  }
+
   // The status condition makes two quick taps (or a redelivered webhook) confirm the order once
   const { data: confirmed, error: confirmErr } = await supabase
     .from('commerce_orders')
@@ -817,12 +1074,15 @@ export async function handleCheckoutButton({
   if (confirmErr) throw confirmErr
   if (!confirmed || confirmed.length === 0) return { handled: true, outcome: 'already_done', order }
 
+  const confirmedOrder = { ...order, status: 'cod_confirmed', payment_method: 'cod' }
+  await adjustOrderStock({ organization, order: confirmedOrder, action: 'take', database: supabase })
+
   const address = formatAddress(order.shipping_address)
   await reply(
     `${CHECKOUT_TEXT.codConfirmed(order.order_number, total)}${address ? `\n\nDelivering to: ${address}` : ''}`,
     `[Order #${order.order_number} confirmed for Cash on Delivery (${total})]`
   )
-  return { handled: true, outcome: 'cod_confirmed', order: { ...order, status: 'cod_confirmed', payment_method: 'cod' } }
+  return { handled: true, outcome: 'cod_confirmed', order: confirmedOrder }
 }
 
 // ── 4. A payment result arrives ─────────────────────────────────────────────
@@ -1007,7 +1267,7 @@ async function createOrderForCampaignPayment(supabase: Database, organization: a
   }
 
   const currency = update.currency || organization.currency || 'INR'
-  const orderNumber = await createOrderNumber(supabase, organization.id)
+  const orderNumber = await createOrderNumber(supabase, organization)
   const { data: order, error: orderErr } = await writeWithPaymentRequests(
     {
       organization_id: organization.id,
@@ -1138,12 +1398,20 @@ export async function handleInboundPaymentConfirmation({
 
   if (update.outcome !== 'paid') {
     console.log(`[Commerce] Payment for Order #${order.order_number} is ${update.outcome}; order left unpaid`)
+    if (update.outcome === 'failed' && !isOpen(order.status)) {
+      // An abandoned attempt timing out long after the order was confirmed for cash, shipped
+      // or canceled says nothing about the order; it must not show up as "Payment failed"
+      console.log(`[Commerce] Order #${order.order_number} is ${order.status}; the failed attempt is ignored`)
+      return order
+    }
     if (update.outcome === 'failed') {
-      // Only a payment still awaited can fail: a capture that got in first is never overwritten
+      // Only a payment still awaited can fail: a capture that got in first is never overwritten,
+      // and an order the customer settled another way meanwhile is left alone
       const { data: failed, error: failErr } = await supabase
         .from('commerce_orders')
         .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', order.id)
+        .in('status', OPEN_CHECKOUT_STATUSES)
         .in('payment_status', ['pending'])
         .select('id')
       if (failErr) throw failErr
@@ -1249,12 +1517,24 @@ export async function handleInboundPaymentConfirmation({
     // Paid what an earlier request asked for; the order changed after it was sent (say, express delivery)
     await logSystemLine(context, `[Payment of ${money(paidAmount)} received for Order #${order.order_number} against an earlier request; the order total is now ${money(Number(order.total_amount))}]`)
   }
+  // The customer chose Cash on Delivery and then paid the online request after all (it reached
+  // them before it was withdrawn): the team must not collect cash on top
+  const paidAfterCod = order.status === 'cod_confirmed'
+  if (paidAfterCod) {
+    const note = 'Paid online after Cash on Delivery was chosen; do not collect cash'
+    await noteOnOrder(supabase, order, `${note}.`)
+    await logSystemLine(context, `[${note}]`)
+  }
+  // The items leave stock once, whichever way the order was settled
+  if (order.status !== 'canceled') await adjustOrderStock({ organization, order, action: 'take', database: supabase })
 
   // 4. Send the customer a receipt, in the conversation the order came from
   if (receiptPhone) {
     const text = order.status === 'canceled'
       ? `We received ${money(paidAmount)} for order #${order.order_number}, but this order was canceled. Our team will contact you about your refund.`
-      : CHECKOUT_TEXT.paid(money(paidAmount), order.order_number)
+      : paidAfterCod
+        ? CHECKOUT_TEXT.paidAfterCod(money(paidAmount), order.order_number)
+        : CHECKOUT_TEXT.paid(money(paidAmount), order.order_number)
     // The receipt card belongs to the payment request that was paid
     const card = await sendAndLog(
       context,
@@ -1293,6 +1573,14 @@ const META_ORDER_STATUS: Partial<Record<OrderStatus, 'processing' | 'shipped' | 
   canceled: 'canceled',
 }
 
+/**
+ * The order's current payment request was withdrawn (the customer chose cash, the team marked it
+ * paid): its card shows "canceled" and is no longer the place to show the order's progress.
+ */
+function currentRequestVoided(order: any): boolean {
+  return Boolean(findPaymentRequest(order, String(order.meta_payment_reference || ''))?.voided_at)
+}
+
 async function loadCustomerPhone(supabase: Database, organizationId: string, order: any): Promise<string> {
   if (order.contact?.phone_number) return order.contact.phone_number
   if (!order.contact_id) return ''
@@ -1305,52 +1593,158 @@ async function loadCustomerPhone(supabase: Database, organizationId: string, ord
   return data?.phone_number || ''
 }
 
+export const NO_STATUS_TEMPLATE_ERROR = 'Set an order-update template in Store settings to notify customers after 24 hours'
+
+/**
+ * When the customer last wrote in the order's chat, in ms since the epoch: null when no message
+ * of theirs is on record, undefined when it cannot be told (no chat, or the lookup failed).
+ */
+async function latestInboundAt(supabase: Database, organizationId: string, conversationId: string | null): Promise<number | null | undefined> {
+  if (!conversationId) return undefined
+  const { data, error } = await supabase
+    .from('messages')
+    .select('created_at')
+    .eq('organization_id', organizationId)
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'contact')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) {
+    console.warn('[Commerce] Could not read when the customer last wrote:', error.message || error)
+    return undefined
+  }
+  const at = Date.parse(data?.[0]?.created_at || '')
+  return Number.isNaN(at) ? null : at
+}
+
+/** A message row for an update the customer did not get, with the reason, so the chat shows it. */
+async function logFailedMessage(context: CheckoutContext, body: string, error: string): Promise<void> {
+  if (!context.conversationId) return
+  await context.supabase.from('messages').insert({
+    organization_id: context.organization.id,
+    conversation_id: context.conversationId,
+    sender_type: 'user',
+    body,
+    status: 'failed',
+    error_message: error,
+  })
+}
+
+/** One template variable: WhatsApp refuses newlines, tabs and runs of spaces in a parameter. */
+const templateParameter = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * Send the store's approved order-update template, the only message WhatsApp delivers more
+ * than 24 hours after the customer last wrote. Its body gets the order number, the status and
+ * the tracking details (or "-"), as {{1}} {{2}} {{3}} or under the names order_number, status
+ * and tracking; the template's own structure, when it was saved with it, decides which.
+ */
+async function sendStatusTemplate(context: CheckoutContext, order: any, status: OrderStatus, text: string): Promise<SendResult> {
+  const template = getStatusTemplate(context.organization)
+  if (!template) return { ok: false, error: NO_STATUS_TEMPLATE_ERROR }
+  const vars = {
+    '1': templateParameter(order.order_number),
+    '2': templateParameter(ORDER_STATUS_LABELS[status] || status),
+    '3': templateParameter(describeTracking(getFulfillment(order))) || '-',
+    order_number: templateParameter(order.order_number),
+    status: templateParameter(ORDER_STATUS_LABELS[status] || status),
+    tracking: templateParameter(describeTracking(getFulfillment(order))) || '-',
+  }
+  let payload: ReturnType<typeof buildTemplateMessage>
+  try {
+    const components = await buildSendComponents(template.components || [{ type: 'BODY', text: '{{1}} {{2}} {{3}}' }], { vars, catalogId: context.organization.meta_catalog_id || null })
+    payload = buildTemplateMessage({ phone: context.customerPhone, name: template.name, language: template.language, components })
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'The order-update template could not be prepared.' }
+  }
+  const result = await sendWhatsAppMessage(context.organization, payload)
+  if (context.conversationId) {
+    await context.supabase.from('messages').insert({
+      organization_id: context.organization.id,
+      conversation_id: context.conversationId,
+      sender_type: 'user',
+      body: text,
+      twilio_message_sid: result.ok && result.messageId ? `FB_${result.messageId}` : null,
+      status: result.ok ? 'sent' : 'failed',
+      error_message: result.ok ? null : result.error || 'WhatsApp did not accept the template.',
+    })
+  }
+  return result
+}
+
 /**
  * Tell the customer about a status change. Orders that had a payment request get WhatsApp's
  * order card updated (which also keeps "Review and pay" in step with the order); everything
- * else, and any card WhatsApp refuses, is sent as a normal message.
+ * else, and any card WhatsApp refuses, is sent as a normal message. More than 24 hours after
+ * the customer's last message WhatsApp only delivers an approved template (error 131047), so
+ * the store's order-update template is sent then; without one, the chat records that the
+ * customer was not told and the dashboard is told what to set up.
  */
 export async function notifyOrderStatus({
   organization,
   order,
   status,
   text,
+  card = true,
   database,
 }: {
   organization: any
   order: any
   status: OrderStatus
   text: string
+  /** False when the order card was just withdrawn (voided): a "processing" card after that makes no sense. */
+  card?: boolean
   database?: Database
-}): Promise<{ notified: boolean; error: string | null; viaCard: boolean }> {
+}): Promise<{ notified: boolean; error: string | null; viaCard: boolean; viaTemplate: boolean }> {
   const supabase = database || getSupabase()
   const phone = await loadCustomerPhone(supabase, organization.id, order)
-  if (!phone) return { notified: false, error: 'This order has no customer phone number.', viaCard: false }
+  if (!phone) return { notified: false, error: 'This order has no customer phone number.', viaCard: false, viaTemplate: false }
 
   const context: CheckoutContext = { supabase, organization, conversationId: order.conversation_id || null, customerPhone: phone }
   const metaStatus = META_ORDER_STATUS[status]
-  // WhatsApp does not allow a paid order to be canceled through the card (it has to be refunded)
-  const cardAllowed = Boolean(metaStatus) && hasPaymentRequest(order) && !(status === 'canceled' && order.payment_status === 'paid')
+  // WhatsApp does not allow a paid order to be canceled through the card (it has to be refunded),
+  // and a card that was withdrawn stays withdrawn
+  const cardAllowed = card && Boolean(metaStatus) && hasPaymentRequest(order) && !currentRequestVoided(order) && !(status === 'canceled' && order.payment_status === 'paid')
 
   if (cardAllowed) {
-    const card = await sendAndLog(
+    const result = await sendAndLog(
       context,
       buildOrderStatusMessage({ phone, referenceId: order.meta_payment_reference, status: metaStatus!, description: text }),
       text
     )
-    if (card.ok) return { notified: true, error: null, viaCard: true }
+    if (result.ok) return { notified: true, error: null, viaCard: true, viaTemplate: false }
   }
 
-  const message = await sendAndLog(context, buildTextMessage(phone, text), text)
-  return { notified: message.ok, error: message.ok ? null : message.error || 'WhatsApp did not accept the message.', viaCard: false }
+  // Plain text is tried while the customer can still receive it; the window is checked here so
+  // next-day shipping updates go straight to the template instead of a refused send. Without a
+  // customer message on record the text is still tried: WhatsApp's refusal (131047) decides.
+  const lastInbound = await latestInboundAt(supabase, organization.id, context.conversationId)
+  const outsideWindow = typeof lastInbound === 'number' && Date.now() - lastInbound > SERVICE_WINDOW_MS
+  if (!outsideWindow) {
+    const message = await sendAndLog(context, buildTextMessage(phone, text), text)
+    if (message.ok) return { notified: true, error: null, viaCard: false, viaTemplate: false }
+    if (message.code !== OUTSIDE_WINDOW_CODE) {
+      const error = message.error || 'WhatsApp did not accept the message.'
+      await logFailedMessage(context, text, error)
+      return { notified: false, error, viaCard: false, viaTemplate: false }
+    }
+  }
+
+  const template = await sendStatusTemplate(context, order, status, text)
+  if (template.ok) return { notified: true, error: null, viaCard: false, viaTemplate: true }
+  const error = template.error || NO_STATUS_TEMPLATE_ERROR
+  // sendStatusTemplate records its own attempt; a store without a template has made none yet
+  if (!getStatusTemplate(organization)) await logFailedMessage(context, text, error)
+  return { notified: false, error, viaCard: false, viaTemplate: false }
 }
 
 /**
  * Withdraw the current payment request of an order, so the customer can no longer pay it from
- * the chat: the order is being canceled, or a new request replaces it. Nothing happens when no
- * request was sent or it is paid.
+ * the chat: the order is being canceled, confirmed for cash, marked paid by hand, or a new
+ * request replaces it. Nothing happens when no request was sent or it is paid. The withdrawal
+ * is noted on the request's record (payment_requests) unless the caller records it itself.
  */
-export async function voidPaymentRequest({ organization, order, database, phone, description }: {
+export async function voidPaymentRequest({ organization, order, database, phone, description, record = true }: {
   organization: any
   order: any
   database?: Database
@@ -1358,8 +1752,9 @@ export async function voidPaymentRequest({ organization, order, database, phone,
   phone?: string
   /** What the withdrawn card says; the order was canceled unless told otherwise. */
   description?: string
+  record?: boolean
 }): Promise<boolean> {
-  if (!hasPaymentRequest(order) || order.payment_status === 'paid') return false
+  if (!hasPaymentRequest(order) || order.payment_status === 'paid' || currentRequestVoided(order)) return false
   const supabase = database || getSupabase()
   const customerPhone = phone || (await loadCustomerPhone(supabase, organization.id, order))
   if (!customerPhone) return false
@@ -1372,7 +1767,147 @@ export async function voidPaymentRequest({ organization, order, database, phone,
       description: description || `Order #${order.order_number} was canceled.`,
     })
   )
+  if (result.ok && record) {
+    const now = new Date().toISOString()
+    const reference = String(order.meta_payment_reference)
+    const requests = getPaymentRequests(order)
+    if (requests.some((entry) => entry.reference === reference && !entry.voided_at)) {
+      const voided = requests.map((entry) => (entry.reference === reference && !entry.voided_at ? { ...entry, voided_at: now } : entry))
+      await writeWithPaymentRequests({ payment_requests: voided, updated_at: now }, (row) =>
+        supabase.from('commerce_orders').update(row).eq('id', order.id).eq('organization_id', organization.id)
+      )
+      order.payment_requests = voided
+    }
+  }
   return result.ok
+}
+
+// ── Stock ───────────────────────────────────────────────────────────────────
+
+export const STOCK_MIGRATION_HINT = 'Stock adjustments need the 20261104_commerce_stock migration (commerce_orders.stock_adjusted_at); stock was left as it is'
+let stockMigrationWarned = false
+
+/** The product an order line was made from: by id, otherwise by SKU, always within the organization. */
+async function findLineProduct(supabase: Database, organizationId: string, line: any): Promise<any | null> {
+  if (line.product_id) {
+    const { data } = await supabase.from('commerce_products').select('*').eq('id', line.product_id).eq('organization_id', organizationId).maybeSingle()
+    if (data) return data
+  }
+  if (!line.retailer_id) return null
+  const { data } = await supabase.from('commerce_products').select('*').eq('organization_id', organizationId).eq('retailer_id', line.retailer_id).limit(1)
+  return data?.[0] || null
+}
+
+/**
+ * Change a product's stock by `delta`, never below 0. The update only applies while the count
+ * is what was read, so two orders settling at once are both counted; on a clash it is read
+ * again. Returns the product as it is now, or null when it could not be changed.
+ */
+async function changeInventory(supabase: Database, organizationId: string, product: any, delta: number): Promise<any | null> {
+  let current = product
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = Number(current.inventory_count)
+    if (!Number.isFinite(before)) return null // stock not tracked for this product
+    const after = Math.max(0, before + delta)
+    const updates: Record<string, any> = { inventory_count: after, updated_at: new Date().toISOString() }
+    // Sold out: off sale. Back from sold out: on sale again (it was the stock that took it off)
+    if (after === 0 && delta < 0) updates.is_available = false
+    if (before === 0 && after > 0 && current.is_available === false) updates.is_available = true
+    const { data, error } = await supabase
+      .from('commerce_products')
+      .update(updates)
+      .eq('id', current.id)
+      .eq('organization_id', organizationId)
+      .eq('inventory_count', before)
+      .select('*')
+    if (error) {
+      console.error(`[Commerce] Stock of ${current.retailer_id} could not be changed:`, error)
+      return null
+    }
+    if (data && data.length > 0) return data[0]
+    const { data: fresh } = await supabase.from('commerce_products').select('*').eq('id', current.id).eq('organization_id', organizationId).maybeSingle()
+    if (!fresh) return null
+    current = fresh
+  }
+  console.warn(`[Commerce] Stock of ${current.retailer_id} kept changing; its change of ${delta} was not applied`)
+  return null
+}
+
+/**
+ * Take an order's items out of stock when it is paid or confirmed for Cash on Delivery, and put
+ * them back when it is canceled. commerce_orders.stock_adjusted_at records that the order's
+ * stock was taken, so a redelivered webhook, a double tap or a second click never counts an
+ * order twice (and a canceled order only gives back what it took). A product that reaches 0 is
+ * taken off sale, and the Meta catalog is told when the product is in it. Never throws; without
+ * the migration, stock is left alone and one warning is logged.
+ */
+export async function adjustOrderStock({
+  organization,
+  order,
+  action,
+  database,
+}: {
+  organization: any
+  order: any
+  action: 'take' | 'restore'
+  database?: Database
+}): Promise<{ adjusted: boolean; soldOut: string[] }> {
+  const supabase = database || getSupabase()
+  const nothing = { adjusted: false, soldOut: [] as string[] }
+  try {
+    const now = new Date().toISOString()
+    let mark = supabase
+      .from('commerce_orders')
+      .update({ stock_adjusted_at: action === 'take' ? now : null, updated_at: now })
+      .eq('id', order.id)
+      .eq('organization_id', organization.id)
+    mark = action === 'take' ? mark.is('stock_adjusted_at', null) : mark.not('stock_adjusted_at', 'is', null)
+    const { data: marked, error: markErr } = await mark.select('id')
+    if (markErr) {
+      if (isMissingColumnError(markErr, 'stock_adjusted_at')) {
+        if (!stockMigrationWarned) {
+          console.warn(`[Commerce] ${STOCK_MIGRATION_HINT}`)
+          stockMigrationWarned = true
+        }
+        return nothing
+      }
+      console.error(`[Commerce] Stock for Order #${order.order_number} could not be ${action === 'take' ? 'taken' : 'restored'}:`, markErr)
+      return nothing
+    }
+    if (!marked || marked.length === 0) return nothing // already taken (or never taken): nothing to do
+    order.stock_adjusted_at = action === 'take' ? now : null
+
+    const lines: any[] = Array.isArray(order.items) ? order.items : (await supabase.from('commerce_order_items').select('*').eq('order_id', order.id)).data || []
+    const soldOut: any[] = []
+    const availabilityChanged: any[] = []
+    for (const line of lines) {
+      const quantity = Math.max(1, Math.floor(Number(line.quantity) || 1))
+      const product = await findLineProduct(supabase, organization.id, line)
+      if (!product) continue
+      const changed = await changeInventory(supabase, organization.id, product, action === 'take' ? -quantity : quantity)
+      if (!changed) continue
+      if (changed.is_available !== product.is_available) availabilityChanged.push(changed)
+      if (Number(changed.inventory_count) === 0 && action === 'take') soldOut.push(changed)
+    }
+    if (soldOut.length > 0) console.log(`[Commerce] Sold out after Order #${order.order_number}: ${soldOut.map((product) => product.retailer_id).join(', ')}`)
+    if (availabilityChanged.length > 0) await tellCatalogAvailability(supabase, organization, availabilityChanged)
+    return { adjusted: true, soldOut: soldOut.map((product) => String(product.retailer_id)) }
+  } catch (err: any) {
+    console.error(`[Commerce] Stock for Order #${order.order_number} could not be adjusted:`, err?.message || err)
+    return nothing
+  }
+}
+
+/** Best effort: the catalog shows a sold-out product as such (and a restocked one as back), so nobody orders what cannot ship. */
+async function tellCatalogAvailability(supabase: Database, organization: any, products: any[]): Promise<void> {
+  const listed = products.filter((product) => isInCatalog(product))
+  if (listed.length === 0) return
+  try {
+    const summary = await pushProductsToCatalog(supabase, organization, listed)
+    if (summary.requestError) console.warn('[Commerce] The catalog was not told about the stock change:', summary.requestError)
+  } catch (err: any) {
+    console.warn('[Commerce] The catalog was not told about the stock change:', err?.message || err)
+  }
 }
 
 /**
@@ -1397,10 +1932,14 @@ export async function resendCheckoutStep({
 
   const items = order.items ? toOrderItems(order.items) : await loadOrderItems(supabase, order.id)
   const currency = order.currency || organization.currency || 'INR'
-  return sendNextCheckoutStep(
+  const result = await sendNextCheckoutStep(
     { supabase, organization, conversationId: order.conversation_id || null, customerPhone: phone },
     order,
     items,
     `A reminder about your order #${order.order_number} (${formatMoney(order.total_amount, currency)}).`
   )
+  // The reminder may have moved the checkout on (an address form that can no longer be sent
+  // falls through to the payment step): the status says what the order waits on now
+  await recordCheckoutStep(supabase, order, result.step)
+  return result
 }

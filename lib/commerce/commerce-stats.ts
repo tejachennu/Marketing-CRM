@@ -18,11 +18,42 @@ const EMPTY: CommerceSummary = { total: 0, awaiting: 0, toShip: 0, shipped: 0, d
 const int = (value: unknown) => parseInt(String(value ?? '0'), 10) || 0
 
 /**
+ * Without a direct database connection the summary costs seven count queries and a page read
+ * per thousand paid orders, and the Orders page asks for it on every load and every 30-second
+ * refresh. So it is kept for 30 seconds per organization (per server instance), and dropped as
+ * soon as the orders route changes an order.
+ */
+export const SUMMARY_CACHE_MS = 30_000
+const MAX_CACHED_ORGANIZATIONS = 1000
+const cache = new Map<string, { at: number; summary: CommerceSummary }>()
+
+export function invalidateCommerceSummary(organizationId: string): void {
+  cache.delete(organizationId)
+}
+
+/**
  * Totals for every order of a store, whatever page or filter the dashboard is on.
  * Uses one SQL query when a direct database connection is configured, otherwise counts
- * through the API.
+ * through the API. `now` is a test seam for the cache.
  */
-export async function getCommerceSummary(supabase: any, organizationId: string): Promise<CommerceSummary> {
+export async function getCommerceSummary(supabase: any, organizationId: string, options: { now?: number } = {}): Promise<CommerceSummary> {
+  const now = options.now ?? Date.now()
+  const cached = cache.get(organizationId)
+  if (cached && now - cached.at < SUMMARY_CACHE_MS && now >= cached.at) return cached.summary
+
+  const summary = await computeCommerceSummary(supabase, organizationId)
+  // A summary that could not be computed is not remembered: the next load tries again
+  if (summary !== EMPTY) {
+    if (cache.size >= MAX_CACHED_ORGANIZATIONS) {
+      for (const [key, entry] of cache) if (now - entry.at >= SUMMARY_CACHE_MS) cache.delete(key)
+      if (cache.size >= MAX_CACHED_ORGANIZATIONS) cache.clear()
+    }
+    cache.set(organizationId, { at: now, summary })
+  }
+  return summary
+}
+
+async function computeCommerceSummary(supabase: any, organizationId: string): Promise<CommerceSummary> {
   const pool = getPool()
   if (pool) {
     try {

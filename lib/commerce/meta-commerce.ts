@@ -3,22 +3,33 @@ import { fetchCatalogItemsBySku } from './meta-catalog'
 
 export { parseMetaPrice, toCatalogProductRow, type CatalogProductRow }
 
+/** Meta is asked for this many SKUs at a time (one request each, in parallel). */
+export const SKU_LOOKUP_CHUNK = 10
+
 /**
- * Look up a few products by SKU in the Meta catalog. Used when a cart names a product the
- * dashboard has not synced yet. Never throws: a slow or failing lookup returns what it has.
+ * Look up products by SKU in the Meta catalog. Used when a cart names products the dashboard
+ * has not synced yet, so the order shows real names instead of "Item #SKU". Larger carts are
+ * looked up ten SKUs at a time, chunk after chunk. Never throws: a slow or failing lookup
+ * returns what it has.
  */
 export async function fetchMetaProductsBySku(
   catalogId: string,
   accessToken: string,
   skus: string[],
-  graphVersion: string = 'v25.0'
+  graphVersion: string = 'v25.0',
+  fetcher: typeof fetch = fetch
 ): Promise<CatalogProductRow[]> {
-  const items = await fetchCatalogItemsBySku(
-    { token: accessToken, version: /^v\d+\.\d+$/.test(graphVersion) ? graphVersion : 'v25.0', businessAccountId: '', phoneNumberId: '' },
-    String(catalogId),
-    skus
-  )
-  return items.map((item) => toCatalogProductRow(item)).filter((row): row is CatalogProductRow => row !== null)
+  const credentials = { token: accessToken, version: /^v\d+\.\d+$/.test(graphVersion) ? graphVersion : 'v25.0', businessAccountId: '', phoneNumberId: '' }
+  const unique = [...new Set(skus.map((sku) => String(sku || '').trim()).filter(Boolean))]
+  const rows: CatalogProductRow[] = []
+  for (let start = 0; start < unique.length; start += SKU_LOOKUP_CHUNK) {
+    const items = await fetchCatalogItemsBySku(credentials, String(catalogId), unique.slice(start, start + SKU_LOOKUP_CHUNK), fetcher)
+    for (const item of items) {
+      const row = toCatalogProductRow(item)
+      if (row) rows.push(row)
+    }
+  }
+  return rows
 }
 
 /**

@@ -55,14 +55,17 @@ export function needsRefund(order: { status: string; payment_status: string }): 
   return order.status === 'canceled' && order.payment_status === 'paid'
 }
 
-/** What a team member may move an order to from each status. */
+/**
+ * What a team member may move an order to from each status. "paid" from a Cash on Delivery order
+ * (confirmed or shipped) records the cash collected; see isCashCollection.
+ */
 const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   cart_submitted: ['paid', 'cod_confirmed', 'canceled'],
   awaiting_address: ['paid', 'cod_confirmed', 'canceled'],
   payment_pending: ['paid', 'cod_confirmed', 'canceled'],
   paid: ['shipped', 'canceled'],
-  cod_confirmed: ['shipped', 'canceled'],
-  shipped: ['delivered', 'canceled'],
+  cod_confirmed: ['paid', 'shipped', 'canceled'],
+  shipped: ['paid', 'delivered', 'canceled'],
   delivered: [],
   canceled: [],
 }
@@ -73,6 +76,65 @@ export function getNextOrderStatuses(status: string): OrderStatus[] {
 
 export function canTransitionOrder(from: string, to: string): boolean {
   return getNextOrderStatuses(from).includes(to as OrderStatus)
+}
+
+/** A Cash on Delivery order whose cash has not been collected yet: "Mark as paid" means the cash came in. */
+export function isCashCollection(order: { status: string; payment_status: string; payment_method?: string | null }): boolean {
+  return order.payment_method === 'cod' && order.payment_status !== 'paid' && (order.status === 'cod_confirmed' || order.status === 'shipped')
+}
+
+/** In-chat WhatsApp payments (order_details messages) are only available in India, in rupees. */
+export const IN_CHAT_PAYMENT_CURRENCY = 'INR'
+
+/** Where the store's day begins and ends (order numbers carry the date). Indian stores unless told otherwise. */
+export const DEFAULT_TIME_ZONE = 'Asia/Kolkata'
+
+/** The organization's time zone when it has a valid one (an optional `timezone` column), otherwise India's. */
+export function getOrganizationTimeZone(organization: Record<string, any> | null | undefined): string {
+  const zone = String(organization?.timezone || '').trim()
+  if (!zone) return DEFAULT_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone })
+    return zone
+  } catch {
+    return DEFAULT_TIME_ZONE
+  }
+}
+
+/**
+ * The approved template that tells a customer about an order update once WhatsApp no longer
+ * accepts plain text (more than 24 hours after their last message): organizations.commerce_status_template,
+ * a jsonb { name, language, components? } where `components` is the template's structure as Meta
+ * returns it (optional; without it the body is taken to have three variables). Null when none is set
+ * or the column does not exist yet.
+ */
+export interface StatusTemplate {
+  name: string
+  language: string
+  components?: any[]
+}
+
+export function getStatusTemplate(organization: Record<string, any> | null | undefined): StatusTemplate | null {
+  let raw = organization?.commerce_status_template
+  if (typeof raw === 'string') {
+    const value = raw.trim()
+    if (!value) return null
+    if (value.startsWith('{')) {
+      try {
+        raw = JSON.parse(value)
+      } catch {
+        return null
+      }
+    } else {
+      raw = { name: value }
+    }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name || '').trim()
+  if (!name) return null
+  const language = String(raw.language || raw.language_code || '').trim() || 'en'
+  const components = Array.isArray(raw.components) && raw.components.length > 0 ? raw.components : undefined
+  return { name, language, ...(components ? { components } : {}) }
 }
 
 /** Payment gateways Meta accepts in an `order_details` message (WhatsApp Payments, India). */
@@ -204,6 +266,8 @@ export const CHECKOUT_TEXT = {
   acknowledge: 'Our team will contact you shortly to confirm payment and delivery.',
   codConfirmed: (orderNumber: string, total: string) => `Order #${orderNumber} is confirmed for Cash on Delivery. Please keep ${total} ready when it arrives.`,
   paid: (amount: string, orderNumber: string) => `Payment of ${amount} received. Order #${orderNumber} is confirmed and we are preparing it.`,
+  /** The customer chose Cash on Delivery, then paid the online request after all. */
+  paidAfterCod: (amount: string, orderNumber: string) => `Payment of ${amount} received for order #${orderNumber}. Nothing is due on delivery any more; we are preparing it.`,
   /** The thank-you that follows a successful payment. */
   thankYou: ({ name, store, orderNumber, items, address }: { name?: string; store?: string; orderNumber: string; items: Array<{ name: string; quantity: number }>; address?: string }) => [
     `🎉 Thank you${name ? `, ${name}` : ''}! Your payment is successful and order #${orderNumber} is confirmed.`,
@@ -396,6 +460,8 @@ export function isUniqueViolation(error: any): boolean {
 export interface Fulfillment {
   trackingNumber: string
   carrier: string
+  /** Where the customer can follow the parcel (http or https). */
+  trackingUrl: string
   shippedAt: string | null
 }
 
@@ -405,7 +471,27 @@ export function getFulfillment(order: { shipping_address?: Record<string, any> |
   return {
     trackingNumber: String(address.tracking_number || '').trim(),
     carrier: String(address.carrier || '').trim(),
+    trackingUrl: String(address.tracking_url || '').trim(),
     shippedAt: address.shipped_at ? String(address.shipped_at) : null,
+  }
+}
+
+/** "Delhivery · AWB123 · https://track.example.com/AWB123", or "" when nothing is known. */
+export function describeTracking(fulfillment: Pick<Fulfillment, 'carrier' | 'trackingNumber' | 'trackingUrl'>): string {
+  return [fulfillment.carrier, fulfillment.trackingNumber, fulfillment.trackingUrl].map((part) => String(part || '').trim()).filter(Boolean).join(' · ')
+}
+
+/** A tracking link a customer can open: http(s) only, at most 500 characters. Throws a message for the user. */
+export function parseTrackingUrl(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (text.length > 500) throw new Error('The tracking link must be at most 500 characters')
+  try {
+    const url = new URL(text)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('unsupported protocol')
+    return url.toString()
+  } catch {
+    throw new Error('The tracking link must be a full web address starting with https://')
   }
 }
 

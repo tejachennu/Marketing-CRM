@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, RefreshCw, Search, Truck, X } from 'lucide-react'
+import { AlertCircle, Banknote, Bell, Check, Copy, ExternalLink, Loader2, MapPin, MessageCircle, Package, Phone, RefreshCw, Search, Truck, X } from 'lucide-react'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
@@ -15,7 +15,9 @@ import {
   getFulfillment,
   getNextOrderStatuses,
   hasPaymentRequest,
+  isCashCollection,
   needsRefund,
+  parseTrackingUrl,
   type OrderStatus,
   type OrderView,
 } from '@/lib/commerce/commerce-utils'
@@ -93,16 +95,19 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
   const [notifyCustomer, setNotifyCustomer] = useState(true)
   const [trackingNumber, setTrackingNumber] = useState('')
   const [carrier, setCarrier] = useState('')
+  const [trackingUrl, setTrackingUrl] = useState('')
   const [copied, setCopied] = useState(false)
 
   const requestRef = useRef(0)
 
-  const load = useCallback(async (targetPage: number, options: { silent?: boolean } = {}) => {
+  /** The totals come with the first page; `summary` asks for them again after a change on a later page. */
+  const load = useCallback(async (targetPage: number, options: { silent?: boolean; summary?: boolean } = {}) => {
     const requestId = ++requestRef.current
     if (!options.silent) setLoading(true)
     try {
       const params = new URLSearchParams({ organizationId: orgId, view, page: String(targetPage), limit: String(PAGE_SIZE) })
       if (appliedSearch.trim()) params.set('search', appliedSearch.trim())
+      if (options.summary) params.set('withSummary', '1')
       const res = await fetch(`/api/commerce/orders?${params.toString()}`)
       const data = await res.json().catch(() => ({}))
       // A newer request was sent while this one was on its way: its answer is out of date
@@ -159,6 +164,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
     setNotifyCustomer(true)
     setTrackingNumber(fulfillment.trackingNumber)
     setCarrier(fulfillment.carrier)
+    setTrackingUrl(fulfillment.trackingUrl)
     setCopied(false)
   }
   const closeOrder = useCallback(() => setSelected(null), [])
@@ -184,20 +190,33 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be updated')
       setSelected((current) => (current && current.id === order.id ? { ...current, ...data.order } : current))
-      await load(page, { silent: true })
+      await load(page, { silent: true, summary: true })
       return data
     } catch (err: any) {
       showToast('error', err.message)
       // Someone else may have changed it: show its real state
-      load(page, { silent: true })
+      load(page, { silent: true, summary: true })
       return null
     } finally {
       setBusy(null)
     }
   }
 
+  /** The tracking details as typed, or null (with a toast) when the link is not a web address. */
+  function trackingDetails(): { trackingNumber: string; carrier: string; trackingUrl: string } | null {
+    try {
+      return { trackingNumber, carrier, trackingUrl: parseTrackingUrl(trackingUrl) }
+    } catch (err: any) {
+      showToast('error', err.message)
+      return null
+    }
+  }
+
   async function changeStatus(order: CommerceOrder, status: OrderStatus) {
     const total = formatMoney(order.total_amount, order.currency)
+    const cashCollected = status === 'paid' && isCashCollection(order)
+    const tracking = status === 'shipped' ? trackingDetails() : null
+    if (status === 'shipped' && !tracking) return
     if (status === 'canceled') {
       const confirmed = await confirm({
         title: `Cancel order #${order.order_number}?`,
@@ -213,30 +232,39 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
       if (!confirmed) return
     }
     if (status === 'paid') {
-      const confirmed = await confirm({
-        title: `Mark #${order.order_number} as paid?`,
-        message: `Only do this if you have received ${total} outside WhatsApp (bank transfer, cash, a payment link). Payments made in the chat are recorded automatically.`,
-        confirmLabel: 'Yes, it is paid',
-      })
+      const confirmed = await confirm(cashCollected
+        ? {
+            title: `Cash collected for #${order.order_number}?`,
+            message: `Confirm that ${total} was collected in cash for this order. It is then recorded as paid (Cash on Delivery).`,
+            confirmLabel: 'Yes, cash collected',
+          }
+        : {
+            title: `Mark #${order.order_number} as paid?`,
+            message: `Only do this if you have received ${total} outside WhatsApp (bank transfer, cash, a payment link). Payments made in the chat are recorded automatically.`,
+            confirmLabel: 'Yes, it is paid',
+          })
       if (!confirmed) return
     }
 
     const data = await patchOrder(order, {
       status,
       notifyCustomer,
-      ...(status === 'shipped' ? { trackingNumber, carrier } : {}),
+      ...(tracking || {}),
     }, status)
     if (!data) return
 
-    const label = ORDER_STATUS_LABELS[status]
-    const withdrawn = status === 'canceled' && data.paymentRequestCanceled ? ' The payment request in their chat was withdrawn.' : ''
+    // A shipped order that is paid in cash keeps its status: the money is noted on it
+    const label = cashCollected && order.status === 'shipped' ? 'Shipped, paid in cash' : ORDER_STATUS_LABELS[status]
+    const withdrawn = data.paymentRequestCanceled ? ' The payment request in their chat was withdrawn.' : ''
     if (!notifyCustomer) showToast('success', `Order #${order.order_number} is now “${label}”.${withdrawn}`)
     else if (data.notified) showToast('success', `Order #${order.order_number} is now “${label}”. The customer was told on WhatsApp.${withdrawn}`)
     else showToast('error', `Order #${order.order_number} is now “${label}”, but the customer was not told: ${data.notifyError || 'WhatsApp did not accept the message.'}`)
   }
 
   async function saveTracking(order: CommerceOrder) {
-    const data = await patchOrder(order, { trackingNumber, carrier }, 'tracking')
+    const tracking = trackingDetails()
+    if (!tracking) return
+    const data = await patchOrder(order, tracking, 'tracking')
     if (data) showToast('success', 'Tracking details saved.')
   }
 
@@ -263,6 +291,8 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
       if (!res.ok) throw new Error(data.error || 'The reminder could not be sent')
       if (data.order) setSelected((current) => (current && current.id === order.id ? { ...current, ...data.order } : current))
       showToast('success', `Reminder sent: the customer got ${STEP_SENT[data.step] || 'the next step'}.`)
+      // The reminder may have moved the order on (an address form that could not be sent again)
+      load(page, { silent: true, summary: true })
     } catch (err: any) {
       showToast('error', err.message)
     } finally {
@@ -287,8 +317,10 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
   const isOpen = selected ? OPEN_CHECKOUT_STATUSES.includes(selected.status) : false
   const isToShip = selected ? TO_SHIP_STATUSES.includes(selected.status) : false
   const fulfillment = selected ? getFulfillment(selected) : null
-  const trackingChanged = Boolean(fulfillment) && (trackingNumber.trim() !== fulfillment!.trackingNumber || carrier.trim() !== fulfillment!.carrier)
+  const trackingChanged = Boolean(fulfillment) && (trackingNumber.trim() !== fulfillment!.trackingNumber || carrier.trim() !== fulfillment!.carrier || trackingUrl.trim() !== fulfillment!.trackingUrl)
   const waitingOn = selected && collectsAddress && !selected.shipping_address?.address_line_1 ? 'their delivery address' : 'payment'
+  // "Paid" is offered once per order: as "Cash collected" for Cash on Delivery, never for an order that is already paid
+  const actions = nextStatuses.filter((status) => status !== 'canceled' && !(status === 'paid' && selected?.payment_status === 'paid'))
 
   return (
     <div className="space-y-3">
@@ -567,13 +599,21 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                     {collectsAddress ? 'The customer has not filled in the address form yet.' : 'This store does not collect addresses in the chat. Ask the customer for it in the chat.'}
                   </p>
                 )}
-                {fulfillment && (fulfillment.trackingNumber || fulfillment.carrier) && (
+                {fulfillment && (fulfillment.trackingNumber || fulfillment.carrier || fulfillment.trackingUrl) && (
                   <p className="mt-2 text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Truck size={13} className="text-blue-500 shrink-0" />
-                    <span>
+                    <span className="min-w-0">
                       {fulfillment.carrier || 'Shipped'}
                       {fulfillment.trackingNumber && <> · <span className="font-mono">{fulfillment.trackingNumber}</span></>}
                       {fulfillment.shippedAt && <span className="text-slate-500"> · {new Date(fulfillment.shippedAt).toLocaleDateString([], { day: 'numeric', month: 'short' })}</span>}
+                      {fulfillment.trackingUrl && (
+                        <>
+                          {' · '}
+                          <a href={fulfillment.trackingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 font-semibold text-emerald-700 dark:text-emerald-400 hover:underline">
+                            Track parcel <ExternalLink size={11} />
+                          </a>
+                        </>
+                      )}
                     </span>
                   </p>
                 )}
@@ -607,6 +647,10 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                         <label htmlFor="tracking" className={labelClass}>Tracking number</label>
                         <input id="tracking" type="text" maxLength={80} value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="Optional" className={inputClass} />
                       </div>
+                      <div className="col-span-2">
+                        <label htmlFor="tracking-url" className={labelClass}>Tracking link</label>
+                        <input id="tracking-url" type="url" inputMode="url" maxLength={500} value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://… (optional, sent to the customer)" className={inputClass} />
+                      </div>
                       {selected.status === 'shipped' && trackingChanged && (
                         <button type="button" onClick={() => saveTracking(selected)} disabled={busy !== null} className={`${secondaryButton} col-span-2 h-8`}>
                           {busy === 'tracking' && <Loader2 size={13} className="animate-spin" />} Save tracking details
@@ -621,10 +665,10 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                   </label>
 
                   <div className="flex flex-wrap gap-2">
-                    {nextStatuses.filter((status) => status !== 'canceled').map((status) => (
-                      <button key={status} type="button" disabled={busy !== null} onClick={() => changeStatus(selected, status)} className={`${status === 'cod_confirmed' ? secondaryButton : primaryButton} flex-1`}>
-                        {busy === status && <Loader2 size={13} className="animate-spin" />}
-                        {status === 'paid' ? 'Mark as paid' : status === 'cod_confirmed' ? 'Confirm as COD' : status === 'shipped' ? 'Mark as shipped' : 'Mark as delivered'}
+                    {actions.map((status) => (
+                      <button key={status} type="button" disabled={busy !== null} onClick={() => changeStatus(selected, status)} className={`${status === 'cod_confirmed' || (status === 'paid' && isCashCollection(selected)) ? secondaryButton : primaryButton} flex-1`}>
+                        {busy === status ? <Loader2 size={13} className="animate-spin" /> : status === 'paid' && isCashCollection(selected) ? <Banknote size={13} /> : null}
+                        {status === 'paid' ? (isCashCollection(selected) ? 'Cash collected' : 'Mark as paid') : status === 'cod_confirmed' ? 'Confirm as COD' : status === 'shipped' ? 'Mark as shipped' : 'Mark as delivered'}
                       </button>
                     ))}
                     {nextStatuses.includes('canceled') && (

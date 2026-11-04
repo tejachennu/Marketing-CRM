@@ -294,6 +294,27 @@ export function buildOrderStatusMessage(params: OrderStatusMessageParams) {
   }
 }
 
+/**
+ * An approved template message. The only thing WhatsApp delivers more than 24 hours after the
+ * customer's last message (error 131047 for anything else). `components` are the filled-in
+ * variables, as lib/whatsapp-templates/send-components builds them.
+ */
+export function buildTemplateMessage(params: { phone: string; name: string; language: string; components?: any[] }) {
+  const name = String(params.name || '').trim()
+  if (!name) throw new Error('A template name is required')
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: cleanWhatsAppRecipient(params.phone),
+    type: 'template',
+    template: {
+      name,
+      language: { code: String(params.language || '').trim() || 'en' },
+      ...(params.components && params.components.length ? { components: params.components } : {}),
+    },
+  }
+}
+
 /** A plain text message. */
 export function buildTextMessage(phone: string, body: string) {
   return {

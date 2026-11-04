@@ -369,8 +369,18 @@ test('Commerce rules: order views, refunds, express charge, tracking and address
   assert.equal(utils.toMinorUnits('12.34'), 1234)
   assert.equal(utils.toMinorUnits(null), 0)
 
-  assert.deepEqual(utils.getFulfillment({ shipping_address: { tracking_number: ' AWB123 ', carrier: 'Delhivery', shipped_at: '2026-10-13T10:00:00Z' } }), { trackingNumber: 'AWB123', carrier: 'Delhivery', shippedAt: '2026-10-13T10:00:00Z' })
-  assert.deepEqual(utils.getFulfillment({ shipping_address: null }), { trackingNumber: '', carrier: '', shippedAt: null })
+  assert.deepEqual(utils.getFulfillment({ shipping_address: { tracking_number: ' AWB123 ', carrier: 'Delhivery', tracking_url: ' https://track.example.com/AWB123 ', shipped_at: '2026-10-13T10:00:00Z' } }), { trackingNumber: 'AWB123', carrier: 'Delhivery', trackingUrl: 'https://track.example.com/AWB123', shippedAt: '2026-10-13T10:00:00Z' })
+  assert.deepEqual(utils.getFulfillment({ shipping_address: null }), { trackingNumber: '', carrier: '', trackingUrl: '', shippedAt: null })
+  assert.equal(utils.describeTracking({ carrier: 'Delhivery', trackingNumber: 'AWB123', trackingUrl: 'https://track.example.com/AWB123' }), 'Delhivery · AWB123 · https://track.example.com/AWB123')
+  assert.equal(utils.describeTracking({ carrier: '', trackingNumber: 'AWB123', trackingUrl: '' }), 'AWB123')
+  assert.equal(utils.describeTracking(utils.getFulfillment({})), '')
+  // A tracking link the customer can open: http(s) only, and not absurdly long
+  assert.equal(utils.parseTrackingUrl(' https://track.example.com/AWB123 '), 'https://track.example.com/AWB123')
+  assert.equal(utils.parseTrackingUrl(''), '')
+  assert.equal(utils.parseTrackingUrl(null), '')
+  assert.throws(() => utils.parseTrackingUrl('javascript:alert(1)'), /web address/)
+  assert.throws(() => utils.parseTrackingUrl('track.example.com/AWB123'), /web address/)
+  assert.throws(() => utils.parseTrackingUrl(`https://track.example.com/${'A'.repeat(500)}`), /500 characters/)
   assert.equal(utils.formatAddress({ address_line_1: '1 MG Road', address_line_2: '', city: 'Mumbai', state: 'MH', pincode: '400001' }), '1 MG Road, Mumbai, MH 400001')
   assert.equal(utils.formatAddress({ city: 'Mumbai' }), '')
 })
@@ -418,6 +428,9 @@ function commerceDb(seed = {}, options = {}) {
       eq(key, value) { filters.push(row => row[key] === value); return this },
       neq(key, value) { filters.push(row => row[key] !== value); return this },
       in(key, list) { filters.push(row => list.includes(row[key])); return this },
+      // `.is(column, null)` and `.not(column, 'is', null)`: the claims the handlers make on a row
+      is(key, value) { filters.push(row => (value === null ? row[key] === null || row[key] === undefined : row[key] === value)); return this },
+      not(key, operator, value) { filters.push(row => (operator === 'is' && value === null ? row[key] !== null && row[key] !== undefined : row[key] !== value)); return this },
       order(key, sort = {}) { sorts.push([key, sort.ascending === false ? -1 : 1]); return this },
       limit(count) { max = count; return this },
       range(from, to) { offset = from; max = to - from + 1; return this },
@@ -581,8 +594,14 @@ test('Commerce webhook: when a step cannot be sent, the next one is tried', asyn
   }, (count, message) => (message.interactive?.type === 'button' && message.interactive.action.buttons.length === 1 ? { ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.ok' }] }) } : rejected(131009)))
   assert.equal(step, 'cod')
   assert.deepEqual(sent.map(message => message.interactive?.type), ['flow', 'button', 'order_details', 'button'])
-  assert.equal(database.tables.messages.length, 1) // only the message that went out is in the chat
-  assert.equal(database.tables.commerce_orders[0].meta_payment_reference, undefined) // the refused request is not remembered
+  // Only the message that went out is in the chat, plus a note for the team on why the customer
+  // was not asked to pay online
+  assert.deepEqual(database.tables.messages.map(message => message.body.replace(/\(.*\)/, '')), [
+    `[Sent Cash on Delivery confirmation for Order #${database.tables.commerce_orders[0].order_number} ]`,
+    `[Online payment for Order #${database.tables.commerce_orders[0].order_number} could not be started: rejected]`,
+  ])
+  assert.ok(!database.tables.commerce_orders[0].meta_payment_reference) // the refused request is not remembered
+  assert.equal(database.tables.commerce_orders[0].status, 'payment_pending')
 })
 
 test('Commerce webhook: a message Meta rejects is not logged as sent', async () => {
@@ -678,13 +697,42 @@ test('Commerce address: resubmitting never stacks the express charge or reopens 
   })
   assert.match(sent[0].interactive.body.text, /Express delivery adds ₹\s?50/)
 
+  // A paid order keeps its status and its totals: the address is corrected (see below), nothing else
   const paid = seeded({ status: 'paid', payment_status: 'paid' })
   const afterPaid = await withWhatsApp(async () => {
     await handlers.handleInboundAddressSubmission({ organization: store(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: address({ delivery_speed: 'express' }), database: paid })
   })
-  assert.equal(paid.tables.commerce_orders[0].status, 'paid')
-  assert.equal(paid.tables.commerce_orders[0].shipping_fee, 40)
-  assert.equal(afterPaid.length, 0)
+  assert.deepEqual([paid.tables.commerce_orders[0].status, paid.tables.commerce_orders[0].payment_status, paid.tables.commerce_orders[0].shipping_fee, paid.tables.commerce_orders[0].total_amount], ['paid', 'paid', 40, 1040])
+  assert.deepEqual(afterPaid.map(message => message.type), ['text']) // a confirmation, never a payment request
+  assert.match(afterPaid[0].text.body, /keeps standard delivery/)
+})
+
+test('Commerce address: a corrected address on a paid or confirmed order counts until it ships; after that the team is asked', async () => {
+  const onFile = { full_name: 'Asha Rao', address_line_1: '1 MG Road', city: 'Mumbai', state: 'MH', pincode: '400001', delivery_speed: 'express', express_fee: 50, notes: 'Ring twice' }
+  const correction = address({ address_line_1: '2 Park Street', pincode: '400002', delivery_speed: 'standard', instructions: '' })
+  const submit = database => handlers.handleInboundAddressSubmission({ organization: store(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: correction, database })
+
+  for (const state of [{ status: 'paid', payment_status: 'paid' }, { status: 'cod_confirmed', payment_method: 'cod' }]) {
+    const database = seeded({ ...state, shipping_address: onFile, shipping_fee: 90, total_amount: 1090 })
+    const sent = await withWhatsApp(async () => { assert.equal((await submit(database)).shipping_address.address_line_1, '2 Park Street') })
+    const order = database.tables.commerce_orders[0]
+    // The new address is on the order; the status, the totals and the paid-for delivery option are not touched
+    assert.deepEqual([order.status, order.payment_status, order.shipping_fee, order.total_amount], [state.status, state.payment_status || 'pending', 90, 1090])
+    assert.deepEqual([order.shipping_address.address_line_1, order.shipping_address.pincode, order.shipping_address.delivery_speed, order.shipping_address.express_fee, order.shipping_address.notes], ['2 Park Street', '400002', 'express', 50, 'Ring twice'])
+    assert.equal(sent.length, 1)
+    assert.match(sent[0].text.body, /delivery address for order #ORD-261013-AB12 is updated: 2 Park Street, Mumbai, MH 400002/)
+    assert.deepEqual(bodies(database), ['[Delivery address updated for Order #ORD-261013-AB12]'])
+  }
+
+  // Too late: the parcel has left (or the order is gone). The customer is told, nothing changes.
+  for (const status of ['shipped', 'delivered', 'canceled']) {
+    const database = seeded({ status, payment_status: 'paid', shipping_address: onFile })
+    const sent = await withWhatsApp(async () => { assert.equal((await submit(database)).id, ORDER_ID) })
+    assert.equal(database.tables.commerce_orders[0].shipping_address.address_line_1, '1 MG Road')
+    assert.equal(sent.length, 1)
+    assert.match(sent[0].text.body, status === 'canceled' ? /#ORD-261013-AB12 was canceled; reply here and our team will help/ : /#ORD-261013-AB12 has already been shipped; reply here and our team will help/)
+    assert.deepEqual(bodies(database), [`[Told customer Order #ORD-261013-AB12 is already ${status}; the new address was not applied]`])
+  }
 })
 
 // ── 3. Checkout buttons ─────────────────────────────────────────────────────
@@ -709,10 +757,21 @@ test('Checkout buttons: Cash on Delivery confirms the order once and tells the c
   assert.equal(database.tables.messages.length, 2) // both replies are in the chat
 })
 
+// The last payment request went out a while ago: a new tap gets a new card (see RECENT_PAYMENT_REQUEST_MS)
+function ageLastRequest(database) {
+  const order = database.tables.commerce_orders[0]
+  const earlier = new Date(Date.now() - handlers.RECENT_PAYMENT_REQUEST_MS - 60_000).toISOString()
+  order.updated_at = earlier
+  for (const request of order.payment_requests || []) request.requested_at = earlier
+}
+
 test('Checkout buttons: Pay online sends a payment request under a fresh reference each time, withdrawing the last one', async () => {
   const database = seeded()
   const sent = await withWhatsApp(async () => {
     assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested')
+    // Tapped again moments later: the card is still fresh in the chat, so nothing is sent twice
+    assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'already_requested')
+    ageLastRequest(database)
     assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested')
   })
   // The first card is withdrawn before the second request goes out, so only one card can be paid
@@ -735,11 +794,51 @@ test('Checkout buttons: without the payment_requests column the latest reference
   const database = seeded({}, {}, { missingColumns: { commerce_orders: ['payment_requests'] } })
   const sent = await withWhatsApp(async () => {
     await tap(database, `pay_online_${ORDER_ID}`)
+    // Without the column, when the request went out is read from the order's own timestamp
+    assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'already_requested')
+    ageLastRequest(database)
     await tap(database, `pay_online_${ORDER_ID}`)
   })
   assert.deepEqual(sent.map(message => message.interactive.type), ['order_details', 'order_status', 'order_details'])
   assert.equal(database.tables.commerce_orders[0].meta_payment_reference, 'ORD-261013-AB12.2')
   assert.equal(database.tables.commerce_orders[0].payment_requests, undefined)
+})
+
+test('Checkout buttons: the same Pay online tap delivered twice at once sends one payment request', async () => {
+  const database = seeded()
+  const sent = await withWhatsApp(async () => {
+    const results = await Promise.all([tap(database, `pay_online_${ORDER_ID}`), tap(database, `pay_online_${ORDER_ID}`)])
+    // One delivery claims the reference and sends; the other says nothing at all
+    assert.deepEqual(results.map(result => result.outcome).sort(), ['already_requested', 'payment_requested'])
+  })
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].interactive.type, 'order_details')
+  const order = database.tables.commerce_orders[0]
+  assert.equal(order.meta_payment_reference, 'ORD-261013-AB12')
+  assert.deepEqual(order.payment_requests.map(request => request.reference), ['ORD-261013-AB12'])
+  assert.equal(database.tables.messages.length, 1)
+})
+
+test('Checkout buttons: choosing Cash on Delivery withdraws the live payment request; a payment that still arrives is noted', async () => {
+  const database = seeded(requestedOrder({ shipping_address: { address_line_1: '1 MG Road', city: 'Mumbai' } }))
+  const sent = await withWhatsApp(async () => {
+    assert.equal((await tap(database, `cod_confirm_${ORDER_ID}`)).outcome, 'cod_confirmed')
+  })
+  // The "Review and pay" card is withdrawn before the confirmation, so the customer cannot pay twice
+  assert.deepEqual(sent.map(message => (message.type === 'text' ? 'text' : [message.interactive.type, message.interactive.action.parameters.order.status])), [['order_status', 'canceled'], 'text'])
+  assert.deepEqual([sent[0].interactive.action.parameters.reference_id, sent[0].interactive.body.text], ['ORD-261013-AB12', 'Online payment withdrawn: your order #ORD-261013-AB12 is confirmed for Cash on Delivery.'])
+  const order = () => database.tables.commerce_orders[0]
+  assert.deepEqual([order().status, order().payment_method, order().payment_status], ['cod_confirmed', 'cod', 'pending'])
+  assert.ok(order().payment_requests[0].voided_at)
+
+  // The card reached the customer before the withdrawal and they paid it anyway: paid online, and
+  // the team must not collect cash on top
+  const paid = await withWhatsApp(async () => { await pay(database, captured()) })
+  assert.deepEqual([order().status, order().payment_status, order().payment_method], ['cod_confirmed', 'paid', 'whatsapp_pay'])
+  assert.match(order().customer_note, /Paid online after Cash on Delivery was chosen; do not collect cash\./)
+  assert.ok(bodies(database).includes('[Paid online after Cash on Delivery was chosen; do not collect cash]'))
+  assert.equal(paid[0].interactive.type, 'order_status')
+  assert.match(paid[0].interactive.body.text, /Nothing is due on delivery any more/)
 })
 
 test('Checkout buttons: a request that cannot be sent is not left in silence', async () => {
@@ -749,7 +848,9 @@ test('Checkout buttons: a request that cannot be sent is not left in silence', a
   }, (count) => (count === 1 ? rejected(131009) : { ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.2' }] }) }))
   assert.equal(sent[1].type, 'text')
   assert.match(sent[1].text.body, /could not start the online payment/)
-  assert.equal(database.tables.commerce_orders[0].meta_payment_reference, undefined)
+  // The reference claimed for the refused request is given back, so the next tap is not held off
+  assert.ok(!database.tables.commerce_orders[0].meta_payment_reference)
+  assert.equal((await withWhatsApp(async () => { assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested') })).length, 1)
 })
 
 test('Checkout buttons: old buttons cannot reopen, hijack or resurrect an order', async () => {
@@ -965,14 +1066,19 @@ test('Dashboard status updates: the order card when there is one, a message othe
 
   // An order that had a payment request: WhatsApp's own order card is updated
   const withRequest = seeded({ status: 'paid', payment_status: 'paid', meta_payment_reference: 'ORD-261013-AB12' })
-  const card = await withWhatsApp(async () => { assert.deepEqual(await notify(withRequest, 'shipped', 'Shipped!'), { notified: true, error: null, viaCard: true }) })
+  const card = await withWhatsApp(async () => { assert.deepEqual(await notify(withRequest, 'shipped', 'Shipped!'), { notified: true, error: null, viaCard: true, viaTemplate: false }) })
   assert.deepEqual([card[0].interactive.type, card[0].interactive.action.parameters.reference_id, card[0].interactive.action.parameters.order.status], ['order_status', 'ORD-261013-AB12', 'shipped'])
   assert.equal(withRequest.tables.messages[0].body, 'Shipped!')
 
   // A Cash on Delivery order never had one: a normal message
   const cod = seeded({ status: 'cod_confirmed', payment_method: 'cod' })
-  const plain = await withWhatsApp(async () => { assert.deepEqual(await notify(cod, 'shipped', 'Shipped!'), { notified: true, error: null, viaCard: false }) })
+  const plain = await withWhatsApp(async () => { assert.deepEqual(await notify(cod, 'shipped', 'Shipped!'), { notified: true, error: null, viaCard: false, viaTemplate: false }) })
   assert.deepEqual([plain.length, plain[0].type, plain[0].text.body], [1, 'text', 'Shipped!'])
+
+  // The card was just withdrawn (the order was confirmed for cash from the dashboard): text, not a "processing" card
+  const withdrawn = seeded({ status: 'cod_confirmed', payment_method: 'cod', meta_payment_reference: 'ORD-261013-AB12' })
+  const afterVoid = await withWhatsApp(async () => { assert.equal((await handlers.notifyOrderStatus({ organization: store(), order: withdrawn.tables.commerce_orders[0], status: 'cod_confirmed', text: 'Confirmed', card: false, database: withdrawn })).viaCard, false) })
+  assert.deepEqual(afterVoid.map(message => message.type), ['text'])
 
   // The card is refused: the customer still gets the text
   const fallback = await withWhatsApp(async () => { assert.equal((await notify(seeded({ meta_payment_reference: 'ORD-261013-AB12' }), 'delivered')).viaCard, false) },
@@ -983,14 +1089,100 @@ test('Dashboard status updates: the order card when there is one, a message othe
   const paidCancel = await withWhatsApp(async () => { await notify(seeded({ status: 'paid', payment_status: 'paid', meta_payment_reference: 'ORD-261013-AB12' }), 'canceled') })
   assert.deepEqual(paidCancel.map(message => message.type), ['text'])
 
-  // Nothing went out: say why, and do not write it into the chat
+  // Nothing went out (the customer's last message is too old and the store has no order-update
+  // template): the chat shows the update as not delivered, and the dashboard is told what to set up
   const silent = seeded()
   await withWhatsApp(async () => {
     const result = await notify(silent, 'shipped')
     assert.equal(result.notified, false)
+    assert.equal(result.error, handlers.NO_STATUS_TEMPLATE_ERROR)
     assert.match(result.error, /24 hours/)
   }, () => rejected(131047))
-  assert.equal(silent.tables.messages.length, 0)
+  assert.deepEqual(silent.tables.messages.map(message => [message.body, message.status, message.error_message]), [['Order update', 'failed', handlers.NO_STATUS_TEMPLATE_ERROR]])
+
+  // Refused for another reason: that reason is recorded, and no template is tried
+  const refused = seeded()
+  const nothing = await withWhatsApp(async () => {
+    const result = await notify(refused, 'shipped')
+    assert.deepEqual([result.notified, result.viaTemplate], [false, false])
+    assert.match(result.error, /cannot receive/)
+  }, () => rejected(131026))
+  assert.deepEqual(nothing.map(message => message.type), ['text'])
+  assert.deepEqual(refused.tables.messages.map(message => message.status), ['failed'])
+})
+
+test('Dashboard status updates: after 24 hours the order-update template is sent, or the team is told to set one up', async () => {
+  const hoursAgo = hours => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+  const withTemplate = store({ commerce_status_template: { name: 'order_update', language: 'en' } })
+  const tracking = { address_line_1: '1 MG Road', carrier: 'Delhivery', tracking_number: 'AWB123', tracking_url: 'https://track.example.com/AWB123' }
+  // A Cash on Delivery order (no card), whose customer last wrote `lastInbound`
+  const codOrder = lastInbound => seeded(
+    { status: 'cod_confirmed', payment_method: 'cod', shipping_address: tracking },
+    { messages: [{ id: 'in-1', organization_id: 'org', conversation_id: 'conversation', sender_type: 'contact', body: 'hi', created_at: lastInbound }] }
+  )
+  const notify = (database, organization, status = 'shipped') => handlers.notifyOrderStatus({ organization, order: database.tables.commerce_orders[0], status, text: 'Shipped!', database })
+  const logged = database => database.tables.messages.filter(message => message.sender_type === 'user').map(message => [message.body, message.status, message.error_message ?? null, message.twilio_message_sid ?? null])
+
+  // The customer wrote yesterday: WhatsApp would refuse a text, so the template goes straight out
+  // with the order number, the status and the tracking details
+  const stale = codOrder(hoursAgo(30))
+  const sent = await withWhatsApp(async () => {
+    assert.deepEqual(await notify(stale, withTemplate), { notified: true, error: null, viaCard: false, viaTemplate: true })
+  })
+  assert.equal(sent.length, 1)
+  assert.deepEqual([sent[0].type, sent[0].to], ['template', '919876543210'])
+  assert.deepEqual(sent[0].template, {
+    name: 'order_update',
+    language: { code: 'en' },
+    components: [{ type: 'body', parameters: [{ type: 'text', text: 'ORD-261013-AB12' }, { type: 'text', text: 'Shipped' }, { type: 'text', text: 'Delhivery · AWB123 · https://track.example.com/AWB123' }] }],
+  })
+  assert.deepEqual(logged(stale), [['Shipped!', 'sent', null, 'FB_wamid.1']])
+
+  // No tracking yet: the template still has three values ("-" for the tracking)
+  const bare = seeded({ status: 'cod_confirmed', payment_method: 'cod' }, { messages: [{ id: 'in-1', organization_id: 'org', conversation_id: 'conversation', sender_type: 'contact', body: 'hi', created_at: hoursAgo(30) }] })
+  const dash = await withWhatsApp(async () => { await notify(bare, withTemplate, 'delivered') })
+  assert.deepEqual(dash[0].template.components[0].parameters.map(parameter => parameter.text), ['ORD-261013-AB12', 'Delivered', '-'])
+
+  // A template saved with its structure (named variables) is filled by name
+  const named = store({ commerce_status_template: { name: 'order_update', language: 'en_US', components: [{ type: 'BODY', text: 'Order {{order_number}} is now {{status}}. Tracking: {{tracking}}', example: { body_text_named_params: [{ param_name: 'order_number' }, { param_name: 'status' }, { param_name: 'tracking' }] } }] } })
+  const byName = await withWhatsApp(async () => { await notify(codOrder(hoursAgo(30)), named) })
+  assert.equal(byName[0].template.language.code, 'en_US')
+  assert.deepEqual(byName[0].template.components[0].parameters, [
+    { type: 'text', text: 'ORD-261013-AB12', parameter_name: 'order_number' },
+    { type: 'text', text: 'Shipped', parameter_name: 'status' },
+    { type: 'text', text: 'Delhivery · AWB123 · https://track.example.com/AWB123', parameter_name: 'tracking' },
+  ])
+
+  // The customer wrote an hour ago, so a text is tried first; WhatsApp refuses it all the same
+  // (131047): the template is the fallback
+  const refusedText = codOrder(hoursAgo(1))
+  const fallback = await withWhatsApp(async () => {
+    assert.deepEqual(await notify(refusedText, withTemplate), { notified: true, error: null, viaCard: false, viaTemplate: true })
+  }, (count, message) => (message.type === 'text' ? rejected(131047) : { ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.t' }] }) }))
+  assert.deepEqual(fallback.map(message => message.type), ['text', 'template'])
+  assert.deepEqual(logged(refusedText), [['Shipped!', 'sent', null, 'FB_wamid.t']])
+
+  // Within the window the text simply goes out; no template needed
+  const fresh = codOrder(hoursAgo(1))
+  const text = await withWhatsApp(async () => { assert.deepEqual(await notify(fresh, withTemplate), { notified: true, error: null, viaCard: false, viaTemplate: false }) })
+  assert.deepEqual(text.map(message => message.type), ['text'])
+
+  // No template set up: nothing goes out, the chat records the update as not delivered with
+  // the reason, and the dashboard gets a clear error
+  const none = codOrder(hoursAgo(30))
+  const nothing = await withWhatsApp(async () => {
+    assert.deepEqual(await notify(none, store()), { notified: false, error: handlers.NO_STATUS_TEMPLATE_ERROR, viaCard: false, viaTemplate: false })
+  })
+  assert.equal(nothing.length, 0)
+  assert.deepEqual(logged(none), [['Shipped!', 'failed', handlers.NO_STATUS_TEMPLATE_ERROR, null]])
+
+  // The template itself is refused by WhatsApp: the chat shows that, with WhatsApp's reason
+  const refusedTemplate = codOrder(hoursAgo(30))
+  await withWhatsApp(async () => {
+    const result = await notify(refusedTemplate, withTemplate)
+    assert.deepEqual([result.notified, result.viaTemplate, result.error], [false, false, 'rejected'])
+  }, () => rejected(132001))
+  assert.deepEqual(logged(refusedTemplate), [['Shipped!', 'failed', 'rejected', null]])
 })
 
 test('Canceling an order withdraws its unpaid payment request', async () => {
@@ -1274,4 +1466,237 @@ test('Payment requests, campaign references and database errors are read safely'
   assert.equal(utils.isUniqueViolation({ code: '23505' }), true)
   assert.equal(utils.isUniqueViolation({ message: 'duplicate key value violates unique constraint "x"' }), true)
   assert.equal(utils.isUniqueViolation({ code: '42703' }), false)
+})
+
+// ── 9. Checkout journeys: dead address forms, other currencies, late failures, stock ──
+
+const accepted = () => ({ ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.ok' }] }) })
+
+test('Commerce webhook: the order status follows the step the customer actually got', async () => {
+  assert.deepEqual(
+    ['address', 'choice', 'payment', 'cod', 'acknowledged', 'not_sent'].map(step => handlers.statusForCheckoutStep(step)),
+    ['awaiting_address', 'payment_pending', 'payment_pending', 'payment_pending', 'cart_submitted', null]
+  )
+
+  // The address form cannot be sent (an unpublished or deprecated form): the payment step goes
+  // out instead, and the order waits on payment, not on an address nobody was asked for
+  const database = commerceDb()
+  let step
+  const sent = await withWhatsApp(async () => {
+    step = (await handlers.handleInboundCommerceOrder({ organization: withGateway({ commerce_address_flow_id: '999' }), ...party, orderPayload: cart, messageId: 'm', database })).step
+  }, (count, message) => (message.interactive?.type === 'flow' ? rejected(131009) : accepted()))
+  assert.equal(step, 'choice')
+  assert.deepEqual(sent.map(message => message.interactive.type), ['flow', 'button'])
+  assert.equal(database.tables.commerce_orders[0].status, 'payment_pending')
+
+  // Nothing could be sent at all: the cart stays "received", not "awaiting address"
+  const silent = commerceDb()
+  await withWhatsApp(async () => {
+    step = (await handlers.handleInboundCommerceOrder({ organization: withGateway({ commerce_address_flow_id: '999' }), ...party, orderPayload: cart, messageId: 'm', database: silent })).step
+  }, () => rejected())
+  assert.deepEqual([step, silent.tables.commerce_orders[0].status], ['not_sent', 'cart_submitted'])
+
+  // Only Cash on Delivery: the confirmation button goes out and the order waits on it
+  const cod = commerceDb()
+  await withWhatsApp(async () => {
+    step = (await handlers.handleInboundCommerceOrder({ organization: store(), ...party, orderPayload: cart, messageId: 'm', database: cod })).step
+  })
+  assert.deepEqual([step, cod.tables.commerce_orders[0].status], ['cod', 'payment_pending'])
+})
+
+test('Dashboard reminder: an address form that can no longer be sent moves the order on to payment', async () => {
+  const database = seeded({ status: 'awaiting_address' })
+  const sent = await withWhatsApp(async () => {
+    const result = await handlers.resendCheckoutStep({ organization: withGateway({ commerce_address_flow_id: '999', commerce_enable_cod: false }), order: database.tables.commerce_orders[0], database })
+    assert.equal(result.step, 'payment')
+  }, (count, message) => (message.interactive?.type === 'flow' ? rejected(131009) : accepted()))
+  assert.deepEqual(sent.map(message => message.interactive.type), ['flow', 'order_details'])
+  assert.equal(database.tables.commerce_orders[0].status, 'payment_pending')
+})
+
+test('Commerce address: a form without an address (another form was chosen in Store settings) still moves the checkout on', async () => {
+  const organization = withGateway({ commerce_address_flow_id: '999', commerce_enable_cod: false })
+  const submit = (database, data) => handlers.handleInboundAddressSubmission({ organization, ...party, flowToken: `order_${ORDER_ID}`, submissionData: data, database })
+
+  const database = seeded({ status: 'awaiting_address' })
+  const sent = await withWhatsApp(async () => { assert.equal((await submit(database, { name: 'Asha', rating: '5' })).id, ORDER_ID) })
+  assert.deepEqual(sent.map(message => message.interactive.type), ['order_details']) // the payment step, not the form again
+  assert.match(sent[0].interactive.body.text, /could not read a delivery address from that form/)
+  assert.deepEqual([database.tables.commerce_orders[0].status, database.tables.commerce_orders[0].shipping_address], ['payment_pending', undefined])
+  assert.deepEqual(bodies(database).map(body => body.replace(/\(.*\)/, '')), ['[Address form for Order #ORD-261013-AB12 could not be read; the form in Store settings is not an address form]', '[Sent payment request for Order #ORD-261013-AB12 ]'])
+
+  // On a confirmed order the customer is asked to send the address in the chat instead
+  const paid = seeded({ status: 'paid', payment_status: 'paid' })
+  const told = await withWhatsApp(async () => { assert.equal((await submit(paid, { name: 'Asha' })).id, ORDER_ID) })
+  assert.deepEqual(told.map(message => message.type), ['text'])
+  assert.match(told[0].text.body, /Reply here with your address/)
+  assert.equal(paid.tables.commerce_orders[0].status, 'paid')
+})
+
+test('Commerce webhook: an order in another currency is not asked to pay in the chat, and the team sees why', async () => {
+  const dollars = { catalog_id: 'CAT', product_items: [{ product_retailer_id: 'SKU-1', quantity: '2', item_price: '500', currency: 'USD' }] }
+  const database = commerceDb()
+  let step
+  const sent = await withWhatsApp(async () => {
+    step = (await handlers.handleInboundCommerceOrder({ organization: withGateway({ currency: 'USD' }), ...party, orderPayload: dollars, messageId: 'm', database })).step
+  })
+  // Straight to the Cash on Delivery confirmation: no "Pay online" button that could only fail
+  assert.equal(step, 'cod')
+  assert.deepEqual(sent.map(message => [message.interactive.type, message.interactive.action.buttons.length]), [['button', 1]])
+  assert.match(sent[0].interactive.body.text, /\$1,000/)
+  const order = database.tables.commerce_orders[0]
+  assert.deepEqual([order.currency, order.status, order.meta_payment_reference], ['USD', 'payment_pending', undefined])
+  const note = bodies(database).find(body => body.startsWith('[Online payment for Order #'))
+  assert.equal(note, `[Online payment for Order #${order.order_number} could not be started: In-chat WhatsApp payments are only available in INR; this order is in USD. Offer Cash on Delivery or a payment link instead.]`)
+  // The inbox reads the line as the usual "online payment could not be started" event
+  const { parseCommerceMessage } = require('../lib/chat-commerce.ts')
+  assert.equal(parseCommerceMessage(note, 'user').event, 'online_failed')
+
+  // The same when the customer taps "Pay online" on an order in another currency
+  const tapped = seeded({ currency: 'USD' })
+  const replies = await withWhatsApp(async () => { assert.equal((await tap(tapped, `pay_online_${ORDER_ID}`)).outcome, 'failed') })
+  assert.deepEqual(replies.map(message => message.type), ['text'])
+  assert.ok(bodies(tapped).some(body => /could not be started: In-chat WhatsApp payments are only available in INR; this order is in USD/.test(body)))
+})
+
+test('Commerce payments: a failed attempt that times out after the order was settled another way is ignored', async () => {
+  for (const state of [{ status: 'cod_confirmed', payment_method: 'cod' }, { status: 'shipped', payment_method: 'cod' }, { status: 'canceled' }]) {
+    const database = seeded({ ...state, meta_payment_reference: 'ORD-261013-AB12' })
+    const sent = await withWhatsApp(async () => { await pay(database, metaPaymentStatus('pending', 'failed')) })
+    assert.deepEqual([database.tables.commerce_orders[0].status, database.tables.commerce_orders[0].payment_status], [state.status, 'pending'])
+    assert.equal(sent.length, 0)
+    assert.equal(database.tables.messages.length, 0)
+  }
+})
+
+test('Commerce webhook: products the dashboard has not synced are looked up with the catalog connection, ten SKUs at a time', async () => {
+  const skus = Array.from({ length: 12 }, (_, index) => `SKU-${index + 1}`)
+  const lookups = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    if (init?.body) return accepted()
+    const filter = JSON.parse(decodeURIComponent(String(url).match(/filter=([^&]+)/)[1]))
+    lookups.push({ sku: filter.retailer_id.eq, token: init.headers.Authorization, version: String(url).match(/graph\.facebook\.com\/(v[\d.]+)\//)[1] })
+    return { ok: true, status: 200, json: async () => ({ data: [{ id: `meta-${filter.retailer_id.eq}`, retailer_id: filter.retailer_id.eq, name: `Product ${filter.retailer_id.eq}`, price: '₹100.00', currency: 'INR', availability: 'in stock' }] }) }
+  }
+  const database = commerceDb()
+  try {
+    // The store connected its catalog through "Connect catalog with Meta": that token, not the WhatsApp one
+    await handlers.handleInboundCommerceOrder({
+      organization: store({ meta_catalog_id: '123456789', meta_catalog_token: 'catalog-token', whatsapp_graph_api_version: 'v23.0' }), ...party, messageId: 'm', database,
+      orderPayload: { catalog_id: '123456789', product_items: skus.map(sku => ({ product_retailer_id: sku, quantity: 1, item_price: 100 })) },
+    })
+  } finally {
+    globalThis.fetch = original
+  }
+  assert.deepEqual(lookups.map(lookup => lookup.sku), skus) // all twelve, in two chunks of ten and two
+  assert.ok(lookups.every(lookup => lookup.token === 'Bearer catalog-token' && lookup.version === 'v23.0'))
+  assert.deepEqual(database.tables.commerce_order_items.map(line => line.title).slice(0, 2), ['Product SKU-1', 'Product SKU-2'])
+  assert.equal(database.tables.commerce_order_items.filter(line => line.title.startsWith('Item #')).length, 0)
+  assert.equal(database.tables.commerce_products.length, 12)
+
+  // Without a catalog token the WhatsApp token serves; without any, the cart's own names are kept
+  const fallback = commerceDb()
+  const tokens = []
+  globalThis.fetch = async (url, init) => {
+    if (init?.body) return accepted()
+    tokens.push(init.headers.Authorization)
+    return { ok: true, status: 200, json: async () => ({ data: [] }) }
+  }
+  try {
+    await handlers.handleInboundCommerceOrder({ organization: store({ meta_catalog_id: '123456789' }), ...party, messageId: 'm', database: fallback, orderPayload: { catalog_id: '123456789', product_items: [{ product_retailer_id: 'SKU-9', quantity: 1, item_price: 100 }] } })
+    await handlers.handleInboundCommerceOrder({ organization: store({ meta_catalog_id: '123456789', whatsapp_api_token: '' }), ...party, messageId: 'n', database: fallback, orderPayload: { catalog_id: '123456789', product_items: [{ product_retailer_id: 'SKU-9', quantity: 1, item_price: 100 }] } })
+  } finally {
+    globalThis.fetch = original
+  }
+  assert.deepEqual(tokens, ['Bearer token'])
+  assert.deepEqual(fallback.tables.commerce_order_items.map(line => line.title), ['Item #SKU-9', 'Item #SKU-9'])
+})
+
+test('Stock: items leave stock once when the order is settled, and come back when it is canceled', async () => {
+  const products = [
+    { id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Shirt', price: 500, inventory_count: 2, is_available: true },
+    { id: 'p2', organization_id: 'org', retailer_id: 'SKU-2', title: 'Cap', price: 200, inventory_count: 5, is_available: true },
+    { id: 'other', organization_id: 'another-store', retailer_id: 'SKU-1', title: 'Not ours', price: 1, inventory_count: 50, is_available: true },
+  ]
+  const lines = [
+    { id: 'line-1', order_id: ORDER_ID, product_id: 'p1', retailer_id: 'SKU-1', title: 'Shirt', unit_price: 500, quantity: 2 },
+    { id: 'line-2', order_id: ORDER_ID, product_id: null, retailer_id: 'SKU-2', title: 'Cap', unit_price: 200, quantity: 1 }, // matched by SKU
+    { id: 'line-3', order_id: ORDER_ID, product_id: null, retailer_id: 'SKU-GONE', title: 'Deleted', unit_price: 1, quantity: 1 },
+  ]
+  const database = seeded({}, { commerce_products: products, commerce_order_items: lines })
+  const stock = () => database.tables.commerce_products.map(product => [product.retailer_id, product.inventory_count, product.is_available])
+
+  await withWhatsApp(async () => { assert.equal((await tap(database, `cod_confirm_${ORDER_ID}`)).outcome, 'cod_confirmed') })
+  // Two shirts: sold out and off sale. One cap. The other store's shirt is untouched.
+  assert.deepEqual(stock(), [['SKU-1', 0, false], ['SKU-2', 4, true], ['SKU-1', 50, true]])
+  const order = () => database.tables.commerce_orders[0]
+  assert.ok(order().stock_adjusted_at)
+
+  // The payment arriving after all, a redelivered webhook, a second click: nothing is counted twice
+  assert.equal((await handlers.adjustOrderStock({ organization: store(), order: order(), action: 'take', database })).adjusted, false)
+  await withWhatsApp(async () => { await pay(seeded(), captured()) }) // another order entirely
+  assert.deepEqual(stock(), [['SKU-1', 0, false], ['SKU-2', 4, true], ['SKU-1', 50, true]])
+
+  // Canceled: back in stock, and the sold-out shirt is on sale again; a second cancel gives nothing back twice
+  const restored = await handlers.adjustOrderStock({ organization: store(), order: order(), action: 'restore', database })
+  assert.deepEqual([restored.adjusted, order().stock_adjusted_at], [true, null])
+  assert.deepEqual(stock(), [['SKU-1', 2, true], ['SKU-2', 5, true], ['SKU-1', 50, true]])
+  assert.equal((await handlers.adjustOrderStock({ organization: store(), order: order(), action: 'restore', database })).adjusted, false)
+  assert.deepEqual(stock(), [['SKU-1', 2, true], ['SKU-2', 5, true], ['SKU-1', 50, true]])
+
+  // An in-chat payment takes stock too, and never below zero
+  const short = seeded(requestedOrder(), { commerce_products: [{ id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Shirt', price: 500, inventory_count: 1, is_available: true }] })
+  await withWhatsApp(async () => { await pay(short, captured()) })
+  assert.deepEqual([short.tables.commerce_products[0].inventory_count, short.tables.commerce_products[0].is_available, Boolean(short.tables.commerce_orders[0].stock_adjusted_at)], [0, false, true])
+})
+
+test('Stock: a sold-out product is reported to the Meta catalog, best effort', async () => {
+  const catalogProduct = { id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Shirt', price: 500, inventory_count: 2, is_available: true, image_url: 'https://x/shirt.jpg', website_url: 'https://shop/shirt', metadata: { source: 'meta', catalog: { state: 'synced', catalog_id: '123456789' } } }
+  const batches = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/items_batch')) {
+      const body = init.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init.body))
+      batches.push(JSON.parse(body.get('requests')))
+      return { ok: true, status: 200, json: async () => ({ handles: ['batch-1'] }) }
+    }
+    return accepted()
+  }
+  const database = seeded({}, { commerce_products: [catalogProduct] })
+  try {
+    await tap(database, `cod_confirm_${ORDER_ID}`, withGateway({ meta_catalog_id: '123456789', meta_catalog_token: 'catalog-token' }))
+  } finally {
+    globalThis.fetch = original
+  }
+  assert.equal(batches.length, 1)
+  assert.deepEqual([batches[0][0].data.id, batches[0][0].data.availability], ['SKU-1', 'out of stock'])
+  assert.deepEqual([database.tables.commerce_products[0].inventory_count, database.tables.commerce_products[0].is_available], [0, false])
+
+  // Meta cannot be reached: the stock is still right here, and the order is still confirmed
+  const offline = seeded({}, { commerce_products: [catalogProduct] })
+  globalThis.fetch = async (url, init) => { if (String(url).includes('/items_batch')) throw new Error('network down'); return accepted() }
+  try {
+    assert.equal((await tap(offline, `cod_confirm_${ORDER_ID}`, withGateway({ meta_catalog_id: '123456789' }))).outcome, 'cod_confirmed')
+  } finally {
+    globalThis.fetch = original
+  }
+  assert.deepEqual([offline.tables.commerce_products[0].inventory_count, offline.tables.commerce_orders[0].status], [0, 'cod_confirmed'])
+})
+
+test('Stock: without the stock_adjusted_at column nothing is counted, with one warning', async () => {
+  const products = [{ id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Shirt', price: 500, inventory_count: 2, is_available: true }]
+  const warnings = []
+  const warn = console.warn
+  console.warn = (...args) => warnings.push(args.join(' '))
+  try {
+    for (const run of [1, 2]) {
+      const database = seeded({}, { commerce_products: products }, { missingColumns: { commerce_orders: ['stock_adjusted_at'] } })
+      await withWhatsApp(async () => { assert.equal((await tap(database, `cod_confirm_${ORDER_ID}`)).outcome, 'cod_confirmed') })
+      assert.deepEqual([database.tables.commerce_products[0].inventory_count, database.tables.commerce_orders[0].status, database.tables.commerce_orders[0].stock_adjusted_at], [2, 'cod_confirmed', undefined], `run ${run}`)
+    }
+  } finally {
+    console.warn = warn
+  }
+  assert.deepEqual(warnings.filter(line => line.includes(handlers.STOCK_MIGRATION_HINT)).length, 1)
 })

@@ -3,14 +3,18 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { isUuid } from '@/lib/record-visibility'
-import { getCommerceSummary } from '@/lib/commerce/commerce-stats'
-import { notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
+import { getCommerceSummary, invalidateCommerceSummary } from '@/lib/commerce/commerce-stats'
+import { adjustOrderStock, notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
   ORDER_VIEWS,
   PAYMENT_STATUSES,
   canTransitionOrder,
+  formatMoney,
+  hasPaymentRequest,
+  isCashCollection,
+  parseTrackingUrl,
   type OrderStatus,
   type OrderView,
 } from '@/lib/commerce/commerce-utils'
@@ -25,7 +29,10 @@ function getSupabase() {
 }
 
 const ORDER_COLUMNS = '*, items:commerce_order_items(*), contact:contacts(id, first_name, last_name, phone_number)'
-const WHATSAPP_COLUMNS = 'id, currency, whatsapp_api_token, whatsapp_phone_number_id, whatsapp_graph_api_version, commerce_address_flow_id, commerce_payment_gateway, commerce_gateway_config_name, commerce_enable_cod'
+// The whole row: the handlers read the WhatsApp connection, the catalog connection and the
+// order-update template, and a column a migration has not added yet must not fail the request.
+// The organization never leaves the server.
+const ORGANIZATION_COLUMNS = '*'
 
 // GET: List commerce orders, one page at a time, with totals for the whole store
 export async function GET(request: NextRequest) {
@@ -36,6 +43,9 @@ export async function GET(request: NextRequest) {
     const search = sanitizeSearchTerm(searchParams.get('search'))
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25', 10) || 25))
+    // The totals cost several queries: they come with the first page (and the refresh after a
+    // change, which asks for them), not with every page turn
+    const withSummary = page === 1 || searchParams.get('withSummary') === '1'
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
@@ -78,7 +88,7 @@ export async function GET(request: NextRequest) {
 
     const [{ data: orders, count, error }, summary] = await Promise.all([
       query.order('created_at', { ascending: false }).order('id', { ascending: true }).range((page - 1) * limit, page * limit - 1),
-      getCommerceSummary(supabase, orgId),
+      withSummary ? getCommerceSummary(supabase, orgId) : Promise.resolve(null),
     ])
     if (error) throw error
 
@@ -94,19 +104,27 @@ export async function GET(request: NextRequest) {
 }
 
 /** What to tell the customer about each status the team can set. */
-function describeStatusChange(orderNumber: string, status: OrderStatus, tracking: { number: string; carrier: string }): string {
+function describeStatusChange(
+  order: { order_number: string; total_amount: number; currency: string },
+  status: OrderStatus,
+  tracking: { number: string; carrier: string; url: string },
+  cashCollected: boolean
+): string {
+  const orderNumber = order.order_number
+  const via = tracking.carrier ? ` with ${tracking.carrier}` : ''
+  const number = tracking.number ? ` Tracking number: ${tracking.number}.` : ''
+  const link = tracking.url ? ` Track it here: ${tracking.url}` : ''
   switch (status) {
     case 'paid':
-      return `Payment received for order #${orderNumber}. We are preparing it now.`
+      return cashCollected
+        ? `Payment of ${formatMoney(order.total_amount, order.currency)} received in cash for order #${orderNumber}. Thank you!`
+        : `Payment received for order #${orderNumber}. We are preparing it now.`
     case 'cod_confirmed':
       return `Order #${orderNumber} is confirmed for Cash on Delivery. We are preparing your shipment.`
-    case 'shipped': {
-      const via = tracking.carrier ? ` with ${tracking.carrier}` : ''
-      const number = tracking.number ? ` Tracking number: ${tracking.number}.` : ''
-      return `Good news! Order #${orderNumber} has shipped${via}.${number}`
-    }
+    case 'shipped':
+      return `Good news! Order #${orderNumber} has shipped${via}.${number}${link}`
     case 'delivered':
-      return `Order #${orderNumber} has been delivered. Thank you for shopping with us!`
+      return `Order #${orderNumber} has been delivered${via}.${number}${link} Thank you for shopping with us!`
     case 'canceled':
       return `Order #${orderNumber} has been canceled. Reply here if you have any questions.`
     default:
@@ -114,9 +132,10 @@ function describeStatusChange(orderNumber: string, status: OrderStatus, tracking
   }
 }
 
-/** "paid", "confirmed for Cash on Delivery", ...: the status as the line noted in the chat reads it. */
-function describeAuditStatus(status: OrderStatus): string {
+/** "paid", "paid (cash collected)", "confirmed for Cash on Delivery", ...: the status as the line noted in the chat reads it. */
+function describeAuditStatus(status: OrderStatus, cashCollected: boolean): string {
   if (status === 'cod_confirmed') return 'confirmed for Cash on Delivery'
+  if (status === 'paid' && cashCollected) return 'paid (cash collected)'
   return (ORDER_STATUS_LABELS[status] || status).toLowerCase()
 }
 
@@ -128,6 +147,14 @@ export async function PATCH(request: NextRequest) {
     const text = (value: unknown, max: number) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : undefined)
     const trackingNumber = text(body?.trackingNumber, 80)
     const carrier = text(body?.carrier, 60)
+    let trackingUrl: string | undefined
+    if (typeof body?.trackingUrl === 'string') {
+      try {
+        trackingUrl = parseTrackingUrl(body.trackingUrl)
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
+    }
 
     if (!orderId || !organizationId) {
       return NextResponse.json({ error: 'Missing orderId or organizationId' }, { status: 400 })
@@ -161,8 +188,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    const statusChanged = Boolean(status) && status !== order.status
-    if (statusChanged && !canTransitionOrder(order.status, status)) {
+    if (status && status !== order.status && !canTransitionOrder(order.status, status)) {
       return NextResponse.json(
         {
           error: `An order that is "${ORDER_STATUS_LABELS[order.status as OrderStatus] || order.status}" cannot be changed to "${ORDER_STATUS_LABELS[status as OrderStatus]}".`,
@@ -171,17 +197,25 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // "Paid" on a Cash on Delivery order records the cash collected. A shipped order keeps its
+    // status (the money is noted on it), so it does not land back in "To ship".
+    const cashCollected = status === 'paid' && isCashCollection(order)
+    const paymentRecorded = status === 'paid' && order.payment_status !== 'paid'
+    const keepsStatus = status === 'paid' && order.status === 'shipped'
+    const statusChanged = Boolean(status) && status !== order.status && !keepsStatus
+
     const updates: Record<string, any> = { updated_at: new Date().toISOString() }
     if (statusChanged) {
       updates.status = status
-      // Keep the payment fields consistent with the status instead of trusting the client to send both
-      if (status === 'paid') {
-        updates.payment_status = 'paid'
-        // Marked by hand: the money came in outside the chat (bank transfer, cash, a payment link)
-        if (!order.payment_method || order.payment_method === 'cod') updates.payment_method = 'manual'
-      }
       if (status === 'cod_confirmed') updates.payment_method = 'cod'
       if (status === 'delivered' && order.payment_method === 'cod') updates.payment_status = 'paid' // cash is collected on delivery
+    }
+    // Keep the payment fields consistent with the status instead of trusting the client to send both
+    if (paymentRecorded) {
+      updates.payment_status = 'paid'
+      // Cash collected keeps "Cash on Delivery"; otherwise the money came in outside the chat
+      // (bank transfer, a payment link) and the order says so
+      if (!cashCollected && (!order.payment_method || order.payment_method === 'cod')) updates.payment_method = 'manual'
     }
     // A payment status set by hand, beyond what the new status already implies
     const paymentStatusChanged = Boolean(paymentStatus) && paymentStatus !== order.payment_status && paymentStatus !== updates.payment_status
@@ -193,9 +227,31 @@ export async function PATCH(request: NextRequest) {
     let shippingChanged = false
     if (trackingNumber !== undefined) { shipping.tracking_number = trackingNumber; shippingChanged = true }
     if (carrier !== undefined) { shipping.carrier = carrier; shippingChanged = true }
+    if (trackingUrl !== undefined) { shipping.tracking_url = trackingUrl; shippingChanged = true }
     if (statusChanged && status === 'shipped') { shipping.shipped_at = new Date().toISOString(); shippingChanged = true }
     if (statusChanged && status === 'delivered') { shipping.delivered_at = new Date().toISOString(); shippingChanged = true }
     if (shippingChanged) updates.shipping_address = shipping
+
+    // The handlers need the store's WhatsApp connection (and, for stock, its catalog connection)
+    const settles = statusChanged || paymentRecorded
+    const { data: org } = settles
+      ? await supabase.from('organizations').select(ORGANIZATION_COLUMNS).eq('id', organizationId).single()
+      : { data: null }
+
+    // A "Review and pay" card still open in the chat must not outlive the decision: once the
+    // order is confirmed for cash or marked paid by hand, paying it from the chat would charge
+    // the customer twice (or have the team ask for cash after an online payment)
+    let paymentRequestCanceled = false
+    if (statusChanged && (status === 'paid' || status === 'cod_confirmed') && hasPaymentRequest(order) && order.payment_status !== 'paid') {
+      paymentRequestCanceled = await voidPaymentRequest({
+        organization: org,
+        order,
+        database: supabase,
+        description: status === 'cod_confirmed'
+          ? `Online payment withdrawn: your order #${order.order_number} is confirmed for Cash on Delivery.`
+          : `Online payment withdrawn: order #${order.order_number} is already paid.`,
+      })
+    }
 
     // The status condition stops two people (or two clicks) from applying the same change twice
     let updateQuery = supabase.from('commerce_orders').update(updates).eq('id', orderId).eq('organization_id', organizationId)
@@ -207,11 +263,12 @@ export async function PATCH(request: NextRequest) {
     if (!updatedOrder) {
       return NextResponse.json({ error: 'This order was just changed by someone else. Refresh to see its current status.' }, { status: 409 })
     }
+    invalidateCommerceSummary(organizationId)
 
     // Who changed what is noted in the order's chat, next to the messages the customer got
     const who = String(authResult.user?.full_name || authResult.user?.email || '').trim() || 'a team member'
     const auditLines: string[] = []
-    if (statusChanged) auditLines.push(`[Order #${order.order_number} marked ${describeAuditStatus(status)} by ${who}]`)
+    if (statusChanged || (keepsStatus && paymentRecorded)) auditLines.push(`[Order #${order.order_number} marked ${describeAuditStatus(status, cashCollected)} by ${who}]`)
     if (paymentStatusChanged) auditLines.push(`[Order #${order.order_number} payment marked ${paymentStatus} by ${who}]`)
     if (auditLines.length > 0 && order.conversation_id) {
       const { error: auditErr } = await supabase.from('messages').insert(
@@ -220,25 +277,41 @@ export async function PATCH(request: NextRequest) {
       if (auditErr) console.error('[API Commerce Orders PATCH] The change could not be noted in the chat:', auditErr)
     }
 
+    // Stock leaves when the order is settled and comes back when it is canceled; both are
+    // recorded on the order, so a second click changes nothing
+    if (statusChanged && (status === 'paid' || status === 'cod_confirmed')) {
+      await adjustOrderStock({ organization: org, order: updatedOrder, action: 'take', database: supabase })
+    } else if (statusChanged && status === 'canceled') {
+      await adjustOrderStock({ organization: org, order: updatedOrder, action: 'restore', database: supabase })
+    }
+
     let notified = false
     let notifyError: string | null = null
-    let paymentRequestCanceled = false
 
-    if (statusChanged) {
-      const { data: org } = await supabase.from('organizations').select(WHATSAPP_COLUMNS).eq('id', organizationId).single()
-      const customerText = describeStatusChange(order.order_number, status, {
+    if (settles) {
+      const customerText = describeStatusChange(order, status, {
         number: String(shipping.tracking_number || ''),
         carrier: String(shipping.carrier || ''),
-      })
+        url: String(shipping.tracking_url || ''),
+      }, cashCollected)
 
       if (notifyCustomer) {
         // The result is reported back: WhatsApp refuses free-form messages outside the 24-hour
-        // window, and the team needs to know when that happens.
-        const result = await notifyOrderStatus({ organization: org, order, status, text: customerText, database: supabase })
+        // window, and the team needs to know when that happens. The updated order carries the
+        // tracking details and the customer's number. The order card is left alone once it was
+        // withdrawn, and when the money is noted on an order that has already shipped.
+        const result = await notifyOrderStatus({
+          organization: org,
+          order: updatedOrder,
+          status,
+          text: customerText,
+          card: !paymentRequestCanceled && !cashCollected,
+          database: supabase,
+        })
         notified = result.notified
         notifyError = result.error
         // Updating WhatsApp's order card to "canceled" withdraws the payment request as well
-        paymentRequestCanceled = status === 'canceled' && result.viaCard
+        if (status === 'canceled' && result.viaCard) paymentRequestCanceled = true
       }
 
       // Canceling without a message must still withdraw "Review and pay", or the customer
@@ -279,7 +352,7 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabase()
     const [{ data: order }, { data: org }] = await Promise.all([
       supabase.from('commerce_orders').select(ORDER_COLUMNS).eq('id', orderId).eq('organization_id', organizationId).maybeSingle(),
-      supabase.from('organizations').select(WHATSAPP_COLUMNS).eq('id', organizationId).maybeSingle(),
+      supabase.from('organizations').select(ORGANIZATION_COLUMNS).eq('id', organizationId).maybeSingle(),
     ])
     if (!order || !org) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
@@ -289,6 +362,8 @@ export async function POST(request: NextRequest) {
     if (result.step === 'not_sent') {
       return NextResponse.json({ error: result.error || 'The reminder could not be sent.' }, { status: 422 })
     }
+    // The reminder may have moved the order on (say, from "awaiting address" to "payment pending")
+    invalidateCommerceSummary(organizationId)
 
     const { data: refreshed } = await supabase.from('commerce_orders').select(ORDER_COLUMNS).eq('id', orderId).maybeSingle()
     return NextResponse.json({ success: true, step: result.step, order: refreshed || order })
