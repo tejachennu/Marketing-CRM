@@ -216,13 +216,17 @@ test('cannot send a native form belonging to another organization', async () => 
   const db = database()
   db.tables.whatsapp_native_flows[0].organization_id = 'other-org'
   const sent = []
-  const result = await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, db)
-  assert.equal(result.actionTaken, 'failed')
-  assert.equal(db.tables.flow_sessions[0].status, 'FAILED')
-  assert.equal(db.tables.flow_sessions[0].current_node_id, 'form')
-  assert.match(db.tables.flow_sessions[0].state_data._last_error, /Publish the selected form/)
-  // The customer is told instead of left waiting
-  assert.match(sent.at(-1).body, /something went wrong/)
+  const error = console.error
+  console.error = () => {}
+  try {
+    // The form cannot be found in this organization: the flow is taken out of service before anything is sent
+    const result = await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, db)
+    assert.equal(result.handled, false)
+  } finally { console.error = error }
+  assert.equal(sent.length, 0)
+  assert.equal(db.tables.flow_sessions.length, 0)
+  assert.equal(db.tables.whatsapp_workflows[0].is_active, false)
+  assert.match(db.tables.whatsapp_workflows[0].paused_reason, /the selected form no longer exists/)
 })
 test('handles action-only workflows without a second chatbot reply', async () => {
   const db = database({ whatsapp_workflows: [workflow([baseNodes[0], node('ticket', 'ticket_action', { subject: 'Help' })], [edge('trigger', 'ticket')])] })
@@ -719,8 +723,14 @@ test('activation is refused while another live flow starts on the same keyword o
   assert.deepEqual(conflicts[0].keywords, ['hi'])
   assert.match(conflicts[0].message, /"hi" already starts "Support desk"/)
   assert.match(conflicts[0].note, /also used by "Support desk"/)
-  // Different match modes never take the same message; a flow never conflicts with itself
-  assert.deepEqual(getTriggerConflicts(pricing, [keywordFlow('wf-exact', 'Exact', ['hi'], { match_mode: 'exact' }), pricing]), [])
+  // An older "hi" (contains) takes every message a newer exact "hi" starts on, whichever is being activated;
+  // a newer, broader keyword next to an older exact one keeps its other messages. A flow never conflicts with itself.
+  const exact = { ...keywordFlow('wf-exact', 'Exact', ['hi'], { match_mode: 'exact' }), created_at: '2026-02-01T00:00:00Z' }
+  const olderPricing = { ...pricing, created_at: '2026-01-01T00:00:00Z' }
+  assert.match(getTriggerConflicts(olderPricing, [exact, olderPricing])[0].message, /The keyword "hi" already starts "Exact"/)
+  assert.match(getTriggerConflicts(exact, [olderPricing])[0].message, /The keyword "hi" already starts "Pricing"/)
+  assert.deepEqual(getTriggerConflicts({ ...pricing, created_at: '2026-03-01T00:00:00Z' }, [exact]), [])
+  assert.deepEqual(getTriggerConflicts(exact, [{ ...pricing, created_at: '2026-03-01T00:00:00Z' }]), [])
   const welcome = (id, name) => ({ ...workflow([node('trigger', 'trigger', { trigger_type: 'first_message' }), node('m', 'message', { body: 'x' })], [edge('trigger', 'm')]), id, name })
   assert.match(getTriggerConflicts(welcome('w1', 'Welcome'), [welcome('w2', 'Onboarding')])[0].message, /"Onboarding" already starts on a customer's first message/)
   assert.deepEqual(getTriggerConflicts(welcome('w1', 'Welcome'), [support]), [])
@@ -948,11 +958,51 @@ test('activation tells a deleted form from an unpublished or retired one, and th
   assert.match((await check('draft')).join(), /Form: publish the selected form to Meta first/)
   assert.match((await check('retired')).join(), /Form: the selected form was retired on WhatsApp; select another form/)
   assert.match((await check('deleted')).join(), /Form: the selected form no longer exists/)
-  // Sending a retired form fails the run with the reason
-  const flow = workflow([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'retired' })], [edge('trigger', 'f')])
+  // A live flow whose form was retired since (here or in WhatsApp Manager) is paused before it greets
+  // anyone, so customers reach the assistants instead of an intro and an apology
+  const flow = workflow([baseNodes[0], baseNodes[1], node('f', 'native_flow_trigger', { native_flow_id: 'retired' })], [edge('trigger', 'intro'), edge('intro', 'f')])
   const run = database({ whatsapp_workflows: [flow], whatsapp_native_flows: forms })
-  assert.equal((await executeFlowRuntime(input, run)).actionTaken, 'failed')
-  assert.match(run.tables.flow_sessions[0].state_data._last_error, /retired on WhatsApp/)
+  const sent = []
+  const error = console.error
+  console.error = () => {}
+  try {
+    assert.equal((await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, run)).handled, false)
+    assert.equal(sent.length, 0)
+    assert.equal(run.tables.flow_sessions.length, 0)
+    assert.equal(run.tables.whatsapp_workflows[0].is_active, false)
+    assert.match(run.tables.whatsapp_workflows[0].paused_reason, /the selected form was retired on WhatsApp/)
+    // Retired while a session was on its way to the form: that run fails with the reason, and the flow is paused for everyone after
+    const menu = node('menu', 'interactive_buttons', { body: 'Pick', buttons: [{ id: 'form', title: 'Form' }] })
+    const later = workflow([baseNodes[0], menu, node('f', 'native_flow_trigger', { native_flow_id: 'live' })], [edge('trigger', 'menu'), edge('menu', 'f', 'form')])
+    const midway = database({ whatsapp_workflows: [later], whatsapp_native_flows: [{ id: 'live', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '77', flow_json: { screens: [{ id: 'A' }] } }] })
+    await executeFlowRuntime(input, midway)
+    midway.tables.whatsapp_native_flows[0].status = 'DEPRECATED'
+    assert.equal((await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'Form', buttonId: 'form' }, midway)).actionTaken, 'failed')
+    assert.match(midway.tables.flow_sessions[0].state_data._last_error, /retired on WhatsApp/)
+    assert.equal(midway.tables.whatsapp_workflows[0].is_active, false)
+    assert.match(midway.tables.whatsapp_workflows[0].paused_reason, /retired on WhatsApp/)
+    // The manager already moved the live flow to another form before retiring the old one: a session still running
+    // the old snapshot fails on its own, and the live flow, which sends the new form, keeps serving everyone else
+    const menuFlow = () => workflow([baseNodes[0], menu, node('f', 'native_flow_trigger', { native_flow_id: 'live' })], [edge('trigger', 'menu'), edge('menu', 'f', 'form')])
+    const switched = database({ whatsapp_workflows: [menuFlow()], whatsapp_native_flows: [
+      { id: 'live', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '77', flow_json: { screens: [{ id: 'A' }] } },
+      { id: 'next', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '78', flow_json: { screens: [{ id: 'A' }] } }] })
+    await executeFlowRuntime(input, switched)
+    const replaced = menuFlow()
+    switched.tables.whatsapp_workflows[0] = { ...replaced, canvas_nodes: replaced.canvas_nodes.map(item => item.id === 'f' ? { ...item, data: { native_flow_id: 'next' } } : item) }
+    switched.tables.whatsapp_native_flows[0].status = 'DEPRECATED'
+    assert.equal((await executeFlowRuntime({ ...input, messageId: 'in-3', userInput: 'Form', buttonId: 'form' }, switched)).actionTaken, 'failed')
+    assert.match(switched.tables.flow_sessions[0].state_data._last_error, /retired on WhatsApp/)
+    assert.equal(switched.tables.whatsapp_workflows[0].is_active, true)
+    assert.equal(switched.tables.whatsapp_workflows[0].paused_reason, undefined)
+    // The same when the old form was deleted instead of retired
+    switched.tables.flow_sessions.length = 0
+    await executeFlowRuntime({ ...input, messageId: 'in-4' }, switched)
+    switched.tables.flow_sessions[0].state_data._workflow = menuFlow()
+    switched.tables.whatsapp_native_flows.splice(0, 1)
+    assert.equal((await executeFlowRuntime({ ...input, messageId: 'in-5', userInput: 'Form', buttonId: 'form' }, switched)).actionTaken, 'failed')
+    assert.equal(switched.tables.whatsapp_workflows[0].is_active, true)
+  } finally { console.error = error }
   // The picker never offers a retired form, except the one a block already uses
   const list = [{ id: 'draft', status: 'DRAFT' }, { id: 'retired', status: 'DEPRECATED' }, { id: 'live', status: 'PUBLISHED', flow_id_meta: '1' }]
   assert.deepEqual(listSelectableForms(list).map(form => form.id), ['draft', 'live'])
@@ -992,4 +1042,106 @@ test('agent handoff: only a chat left for the team waits in the hand-off queue',
   assert.equal(old.tables.conversations[0].auto_reply_enabled, false)
   assert.equal(old.tables.conversations[0].handed_off_at, undefined)
   assert.equal(old.tables.flow_sessions[0].status, 'COMPLETED')
+})
+
+// ── Final review: what pauses a live flow, overlapping keywords, the form wait ──
+test('a live flow is not paused over activation-only problems, which still block activation', async () => {
+  // Built before the placeholder and connection checks existed: a form answer used before the form,
+  // a condition on the form, a connection from an output the block no longer has, and an orphan block
+  const legacy = () => workflow([
+    node('trigger', 'trigger', { keywords: ['hi'], trigger_type: 'keyword' }),
+    node('m', 'message', { title: 'Intro', body: 'Hi {{contact.name}}, ref {{form.email}}' }),
+    node('c', 'condition_branch', { title: 'Check', variable_name: 'form', operator: 'is_set' }),
+    node('yes', 'message', { body: 'Yes' }), node('no', 'message', { body: 'No' }),
+    node('orphan', 'message', { title: 'Orphan', body: 'Never sent' }),
+  ], [edge('trigger', 'm'), edge('m', 'c'), edge('c', 'yes', 'true'), edge('c', 'no', 'false'), edge('yes', 'no', 'stale')])
+  const flow = legacy()
+  const issues = getWorkflowIssues(flow.canvas_nodes, flow.canvas_edges)
+  assert.ok(issues.length >= 4)
+  assert.ok(issues.every(issue => issue.activationOnly), 'each one is an activation gate')
+  assert.match(validateWorkflow(flow.canvas_nodes, flow.canvas_edges).join('\n'), /\{\{form\.email\}\} is only available after a WhatsApp form block/)
+  assert.deepEqual(validateWorkflow(flow.canvas_nodes, flow.canvas_edges, { runtime: true }), [])
+  // Live, it keeps answering: the missing value renders blank, as it did before
+  const db = database({ whatsapp_workflows: [flow] })
+  const sent = []
+  const result = await executeFlowRuntime({ ...input, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(result.handled, true)
+  assert.equal(sent[0].body, 'Hi Asha, ref ')
+  assert.equal(sent[1].body, 'No')
+  assert.equal(db.tables.whatsapp_workflows[0].is_active, true)
+  assert.equal(db.tables.whatsapp_workflows[0].paused_reason, undefined)
+  // ...but it cannot be switched on again as saved
+  const readiness = await getWorkflowReadiness(database({ whatsapp_workflows: [] }), legacy())
+  assert.match(readiness.join('\n'), /Check: the value "form" is only available after a WhatsApp form block/)
+  assert.match(readiness.join('\n'), /a connection leaves an output this block does not have \("stale"\)/)
+  assert.match(readiness.join('\n'), /Orphan: connect this block to the flow, or delete it/)
+  // What the runtime cannot survive still pauses it
+  const broken = workflow([node('trigger', 'trigger', { keywords: ['hi'] }), node('menu', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'one', title: 'One' }] })], [edge('trigger', 'menu')])
+  assert.match(validateWorkflow(broken.canvas_nodes, broken.canvas_edges, { runtime: true }).join(), /connect the "One" choice/)
+})
+
+test('a keyword an older live flow would always take is refused, whatever the match modes', async () => {
+  const flow = (id, name, keywords, mode, created_at) => ({ ...workflow([node('trigger', 'trigger', { keywords, trigger_type: 'keyword', match_mode: mode }), node('m', 'message', { body: 'x' })], [edge('trigger', 'm')]), id, name, created_at })
+  const order = flow('wf-order', 'Orders', ['order'], 'contains', '2026-01-01T00:00:00Z')
+  // A newer, more specific phrase never fires: the older "order" takes every message with it
+  const status = flow('wf-status', 'Order status', ['order status'], 'contains', '2026-02-01T00:00:00Z')
+  const [conflict] = getTriggerConflicts(status, [order])
+  assert.deepEqual(conflict.keywords, ['order status'])
+  assert.match(conflict.message, /The older flow "Orders" starts on "order" \(contains match\), so it would take every message for "order status"/)
+  assert.match(conflict.note, /"order status" would start the older "Orders" instead/)
+  // The same keyword under a newer exact match is shadowed too
+  assert.equal(getTriggerConflicts(flow('wf-x', 'Exact order', ['order'], 'exact', '2026-02-01T00:00:00Z'), [order]).length, 1)
+  // Switching the older, broader flow back on would silence the newer one: refused as well
+  assert.match(getTriggerConflicts(order, [status])[0].message, /This flow is older than "Order status" .* take every message for "order status" from it/)
+  assert.match(getTriggerConflicts(order, [status])[0].note, /Would take "order status" from "Order status"/)
+  // An older specific phrase next to a newer general keyword is fine: each keeps its own messages
+  const olderStatus = { ...status, created_at: '2025-12-01T00:00:00Z' }
+  assert.deepEqual(getTriggerConflicts(order, [olderStatus]), [])
+  assert.deepEqual(getTriggerConflicts(olderStatus, [order]), [])
+  // A narrower winner does not take everything: an older exact "order" leaves "my order" to a newer contains flow
+  assert.deepEqual(getTriggerConflicts(flow('wf-c', 'Contains', ['order'], 'contains', '2026-03-01T00:00:00Z'), [flow('wf-e', 'Exact', ['order'], 'exact', '2026-01-01T00:00:00Z')]), [])
+  // Fuzzy matches inside words, so it shadows contains, but contains never shadows fuzzy
+  assert.equal(getTriggerConflicts(flow('wf-n', 'New', ['orders'], 'contains', '2026-03-01T00:00:00Z'), [flow('wf-f', 'Fuzzy', ['order'], 'fuzzy', '2026-01-01T00:00:00Z')]).length, 1)
+  assert.deepEqual(getTriggerConflicts(flow('wf-n', 'New', ['order'], 'fuzzy', '2026-03-01T00:00:00Z'), [flow('wf-o', 'Old', ['order'], 'contains', '2026-01-01T00:00:00Z')]), [])
+  // Activation uses the creation dates the runtime orders by
+  const db = database({ whatsapp_workflows: [{ ...order, is_active: true }] })
+  assert.match((await getWorkflowReadiness(db, status)).join(), /The older flow "Orders"/)
+  // At runtime the older flow does take the message
+  const live = database({ whatsapp_workflows: [{ ...order, is_active: true }, { ...status, is_active: true }] })
+  assert.equal((await executeFlowRuntime({ ...input, userInput: 'order status' }, live)).executedWorkflowId, 'wf-order')
+})
+
+test('while a form waits, other messages get a reminder for a day, then end the session and reach the assistants and other flows', async () => {
+  const other = { ...workflow([node('trigger', 'trigger', { keywords: ['support'], trigger_type: 'keyword' }), node('m', 'message', { body: 'Support here' })], [edge('trigger', 'm')]), id: 'support-flow', name: 'Support' }
+  const db = database({ whatsapp_workflows: [workflow(baseNodes, baseEdges), other] })
+  await executeFlowRuntime(input, db)
+  const session = db.tables.flow_sessions[0]
+  const sentAt = hoursAgo(2)
+  session.last_interaction_at = sentAt
+  // Within the day: the reminder, without resetting the clock, so chatting cannot keep the form wait open
+  const reminded = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'where is my order?' }, db)
+  assert.equal(reminded.actionTaken, 'waiting_for_form')
+  assert.match(reminded.replyMessage.body, /Please complete the form above/)
+  assert.equal(session.last_interaction_at, sentAt)
+  // After the day: the session ends, and the message goes on to the assistants...
+  session.last_interaction_at = hoursAgo(30)
+  const later = await executeFlowRuntime({ ...input, messageId: 'in-3', userInput: 'where is my order?' }, db)
+  assert.equal(later.handled, false)
+  assert.equal(session.status, 'EXPIRED')
+  // ...or starts another flow on its keyword
+  const fresh = database({ whatsapp_workflows: [workflow(baseNodes, baseEdges), other] })
+  await executeFlowRuntime(input, fresh)
+  fresh.tables.flow_sessions[0].last_interaction_at = hoursAgo(30)
+  const started = await executeFlowRuntime({ ...input, messageId: 'in-4', userInput: 'support' }, fresh)
+  assert.equal(started.executedWorkflowId, 'support-flow')
+  assert.equal(fresh.tables.flow_sessions[0].status, 'EXPIRED')
+  // A form with another token after the day does not keep the session either; its answers are still kept
+  const stray = database()
+  await executeFlowRuntime(input, stray)
+  stray.tables.flow_sessions[0].last_interaction_at = hoursAgo(30)
+  const saved = await executeFlowRuntime({ ...input, messageId: 'form-x', flowSubmissionData: { flow_token: 'other-token', full_name: 'Asha' } }, stray)
+  assert.equal(saved.actionTaken, 'saved_submission')
+  assert.equal(stray.tables.flow_sessions[0].status, 'EXPIRED')
+  assert.equal(stray.tables.flow_submissions.length, 1)
+  // The form itself is still accepted for three days (see the 30-hour case above)
 })

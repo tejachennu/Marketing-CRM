@@ -160,7 +160,7 @@ export default function NativeFlowDesignerPage() {
   const retireFlow = async () => {
     const confirmed = await confirm({
       title: 'Retire this form?',
-      message: 'The form stops working on WhatsApp for good. Flows that send it must switch to another form before they can go live, and customers who open an old message with it will see an error. Its responses stay here until you delete the form.',
+      message: 'The form stops working on WhatsApp for good. A live flow that sends it must be paused or switched to another form first; paused flows that send it need another form before they can go live. Customers who open an old message with it will see an error. Its responses stay here until you delete the form.',
       confirmLabel: 'Retire form',
       destructive: true,
     })

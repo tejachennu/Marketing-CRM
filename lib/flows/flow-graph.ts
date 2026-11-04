@@ -125,21 +125,48 @@ export interface TriggerConflict {
   /** The other flow that would take the same messages. */
   workflowId: string
   workflowName: string
-  /** The keywords both flows start on, under the same match mode; empty when both start on the first message. */
+  /** The keywords of the flow that loses them (this one, or the other); empty when both start on the first message. */
   keywords: string[]
   /** One sentence for the activation refusal. */
   message: string
   /** A short form for the list page. */
   note: string
 }
+type ConflictSource = TriggerSource & { id?: string; created_at?: string | null }
 /**
- * Why this flow and another live flow would fight over the same message: a keyword both use under
- * the same match mode, or two first-message triggers. The oldest flow would silently win, so
- * activation refuses these instead.
+ * Whether `older` is tried before `newer` for a message, as the runtime orders live flows (oldest
+ * first). Null when that cannot be told (same or unknown time). A flow without a creation time
+ * has not been saved yet, so it counts as the newest.
  */
-export function getTriggerConflicts(workflow: TriggerSource & { id?: string }, others: Array<TriggerSource & { id: string; name: string }>): TriggerConflict[] {
+function triedFirst(older: ConflictSource, newer: ConflictSource): boolean | null {
+  const a = Date.parse(String(older.created_at ?? '')), b = Date.parse(String(newer.created_at ?? ''))
+  if (Number.isNaN(a) && Number.isNaN(b)) return null
+  if (Number.isNaN(b)) return true
+  if (Number.isNaN(a)) return false
+  return a === b ? null : a < b
+}
+/**
+ * The keywords of `loser` that every message starting it would start `winner` instead, because
+ * the winner is tried first. Approximated per keyword: the winner's keyword matches the loser's
+ * keyword, under a winner mode at least as broad as the loser's (exact < contains < fuzzy).
+ */
+function shadowedKeywords(loser: { mode: string; keywords: string[] }, winner: { mode: string; keywords: string[] }): string[] {
+  const breadth: Record<string, number> = { exact: 0, contains: 1, fuzzy: 2 }
+  if (!(loser.mode in breadth) || !(winner.mode in breadth)) return []
+  // An exact keyword is one message, so any winner that matches it takes all of it
+  if (loser.mode !== 'exact' && breadth[winner.mode] < breadth[loser.mode]) return []
+  return loser.keywords.filter(keyword => winner.keywords.some(theirs => keywordMatches(keyword, theirs, winner.mode)))
+}
+/**
+ * Why this flow and another live flow would fight over the same message: a keyword of one that the
+ * older flow (tried first) would always take, such as "order status" under an older "order", or
+ * two first-message triggers. The oldest flow would silently win, so activation refuses these
+ * instead. A newer, broader keyword next to an older, specific one is fine: each keeps its messages.
+ */
+export function getTriggerConflicts(workflow: ConflictSource, others: Array<ConflictSource & { id: string; name: string }>): TriggerConflict[] {
   const own = getTriggerSettings(workflow)
   const conflicts: TriggerConflict[] = []
+  const quote = (keywords: string[]) => keywords.map(keyword => `"${keyword}"`).join(', ')
   for (const other of others) {
     if (!other || other.id === workflow.id) continue
     const theirs = getTriggerSettings(other)
@@ -149,13 +176,29 @@ export function getTriggerConflicts(workflow: TriggerSource & { id?: string }, o
         note: `First-message trigger also used by "${other.name}"` })
       continue
     }
-    if (own.type !== 'keyword' || theirs.type !== 'keyword' || own.mode !== theirs.mode) continue
-    const shared = own.keywords.filter(keyword => theirs.keywords.includes(keyword))
-    if (!shared.length) continue
-    const list = shared.map(keyword => `"${keyword}"`).join(', ')
-    conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: shared,
-      message: `The keyword${shared.length > 1 ? 's' : ''} ${list} already start${shared.length > 1 ? '' : 's'} "${other.name}"; change the keywords in one of the two flows`,
-      note: `Keyword${shared.length > 1 ? 's' : ''} ${list} also used by "${other.name}"` })
+    if (own.type !== 'keyword' || theirs.type !== 'keyword') continue
+    const otherFirst = triedFirst(other, workflow)
+    // When the order cannot be told, either flow could be the one that wins
+    const ownLoses = otherFirst !== false ? shadowedKeywords(own, theirs) : []
+    const otherLoses = ownLoses.length || otherFirst === true ? [] : shadowedKeywords(theirs, own)
+    const lost = ownLoses.length ? ownLoses : otherLoses
+    if (!lost.length) continue
+    const winner = ownLoses.length ? theirs : own
+    const list = quote(lost)
+    const plural = lost.length > 1
+    if (lost.every(keyword => winner.keywords.includes(keyword))) {
+      conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: lost,
+        message: `The keyword${plural ? 's' : ''} ${list} already start${plural ? '' : 's'} "${other.name}"; change the keywords in one of the two flows`,
+        note: `Keyword${plural ? 's' : ''} ${list} also used by "${other.name}"` })
+    } else if (ownLoses.length) {
+      conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: lost,
+        message: `The older flow "${other.name}" starts on ${quote(theirs.keywords)} (${theirs.mode} match), so it would take every message for ${list}; change the keywords in one of the two flows`,
+        note: `${list} would start the older "${other.name}" instead` })
+    } else {
+      conflicts.push({ workflowId: other.id, workflowName: other.name, keywords: lost,
+        message: `This flow is older than "${other.name}" and starts on ${quote(own.keywords)} (${own.mode} match), so it would take every message for ${list} from it; change the keywords in one of the two flows`,
+        note: `Would take ${list} from "${other.name}"` })
+    }
   }
   return conflicts
 }
@@ -300,6 +343,12 @@ export interface WorkflowIssue {
   text: string
   /** Worth fixing, but the flow still runs: a warning never blocks activation. */
   warning?: true
+  /**
+   * Blocks activation, but a flow that is already live keeps running with it: the runtime survives
+   * it (a placeholder renders blank, a stale connection is never followed). Flows activated before
+   * these checks existed must not be paused over them.
+   */
+  activationOnly?: true
 }
 
 /** Everything that stops a workflow from running, attached to the block it concerns, plus warnings about what it could do better. */
@@ -321,6 +370,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     const label = data.title || node.id
     const fail = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}` })
     const warn = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}`, warning: true })
+    const gate = (message: string) => issues.push({ nodeId: node.id, message, text: `${label}: ${message}`, activationOnly: true })
     if (!supported.has(node.type)) fail('this action is not supported yet')
     const outgoing = getOutgoingEdges(edges, node.id)
     const handles = outgoing.map(edge => edge.sourceHandle || '')
@@ -328,7 +378,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     // The runtime follows a handle only when it names a real output; any other connection would never be taken
     const outputs = getOutputHandles(node)
     for (const edge of outgoing) {
-      if (edge.sourceHandle && (!outputs || !outputs.includes(edge.sourceHandle))) fail(`a connection leaves an output this block does not have ("${edge.sourceHandle}"); remove it and connect the block again`)
+      if (edge.sourceHandle && (!outputs || !outputs.includes(edge.sourceHandle))) gate(`a connection leaves an output this block does not have ("${edge.sourceHandle}"); remove it and connect the block again`)
     }
     // A placeholder nothing fills in reaches the customer as a blank
     const variables = variablesByNode.get(node.id) || { paths: BUILT_IN_VARIABLES, roots: [] }
@@ -338,7 +388,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
         if (seenPlaceholders.has(placeholder)) continue
         seenPlaceholders.add(placeholder)
         const problem = getVariableProblem(placeholder, variables)
-        if (problem) fail(`{{${placeholder}}} ${problem}`)
+        if (problem) gate(`{{${placeholder}}} ${problem}`)
       }
     }
     if (node.type === 'trigger') {
@@ -388,7 +438,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       if (!variable) fail('select a variable')
       else {
         const problem = getVariableProblem(String(variable), variables)
-        if (problem) fail(`the value "${variable}" ${problem}`)
+        if (problem) gate(`the value "${variable}" ${problem}`)
       }
       if (!['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'is_set'].includes(data.operator)) fail('select a condition operator')
       // Each outcome needs its own connection; one plain connection would send both outcomes to the same block
@@ -438,14 +488,19 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       }
     }
     for (const node of nodes) {
-      if (!reached.has(node.id)) issues.push({ nodeId: node.id, message: 'connect this block to the flow, or delete it', text: `${node.data?.title || node.id}: connect this block to the flow, or delete it` })
+      // The runtime never reaches it, so it is no reason to pause a live flow
+      if (!reached.has(node.id)) issues.push({ nodeId: node.id, message: 'connect this block to the flow, or delete it', text: `${node.data?.title || node.id}: connect this block to the flow, or delete it`, activationOnly: true })
     }
   }
   const seen = new Set<string>()
   return issues.filter(issue => !seen.has(issue.text) && Boolean(seen.add(issue.text)))
 }
 
-/** The problems that keep a workflow from going live; warnings are left out. */
-export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
-  return getWorkflowIssues(nodes, edges).filter(issue => !issue.warning).map(issue => issue.text)
+/**
+ * The problems that keep a workflow from going live; warnings are left out. With `runtime`, only
+ * those a live flow cannot run with (a missing trigger or connection, an unsupported block, an
+ * unconnected choice or branch, a loop): the rest stay activation gates and never pause it.
+ */
+export function validateWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[], options: { runtime?: boolean } = {}): string[] {
+  return getWorkflowIssues(nodes, edges).filter(issue => !issue.warning && !(options.runtime && issue.activationOnly)).map(issue => issue.text)
 }

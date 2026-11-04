@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { WhatsAppWorkflow, WorkflowNode, FlowSession } from './flow-types'
 import { getStartNode, getNextNode, resolveReply, matchesTrigger, readNodeField, interpolateVariables, validateWorkflow, normalizeTags } from './flow-graph'
 import { runFlow, type FlowReply, type RunResult } from './flow-runner'
+import { getNativeFormProblems } from './flow-readiness'
 import { isReadOnly } from '@/lib/rbac'
 export { getStartNode, getNextNode, getOutgoingEdges, interpolateVariables } from './flow-graph'
 
@@ -43,7 +44,11 @@ export class FlowLockBusyError extends Error {
 
 /** A session the customer stopped answering ends after a day. */
 export const SESSION_IDLE_LIMIT_MS = 24 * 60 * 60 * 1000
-/** A session waiting on a WhatsApp form gets three days: forms are opened later than a quick reply, and a late answer is still wanted. */
+/**
+ * A session waiting on a WhatsApp form keeps the form open for three days: forms are opened later
+ * than a quick reply, and a late answer still continues the flow. Anything else the customer
+ * writes after the usual day ends the session instead, so it reaches the assistants and other flows.
+ */
 export const FORM_WAIT_LIMIT_MS = 72 * 60 * 60 * 1000
 const OPEN_STATUSES = ['IN_PROGRESS', 'PAUSED_RAG']
 const EXIT_WORDS = ['stop', 'cancel', 'exit']
@@ -77,11 +82,15 @@ function warnOnce(key: string, message: string) {
 const safeAnswers = (answers: Record<string, any>) => Object.fromEntries(Object.entries(answers).filter(([key]) => !UNSAFE_KEYS.includes(key)))
 const withProcessed = (state: Record<string, any>, messageId?: string) => ({ ...state, _processed_messages: [...(state._processed_messages || []), messageId].filter(Boolean).slice(-100) })
 const client = (database?: any) => database || createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-/** How long this session may wait for the customer: longer while it waits on a form. Sessions keep the flow they started with, so the step is read from there. */
-function idleLimitFor(session: FlowSession): number {
+/**
+ * How long this session may wait for this message: longer only when it is the answer to the form the
+ * session is waiting on. Sessions keep the flow they started with, so the step is read from there.
+ */
+function idleLimitFor(session: FlowSession, form?: Record<string, any>): number {
   const nodes = session.state_data?._workflow?.canvas_nodes
   const current = Array.isArray(nodes) ? nodes.find((node: any) => node?.id === session.current_node_id) : undefined
-  return current?.type === 'native_flow_trigger' ? FORM_WAIT_LIMIT_MS : SESSION_IDLE_LIMIT_MS
+  const ownForm = Boolean(form?.flow_token) && form!.flow_token === session.state_data?._flow_token
+  return current?.type === 'native_flow_trigger' && ownForm ? FORM_WAIT_LIMIT_MS : SESSION_IDLE_LIMIT_MS
 }
 
 export async function executeFlowRuntime(input: FlowRuntimeInput, database?: any): Promise<FlowExecutionResult> {
@@ -125,11 +134,13 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
   const superseded = sessions.filter(candidate => OPEN_STATUSES.includes(candidate.status) && candidate.id !== session?.id)
   const expire = (ids: string[]) => checked(supabase.from('flow_sessions').update({ status: 'EXPIRED' }).eq('organization_id', organizationId).in('id', ids))
   if (superseded.length) await expire(superseded.map(candidate => candidate.id))
-  if (session && Date.now() - Date.parse(session.last_interaction_at) > idleLimitFor(session)) {
+  if (session && Date.now() - Date.parse(session.last_interaction_at) > idleLimitFor(session, form)) {
     await expire([session.id])
     session = undefined
   }
   let workflow: WhatsAppWorkflow | undefined
+  // The workflow row as it is live now; a continuing session runs its own snapshot of an older version
+  let liveWorkflow: WhatsAppWorkflow | undefined
   let target: WorkflowNode | undefined
   let state: Record<string, any> = { ...input.contactData, last_input: text }
   let completedForm = false
@@ -154,10 +165,12 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
     } else {
       const run = session
       workflow = flow
+      liveWorkflow = active
       state = { ...run.state_data, ...input.contactData, last_input: text }
-      const stay = async (reply: FlowReply, actionTaken: string): Promise<FlowExecutionResult> => {
+      // `refresh: false` keeps the idle clock running: chatting while a form waits must not keep the session open for ever
+      const stay = async (reply: FlowReply, actionTaken: string, { refresh = true } = {}): Promise<FlowExecutionResult> => {
         await input.sendReply?.(reply)
-        await updateSession(run, { state_data: withProcessed(state, input.messageId), last_interaction_at: now() })
+        await updateSession(run, { state_data: withProcessed(state, input.messageId), ...(refresh ? { last_interaction_at: now() } : {}) })
         return { handled: true, executedWorkflowId: flow.id, workflowName: flow.name, currentNodeId: current.id, actionTaken, replyMessages: [reply], replyMessage: reply }
       }
       try {
@@ -189,7 +202,8 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           if (variable && !UNSAFE_KEYS.includes(String(variable))) state[String(variable)] = choice.id
           target = resolution.next
         } else if (current.type === 'native_flow_trigger') {
-          if (!ownsForm) return await stay(COMPLETE_FORM, 'waiting_for_form')
+          // Within a day of the form being sent; after that this message would have ended the session above
+          if (!ownsForm) return await stay(COMPLETE_FORM, 'waiting_for_form', { refresh: false })
           const { flow_token, ...answers } = form!
           const clean = safeAnswers(answers)
           const submission = await storeSubmission(supabase, { organization_id: organizationId, flow_id: state._native_flow_id, workflow_id: flow.id, session_id: run.id, flow_token,
@@ -215,9 +229,12 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
     workflows.sort((a, b) => Number(isWelcome(a)) - Number(isWelcome(b)))
     for (const candidate of workflows) {
       if (!matchesTrigger(candidate, button || text, input.isFirstMessage)) continue
-      const errors = validateWorkflow(candidate.canvas_nodes, candidate.canvas_edges)
-      if (!errors.length) { workflow = candidate; break }
-      // Activated before today's checks existed: take it out of service so the assistants answer, instead of Meta retrying for days
+      // Only what the runtime cannot run with: a placeholder or a stale connection is an activation gate, never a reason to pause
+      const errors = validateWorkflow(candidate.canvas_nodes, candidate.canvas_edges, { runtime: true })
+      // A form retired or deleted since activation: every customer would get the intro and then an apology
+      if (!errors.length) errors.push(...await getNativeFormProblems(supabase, candidate))
+      if (!errors.length) { workflow = liveWorkflow = candidate; break }
+      // It cannot run as saved: take it out of service so the assistants answer, instead of Meta retrying for days
       await pauseWorkflow(supabase, candidate, errors)
     }
     if (!workflow) return { handled: false }
@@ -241,8 +258,15 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
       nativeFlow: async (node, data) => {
         const id = readNodeField(node.data, 'flowId', 'native_flow_id', 'flow_id')
         const native = await checked(supabase.from('whatsapp_native_flows').select('*').eq('id', id).eq('organization_id', organizationId).maybeSingle())
-        if (native?.status === 'DEPRECATED') throw new Error('The selected form was retired on WhatsApp; select another form in this workflow')
-        if (!native?.flow_id_meta || native.status !== 'PUBLISHED') throw new Error('Publish the selected form to Meta before activating this workflow')
+        const unusable = native?.status === 'DEPRECATED' ? 'The selected form was retired on WhatsApp; select another form in this workflow'
+          : !native?.flow_id_meta || native.status !== 'PUBLISHED' ? 'Publish the selected form to Meta before activating this workflow' : null
+        if (unusable) {
+          // The form changed after this session started: no later customer should reach it either. Only when the
+          // live version still sends it: an old session may run a snapshot whose form the manager has since replaced
+          const liveUsesForm = Array.isArray(liveWorkflow?.canvas_nodes) && liveWorkflow!.canvas_nodes.some(item => item?.type === 'native_flow_trigger' && readNodeField(item.data, 'flowId', 'native_flow_id', 'flow_id') === id)
+          if (liveWorkflow && liveUsesForm) await pauseWorkflow(supabase, liveWorkflow, [`${node.data?.title || node.id}: ${unusable}`])
+          throw new Error(unusable)
+        }
         const screen = readNodeField(node.data, 'screenId', 'screen_id') || native.flow_json?.screens?.[0]?.id
         if (!native.flow_json?.screens?.some((item: any) => item.id === screen)) throw new Error('Native form starting screen does not exist')
         data._flow_token = randomUUID(); data._native_flow_id = native.id

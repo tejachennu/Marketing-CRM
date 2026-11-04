@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createStarterWorkflow, sanitizeWorkflowGraph, getTriggerSummary, suggestKeywords } from '@/lib/flows/flow-templates'
+import { refuseWhileFlowsOff } from '@/lib/flows/module-gate'
 
 /** A conversation counts as in progress while its session is open and the customer answered within the day. */
 const OPEN_STATUSES = ['IN_PROGRESS', 'PAUSED_RAG']
@@ -90,6 +91,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
+    const switchedOff = await refuseWhileFlowsOff(supabase, organizationId)
+    if (switchedOff) return switchedOff
     const flowName = String(name).trim().slice(0, 120)
 
     // Keywords of the caller's choosing, or else ones taken from the flow's name: two flows that both

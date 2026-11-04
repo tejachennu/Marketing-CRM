@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { compileMetaFlowJSON, NATIVE_FLOW_TEMPLATES } from '@/lib/flows/meta-flows-spec'
+import { refuseWhileFlowsOff } from '@/lib/flows/module-gate'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
+    const switchedOff = await refuseWhileFlowsOff(supabase, organizationId)
+    if (switchedOff) return switchedOff
 
     let flowName = name?.trim()
     let flowCategories = categories || ['LEAD_GENERATION']

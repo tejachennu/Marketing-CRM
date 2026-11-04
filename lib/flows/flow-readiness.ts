@@ -42,8 +42,9 @@ export async function getWorkflowReadiness(supabase: any, workflow: WhatsAppWork
   try { getMetaCredentials(organization) } catch (error: any) { errors.push(error.message) }
   if (aiKnown && nodes.some(node => node?.type === 'ai_rag_node') && !hasAiEnabled(organization)) errors.push(AI_REQUIRED_MESSAGE)
 
-  // Two live flows on the same keyword: the oldest would silently win and the other never fire
-  const { data: others, error: othersError } = await supabase.from('whatsapp_workflows').select('id,name,canvas_nodes,trigger_type,trigger_config')
+  // Two live flows on the same messages: the oldest would silently win and the other never fire.
+  // created_at tells which one the runtime tries first.
+  const { data: others, error: othersError } = await supabase.from('whatsapp_workflows').select('id,name,canvas_nodes,trigger_type,trigger_config,created_at')
     .eq('organization_id', workflow.organization_id).eq('is_active', true).neq('id', workflow.id)
   if (othersError) throw new Error(othersError.message)
   for (const conflict of getTriggerConflicts(workflow, others || [])) errors.push(conflict.message)
@@ -77,21 +78,35 @@ export async function getWorkflowReadiness(supabase: any, workflow: WhatsAppWork
         if (!(users || []).some((user: any) => !isReadOnly(user))) errors.push(`${label}: add a teammate who can take conversations before using round-robin`)
       }
     }
-    if (node.type !== 'native_flow_trigger') continue
+  }
+  errors.push(...await getNativeFormProblems(supabase, workflow))
+  return [...new Set(errors)]
+}
+
+/**
+ * Why the WhatsApp forms this workflow sends cannot be sent: deleted, retired, not published, or
+ * without the starting screen. Activation refuses these, and the runtime pauses a live flow over
+ * them (a form can be retired in WhatsApp Manager too), since every customer would only get an apology.
+ */
+export async function getNativeFormProblems(supabase: any, workflow: Pick<WhatsAppWorkflow, 'organization_id' | 'canvas_nodes'>): Promise<string[]> {
+  const problems: string[] = []
+  for (const node of Array.isArray(workflow.canvas_nodes) ? workflow.canvas_nodes : []) {
+    if (node?.type !== 'native_flow_trigger') continue
+    const label = node.data?.title || node.id
     const id = readNodeField(node.data, 'flowId', 'native_flow_id', 'flow_id')
     if (!id) continue
     const { data: form, error: formError } = await supabase.from('whatsapp_native_flows').select('id,name,status,flow_id_meta,flow_json').eq('id', id).eq('organization_id', workflow.organization_id).maybeSingle()
     if (formError) throw new Error(formError.message)
     // The lookup is scoped to the organization, so a deleted form and another tenant's form look the same
-    if (!form) errors.push(`${label}: the selected form no longer exists (it was deleted, or belongs to another organization); select another form`)
-    else if (form.status === 'DEPRECATED') errors.push(`${label}: the selected form was retired on WhatsApp; select another form`)
-    else if (form.status !== 'PUBLISHED' || !form.flow_id_meta) errors.push(`${label}: publish the selected form to Meta first`)
+    if (!form) problems.push(`${label}: the selected form no longer exists (it was deleted, or belongs to another organization); select another form`)
+    else if (form.status === 'DEPRECATED') problems.push(`${label}: the selected form was retired on WhatsApp; select another form`)
+    else if (form.status !== 'PUBLISHED' || !form.flow_id_meta) problems.push(`${label}: publish the selected form to Meta first`)
     // The runtime sends this ID to Meta; a local UUID or placeholder would fail at send time
-    else if (!/^\d+$/.test(String(form.flow_id_meta))) errors.push(`${label}: the selected form has no valid Meta Flow ID; publish it again`)
+    else if (!/^\d+$/.test(String(form.flow_id_meta))) problems.push(`${label}: the selected form has no valid Meta Flow ID; publish it again`)
     else {
       const screenId = readNodeField(node.data, 'screenId', 'screen_id')
-      if (screenId && !form.flow_json?.screens?.some((screen: any) => screen.id === screenId)) errors.push(`${label}: the selected starting screen is missing`)
+      if (screenId && !form.flow_json?.screens?.some((screen: any) => screen.id === screenId)) problems.push(`${label}: the selected starting screen is missing`)
     }
   }
-  return [...new Set(errors)]
+  return problems
 }

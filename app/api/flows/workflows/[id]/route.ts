@@ -6,6 +6,7 @@ import { can } from '@/lib/rbac'
 import { getTriggerSummary } from '@/lib/flows/flow-templates'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { isMissingColumnError } from '@/lib/flows/flow-executor'
+import { refuseWhileFlowsOff } from '@/lib/flows/module-gate'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -118,6 +119,12 @@ export async function PUT(
     const supabase = getSupabaseClient()
     const { data: existing, error: loadError } = await supabase.from('whatsapp_workflows').select('*').eq('id', id).single()
     if (loadError) throw loadError
+    // With the Flow Builder off nothing may change, except taking a flow out of service
+    const pausingOnly = body.is_active === false && Object.keys(body).every(key => key === 'is_active')
+    if (!pausingOnly) {
+      const switchedOff = await refuseWhileFlowsOff(supabase, existing.organization_id)
+      if (switchedOff) return switchedOff
+    }
     const candidate = { ...existing, ...updatePayload }
     if (!Array.isArray(candidate.canvas_nodes) || !Array.isArray(candidate.canvas_edges)) return NextResponse.json({ error: 'Nodes and connections must be arrays' }, { status: 400 })
     const readinessErrors = await getWorkflowReadiness(supabase, candidate)
@@ -156,10 +163,15 @@ export async function DELETE(
     }
 
     const supabase = getSupabaseClient()
+    const { data: existing, error: loadError } = await supabase.from('whatsapp_workflows').select('organization_id').eq('id', id).single()
+    if (loadError) throw loadError
+    const switchedOff = await refuseWhileFlowsOff(supabase, existing.organization_id)
+    if (switchedOff) return switchedOff
     const { error } = await supabase
       .from('whatsapp_workflows')
       .delete()
       .eq('id', id)
+      .eq('organization_id', existing.organization_id)
 
     if (error) throw error
 

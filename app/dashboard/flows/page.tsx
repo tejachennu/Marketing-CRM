@@ -554,16 +554,18 @@ export default function FlowsHubPage() {
                           </h3>
                         </div>
                         <span
-                          title={!workflow.is_active && workflow.paused_reason ? workflow.paused_reason : !workflow.is_active && problems ? `${problems} problem${problems === 1 ? '' : 's'} to fix before this flow can go live` : undefined}
+                          title={!workflow.is_active && workflow.paused_reason ? workflow.paused_reason : !workflow.is_active && problems ? `${problems} problem${problems === 1 ? '' : 's'} to fix before this flow can go live`
+                            // Still running (a blank placeholder or a stale connection does not stop it), but it could not be activated again as saved
+                            : workflow.is_active && problems ? `Live, with ${problems} problem${problems === 1 ? '' : 's'} to fix: open the flow to see ${problems === 1 ? 'it' : 'them'}` : undefined}
                           className={`shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
-                            workflow.is_active
+                            workflow.is_active && !problems
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                               : problems || workflow.paused_reason
                               ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
                               : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
                           }`}
                         >
-                          {workflow.is_active ? 'Live' : workflow.paused_reason ? 'Paused automatically' : problems ? 'Needs fixes' : 'Paused'}
+                          {workflow.is_active ? (problems ? 'Live · needs fixes' : 'Live') : workflow.paused_reason ? 'Paused automatically' : problems ? 'Needs fixes' : 'Paused'}
                         </span>
                       </div>
 

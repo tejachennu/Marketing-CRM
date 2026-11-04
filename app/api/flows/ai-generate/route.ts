@@ -4,6 +4,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createStarterWorkflow, sanitizeWorkflowGraph, suggestKeywords } from '@/lib/flows/flow-templates'
+import { refuseWhileFlowsOff } from '@/lib/flows/module-gate'
 
 /** Enough to describe a flow step by step; longer prompts mostly cost tokens without improving the graph. */
 const MAX_PROMPT_LENGTH = 2000
@@ -43,6 +44,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
+    // A paid AI call for a builder the organization does not have; refused before it counts against the limits
+    const supabase = getSupabaseClient()
+    const switchedOff = await refuseWhileFlowsOff(supabase, organizationId)
+    if (switchedOff) return switchedOff
+
     const perUser = checkRateLimit(`flows:ai-generate:user:${authResult.user?.id || 'anonymous'}`, PER_USER.limit, PER_USER.windowMs)
     const perOrganization = perUser.allowed ? checkRateLimit(`flows:ai-generate:org:${organizationId}`, PER_ORGANIZATION.limit, PER_ORGANIZATION.windowMs) : perUser
     if (!perUser.allowed || !perOrganization.allowed) {
@@ -50,7 +56,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Too many flow generations right now. Please wait a few minutes and try again.' }, { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } })
     }
 
-    const supabase = getSupabaseClient()
     const { data: orgData } = await supabase
       .from('organizations')
       .select('name, openai_api_key')

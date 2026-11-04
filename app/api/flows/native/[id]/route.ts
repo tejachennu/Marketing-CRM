@@ -4,6 +4,7 @@ import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { can } from '@/lib/rbac'
 import { getMetaCredentials, metaRequest, uploadNativeFlow, isMetaFlowGone, MetaFlowError, type MetaCredentials } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON } from '@/lib/flows/meta-flows-spec'
+import { refuseWhileFlowsOff } from '@/lib/flows/module-gate'
 
 const CATEGORIES = ['SIGN_UP', 'SIGN_IN', 'APPOINTMENT_BOOKING', 'LEAD_GENERATION', 'CONTACT_US', 'CUSTOMER_SUPPORT', 'SURVEY', 'OTHER']
 const ADDRESS_FORM_MESSAGE = "This form is the store's delivery address form; change it in Commerce → Store settings first"
@@ -22,6 +23,14 @@ async function loadOrganization(supabase: any, organizationId: string) {
   if (error) throw error
   return organization
 }
+
+/** The organization's workflows that send this form, live or paused. */
+async function findWorkflowsUsingForm(supabase: any, organizationId: string, formId: string): Promise<Array<{ id: string; name: string; is_active?: boolean }>> {
+  const { data: workflows, error } = await supabase.from('whatsapp_workflows').select('id,name,is_active,canvas_nodes').eq('organization_id', organizationId)
+  if (error) throw error
+  return (workflows || []).filter((workflow: any) => (Array.isArray(workflow.canvas_nodes) ? workflow.canvas_nodes : []).some((node: any) => [node?.data?.native_flow_id, node?.data?.flowId, node?.data?.flow_id].includes(formId)))
+}
+const quoteNames = (workflows: Array<{ name: string }>) => workflows.map(workflow => `"${workflow.name}"`).join(', ')
 
 /** True when the store sends this form for delivery addresses: Commerce has to stop using it before it can go. */
 function isStoreAddressForm(organization: any, form: { flow_id_meta?: string | null }): boolean {
@@ -83,7 +92,8 @@ export async function GET(
 /**
  * Saves a draft; with `action` it also talks to Meta: "validate" uploads the draft for Meta to
  * check, "publish" validates and publishes it, "deprecate" retires a published form so nothing
- * can send it any more. A plain save never calls Meta, so it cannot fail on credentials or the network.
+ * can send it any more. A plain save only asks Meta whether a form it already uploaded was published
+ * meanwhile, and never fails on credentials or the network.
  */
 export async function PUT(
   request: NextRequest,
@@ -104,6 +114,8 @@ export async function PUT(
     const supabase = getSupabaseClient()
     const { data: existing, error: loadError } = await supabase.from('whatsapp_native_flows').select('*').eq('id', id).single()
     if (loadError) throw loadError
+    const switchedOff = await refuseWhileFlowsOff(supabase, existing.organization_id)
+    if (switchedOff) return switchedOff
     if (body.meta_flow_id !== undefined || body.flow_id_meta !== undefined) return NextResponse.json({ error: 'Meta Flow IDs are assigned by the WhatsApp connection' }, { status: 400 })
     if (body.status && body.status !== existing.status) return NextResponse.json({ error: 'Use Validate, Publish or Retire to change a form status' }, { status: 400 })
     if (body.action && !['validate', 'publish', 'deprecate'].includes(body.action)) return NextResponse.json({ error: 'Unknown form action' }, { status: 400 })
@@ -113,6 +125,12 @@ export async function PUT(
       if (!published) return NextResponse.json({ error: 'Only a published form can be retired' }, { status: 409 })
       const organization = await loadOrganization(supabase, existing.organization_id)
       if (isStoreAddressForm(organization, existing)) return NextResponse.json({ error: ADDRESS_FORM_MESSAGE }, { status: 409 })
+      // A live flow would keep sending it: every customer would get the intro, then an apology
+      const live = (await findWorkflowsUsingForm(supabase, existing.organization_id, id)).filter(workflow => workflow.is_active)
+      if (live.length) {
+        const one = live.length === 1
+        return NextResponse.json({ error: `This form is sent by the live flow${one ? '' : 's'} ${quoteNames(live)}. Pause ${one ? 'that flow' : 'those flows'} or select another form in ${one ? 'it' : 'them'} before retiring this form.` }, { status: 409 })
+      }
       let credentials: MetaCredentials
       try { credentials = getMetaCredentials(organization) }
       catch (error: any) { return NextResponse.json({ error: error.message }, { status: 400 }) }
@@ -140,22 +158,29 @@ export async function PUT(
     const update: Record<string, any> = { name: (body.name ?? existing.name).trim(), categories, screens, flow_json: flowJson, status: 'DRAFT', updated_at: new Date().toISOString() }
     if (!update.name) return NextResponse.json({ error: 'Form name is required' }, { status: 400 })
     let credentials: MetaCredentials | undefined
+    const organization = body.action || existing.flow_id_meta ? await loadOrganization(supabase, existing.organization_id) : null
     if (body.action) {
-      const organization = await loadOrganization(supabase, existing.organization_id)
       // Missing credentials are the caller's to fix, not a server failure
       try { credentials = getMetaCredentials(organization) }
       catch (error: any) { return NextResponse.json({ error: error.message }, { status: 400 }) }
-      // Reconcile an interrupted publish before allowing any local content edits.
-      if (existing.flow_id_meta) {
-        const remote = await metaRequest(credentials, `${existing.flow_id_meta}?fields=id,status`)
-        if (remote.status === 'PUBLISHED') {
-          const result = await supabase.from('whatsapp_native_flows').update({ status: 'PUBLISHED' }).eq('id', id).select().single()
-          if (result.error) throw result.error
-          // The status is kept in sync, but the edits in this request were not saved
-          return NextResponse.json({ error: "This form is published on Meta, so it can't be edited. Duplicate it to make changes.", flow: result.data }, { status: 409 })
-        }
-        if (remote.status !== 'DRAFT') return NextResponse.json({ error: 'This form is no longer editable on Meta. Create a new form.' }, { status: 409 })
+    }
+    // Reconcile an interrupted publish (Meta published it, the answer was lost) before allowing any
+    // local content edits, a plain save included: edits stored on a form Meta already published would
+    // be shown and sent as if they were live.
+    if (existing.flow_id_meta) {
+      let remote: any = null
+      if (credentials) remote = await metaRequest(credentials, `${existing.flow_id_meta}?fields=id,status`)
+      else {
+        // A plain save must not fail on credentials or the network: when Meta cannot be asked, it stays local
+        try { remote = await metaRequest(getMetaCredentials(organization), `${existing.flow_id_meta}?fields=id,status`) } catch { remote = null }
       }
+      if (remote?.status === 'PUBLISHED') {
+        const result = await supabase.from('whatsapp_native_flows').update({ status: 'PUBLISHED' }).eq('id', id).select().single()
+        if (result.error) throw result.error
+        // The status is kept in sync; the edits in this request are not saved
+        return NextResponse.json({ error: "This form was already published on Meta, so these changes were not saved. Duplicate the form to make changes.", flow: result.data }, { status: 409 })
+      }
+      if (remote && remote.status !== 'DRAFT') return NextResponse.json({ error: 'This form is no longer editable on Meta. Create a new form.' }, { status: 409 })
     }
     // Save the draft before calling Meta so rejected fields remain editable.
     const saved = await supabase.from('whatsapp_native_flows').update(update).eq('id', id).select().single()
@@ -202,15 +227,15 @@ export async function DELETE(
     const supabase = getSupabaseClient()
     const { data: existing, error: loadError } = await supabase.from('whatsapp_native_flows').select('*').eq('id', id).single()
     if (loadError) throw loadError
+    const switchedOff = await refuseWhileFlowsOff(supabase, existing.organization_id)
+    if (switchedOff) return switchedOff
     if (existing.status === 'PUBLISHED' && existing.flow_id_meta) return NextResponse.json({ error: 'Published forms cannot be deleted. Retire the form first, then delete it.' }, { status: 409 })
     const organization = existing.flow_id_meta ? await loadOrganization(supabase, existing.organization_id) : null
     if (isStoreAddressForm(organization, existing)) return NextResponse.json({ error: ADDRESS_FORM_MESSAGE }, { status: 409 })
     // Paused flows count too: one that still sends this form could never go live again
-    const { data: workflows, error: linkedError } = await supabase.from('whatsapp_workflows').select('id,name,canvas_nodes').eq('organization_id', existing.organization_id)
-    if (linkedError) throw linkedError
-    const usedBy = (workflows || []).filter((workflow: any) => (Array.isArray(workflow.canvas_nodes) ? workflow.canvas_nodes : []).some((node: any) => [node?.data?.native_flow_id, node?.data?.flowId, node?.data?.flow_id].includes(id)))
+    const usedBy = await findWorkflowsUsingForm(supabase, existing.organization_id, id)
     if (usedBy.length) {
-      const names = usedBy.map((workflow: any) => `"${workflow.name}"`).join(', ')
+      const names = quoteNames(usedBy)
       return NextResponse.json({ error: `This form is used by the flow${usedBy.length === 1 ? '' : 's'} ${names}. Remove it from ${usedBy.length === 1 ? 'that flow' : 'those flows'} before deleting it.` }, { status: 409 })
     }
     // Meta deletes drafts only; a retired form stays retired on Meta and only the local copy goes
