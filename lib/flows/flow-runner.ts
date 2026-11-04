@@ -22,27 +22,71 @@ export interface RunAdapter {
   action: (node: WorkflowNode, state: Record<string, any>) => Promise<Record<string, any>>
   checkpoint?: (nodeId: string, state: Record<string, any>, status: RunResult['status']) => Promise<void>
 }
+/** What WhatsApp accepts in one message. A flow that goes live is validated against the same numbers. */
+export const WHATSAPP_LIMITS = { text: 4096, interactiveBody: 1024, buttons: 3, buttonTitle: 20, listButton: 20, rows: 10, sections: 10, rowTitle: 24, rowDescription: 72, sectionTitle: 24, formButton: 30 } as const
+/** Automatic steps one incoming message may run before the graph is considered looping. */
+export const MAX_AUTOMATIC_STEPS = 50
+/** Wall-clock budget for one incoming message, below the webhook's own timeout. */
+export const EXECUTION_TIME_LIMIT_MS = 90000
+const DEFAULT_PROMPT = 'Please choose an option:'
+const DEFAULT_LIST_BUTTON = 'Choose'
+
+/** Shortens by characters rather than UTF-16 units, so an emoji at the cut is dropped whole instead of split. */
+const cut = (value: unknown, max: number) => Array.from(String(value ?? '')).slice(0, max).join('')
+
+/**
+ * Fits a reply to WhatsApp's limits. Validation keeps live flows within them, but a session may
+ * still carry an older copy of its flow and interpolated text can grow, so the runtime trims
+ * instead of failing the conversation. Rows past the tenth and empty sections are dropped.
+ */
+export function fitReply(reply: FlowReply): FlowReply {
+  const body = cut(reply.body, reply.type === 'text' ? WHATSAPP_LIMITS.text : WHATSAPP_LIMITS.interactiveBody)
+  if (reply.type === 'interactive_buttons') {
+    const buttons = (Array.isArray(reply.buttons) ? reply.buttons : []).filter(button => button && button.id).slice(0, WHATSAPP_LIMITS.buttons)
+      .map(button => ({ id: String(button.id), title: cut(button.title || button.id, WHATSAPP_LIMITS.buttonTitle) }))
+    return { ...reply, body, buttons }
+  }
+  if (reply.type === 'list_menu') {
+    let remaining: number = WHATSAPP_LIMITS.rows
+    const sections: any[] = []
+    for (const section of (Array.isArray(reply.sections) ? reply.sections : []).slice(0, WHATSAPP_LIMITS.sections)) {
+      if (!remaining) break
+      const rows = (Array.isArray(section?.rows) ? section.rows : []).filter((row: any) => row && row.id).slice(0, remaining)
+        .map((row: any) => ({ id: String(row.id), title: cut(row.title || row.id, WHATSAPP_LIMITS.rowTitle), ...(row.description ? { description: cut(row.description, WHATSAPP_LIMITS.rowDescription) } : {}) }))
+      if (!rows.length) continue // Meta rejects a section without rows
+      remaining -= rows.length
+      const title = cut(section.title, WHATSAPP_LIMITS.sectionTitle)
+      sections.push({ ...(title ? { title } : {}), rows })
+    }
+    return { ...reply, body, buttonText: cut(reply.buttonText || DEFAULT_LIST_BUTTON, WHATSAPP_LIMITS.listButton), sections }
+  }
+  if (reply.type === 'native_flow' && reply.flowPayload) {
+    return { ...reply, body, flowPayload: { ...reply.flowPayload, flow_cta: cut(reply.flowPayload.flow_cta || 'Open Form', WHATSAPP_LIMITS.formButton) } }
+  }
+  return { ...reply, body }
+}
+
 /** Both the simulator and live delivery use this bounded transition loop. */
 export async function runFlow(nodes: WorkflowNode[], edges: WorkflowEdge[], first: WorkflowNode, initialState: Record<string, any>, adapter: RunAdapter): Promise<RunResult> {
   let node: WorkflowNode | undefined = first
   let state = { ...initialState }
   const replies: FlowReply[] = []
   let currentNodeId = first.id
-  const deadline = Date.now() + 90000
-  for (let steps = 0; node && steps < 50; steps++) {
+  const deadline = Date.now() + EXECUTION_TIME_LIMIT_MS
+  for (let steps = 0; node && steps < MAX_AUTOMATIC_STEPS; steps++) {
     if (Date.now() > deadline) throw new Error('Workflow exceeded its execution time limit')
     currentNodeId = node.id
     await adapter.checkpoint?.(node.id, state, 'IN_PROGRESS')
     const data: Record<string, any> = node.data || {}
-    const text = (value: string) => interpolateVariables(value, state)
+    const text = (value: unknown) => interpolateVariables(String(value ?? ''), state)
     let reply: FlowReply | undefined
     let wait = false
     if (node.type === 'message') reply = { type: 'text', body: text(readNodeField(data, 'messageText', 'body', 'message_text')) }
     else if (node.type === 'interactive_buttons') {
-      reply = { type: 'interactive_buttons', body: text(readNodeField(data, 'bodyText', 'body', 'body_text')), buttons: getChoices(node).map(choice => ({ id: choice.id, title: text(choice.title) })) }
+      reply = { type: 'interactive_buttons', body: text(readNodeField(data, 'bodyText', 'body', 'body_text')) || DEFAULT_PROMPT, buttons: getChoices(node).map(choice => ({ id: choice.id, title: text(choice.title) })) }
       wait = true
     } else if (node.type === 'list_menu') {
-      reply = { type: 'list_menu', body: text(readNodeField(data, 'bodyText', 'body', 'body_text')), buttonText: readNodeField(data, 'buttonText', 'button_text') || 'Choose', sections: data.sections }
+      reply = { type: 'list_menu', body: text(readNodeField(data, 'bodyText', 'body', 'body_text')) || DEFAULT_PROMPT, buttonText: readNodeField(data, 'buttonText', 'button_text') || DEFAULT_LIST_BUTTON, sections: Array.isArray(data.sections) ? data.sections : [] }
       wait = true
     } else if (node.type === 'native_flow_trigger') {
       reply = await adapter.nativeFlow(node, state)
@@ -69,7 +113,7 @@ export async function runFlow(nodes: WorkflowNode[], edges: WorkflowEdge[], firs
       const name = String(readNodeField(data, 'variableName', 'variable_name') || '').trim()
       const problem = getVariableNameError(name)
       if (problem) throw new Error(`Set Variable: ${problem}`)
-      const raw = text(String(readNodeField(data, 'valueExpression', 'value_expression') ?? ''))
+      const raw = text(readNodeField(data, 'valueExpression', 'value_expression') ?? '')
       const type = readNodeField(data, 'valueType', 'value_type') || 'text'
       let value: any = raw
       if (type === 'number') {
@@ -89,13 +133,17 @@ export async function runFlow(nodes: WorkflowNode[], edges: WorkflowEdge[], firs
       throw new Error(`Unsupported workflow action: ${node.type}`)
     }
     if (reply) {
-      await adapter.send(reply) // A failed send must stop the graph before any later action.
-      replies.push(reply)
+      const fitted = fitReply(reply)
+      // A message made only of missing variables has nothing to say; the flow carries on
+      if (fitted.type !== 'text' || fitted.body.trim()) {
+        await adapter.send(fitted) // A failed send must stop the graph before any later action.
+        replies.push(fitted)
+      }
     }
     if (wait) return { currentNodeId, state, status: 'IN_PROGRESS', replies }
     node = getNextNode(nodes, edges, node.id)
   }
-  if (node) throw new Error('Workflow exceeded 50 automatic steps; check for a loop')
+  if (node) throw new Error(`Workflow exceeded ${MAX_AUTOMATIC_STEPS} automatic steps; check for a loop`)
   await adapter.checkpoint?.(currentNodeId, state, 'COMPLETED')
   return { currentNodeId, state, status: 'COMPLETED', replies }
 }

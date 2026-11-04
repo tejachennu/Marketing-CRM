@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { can } from '@/lib/rbac'
-import { getMetaCredentials, metaRequest, uploadNativeFlow, MetaFlowError } from '@/lib/flows/meta-client'
+import { getMetaCredentials, metaRequest, uploadNativeFlow, isMetaFlowGone, MetaFlowError } from '@/lib/flows/meta-client'
 import { compileMetaFlowJSON } from '@/lib/flows/meta-flows-spec'
 
 function getSupabaseClient() {
@@ -160,8 +160,13 @@ export async function DELETE(
     if (existing.flow_id_meta) {
       const { data: organization, error } = await supabase.from('organizations').select('*').eq('id', existing.organization_id).single()
       if (error) throw error
-      const result = await metaRequest(getMetaCredentials(organization), existing.flow_id_meta, { method: 'DELETE' })
-      if (result.success !== true) throw new MetaFlowError('Meta did not confirm deletion')
+      try {
+        const result = await metaRequest(getMetaCredentials(organization), existing.flow_id_meta, { method: 'DELETE' })
+        if (result.success !== true) throw new MetaFlowError('Meta did not confirm deletion')
+      } catch (metaError) {
+        // Already removed on Meta's side (deleted in WhatsApp Manager, or a stale ID): only the local copy is left
+        if (!isMetaFlowGone(metaError)) throw metaError
+      }
     }
     const { error } = await supabase
       .from('whatsapp_native_flows')
@@ -173,6 +178,7 @@ export async function DELETE(
     return NextResponse.json({ success: true, deletedId: id })
   } catch (error: any) {
     console.error('[Native Flow DELETE ID] Error:', error)
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+    // Any other answer from Meta keeps the form, with Meta's own reason
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: error instanceof MetaFlowError ? 422 : 500 })
   }
 }

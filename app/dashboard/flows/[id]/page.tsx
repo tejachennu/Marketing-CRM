@@ -78,6 +78,13 @@ function buildSampleAnswers(form: any): Record<string, any> {
   return Object.keys(answers).length ? answers : { full_name: 'Test Customer' }
 }
 
+/** The runtime pauses a live flow it can no longer run and leaves the reason on the workflow; going live again clears it. */
+function describePause(workflow: any): string {
+  if (!workflow?.paused_reason || workflow.is_active) return ''
+  const when = workflow.paused_at ? ` on ${new Date(workflow.paused_at).toLocaleString()}` : ''
+  return `This flow was paused automatically${when}: ${workflow.paused_reason}`
+}
+
 export default function FlowCanvasBuilderPage() {
   const params = useParams()
   const workflowId = params?.id as string
@@ -89,6 +96,7 @@ export default function FlowCanvasBuilderPage() {
   const [flowName, setFlowName] = useState('')
   const [isActive, setIsActive] = useState(false)
   const [environmentIssues, setEnvironmentIssues] = useState<string[]>([])
+  const [pausedNote, setPausedNote] = useState('')
   const [saveError, setSaveError] = useState('')
   const [recentSessions, setRecentSessions] = useState<any[]>([])
   const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; name: string }>>([])
@@ -154,6 +162,7 @@ export default function FlowCanvasBuilderPage() {
         setNodes(Array.isArray(workflow.canvas_nodes) ? workflow.canvas_nodes : [])
         setEdges(Array.isArray(workflow.canvas_edges) ? workflow.canvas_edges : [])
         setEnvironmentIssues(data.environmentErrors || [])
+        setPausedNote(describePause(workflow))
         setRecentSessions(data.recentSessions || [])
         setPipelineStages(data.pipelineStages || [])
         setLoadState('ready')
@@ -230,6 +239,7 @@ export default function FlowCanvasBuilderPage() {
         )
       }
       setEnvironmentIssues(data.environmentErrors || [])
+      setPausedNote(describePause(data.workflow))
       setIsActive(Boolean(data.workflow?.is_active))
       if (!flowName.trim()) setFlowName('Untitled flow')
       setDirty(false)
@@ -724,6 +734,13 @@ export default function FlowCanvasBuilderPage() {
             </button>
           </div>
         </header>
+
+        {pausedNote && (
+          <div role="status" className="shrink-0 px-4 py-2 text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800/60 flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{pausedNote}. Fix the problems listed under “to fix”, then press Go live.</span>
+          </div>
+        )}
 
         {saveError && (
           <div role="alert" className="shrink-0 px-4 py-2 text-xs font-medium bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-200 border-b border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-3">

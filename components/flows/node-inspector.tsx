@@ -453,9 +453,23 @@ export function NodeInspector({
         )}
 
         {node.type === 'assign_agent_action' && (
-          <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-            Returns the conversation to the shared team queue and turns automatic replies off for it, so a teammate can take over in the inbox. The flow ends here.
-          </p>
+          <>
+            <Field label="Assign the conversation to" hint="Round-robin takes turns through every teammate who can work conversations (read-only accounts are skipped).">
+              <select
+                value={['round_robin', 'specific_user'].includes(read('assignmentType', 'assignment_type')) ? read('assignmentType', 'assignment_type') : 'team_queue'}
+                onChange={(event) => onChange({ assignmentType: event.target.value, assignment_type: undefined })}
+                className={fieldClass}
+              >
+                <option value="team_queue">The shared team queue</option>
+                <option value="round_robin">Teammates in turn (round-robin)</option>
+                {/* Only flows created outside the builder name one agent; there is no agent picker here yet */}
+                {read('assignmentType', 'assignment_type') === 'specific_user' && <option value="specific_user">The selected agent</option>}
+              </select>
+            </Field>
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              Turns automatic replies off for the conversation so a person can take over in the inbox. The flow ends here.
+            </p>
+          </>
         )}
 
         {node.type === 'ai_rag_node' && (

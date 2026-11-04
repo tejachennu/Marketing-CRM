@@ -4,6 +4,8 @@ import type { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
 import { getNextNode, getChoices, resolveReply, validateWorkflow, readNodeField, normalizeTags, interpolateVariables } from '@/lib/flows/flow-graph'
 import { runFlow, type FlowReply } from '@/lib/flows/flow-runner'
 
+const ASK_QUESTION = 'Sure! Type your question and I’ll answer it right here.'
+
 export async function POST(request: NextRequest) {
   if (!await getAuthenticatedUser(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
@@ -12,6 +14,7 @@ export async function POST(request: NextRequest) {
     if (errors.length) return NextResponse.json({ error: errors.join('\n'), validationErrors: errors }, { status: 422 })
     const nodeList: WorkflowNode[] = nodes
     const edgeList: WorkflowEdge[] = edges
+    const form = flowSubmissionData && typeof flowSubmissionData === 'object' && !Array.isArray(flowSubmissionData) ? flowSubmissionData : undefined
     let state = { name: 'Test Customer', phone: '+10000000000', contact: { id: 'simulation', name: 'Test Customer', phone: '+10000000000' }, ...simulatedState, last_input: userInput }
     let next: WorkflowNode | undefined
     let answeredChoice = false
@@ -19,12 +22,14 @@ export async function POST(request: NextRequest) {
     else {
       const current = nodeList.find(node => node.id === currentNodeId)
       if (!current) throw new Error('The current step no longer exists; restart the simulator')
+      // Like live: a form answered at any other step is kept, acknowledged, and the flow stays where it is
+      if (form && current.type !== 'native_flow_trigger') return NextResponse.json({ reply: 'Thanks, we received your form.', currentNodeId, simulatedState: state, isCompleted: false })
       // Like live: the customer's next message after "type your question" goes to the knowledge assistant
       if (current.type === 'ai_rag_node') return NextResponse.json({ reply: 'Live, your knowledge assistant answers this question. No AI answer is generated in simulation.', isCompleted: true, currentNodeId: null, simulatedState: state })
       const isChoice = ['interactive_buttons', 'list_menu'].includes(current.type)
       const choice = isChoice ? resolveReply(current, nodes, edges, userInput, buttonId) : undefined
       // A tapped "Cancel" button follows its own branch; only a typed exit word leaves the flow
-      if (!choice?.matched && ['stop', 'cancel', 'exit'].includes(userInput.trim().toLowerCase())) return NextResponse.json({ reply: 'Flow cancelled.', isCompleted: true, currentNodeId: null, simulatedState: state })
+      if (!choice?.matched && ['stop', 'cancel', 'exit'].includes(String(userInput).trim().toLowerCase())) return NextResponse.json({ reply: 'Flow cancelled.', isCompleted: true, currentNodeId: null, simulatedState: state })
       if (isChoice) {
         const result = choice!
         if (!result.matched) return NextResponse.json({ reply: 'Please choose an option above, or reply “cancel”.', buttons: getChoices(current).map(item => ({ id: item.id, title: item.title })), currentNodeId, simulatedState: state })
@@ -34,8 +39,8 @@ export async function POST(request: NextRequest) {
         if (current.data.variableName || current.data.variable_name) state[current.data.variableName || current.data.variable_name] = result.choice!.id
         next = result.next
       } else if (current.type === 'native_flow_trigger') {
-        if (!flowSubmissionData || typeof flowSubmissionData !== 'object' || Array.isArray(flowSubmissionData)) return NextResponse.json({ reply: 'Submit sample form answers to continue. Ordinary chat messages do not complete a native form.', isNativeFlow: true, ctaText: 'Submit sample answers', currentNodeId, simulatedState: state })
-        state = { ...state, form: flowSubmissionData, submission: flowSubmissionData }
+        if (!form) return NextResponse.json({ reply: 'Submit sample form answers to continue. Ordinary chat messages do not complete a native form.', isNativeFlow: true, ctaText: 'Submit sample answers', currentNodeId, simulatedState: state })
+        state = { ...state, form, submission: form }
         next = current.data.onSuccessNodeId ? nodes.find((node: WorkflowNode) => node.id === current.data.onSuccessNodeId) : getNextNode(nodes, edges, current.id)
       } else next = getNextNode(nodes, edges, current.id)
     }
@@ -51,13 +56,15 @@ export async function POST(request: NextRequest) {
           const verb = readNodeField(node.data, 'action', 'tag_action_type') === 'remove' ? 'remove' : 'add'
           return { simulated_actions: [...(state.simulated_actions || []), `Would ${verb} tags: ${normalizeTags(node.data.tags).join(', ')}`] }
         }
-        return { handed_off: true, simulated_actions: [...(state.simulated_actions || []), 'Would assign the conversation and pause automation'] }
+        const assignment = readNodeField(node.data, 'assignmentType', 'assignment_type')
+        const target = assignment === 'round_robin' ? 'the next teammate in turn' : assignment === 'specific_user' ? 'the selected agent' : 'your team'
+        return { handed_off: true, simulated_actions: [...(state.simulated_actions || []), `Would assign the conversation to ${target} and pause automation`] }
       },
     })
     if (result.isRagFallback && answeredChoice) {
       // A menu choice is not the question itself: ask for it, as the live runtime does
       const node = nodeList.find(item => item.id === result.currentNodeId)
-      replies.push({ type: 'text', body: interpolateVariables(readNodeField(node?.data || {}, 'promptText', 'prompt', 'description') || 'Sure! Type your question and I’ll answer it right here.', result.state) })
+      replies.push({ type: 'text', body: interpolateVariables(readNodeField(node?.data, 'promptText', 'prompt', 'description') || ASK_QUESTION, result.state).trim() || ASK_QUESTION })
       return NextResponse.json({ reply: replies.map(reply => reply.body).join('\n\n'), replies, currentNodeId: result.currentNodeId, simulatedState: result.state, isCompleted: false })
     }
     const last = replies.at(-1)

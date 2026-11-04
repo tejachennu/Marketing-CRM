@@ -121,21 +121,42 @@ test('refuses credentials from another tenant and published form edits', async (
 // Small in-memory Supabase adapter. All filters are applied, so tenant-scoping
 // regressions surface rather than being hidden behind fixed response stubs.
 function database(seed = {}) {
-  const tables = { flow_sessions: [], flow_submissions: [], whatsapp_workflows: [workflow(baseNodes, baseEdges)], whatsapp_native_flows: [{ id: 'native', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '123456', flow_json: { screens: [{ id: 'LEAD_DETAILS' }] } }], pipeline_stages: [{ id: 'stage', organization_id: 'org', name: 'New Lead', position: 1 }], leads: [], tickets: [], conversations: [{ id: 'conversation', organization_id: 'org' }], users: [], flow_runtime_locks: [], ...seed }
+  const tables = { flow_sessions: [], flow_submissions: [], whatsapp_workflows: [workflow(baseNodes, baseEdges)], whatsapp_native_flows: [{ id: 'native', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '123456', flow_json: { screens: [{ id: 'LEAD_DETAILS' }] } }], pipeline_stages: [{ id: 'stage', organization_id: 'org', name: 'New Lead', position: 1 }], leads: [], tickets: [], conversations: [{ id: 'conversation', organization_id: 'org' }], users: [], flow_runtime_locks: [],
+    organizations: [{ id: 'org', whatsapp_provider: 'facebook', whatsapp_api_token: 'token', whatsapp_business_account_id: '1', whatsapp_phone_number_id: '2' }], ...seed }
   const rpc = async name => ({ data: name === 'acquire_flow_lock' ? true : null, error: null })
-  const from = table => {
-    let filters = [], op = 'select', values, singular = false, ignoreDuplicate = false
+  // `state_data->>key` reads one JSON field, as PostgREST does
+  const read = (row, column) => column.includes('->>') ? row[column.split('->>')[0]]?.[column.split('->>')[1]] : row[column]
+  // rejectColumns: writes naming one of these fail like a column the migration has not added yet.
+  // failUpsertWith: every upsert fails with this error, like a missing unique index.
+  const db = { rpc, tables, rejectColumns: new Set(), failUpsertWith: null }
+  db.from = table => {
+    let filters = [], op = 'select', values, singular = false, ignoreDuplicate = false, sort = null, max = Infinity
     const query = {
-      select() { return this }, eq(key, value) { filters.push(row => row[key] === value); return this },
-      in(key, values) { filters.push(row => values.includes(row[key])); return this },
-      order() { return this }, limit() { return this }, maybeSingle() { singular = true; return this }, single() { singular = true; return this },
+      select() { return this }, eq(key, value) { filters.push(row => read(row, key) === value); return this },
+      in(key, list) { filters.push(row => list.includes(read(row, key))); return this },
+      not(key, operator, value) { filters.push(row => operator === 'is' && value === null ? read(row, key) != null : true); return this },
+      order(key, options = {}) { sort = { key, ascending: options.ascending !== false }; return this }, limit(count) { max = count; return this },
+      maybeSingle() { singular = true; return this }, single() { singular = true; return this },
       insert(data) { op = 'insert'; values = Array.isArray(data) ? data : [data]; return this },
-      upsert(data, options) { op = 'insert'; values = [data]; ignoreDuplicate = options.ignoreDuplicates; return this },
+      upsert(data, options) { op = 'upsert'; values = [data]; ignoreDuplicate = options.ignoreDuplicates; return this },
       update(data) { op = 'update'; values = data; return this }, delete() { op = 'delete'; return this },
       then(resolve, reject) {
         try {
+          const written = op === 'update' ? [values] : op === 'insert' || op === 'upsert' ? values : []
+          const missing = [...db.rejectColumns].find(column => written.some(value => column in value))
+          if (missing) return Promise.resolve({ data: null, error: { code: 'PGRST204', message: `Could not find the '${missing}' column of '${table}' in the schema cache` } }).then(resolve, reject)
+          if (op === 'upsert' && db.failUpsertWith) return Promise.resolve({ data: null, error: db.failUpsertWith }).then(resolve, reject)
           let rows = tables[table].filter(row => filters.every(filter => filter(row)))
-          if (op === 'insert') {
+          if (sort) {
+            // Rows inserted later count as newer when timestamps tie, as they would in the database
+            const direction = sort.ascending ? 1 : -1
+            rows = rows.map((row, index) => ({ row, index })).sort((a, b) => {
+              const left = read(a.row, sort.key), right = read(b.row, sort.key)
+              return (left > right ? 1 : left < right ? -1 : 0) * direction || (a.index - b.index) * direction
+            }).map(entry => entry.row)
+          }
+          rows = rows.slice(0, max)
+          if (op === 'insert' || op === 'upsert') {
             rows = values.filter(value => !ignoreDuplicate || !tables[table].some(row => row.organization_id === value.organization_id && row.flow_token === value.flow_token)).map(value => ({ id: `${table}-${tables[table].length + 1}`, created_at: new Date().toISOString(), last_interaction_at: new Date().toISOString(), ...structuredClone(value) }))
             tables[table].push(...rows)
           } else if (op === 'update') rows.forEach(row => Object.assign(row, structuredClone(values)))
@@ -146,7 +167,7 @@ function database(seed = {}) {
     }
     return query
   }
-  return { from, rpc, tables }
+  return db
 }
 const input = { organizationId: 'org', conversationId: 'conversation', contactPhone: '+15550000000', userInput: 'hi', messageId: 'inbound-1', contactData: { contact: { id: 'contact', name: 'Asha' } } }
 
@@ -173,15 +194,20 @@ test('full runtime correlates form submission, persists answers and creates a co
   await executeFlowRuntime(submit, db)
   assert.equal(db.tables.leads.length, 1)
 })
-test('ordinary text and mismatched tokens never complete a waiting form', async () => {
+test('ordinary text never completes a waiting form; a form with another token is kept but does not advance it', async () => {
   const db = database()
   await executeFlowRuntime(input, db)
-  for (const [index, data] of [undefined, { flow_token: 'wrong', full_name: 'Attacker' }].entries()) {
-    const result = await executeFlowRuntime({ ...input, messageId: `inbound-other-${index}`, flowSubmissionData: data }, db)
-    assert.equal(result.actionTaken, 'waiting_for_form')
-    assert.equal(db.tables.flow_submissions.length, 0)
-    assert.equal(db.tables.leads.length, 0)
-  }
+  const typed = await executeFlowRuntime({ ...input, messageId: 'inbound-text' }, db)
+  assert.equal(typed.actionTaken, 'waiting_for_form')
+  assert.equal(db.tables.flow_submissions.length, 0)
+  const other = await executeFlowRuntime({ ...input, messageId: 'inbound-other', flowSubmissionData: { flow_token: 'wrong', full_name: 'Attacker' } }, db)
+  assert.equal(other.actionTaken, 'saved_submission')
+  assert.equal(other.replyMessage.body, 'Thanks, we received your form.')
+  assert.equal(db.tables.flow_submissions.length, 1)
+  assert.equal(db.tables.flow_submissions[0].session_id, undefined, 'not correlated with the running session')
+  assert.equal(db.tables.leads.length, 0)
+  assert.equal(db.tables.flow_sessions[0].status, 'IN_PROGRESS')
+  assert.equal(db.tables.flow_sessions[0].current_node_id, 'form')
 })
 test('cannot send a native form belonging to another organization', async () => {
   const db = database()
@@ -211,7 +237,8 @@ test('agent handoff disables automatic replies and completes the session', async
   assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
 })
 test('does not expose inherited state through template interpolation', () => {
-  assert.equal(interpolateVariables('{{constructor.name}}', {}), '{{constructor.name}}')
+  assert.equal(interpolateVariables('{{constructor.name}}', {}), '')
+  assert.equal(interpolateVariables('{{__proto__.polluted}}', {}), '')
 })
 
 test('an expired session cannot consume a later customer message', async () => {
@@ -263,7 +290,7 @@ test('superseded legacy sessions cannot revive after the newest flow completes',
   const db = database()
   await executeFlowRuntime(input, db)
   const current = db.tables.flow_sessions[0]
-  db.tables.flow_sessions.push({ ...structuredClone(current), id: 'superseded-session' })
+  db.tables.flow_sessions.push({ ...structuredClone(current), id: 'superseded-session', created_at: '2020-01-01T00:00:00.000Z' })
   await executeFlowRuntime({ ...input, messageId: 'new-input', userInput: 'ordinary text' }, db)
   assert.equal(db.tables.flow_sessions[1].status, 'EXPIRED')
   assert.equal(db.tables.flow_sessions[0].status, 'IN_PROGRESS')
@@ -410,4 +437,259 @@ test('validation catches what WhatsApp would reject at send time, and blocks tha
   const condition = node('c', 'condition_branch', { variableName: 'score', operator: 'is_set' })
   assert.match(validateWorkflow([trigger, condition, node('x', 'message', { body: 'x' })], [edge('trigger', 'c'), edge('c', 'x')]).join(), /"If it matches" branch/)
   assert.match(validateWorkflow([trigger, node('a', 'message', { body: 'A' }), node('lonely', 'message', { title: 'Lonely', body: 'B' })], [edge('trigger', 'a')]).join(), /Lonely: connect this block to the flow/)
+})
+
+// ── Production hardening: forms at the wrong step, broken live flows, limits, actions ──
+const { getWorkflowReadiness } = require('../lib/flows/flow-readiness.ts')
+const { fitReply } = require('../lib/flows/flow-runner.ts')
+const { FlowLockBusyError } = require('../lib/flows/flow-executor.ts')
+const adapter = { send: async () => {}, nativeFlow: async () => {}, action: async () => ({}) }
+
+test('a form answered while the flow waits on a menu is saved and acknowledged without moving the flow', async () => {
+  const flow = menuFlow([{ id: 'yes', title: 'Yes' }], [node('ok', 'message', { body: 'Great' })], [edge('menu', 'ok', 'yes')])
+  const db = database({ whatsapp_workflows: [flow] })
+  await executeFlowRuntime(input, db)
+  const sent = []
+  const result = await executeFlowRuntime({ ...input, messageId: 'form-1', userInput: '[form]', flowSubmissionData: { flow_token: 'campaign:c1:log9:123456', full_name: 'Ravi' }, sendReply: async reply => { sent.push(reply) } }, db)
+  assert.equal(result.handled, true)
+  assert.equal(result.actionTaken, 'saved_submission')
+  assert.equal(sent[0].body, 'Thanks, we received your form.')
+  assert.equal(db.tables.flow_submissions.length, 1)
+  assert.equal(db.tables.flow_submissions[0].flow_id, 'native')
+  assert.equal(db.tables.flow_submissions[0].response_payload.full_name, 'Ravi')
+  assert.equal(db.tables.flow_sessions[0].status, 'IN_PROGRESS')
+  assert.equal(db.tables.flow_sessions[0].current_node_id, 'menu')
+  // The same delivery again is a duplicate, and the menu still works afterwards
+  assert.equal((await executeFlowRuntime({ ...input, messageId: 'form-1', flowSubmissionData: { flow_token: 'campaign:c1:log9:123456' } }, db)).actionTaken, 'duplicate_message')
+  const chosen = await executeFlowRuntime({ ...input, messageId: 'in-3', userInput: 'Yes', buttonId: 'yes' }, db)
+  assert.equal(chosen.replyMessage.body, 'Great')
+})
+test('a form answered while the assistant waits for a question is saved, and the question still goes to the AI', async () => {
+  const flow = menuFlow([{ id: 'ask', title: 'Ask a question' }], [node('ai', 'ai_rag_node', { title: 'Assistant' })], [edge('menu', 'ai', 'ask')])
+  const db = database({ whatsapp_workflows: [flow] })
+  await executeFlowRuntime(input, db)
+  await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'Ask a question', buttonId: 'ask' }, db)
+  const result = await executeFlowRuntime({ ...input, messageId: 'form-1', userInput: '[form]', flowSubmissionData: { flow_token: 'tok-1', full_name: 'Ravi' } }, db)
+  assert.equal(result.handled, true)
+  assert.equal(result.replyMessage.body, 'Thanks, we received your form.')
+  assert.equal(db.tables.flow_submissions.length, 1)
+  assert.equal(db.tables.flow_sessions[0].status, 'PAUSED_RAG')
+  const question = await executeFlowRuntime({ ...input, messageId: 'in-4', userInput: 'Which plan is cheapest?' }, db)
+  assert.equal(question.handled, false)
+  assert.equal(question.isRagFallback, true)
+  assert.equal(db.tables.flow_sessions[0].status, 'COMPLETED')
+})
+test('a live flow that no longer passes validation is paused with the reason, and the message goes to the assistants', async () => {
+  const broken = () => workflow([node('trigger', 'trigger', { keywords: ['hi'], trigger_type: 'keyword' }), node('menu', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'one', title: 'One' }] })], [edge('trigger', 'menu')])
+  const db = database({ whatsapp_workflows: [broken()] })
+  const errors = []
+  const error = console.error
+  console.error = message => errors.push(String(message))
+  try {
+    const result = await executeFlowRuntime(input, db)
+    assert.equal(result.handled, false)
+    assert.equal(db.tables.whatsapp_workflows[0].is_active, false)
+    assert.match(db.tables.whatsapp_workflows[0].paused_reason, /connect the "One" choice/)
+    assert.equal(typeof db.tables.whatsapp_workflows[0].paused_at, 'string')
+    assert.equal(db.tables.flow_sessions.length, 0)
+    assert.equal(errors.filter(message => /paused/.test(message)).length, 1)
+    // The next message finds no live flow and is not logged again
+    assert.equal((await executeFlowRuntime({ ...input, messageId: 'in-2' }, db)).handled, false)
+    assert.equal(errors.length, 1)
+  } finally { console.error = error }
+  // Before migration 20261104 adds the columns, the flow is still paused
+  const legacy = database({ whatsapp_workflows: [broken()] })
+  legacy.rejectColumns.add('paused_reason')
+  console.error = () => {}
+  try { assert.equal((await executeFlowRuntime(input, legacy)).handled, false) } finally { console.error = error }
+  assert.equal(legacy.tables.whatsapp_workflows[0].is_active, false)
+  assert.equal(legacy.tables.whatsapp_workflows[0].paused_reason, undefined)
+})
+test('only lock contention is an exception; data problems fail the run visibly', async () => {
+  const busy = database()
+  busy.rpc = async () => ({ data: false, error: null })
+  await assert.rejects(executeFlowRuntime(input, busy), error => error instanceof FlowLockBusyError && error.name === 'FlowLockBusyError')
+  // A trigger saved with malformed keywords neither matches nor throws
+  const malformed = workflow([node('trigger', 'trigger', { keywords: 'hi', trigger_type: 'keyword' }), node('m', 'message', { body: 'x' })], [edge('trigger', 'm')])
+  assert.equal((await executeFlowRuntime(input, database({ whatsapp_workflows: [malformed] }))).handled, false)
+  // A session whose step was edited away is expired, and the message starts afresh
+  const db = database()
+  await executeFlowRuntime(input, db)
+  db.tables.flow_sessions[0].current_node_id = 'gone'
+  const restarted = await executeFlowRuntime({ ...input, messageId: 'in-2' }, db)
+  assert.equal(db.tables.flow_sessions[0].status, 'EXPIRED')
+  assert.equal(restarted.handled, true)
+  assert.equal(db.tables.flow_sessions.length, 2)
+  // A delivery failure while re-prompting ends the run as FAILED instead of failing the webhook
+  const menu = database({ whatsapp_workflows: [menuFlow([{ id: 'yes', title: 'Yes' }], [node('ok', 'message', { body: 'ok' })], [edge('menu', 'ok', 'yes')])] })
+  await executeFlowRuntime(input, menu)
+  const failed = await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'what?', sendReply: async () => { throw new Error('Meta down') } }, menu)
+  assert.equal(failed.actionTaken, 'failed')
+  assert.equal(menu.tables.flow_sessions[0].status, 'FAILED')
+  assert.equal(menu.tables.flow_sessions[0].state_data._last_error, 'Meta down')
+})
+test('runs before the v32 lease function and submission columns exist', async () => {
+  const db = database()
+  db.rpc = async name => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${name} in the schema cache` } })
+  const warn = console.warn
+  const warnings = []
+  console.warn = message => warnings.push(String(message))
+  try {
+    assert.equal((await executeFlowRuntime(input, db)).handled, true)
+    assert.equal(db.tables.whatsapp_workflows[0].execution_count, 1)
+    await executeFlowRuntime({ ...input, messageId: 'in-2', userInput: 'cancel' }, db)
+  } finally { console.warn = warn }
+  assert.equal(warnings.filter(message => /acquire_flow_lock/.test(message)).length, 1, 'warned once, not per message')
+  // Without the token column the answers are still kept; without the unique index they are still kept once
+  const legacy = database()
+  legacy.rejectColumns.add('flow_token')
+  const form = { ...input, userInput: '[form]', flowSubmissionData: { flow_token: 'campaign:c1:log9:123456', full_name: 'Ravi' } }
+  assert.equal((await executeFlowRuntime(form, legacy)).actionTaken, 'saved_submission')
+  assert.equal(legacy.tables.flow_submissions[0].flow_token, undefined)
+  assert.equal(legacy.tables.flow_submissions[0].response_payload.full_name, 'Ravi')
+  const unindexed = database()
+  unindexed.failUpsertWith = { code: '42P10', message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification' }
+  await executeFlowRuntime(form, unindexed)
+  await executeFlowRuntime({ ...form, messageId: 'form-again' }, unindexed)
+  assert.equal(unindexed.tables.flow_submissions.length, 1)
+})
+test('a run stops at the step cap and the time budget', async () => {
+  const chain = Array.from({ length: 51 }, (_, index) => node(`m${index}`, 'message', { body: `Step ${index}` }))
+  const links = chain.slice(1).map((item, index) => edge(`m${index}`, item.id))
+  await assert.rejects(runFlow(chain, links, chain[0], {}, adapter), /50 automatic steps/)
+  const realNow = Date.now
+  let clock = realNow()
+  Date.now = () => clock
+  try {
+    await assert.rejects(runFlow(chain.slice(0, 3), links.slice(0, 2), chain[0], {}, { ...adapter, send: async () => { clock += 60000 } }), /time limit/)
+  } finally { Date.now = realNow }
+})
+test('missing variables render as nothing and structured values read naturally', async () => {
+  assert.equal(interpolateVariables('Hi {{contact.name}}, budget {{form.budget}}', { contact: {} }), 'Hi , budget ')
+  assert.equal(interpolateVariables('{{form.extras}} / {{form.address}} / {{count}}', { form: { extras: ['Install', 'Training'], address: { city: 'Pune' } }, count: 0 }), 'Install, Training / {"city":"Pune"} / 0')
+  assert.equal(interpolateVariables(undefined, {}), '')
+  // A message that is only a missing variable is skipped rather than sent empty
+  const nodes = [node('a', 'message', { body: '{{nothing}}' }), node('b', 'message', { body: 'Next' })]
+  const result = await runFlow(nodes, [edge('a', 'b')], nodes[0], {}, adapter)
+  assert.deepEqual(result.replies.map(reply => reply.body), ['Next'])
+  assert.equal(result.status, 'COMPLETED')
+})
+test('lists beyond WhatsApp limits are refused at activation and trimmed at run time', async () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({ id: `r${index}`, title: `Option number ${index} with a very long title` }))
+  const list = node('l', 'list_menu', { body: 'Pick', button_text: 'A rather long button label', sections: [{ title: 'A section title that is too long', rows }, { title: 'Empty', rows: [] }] })
+  const targets = rows.map(row => node(`t-${row.id}`, 'message', { body: 'ok' }))
+  const links = rows.map(row => edge('l', `t-${row.id}`, row.id))
+  const issues = validateWorkflow([baseNodes[0], list, ...targets], [edge('trigger', 'l'), ...links]).join()
+  assert.match(issues, /between 1 and 10 choices/)
+  assert.match(issues, /at least one option/)
+  assert.match(issues, /button label must be at most 20/)
+  const result = await runFlow([list, ...targets], links, list, {}, adapter)
+  const reply = result.replies[0]
+  assert.equal(reply.sections.length, 1)
+  assert.equal(reply.sections[0].rows.length, 10)
+  assert.ok(reply.sections[0].rows.every(row => row.title.length <= 24))
+  assert.equal(reply.sections[0].title.length, 24)
+  assert.equal(reply.buttonText.length, 20)
+  assert.equal(buildWhatsAppFlowMessage('123', reply).interactive.action.sections[0].rows.length, 10)
+  const buttons = fitReply({ type: 'interactive_buttons', body: 'x'.repeat(2000), buttons: [1, 2, 3, 4].map(index => ({ id: `b${index}`, title: `Button ${index} with a long title` })) })
+  assert.equal(buttons.buttons.length, 3)
+  assert.ok(buttons.buttons.every(button => button.title.length === 20))
+  assert.equal(buttons.body.length, 1024)
+  assert.equal(fitReply({ type: 'text', body: '😀'.repeat(5000) }).body.length, 4096 * 2, 'cut between characters, never inside one')
+})
+test('conditions compare amounts as numbers and words as text', async () => {
+  const branch = async (operator, compare_value, state) => {
+    const nodes = [node('c', 'condition_branch', { variable_name: 'answer', operator, compare_value }), node('yes', 'message', { body: 'yes' }), node('no', 'message', { body: 'no' })]
+    const result = await runFlow(nodes, [edge('c', 'yes', 'true'), edge('c', 'no', 'false')], nodes[0], state, adapter)
+    return result.replies[0].body
+  }
+  assert.equal(await branch('greater_than', '9', { answer: '10' }), 'yes')
+  assert.equal(await branch('less_than', '10', { answer: 9 }), 'yes')
+  assert.equal(await branch('equals', '10', { answer: '10.0' }), 'yes')
+  assert.equal(await branch('not_equals', '10', { answer: 10 }), 'no')
+  assert.equal(await branch('greater_than', '5', { answer: 'abc' }), 'no')
+  assert.equal(await branch('greater_than', '5', {}), 'no')
+  assert.equal(await branch('equals', 'Pro', { answer: 'pro' }), 'no')
+  assert.equal(await branch('contains', 'pro', { answer: 'Pro plan' }), 'yes')
+  assert.equal(await branch('is_set', '', { answer: 0 }), 'yes')
+})
+test('tag blocks merge case-insensitively without duplicates or losing existing tags', async () => {
+  const flow = (action, tags) => workflow([baseNodes[0], node('tag', 'tag_action', { action, tags })], [edge('trigger', 'tag')])
+  const db = database({ whatsapp_workflows: [flow('add', ['vip', 'New', 'hot', 'hot'])], contacts: [{ id: 'contact', organization_id: 'org', tags: ['VIP', ' new ', 'kept'] }, { id: 'contact', organization_id: 'other-org', tags: ['VIP'] }] })
+  await executeFlowRuntime(input, db)
+  assert.deepEqual(db.tables.contacts[0].tags, ['VIP', 'new', 'kept', 'hot'])
+  assert.deepEqual(db.tables.contacts[1].tags, ['VIP'])
+  const removal = database({ whatsapp_workflows: [flow('remove', ['vip'])], contacts: [{ id: 'contact', organization_id: 'org', tags: ['VIP', 'kept'] }] })
+  await executeFlowRuntime(input, removal)
+  assert.deepEqual(removal.tables.contacts[0].tags, ['kept'])
+})
+test('tickets and leads are inserted the way their tables expect', async () => {
+  const ticketFlow = workflow([baseNodes[0], node('ticket', 'ticket_action', { subject: 'Help for {{contact.name}}', priority: 'high' })], [edge('trigger', 'ticket')])
+  let db = database({ whatsapp_workflows: [ticketFlow] })
+  await executeFlowRuntime(input, db)
+  const ticket = db.tables.tickets[0]
+  assert.equal(ticket.status, 'open')
+  assert.equal(ticket.conversation_id, 'conversation')
+  assert.equal(ticket.contact_id, 'contact')
+  assert.equal(ticket.subject, 'Help for Asha')
+  assert.equal(ticket.priority, undefined)
+  // Without a conversation the ticket row would be refused: the run fails visibly instead
+  db = database({ whatsapp_workflows: [ticketFlow] })
+  const noConversation = await executeFlowRuntime({ ...input, conversationId: undefined }, db)
+  assert.equal(noConversation.actionTaken, 'failed')
+  assert.match(db.tables.flow_sessions[0].state_data._last_error, /conversation is required/)
+  assert.equal(db.tables.tickets.length, 0)
+  // Leads land in this organization's first stage by position, with a numeric value
+  const leadFlow = workflow([baseNodes[0], node('lead', 'crm_deal_action', { deal_name: 'Quote for {{contact.name}}', monetary_value: '{{budget}}' })], [edge('trigger', 'lead')])
+  db = database({ whatsapp_workflows: [leadFlow], pipeline_stages: [{ id: 'later', organization_id: 'org', name: 'Qualified', position: 2 }, { id: 'first', organization_id: 'org', name: 'New', position: 1 }, { id: 'foreign', organization_id: 'other-org', name: 'New', position: 0 }] })
+  await executeFlowRuntime({ ...input, contactData: { ...input.contactData, budget: '2500' } }, db)
+  assert.equal(db.tables.leads[0].pipeline_stage_id, 'first')
+  assert.equal(db.tables.leads[0].value, 2500)
+  assert.equal(db.tables.leads[0].status, 'active')
+  assert.equal(db.tables.leads[0].title, 'Quote for Asha')
+  assert.equal(db.tables.leads[0].priority, undefined)
+})
+test('round-robin hand-off takes turns through the teammates who can work conversations', async () => {
+  const users = [
+    { id: 'u-viewer', organization_id: 'org', role: 'sales_employee', read_only: true, created_at: '2026-01-01' },
+    { id: 'u-asha', organization_id: 'org', role: 'sales_employee', created_at: '2026-01-02' },
+    { id: 'u-ben', organization_id: 'org', role: 'org_manager', created_at: '2026-01-03' },
+    { id: 'u-other', organization_id: 'other-org', role: 'org_admin', created_at: '2026-01-04' },
+  ]
+  const flow = workflow([baseNodes[0], node('handoff', 'assign_agent_action', { assignmentType: 'round_robin' })], [edge('trigger', 'handoff')])
+  const db = database({ whatsapp_workflows: [flow], users, conversations: ['c1', 'c2', 'c3'].map(id => ({ id, organization_id: 'org' })) })
+  for (const [index, id] of ['c1', 'c2', 'c3'].entries()) {
+    const result = await executeFlowRuntime({ ...input, conversationId: id, contactPhone: `+1555000000${index}`, messageId: `m-${index}` }, db)
+    assert.equal(result.handled, true)
+  }
+  assert.deepEqual(db.tables.conversations.map(conversation => conversation.assigned_to), ['u-asha', 'u-ben', 'u-asha'])
+  assert.ok(db.tables.conversations.every(conversation => conversation.auto_reply_enabled === false))
+  assert.equal(db.tables.flow_sessions[0].state_data._round_robin_user, 'u-asha')
+  assert.equal((await getWorkflowReadiness(db, flow)).length, 0)
+  // Nobody can take the chat: it still reaches the shared queue, and activation says why
+  const empty = database({ whatsapp_workflows: [flow], users: [users[0], users[3]] })
+  await executeFlowRuntime(input, empty)
+  assert.equal(empty.tables.conversations[0].assigned_to, null)
+  assert.equal(empty.tables.conversations[0].auto_reply_enabled, false)
+  assert.match((await getWorkflowReadiness(empty, flow)).join(), /add a teammate/)
+  assert.match(validateWorkflow([baseNodes[0], node('h', 'assign_agent_action', { assignmentType: 'random' })], [edge('trigger', 'h')]).join(), /team queue, round-robin or a specific agent/)
+})
+test('activation checks refuse unpublished or foreign forms, unconnected options and unsupported blocks', async () => {
+  const db = database({ whatsapp_native_flows: [
+    { id: 'native', organization_id: 'org', status: 'DRAFT', flow_id_meta: null, flow_json: { screens: [] } },
+    { id: 'foreign', organization_id: 'other-org', status: 'PUBLISHED', flow_id_meta: '9', flow_json: { screens: [] } },
+    { id: 'odd', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: 'local-uuid', flow_json: { screens: [] } },
+  ] })
+  const check = (nodes, edges) => getWorkflowReadiness(db, workflow(nodes, edges))
+  assert.match((await check(baseNodes, baseEdges)).join(), /publish the selected form/)
+  assert.match((await check([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'foreign' })], [edge('trigger', 'f')])).join(), /belongs to this organization/)
+  assert.match((await check([baseNodes[0], node('f', 'native_flow_trigger', { native_flow_id: 'odd' })], [edge('trigger', 'f')])).join(), /Meta Flow ID/)
+  const menu = node('m', 'interactive_buttons', { body: 'Menu', buttons: [{ id: 'one', title: 'One' }, { id: 'two', title: 'Two' }] })
+  assert.match((await check([baseNodes[0], menu, node('x', 'message', { body: 'x' })], [edge('trigger', 'm'), edge('m', 'x', 'one')])).join(), /connect the "Two" choice/)
+  const list = node('l', 'list_menu', { body: 'Pick', sections: [{ title: 'A', rows: [{ id: 'r1', title: 'One' }, { id: 'r2', title: 'Two' }] }] })
+  assert.match((await check([baseNodes[0], list, node('x', 'message', { body: 'x' })], [edge('trigger', 'l'), edge('l', 'x', 'r1')])).join(), /connect the "Two" choice/)
+  for (const type of ['delay_action', 'webhook_action', 'notification_action']) assert.match((await check([baseNodes[0], node('u', type)], [edge('trigger', 'u')])).join(), /not supported/)
+  // With everything in place the flow can go live
+  db.tables.whatsapp_native_flows[0] = { id: 'native', organization_id: 'org', status: 'PUBLISHED', flow_id_meta: '123456', flow_json: { screens: [{ id: 'LEAD_DETAILS' }] } }
+  assert.deepEqual(await check(baseNodes, baseEdges), [])
 })

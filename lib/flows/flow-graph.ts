@@ -1,60 +1,87 @@
 import type { WhatsAppWorkflow, WorkflowNode, WorkflowEdge } from './flow-types'
 
-export function readNodeField(data: Record<string, any>, ...keys: string[]): any {
-  return keys.map(key => data[key]).find(value => value !== undefined && value !== null && value !== '')
+const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype']
+
+export function readNodeField(data: Record<string, any> | null | undefined, ...keys: string[]): any {
+  const source = data || {}
+  return keys.map(key => source[key]).find(value => value !== undefined && value !== null && value !== '')
 }
 export function getStartNode(workflow: Pick<WhatsAppWorkflow, 'canvas_nodes'>) {
-  return workflow.canvas_nodes.find(node => node.type === 'trigger')
+  return Array.isArray(workflow?.canvas_nodes) ? workflow.canvas_nodes.find(node => node?.type === 'trigger') : undefined
 }
 export function getOutgoingEdges(edges: WorkflowEdge[], nodeId: string) {
-  return edges.filter(edge => edge.source === nodeId)
+  return (Array.isArray(edges) ? edges : []).filter(edge => edge?.source === nodeId)
 }
 export function getNextNode(nodes: WorkflowNode[], edges: WorkflowEdge[], nodeId: string, handle?: string) {
   const outgoing = getOutgoingEdges(edges, nodeId)
   const edge = handle ? outgoing.find(edge => edge.sourceHandle === handle) || outgoing.find(edge => !edge.sourceHandle)
     : outgoing.find(edge => !edge.sourceHandle)
-  return nodes.find(node => node.id === edge?.target)
+  return edge ? (Array.isArray(nodes) ? nodes : []).find(node => node?.id === edge.target) : undefined
 }
 export function getStateValue(state: Record<string, any>, path: string): any {
-  return path.split('.').reduce((value, key) =>
-    value && Object.hasOwn(value, key) && !['__proto__', 'constructor', 'prototype'].includes(key) ? value[key] : undefined, state as any)
+  return String(path || '').split('.').reduce((value, key) =>
+    value && Object.hasOwn(value, key) && !UNSAFE_KEYS.includes(key) ? value[key] : undefined, state as any)
 }
+/** One state value as a customer reads it: lists separated by commas, objects as JSON, nothing as "". */
+export function formatStateValue(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  if (Array.isArray(value)) return value.map(formatStateValue).filter(Boolean).join(', ')
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value) } catch { return '' }
+  }
+  return String(value)
+}
+/** Fills in {{variables}}. A missing one renders as nothing: a customer never sees "undefined" or a raw placeholder. */
 export function interpolateVariables(template: string, state: Record<string, any>): string {
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, key) => {
-    const value = getStateValue(state, key)
-    return value === undefined || value === null ? match : String(value)
-  })
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_match, key) => formatStateValue(getStateValue(state || {}, key)))
 }
-export function getChoices(node: WorkflowNode): Array<{ id: string; title: string; targetNodeId?: string }> {
-  return node.type === 'list_menu' ? (node.data.sections || []).flatMap((section: any) => section.rows || []) : node.data.buttons || []
+export interface Choice { id: string; title: string; description?: string; targetNodeId?: string }
+export function getChoices(node: WorkflowNode): Choice[] {
+  const data: Record<string, any> = node?.data || {}
+  const choices: unknown[] = node?.type === 'list_menu'
+    ? (Array.isArray(data.sections) ? data.sections : []).flatMap((section: any) => (Array.isArray(section?.rows) ? section.rows : []))
+    : Array.isArray(data.buttons) ? data.buttons : []
+  return choices.filter((choice): choice is Choice => Boolean(choice) && typeof choice === 'object')
 }
 export function resolveReply(node: WorkflowNode, nodes: WorkflowNode[], edges: WorkflowEdge[], text: string, buttonId?: string) {
-  const input = (buttonId || text).trim().toLowerCase()
-  const choice = getChoices(node).find(choice => choice.id.toLowerCase() === input || (!buttonId && choice.title.toLowerCase() === input))
+  const input = String(buttonId || text || '').trim().toLowerCase()
+  const choice = input ? getChoices(node).find(choice => String(choice.id ?? '').toLowerCase() === input || (!buttonId && String(choice.title ?? '').toLowerCase() === input)) : undefined
   if (!choice) return { matched: false, next: undefined }
   return { matched: true, choice, next: choice.targetNodeId ? nodes.find(node => node.id === choice.targetNodeId) : getNextNode(nodes, edges, node.id, choice.id) }
+}
+/** A number when the value reads as one ("10", "10.0", 10); words and blanks compare as text instead. */
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'boolean' || value === null || value === undefined) return null
+  const text = String(value).trim()
+  if (!text) return null
+  const number = Number(text)
+  return Number.isFinite(number) ? number : null
 }
 export function evaluateCondition(data: Record<string, any>, state: Record<string, any>) {
   const value = getStateValue(state, readNodeField(data, 'variableName', 'variable_name', 'variable') || '')
   const comparison = interpolateVariables(String(readNodeField(data, 'compareValue', 'compare_value', 'value') ?? ''), state)
-  switch (data.operator) {
+  const left = asNumber(value), right = asNumber(comparison)
+  // "10", 10 and "10.0" are the same amount; when either side is not a number both compare as text
+  const numeric = left !== null && right !== null
+  const text = formatStateValue(value)
+  switch (data?.operator) {
     case 'is_set': return value !== undefined && value !== null && value !== ''
-    case 'equals': return String(value ?? '') === comparison
-    case 'not_equals': return String(value ?? '') !== comparison
-    case 'contains': return String(value ?? '').toLowerCase().includes(comparison.toLowerCase())
-    case 'greater_than': return value !== '' && value != null && Number(value) > Number(comparison)
-    case 'less_than': return value !== '' && value != null && Number(value) < Number(comparison)
+    case 'equals': return numeric ? left === right : text === comparison
+    case 'not_equals': return numeric ? left !== right : text !== comparison
+    case 'contains': return text.toLowerCase().includes(comparison.toLowerCase())
+    case 'greater_than': return numeric && left! > right!
+    case 'less_than': return numeric && left! < right!
     default: throw new Error('Select a supported condition operator')
   }
 }
 export function matchesTrigger(workflow: WhatsAppWorkflow, input: string, isFirstMessage = false) {
-  const data: Record<string, any> = { ...workflow.trigger_config, ...getStartNode(workflow)?.data }
-  const type = readNodeField(data, 'triggerType', 'trigger_type') || workflow.trigger_type
+  const data: Record<string, any> = { ...(workflow?.trigger_config || {}), ...(getStartNode(workflow)?.data || {}) }
+  const type = readNodeField(data, 'triggerType', 'trigger_type') || workflow?.trigger_type
   if (type === 'first_message') return isFirstMessage
   if (type !== 'keyword') return false
   const mode = readNodeField(data, 'matchType', 'match_mode') || 'contains'
   if (!['exact', 'contains', 'fuzzy'].includes(mode)) return false
-  return (data.keywords || []).some((keyword: string) => keywordMatches(input, keyword, mode))
+  return (Array.isArray(data.keywords) ? data.keywords : []).some((keyword: unknown) => keywordMatches(input, String(keyword ?? ''), mode))
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -74,8 +101,9 @@ export function keywordMatches(input: string, keyword: string, mode = 'contains'
 /** Node types the runtime can execute. The builder only offers these; anything else fails validation. */
 export const SUPPORTED_NODE_TYPES = ['trigger', 'message', 'interactive_buttons', 'list_menu', 'native_flow_trigger', 'condition_branch', 'crm_deal_action', 'ticket_action', 'assign_agent_action', 'ai_rag_node', 'set_variable', 'tag_action'] as const
 const supported = new Set<string>(SUPPORTED_NODE_TYPES)
+/** How a hand-off picks the person: the shared queue, teammates in turn, or one chosen agent. */
+export const ASSIGNMENT_TYPES = ['team_queue', 'round_robin', 'specific_user'] as const
 
-const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype']
 /** State written by the engine itself; a workflow must not be able to overwrite it. */
 const RESERVED_VARIABLE_ROOTS = ['contact', 'org']
 /** A variable path such as `score` or `lead.tier`, or the reason it cannot be used. */
@@ -114,6 +142,9 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
   const errors = { push: (message: string) => issues.push({ message, text: message }) }
   if (!Array.isArray(nodes) || !Array.isArray(edges)) return [{ message: 'Nodes and connections must be arrays', text: 'Nodes and connections must be arrays' }]
   if (nodes.length > 100 || edges.length > 300) return [{ message: 'Use at most 100 nodes and 300 connections', text: 'Use at most 100 nodes and 300 connections' }]
+  // Graphs also arrive from the API and the AI generator, not only from the builder
+  if (nodes.some(node => !node || typeof node !== 'object' || typeof node.id !== 'string' || !node.id || typeof node.type !== 'string')) return [{ message: 'Every block needs an ID and a type', text: 'Every block needs an ID and a type' }]
+  if (edges.some(edge => !edge || typeof edge !== 'object')) return [{ message: 'A connection is malformed', text: 'A connection is malformed' }]
   if (nodes.filter(node => node.type === 'trigger').length !== 1) errors.push('Add exactly one trigger')
   const ids = new Set(nodes.map(node => node.id))
   if (ids.size !== nodes.length) errors.push('Node IDs must be unique')
@@ -130,14 +161,14 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       if (!getNextNode(nodes, edges, node.id)) fail('connect the trigger to an action')
       const type = readNodeField(data, 'triggerType', 'trigger_type') || 'keyword'
       if (!['keyword', 'first_message'].includes(type)) fail('only keyword and first-message triggers are available')
-      if (type === 'keyword' && (!Array.isArray(data.keywords) || !data.keywords.some((key: string) => key.trim()))) fail('add at least one keyword')
+      if (type === 'keyword' && (!Array.isArray(data.keywords) || !data.keywords.some((key: unknown) => String(key ?? '').trim()))) fail('add at least one keyword')
       const mode = readNodeField(data, 'matchType', 'match_mode')
       if (mode && !['exact', 'contains', 'fuzzy'].includes(mode)) fail('use exact or contains keyword matching')
     }
     if (['message', 'interactive_buttons', 'list_menu'].includes(node.type)) {
-      const body = readNodeField(data, 'messageText', 'bodyText', 'body', 'message_text', 'body_text')
-      if (!body?.trim()) fail('enter a message')
-      if (body?.length > (node.type === 'message' ? 4096 : 1024)) fail('message is too long for WhatsApp')
+      const body = String(readNodeField(data, 'messageText', 'bodyText', 'body', 'message_text', 'body_text') ?? '')
+      if (!body.trim()) fail('enter a message')
+      if (body.length > (node.type === 'message' ? 4096 : 1024)) fail('message is too long for WhatsApp')
     }
     if (['interactive_buttons', 'list_menu'].includes(node.type)) {
       const choices = getChoices(node)
@@ -146,23 +177,24 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       if (new Set(choices.map(choice => choice.id)).size !== choices.length) fail('choice IDs must be unique')
       if (new Set(choices.map(choice => String(choice.title || '').trim().toLowerCase())).size !== choices.length) fail('choice titles must be different from each other')
       for (const choice of choices) {
-        if (!choice.id || !choice.title || choice.title.length > (max === 3 ? 20 : 24)) fail('a choice has an empty ID or an invalid title length')
+        if (!choice.id || !choice.title || String(choice.title).length > (max === 3 ? 20 : 24)) fail('a choice has an empty ID or an invalid title length')
         // Titles are sent as written: a {{variable}} could push one past WhatsApp's limit at send time
         if (/\{\{/.test(String(choice.title || ''))) fail(`"${choice.title}": choice titles can't contain {{variables}}`)
-        if (node.type === 'list_menu' && String((choice as any).description || '').length > 72) fail(`"${choice.title}": descriptions must be at most 72 characters`)
+        if (node.type === 'list_menu' && String(choice.description || '').length > 72) fail(`"${choice.title}": descriptions must be at most 72 characters`)
         if (choice.targetNodeId ? !ids.has(choice.targetNodeId) : !getNextNode(nodes, edges, node.id, choice.id)) fail(`connect the "${choice.title}" choice`)
       }
-      if (node.type === 'list_menu' && (readNodeField(data, 'buttonText', 'button_text') || 'Choose').length > 20) fail('list button label must be at most 20 characters')
+      if (node.type === 'list_menu' && String(readNodeField(data, 'buttonText', 'button_text') || 'Choose').length > 20) fail('list button label must be at most 20 characters')
       if (node.type === 'list_menu') {
         const sections = Array.isArray(data.sections) ? data.sections : []
         if (sections.length > 10) fail('use at most 10 sections')
         if (sections.some((section: any) => String(section?.title || '').length > 24)) fail('section titles must be at most 24 characters')
         if (sections.length > 1 && sections.some((section: any) => !String(section?.title || '').trim())) fail('give every section a title when there is more than one')
+        if (sections.some((section: any) => !Array.isArray(section?.rows) || !section.rows.length)) fail('every section needs at least one option')
       }
     }
     if (node.type === 'native_flow_trigger') {
       if (!readNodeField(data, 'flowId', 'native_flow_id', 'flow_id')) fail('select a published native form')
-      if ((readNodeField(data, 'flowCtaText', 'cta_text', 'flow_cta_text') || 'Open Form').length > 30) fail('form button must be at most 30 characters')
+      if (String(readNodeField(data, 'flowCtaText', 'cta_text', 'flow_cta_text') || 'Open Form').length > 30) fail('form button must be at most 30 characters')
     }
     if (node.type === 'condition_branch') {
       if (!readNodeField(data, 'variableName', 'variable_name', 'variable')) fail('select a variable')
@@ -184,8 +216,11 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
       if (tags.some(tag => tag.length > 50)) fail('tags must be at most 50 characters')
       if (!['add', 'remove', undefined].includes(readNodeField(data, 'action', 'tag_action_type'))) fail('choose whether to add or remove tags')
     }
-    if (node.type === 'assign_agent_action' && !['specific_user', 'team_queue', undefined].includes(data.assignmentType || data.assignment_type)) fail('select a specific agent or the shared team queue')
-    if (node.type === 'assign_agent_action' && (data.assignmentType || data.assignment_type) === 'specific_user' && !readNodeField(data, 'assignedUserId', 'assigned_user_id')) fail('select an agent')
+    if (node.type === 'assign_agent_action') {
+      const type = readNodeField(data, 'assignmentType', 'assignment_type') || 'team_queue'
+      if (!(ASSIGNMENT_TYPES as readonly string[]).includes(type)) fail('choose the team queue, round-robin or a specific agent')
+      if (type === 'specific_user' && !readNodeField(data, 'assignedUserId', 'assigned_user_id')) fail('select an agent')
+    }
   }
   // Refuse automatic cycles; reply nodes provide a safe boundary between turns.
   const visiting = new Set<string>(), visited = new Set<string>()
@@ -193,7 +228,7 @@ export function getWorkflowIssues(nodes: WorkflowNode[], edges: WorkflowEdge[]):
     if (visiting.has(node.id)) return true
     if (visited.has(node.id) || ['interactive_buttons', 'list_menu', 'native_flow_trigger', 'ai_rag_node', 'assign_agent_action'].includes(node.type)) return false
     visiting.add(node.id)
-    const targets = [...getOutgoingEdges(edges, node.id).map(edge => edge.target), node.data.trueTargetNodeId, node.data.falseTargetNodeId].filter(Boolean)
+    const targets = [...getOutgoingEdges(edges, node.id).map(edge => edge.target), node.data?.trueTargetNodeId, node.data?.falseTargetNodeId].filter(Boolean)
     if (targets.some(id => { const next = nodes.find(node => node.id === id); return next ? walk(next) : false })) return true
     visiting.delete(node.id); visited.add(node.id); return false
   }

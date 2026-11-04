@@ -20,7 +20,7 @@ function run(table, ops) {
   const known = COLUMNS[table]
   const unknown = (column) => known && !known.includes(column) ? { data: null, error: { message: `column ${table}.${column} does not exist` } } : null
   let rows = tables[table] || []
-  let count = false, range = null, single = false, update = null, insert = null
+  let count = false, range = null, single = false, update = null, insert = null, remove = false
   for (const [op, ...args] of ops) {
     if (op === 'select' && args[0] !== '*' && known) {
       for (const column of String(args[0]).split(',').map((c) => c.trim())) { const error = unknown(column); if (error) return error }
@@ -35,10 +35,12 @@ function run(table, ops) {
     else if (op === 'range') range = args
     else if (op === 'update') update = args[0]
     else if (op === 'insert') insert = args[0]
+    else if (op === 'delete') remove = true
     else if (op === 'single' || op === 'maybeSingle') single = true
   }
   if (insert) { rows = insert.map((row) => ({ id: `new-${calls.length}`, ...row })); (tables[table] ||= []).push(...rows) }
   if (update) rows.forEach((row) => Object.assign(row, update))
+  if (remove) tables[table] = (tables[table] || []).filter((row) => !rows.includes(row))
   const total = rows.length
   if (range) {
     if (count && range[0] > 0 && range[0] >= total) return { data: null, count: null, error: { code: 'PGRST103', message: 'Requested range not satisfiable' } }
@@ -317,4 +319,91 @@ test('Forms: saving a form Meta already published is refused, and the stored sta
   assert.equal(body.flow.status, 'PUBLISHED')
   assert.equal(tables.whatsapp_native_flows[0].status, 'PUBLISHED')
   assert.equal(tables.whatsapp_native_flows[0].screens[0].title, 'Details', 'the edits were not saved')
+})
+
+// ── Deleting forms ──
+
+const defaultFetch = global.fetch
+const metaError = (status, error) => async () => new Response(JSON.stringify({ error }), { status })
+
+test('Forms: a form Meta no longer knows is deleted locally; any other Meta error keeps it', async () => {
+  try {
+    for (const [status, error] of [[404, { message: "Unsupported delete request. Object with ID 'meta-1' does not exist", code: 100, error_subcode: 33 }], [400, { message: 'Object does not exist', code: 100 }]]) {
+      reset()
+      Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'DRAFT' })
+      global.fetch = metaError(status, error)
+      const gone = await nativeIdRoute.DELETE(get('/api/flows/native/form'), params('form'))
+      assert.equal(gone.status, 200)
+      assert.equal(tables.whatsapp_native_flows.length, 0)
+    }
+    reset()
+    Object.assign(tables.whatsapp_native_flows[0], { flow_id_meta: 'meta-1', status: 'DRAFT' })
+    global.fetch = metaError(400, { message: 'Invalid OAuth access token.', code: 190 })
+    const refused = await nativeIdRoute.DELETE(get('/api/flows/native/form'), params('form'))
+    assert.equal(refused.status, 422)
+    assert.equal((await refused.json()).error, 'Invalid OAuth access token.')
+    assert.equal(tables.whatsapp_native_flows.length, 1)
+  } finally { global.fetch = defaultFetch }
+})
+
+// ── AI flow generation ──
+
+const aiGenerateRoute = require(path.join(PROJECT, 'app/api/flows/ai-generate/route.ts'))
+const generate = (organizationId, prompt) => aiGenerateRoute.POST(json('/api/flows/ai-generate', 'POST', { organizationId, prompt }))
+
+test('AI generation: prompts are capped, the OpenAI call is bounded, and generations are rate limited per person and organization', async () => {
+  reset()
+  tables.organizations[0].openai_api_key = 'sk-test'
+  const requests = []
+  const graph = { name: 'Generated', canvas_nodes: [{ id: 't', type: 'trigger', position: { x: 0, y: 0 }, data: { keywords: ['hi'] } }, { id: 'm', type: 'message', position: { x: 300, y: 0 }, data: { body: 'Hello' } }], canvas_edges: [{ id: 'e', source: 't', target: 'm' }] }
+  global.fetch = async (url, init) => {
+    requests.push({ url, init })
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(graph) } }] }))
+  }
+  try {
+    const long = await generate(ORG, 'x'.repeat(2001))
+    assert.equal(long.status, 400)
+    assert.match((await long.json()).error, /2000 characters/)
+    assert.equal(requests.length, 0)
+
+    const ok = await generate(ORG, 'A lead flow')
+    assert.equal(ok.status, 200)
+    assert.equal((await ok.json()).flow.name, 'Generated')
+    assert.equal(JSON.parse(requests[0].init.body).max_tokens, 4000)
+    assert.ok(requests[0].init.signal instanceof AbortSignal, 'the call cannot hang the request')
+
+    // 10 per person per 10 minutes
+    const statuses = [ok.status]
+    let limited
+    while (statuses.length < 12) {
+      const res = await generate(ORG, 'Another flow')
+      statuses.push(res.status)
+      if (res.status === 429 && !limited) limited = res
+    }
+    assert.equal(statuses.filter((status) => status === 200).length, 10)
+    assert.deepEqual(statuses.slice(10), [429, 429])
+    assert.equal(requests.length, 10, 'no OpenAI call is made once the limit is reached')
+    assert.match((await limited.json()).error, /wait a few minutes/)
+    assert.ok(Number(limited.headers.get('Retry-After')) > 0)
+
+    // A slow AI answers with a time-out, not a hung request
+    user = { id: 'slow', role: 'org_manager', organization_id: ORG }
+    global.fetch = async () => { const error = new Error('The operation was aborted due to timeout'); error.name = 'TimeoutError'; throw error }
+    const slow = await generate(ORG, 'A slow flow')
+    assert.equal(slow.status, 504)
+    assert.match((await slow.json()).error, /took too long/)
+
+    // 60 per organization per hour, whoever asks
+    global.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(graph) } }] }))
+    const organization = []
+    for (let person = 0; person < 7; person++) {
+      user = { id: `person-${person}`, role: 'org_manager', organization_id: OTHER_ORG }
+      for (let attempt = 0; attempt < 10; attempt++) organization.push((await generate(OTHER_ORG, 'Flow')).status)
+    }
+    assert.equal(organization.filter((status) => status === 200).length, 60)
+    assert.deepEqual(organization.slice(60), Array(10).fill(429))
+  } finally {
+    global.fetch = defaultFetch
+    user = MANAGER
+  }
 })

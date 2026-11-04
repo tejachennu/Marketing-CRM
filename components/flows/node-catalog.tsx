@@ -284,8 +284,12 @@ export function getNodeSummary(node: WorkflowNode, context: { formName?: (id: st
       const tags: string[] = Array.isArray(data.tags) ? data.tags : []
       return `${read('action', 'tag_action_type') === 'remove' ? 'Remove' : 'Add'}: ${tags.join(', ') || 'no tags yet'}`
     }
-    case 'assign_agent_action':
+    case 'assign_agent_action': {
+      const assignment = read('assignmentType', 'assignment_type')
+      if (assignment === 'round_robin') return 'Pauses automation and assigns the chat to the next teammate in turn'
+      if (assignment === 'specific_user') return 'Pauses automation and assigns the chat to the selected agent'
       return 'Pauses automation and hands the chat to your team'
+    }
     case 'ai_rag_node':
       return 'Ends the flow and lets the knowledge assistant reply'
     default:

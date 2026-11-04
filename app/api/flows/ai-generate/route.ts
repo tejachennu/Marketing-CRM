@@ -1,8 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import { checkRateLimit } from '@/lib/rate-limiter'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createStarterWorkflow, sanitizeWorkflowGraph } from '@/lib/flows/flow-templates'
+
+/** Enough to describe a flow step by step; longer prompts mostly cost tokens without improving the graph. */
+const MAX_PROMPT_LENGTH = 2000
+const OPENAI_TIMEOUT_MS = 45_000
+const MAX_COMPLETION_TOKENS = 4000
+// Each generation is a paid AI call: a few per person, and a bounded total per organization
+const PER_USER = { limit: 10, windowMs: 10 * 60 * 1000 }
+const PER_ORGANIZATION = { limit: 60, windowMs: 60 * 60 * 1000 }
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,16 +24,30 @@ function getSupabaseClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { organizationId, prompt } = body
+    const body = await request.json().catch(() => null)
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+    const { organizationId } = body
+    const prompt: string = typeof body.prompt === 'string' ? body.prompt : ''
 
-    if (!organizationId || !prompt?.trim()) {
+    if (!organizationId || !prompt.trim()) {
       return NextResponse.json({ error: 'Missing organizationId or prompt' }, { status: 400 })
+    }
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      return NextResponse.json({ error: `Describe the flow in at most ${MAX_PROMPT_LENGTH} characters` }, { status: 400 })
     }
 
     const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+    }
+
+    const perUser = checkRateLimit(`flows:ai-generate:user:${authResult.user?.id || 'anonymous'}`, PER_USER.limit, PER_USER.windowMs)
+    const perOrganization = perUser.allowed ? checkRateLimit(`flows:ai-generate:org:${organizationId}`, PER_ORGANIZATION.limit, PER_ORGANIZATION.windowMs) : perUser
+    if (!perUser.allowed || !perOrganization.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((perUser.allowed ? perOrganization : perUser).retryAfterMs / 1000))
+      return NextResponse.json({ error: 'Too many flow generations right now. Please wait a few minutes and try again.' }, { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } })
     }
 
     const supabase = getSupabaseClient()
@@ -79,7 +102,7 @@ Available Node Types:
 5. "ai_rag_node": data: { title, system_prompt: string, enable_auto_resume: true, max_turns: 3 }
 6. "crm_deal_action": data: { title, pipeline_stage: string, deal_name: string, monetary_value?: number }
 7. "ticket_action": data: { title, subject: string, priority: 'low'|'medium'|'high' }
-8. "assign_agent_action": data: { title, assignmentType: 'team_queue' }. Hands the chat to a person and ends the workflow.
+8. "assign_agent_action": data: { title, assignmentType: 'team_queue' | 'round_robin' }. Hands the chat to a person (the shared queue, or teammates in turn) and ends the workflow.
 9. "list_menu": data: { title, body: string, button_text: string, sections: [{ title, rows: [{ id, title }] }] }. Up to 10 rows, titles of at most 24 characters, one edge per row using sourceHandle equal to the row id.
 10. "set_variable": data: { title, variable_name: string, value_expression: string, value_type: 'text'|'number'|'boolean' }
 11. "tag_action": data: { title, action: 'add'|'remove', tags: string[] }
@@ -105,8 +128,10 @@ Return ONLY valid JSON without markdown fences.`
           { role: 'user', content: prompt },
         ],
         temperature: 0.3,
+        max_tokens: MAX_COMPLETION_TOKENS,
         response_format: { type: 'json_object' },
       }),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
     })
 
     if (!openAiRes.ok) {
@@ -140,6 +165,11 @@ Return ONLY valid JSON without markdown fences.`
       validationErrors: validateWorkflow(graph.canvas_nodes, graph.canvas_edges),
     })
   } catch (error: any) {
+    // The timeout signal rejects with a TimeoutError (an AbortError on older runtimes)
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      console.error('[AI Flow Generator] OpenAI did not answer within the time limit')
+      return NextResponse.json({ error: 'The AI took too long to answer. Please try again.' }, { status: 504 })
+    }
     console.error('[AI Flow Generator] Error:', error)
     return NextResponse.json({ error: error.message || 'Failed to generate flow' }, { status: 500 })
   }

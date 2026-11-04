@@ -5,6 +5,7 @@ import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { can } from '@/lib/rbac'
 import { getTriggerSummary } from '@/lib/flows/flow-templates'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
+import { isMissingColumnError } from '@/lib/flows/flow-executor'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -107,6 +108,8 @@ export async function PUT(
     if (body.fallback_settings !== undefined) updatePayload.fallback_settings = body.fallback_settings
     // The trigger node is the source of truth; the summary columns only mirror it for list views
     if (Array.isArray(body.canvas_nodes)) Object.assign(updatePayload, getTriggerSummary(body.canvas_nodes))
+    // Going live again clears the note the runtime left when it paused the flow
+    if (updatePayload.is_active === true) Object.assign(updatePayload, { paused_reason: null, paused_at: null })
 
     const supabase = getSupabaseClient()
     const { data: existing, error: loadError } = await supabase.from('whatsapp_workflows').select('*').eq('id', id).single()
@@ -115,12 +118,14 @@ export async function PUT(
     if (!Array.isArray(candidate.canvas_nodes) || !Array.isArray(candidate.canvas_edges)) return NextResponse.json({ error: 'Nodes and connections must be arrays' }, { status: 400 })
     const readinessErrors = await getWorkflowReadiness(supabase, candidate)
     if (candidate.is_active && readinessErrors.length) return NextResponse.json({ error: 'Fix the following issues before activating this flow', validationErrors: readinessErrors, environmentErrors: withoutGraphErrors(readinessErrors, candidate) }, { status: 422 })
-    const { data: updated, error } = await supabase
-      .from('whatsapp_workflows')
-      .update(updatePayload)
-      .eq('id', id)
-      .select()
-      .single()
+    const save = () => supabase.from('whatsapp_workflows').update(updatePayload).eq('id', id).select().single()
+    let { data: updated, error } = await save()
+    // Before migration 20261104_workflows_pause_reason those columns do not exist; the activation itself still goes through
+    if (error && 'paused_reason' in updatePayload && isMissingColumnError(error, 'paused_reason', 'paused_at')) {
+      delete updatePayload.paused_reason
+      delete updatePayload.paused_at
+      ;({ data: updated, error } = await save())
+    }
 
     if (error) throw error
 

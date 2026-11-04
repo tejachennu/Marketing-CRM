@@ -2,7 +2,7 @@ import type { MetaFlowJSON } from './flow-types'
 
 export interface MetaCredentials { token: string; version: string; businessAccountId: string; phoneNumberId: string }
 export function getMetaCredentials(organization: Record<string, any>): MetaCredentials {
-  if (organization.whatsapp_provider !== 'facebook') throw new Error('Connect WhatsApp Cloud API in Settings before using flows')
+  if (organization?.whatsapp_provider !== 'facebook') throw new Error('Connect WhatsApp Cloud API in Settings before using flows')
   // Never use another organization's environment credentials.
   const credentials = { token: organization.whatsapp_api_token || '', version: organization.whatsapp_graph_api_version || 'v25.0',
     businessAccountId: organization.whatsapp_business_account_id || '', phoneNumberId: organization.whatsapp_phone_number_id || '' }
@@ -11,15 +11,25 @@ export function getMetaCredentials(organization: Record<string, any>): MetaCrede
   return credentials
 }
 export class MetaFlowError extends Error {
-  constructor(message: string, public details: any[] = []) { super(message) }
+  constructor(message: string, public details: any[] = [], public status?: number) {
+    super(message)
+    this.name = 'MetaFlowError'
+  }
 }
 export async function metaRequest(credentials: MetaCredentials, path: string, init: RequestInit = {}, fetcher: typeof fetch = fetch): Promise<any> {
   const response = await fetcher(`https://graph.facebook.com/${credentials.version}/${path}`, {
     ...init, headers: { Authorization: `Bearer ${credentials.token}`, ...init.headers }, signal: AbortSignal.timeout(20000),
   })
-  const data = await response.json()
-  if (!response.ok || data.error) throw new MetaFlowError(data.error?.error_user_msg || data.error?.message || `Meta returned HTTP ${response.status}`, data.error ? [data.error] : [])
+  const data = await response.json().catch(() => ({})) // Meta's outage pages are not JSON
+  if (!response.ok || data.error) throw new MetaFlowError(data.error?.error_user_msg || data.error?.message || `Meta returned HTTP ${response.status}`, data.error ? [data.error] : [], response.status)
   return data
+}
+/** True when Meta says the flow no longer exists, so a delete can treat it as already done. */
+export function isMetaFlowGone(error: unknown): boolean {
+  if (!(error instanceof MetaFlowError)) return false
+  if (error.status === 404) return true
+  const detail = error.details[0] || {}
+  return Number(detail.code) === 100 && (Number(detail.error_subcode) === 33 || /does not exist/i.test(`${detail.message || ''} ${detail.error_user_msg || ''}`))
 }
 export async function uploadNativeFlow(credentials: MetaCredentials, flow: { name: string; categories: string[]; flow_id_meta?: string | null }, json: MetaFlowJSON,
   saveMetaId: (id: string) => Promise<void>, fetcher: typeof fetch = fetch) {
