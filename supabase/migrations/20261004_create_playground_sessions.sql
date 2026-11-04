@@ -20,23 +20,28 @@ CREATE INDEX IF NOT EXISTS idx_playground_sessions_updated
 ALTER TABLE playground_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users can only access their own playground sessions
+DROP POLICY IF EXISTS "Users can view own playground sessions" ON playground_sessions;
 CREATE POLICY "Users can view own playground sessions"
   ON playground_sessions FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own playground sessions" ON playground_sessions;
 CREATE POLICY "Users can insert own playground sessions"
   ON playground_sessions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own playground sessions" ON playground_sessions;
 CREATE POLICY "Users can update own playground sessions"
   ON playground_sessions FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own playground sessions" ON playground_sessions;
 CREATE POLICY "Users can delete own playground sessions"
   ON playground_sessions FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Service role bypass for API routes
+DROP POLICY IF EXISTS "Service role full access on playground_sessions" ON playground_sessions;
 CREATE POLICY "Service role full access on playground_sessions"
   ON playground_sessions FOR ALL
   TO service_role

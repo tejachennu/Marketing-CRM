@@ -11,7 +11,7 @@ DO $$
 BEGIN
   IF to_regclass('public.flow_sessions') IS NOT NULL THEN
     UPDATE conversations c
-       SET handed_off_at = COALESCE(s.last_interaction_at, now())
+       SET handed_off_at = s.last_interaction_at
       FROM flow_sessions s
      WHERE s.conversation_id = c.id
        AND s.organization_id = c.organization_id
@@ -19,7 +19,10 @@ BEGIN
        AND s.state_data->>'assigned_user_id' IS NULL
        AND c.assigned_to IS NULL
        AND c.auto_reply_enabled = false
-       AND c.handed_off_at IS NULL;
+       AND c.handed_off_at IS NULL
+       -- Recent hand-offs only: the session keeps its hand-off note after the chat was taken, so an
+       -- old note must not put a chat back in the queue when this file is run again
+       AND s.last_interaction_at > now() - interval '7 days';
   END IF;
 END $$;
 

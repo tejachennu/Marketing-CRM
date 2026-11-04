@@ -34,6 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_chatbot_analytics_source
 ALTER TABLE chatbot_analytics ENABLE ROW LEVEL SECURITY;
 
 -- Service role full access (for API routes)
+DROP POLICY IF EXISTS "Service role full access on chatbot_analytics" ON chatbot_analytics;
 CREATE POLICY "Service role full access on chatbot_analytics"
   ON chatbot_analytics FOR ALL
   TO service_role
@@ -41,6 +42,7 @@ CREATE POLICY "Service role full access on chatbot_analytics"
   WITH CHECK (true);
 
 -- Organization members can view their org's analytics
+DROP POLICY IF EXISTS "Org members can view chatbot analytics" ON chatbot_analytics;
 CREATE POLICY "Org members can view chatbot analytics"
   ON chatbot_analytics FOR SELECT
   USING (
