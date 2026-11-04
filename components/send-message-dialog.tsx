@@ -53,7 +53,7 @@ export function readSendFailure(data: unknown, fallback: string): SendFailure {
  * a sender who only sees their own work takes a chat nobody owns yet (the route's claimAfterSend
  * rule). The inbox shows this at once instead of waiting for the live update.
  */
-export function conversationAfterReply<T extends { assigned_to: string | null; auto_reply_enabled?: boolean | null }>(
+export function conversationAfterReply<T extends { assigned_to: string | null; auto_reply_enabled?: boolean | null; handed_off_at?: string | null }>(
   conversation: T,
   sender: { id: string; seesAll: boolean },
 ): T {
@@ -61,6 +61,8 @@ export function conversationAfterReply<T extends { assigned_to: string | null; a
     ...conversation,
     auto_reply_enabled: false,
     assigned_to: conversation.assigned_to ?? (sender.seesAll ? null : sender.id),
+    // A person answered: the chat leaves the hand-off queue whoever sent it (as the send route does)
+    handed_off_at: null,
   }
 }
 

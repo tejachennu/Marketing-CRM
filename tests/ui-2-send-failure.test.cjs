@@ -57,17 +57,19 @@ test('Send failure: an answer without words falls back to the composer\'s own', 
 
 test('After a reply: an agent limited to their own work takes the chat nobody owned, and the chatbot goes quiet', () => {
   const handedOff = { id: 'c1', assigned_to: null, auto_reply_enabled: false, unread_count: 2, contact: { id: 'k1', first_name: 'Asha' } }
-  assert.deepEqual(conversationAfterReply(handedOff, { id: 'agent-1', seesAll: false }), { ...handedOff, assigned_to: 'agent-1', auto_reply_enabled: false })
+  assert.deepEqual(conversationAfterReply(handedOff, { id: 'agent-1', seesAll: false }), { ...handedOff, assigned_to: 'agent-1', auto_reply_enabled: false , handed_off_at: null })
   assert.equal(handedOff.assigned_to, null, 'the row given is left as it was')
+  // A manager's reply also takes a handed-off chat out of the queue, as the send route does
+  assert.equal(conversationAfterReply({ id: 'c9', assigned_to: null, handed_off_at: '2026-11-04T05:00:00Z' }, { id: 'manager-1', seesAll: true }).handed_off_at, null)
   // The chatbot was still answering: it stops, and the chat is the agent's
-  assert.deepEqual(conversationAfterReply({ id: 'c2', assigned_to: null, auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c2', assigned_to: 'agent-1', auto_reply_enabled: false })
-  assert.deepEqual(conversationAfterReply({ id: 'c3', assigned_to: null }, { id: 'agent-1', seesAll: false }), { id: 'c3', assigned_to: 'agent-1', auto_reply_enabled: false })
+  assert.deepEqual(conversationAfterReply({ id: 'c2', assigned_to: null, auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c2', assigned_to: 'agent-1', auto_reply_enabled: false , handed_off_at: null })
+  assert.deepEqual(conversationAfterReply({ id: 'c3', assigned_to: null }, { id: 'agent-1', seesAll: false }), { id: 'c3', assigned_to: 'agent-1', auto_reply_enabled: false , handed_off_at: null })
 })
 
 test('After a reply: a manager leaves the chat unowned, and nobody takes a teammate\'s chat', () => {
-  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: null, auto_reply_enabled: true }, { id: 'manager-1', seesAll: true }), { id: 'c1', assigned_to: null, auto_reply_enabled: false })
-  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: 'teammate-9', auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c1', assigned_to: 'teammate-9', auto_reply_enabled: false })
-  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: 'agent-1', auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c1', assigned_to: 'agent-1', auto_reply_enabled: false })
+  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: null, auto_reply_enabled: true }, { id: 'manager-1', seesAll: true }), { id: 'c1', assigned_to: null, auto_reply_enabled: false , handed_off_at: null })
+  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: 'teammate-9', auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c1', assigned_to: 'teammate-9', auto_reply_enabled: false , handed_off_at: null })
+  assert.deepEqual(conversationAfterReply({ id: 'c1', assigned_to: 'agent-1', auto_reply_enabled: true }, { id: 'agent-1', seesAll: false }), { id: 'c1', assigned_to: 'agent-1', auto_reply_enabled: false , handed_off_at: null })
 })
 
 test('The dialog itself still loads next to its helpers', () => {

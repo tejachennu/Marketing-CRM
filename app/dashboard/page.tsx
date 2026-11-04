@@ -740,15 +740,18 @@ function ConversationsPageContent() {
           const { data, error } = await supabase
             .from('conversations')
             .select(`
-              id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, auto_reply_enabled, assigned_to, created_at, updated_at,
+              *,
               contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
             `)
             .eq('contact_id', currentContactId)
             .eq('organization_id', user.organization_id)
+            // A contact can have several conversation rows: use the latest instead of creating another
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(1)
             .maybeSingle()
-            
-          if (error && error.code !== 'PGRST116') throw error
-          
+
+          if (error) throw error
+
           if (data) {
             const conv = {
               ...data,
@@ -766,7 +769,7 @@ function ConversationsPageContent() {
               // Someone who only sees their own chats keeps the one they start
               .insert([{ organization_id: user.organization_id, contact_id: currentContactId, is_active: true, ...(canSeeAll(user) ? {} : { assigned_to: user.id }) }])
               .select(`
-                id, organization_id, contact_id, lead_id, is_active, last_message_at, unread_count, auto_reply_enabled, assigned_to, created_at, updated_at,
+                *,
                 contact:contact_id (id, first_name, last_name, phone_number, whatsapp_number, email, company)
               `)
               .single()
@@ -794,17 +797,7 @@ function ConversationsPageContent() {
             const { data, error } = await supabase
               .from('conversations')
               .select(`
-                id,
-                organization_id,
-                contact_id,
-                lead_id,
-                is_active,
-                last_message_at,
-                unread_count,
-                auto_reply_enabled,
-                assigned_to,
-                created_at,
-                updated_at,
+                *,
                 contact:contact_id (
                   id,
                   first_name,
@@ -955,6 +948,7 @@ function ConversationsPageContent() {
                     last_message_at: updated.last_message_at,
                     assigned_to: updated.assigned_to,
                     auto_reply_enabled: updated.auto_reply_enabled,
+                    ...('handed_off_at' in updated ? { handed_off_at: updated.handed_off_at } : {}),
                   }
                 : c
             )
@@ -1169,14 +1163,19 @@ function ConversationsPageContent() {
     )
 
     try {
-      const { error } = await supabase
-        .from('conversations')
-        .update({ auto_reply_enabled: newVal })
-        .eq('id', convId)
-
-      if (error) throw error
+      // Through the server, which checks the caller may change this chat; switching the chatbot
+      // back on also takes the chat out of the hand-off queue
+      const res = await fetch(`/api/conversations/${convId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_reply_enabled: newVal }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The chatbot could not be switched.')
+      if (newVal) setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, handed_off_at: null } : c)))
     } catch (err) {
       console.error('[Dashboard] Failed to toggle auto-reply:', err)
+      alert({ title: 'Chatbot not switched', message: err instanceof Error ? err.message : 'Please try again.' })
       // Rollback on error
       setConversations((prev) => 
         prev.map((c) => c.id === convId ? { ...c, auto_reply_enabled: currentVal } : c)
@@ -1186,24 +1185,17 @@ function ConversationsPageContent() {
     }
   }
 
-  // Take a chat the chatbot handed to the team. Written like toggleAutoReply, straight to the table:
-  // there is no API route for assigning a conversation yet.
+  // Take a chat the chatbot handed to the team. The server checks the caller may take it and takes it
+  // only while nobody has it, so two agents clicking at once cannot both win.
   const assignToMe = async (convId: string) => {
     if (!user || assigningToMe) return
     setAssigningToMe(true)
     try {
-      // Only while nobody has it, so two agents clicking at once cannot both take the chat
-      const { data, error } = await supabase
-        .from('conversations')
-        .update({ assigned_to: user.id })
-        .eq('id', convId)
-        .eq('organization_id', user.organization_id)
-        .is('assigned_to', null)
-        .select('id')
-      if (error) throw error
-      // No row: a teammate was first; the live update shows who has it
-      if (!data || data.length === 0) throw new Error('A teammate just took this chat.')
-      setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, assigned_to: user.id } : c)))
+      const res = await fetch(`/api/conversations/${convId}/assign`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      // 409: a teammate was first; the live update shows who has it
+      if (!res.ok) throw new Error(data.error || 'The chat could not be assigned to you. Please try again.')
+      setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, assigned_to: user.id, handed_off_at: null } : c)))
       loadUnreadCount(user.organization_id, true)
     } catch (err) {
       console.error('[Dashboard] Failed to take the chat:', err)
