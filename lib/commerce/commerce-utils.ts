@@ -180,7 +180,8 @@ export interface ProductInput {
   website_url: string | null
   category: string
   is_available: boolean
-  inventory_count: number
+  /** null: stock is not tracked, and selling never counts it down. */
+  inventory_count: number | null
 }
 
 function optionalHttpUrl(value: unknown, label: string): string | null {
@@ -212,10 +213,11 @@ export function parseProductInput(raw: Record<string, any> | null | undefined): 
   const currency = String(raw?.currency || 'INR').trim().toUpperCase()
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Currency must be a 3-letter code such as INR or USD')
 
-  // An empty inventory field means "not tracked" (kept at 100); an explicit 0 means out of stock
+  // An empty inventory field means "not tracked" (stored as null, never counted down); an explicit
+  // number is tracked stock, and 0 means out of stock
   const hasInventory = raw?.inventory_count !== '' && raw?.inventory_count !== null && raw?.inventory_count !== undefined
-  const inventory = hasInventory ? Number(raw?.inventory_count) : 100
-  if (!Number.isInteger(inventory) || inventory < 0) throw new Error('Inventory must be a whole number (0 or more)')
+  const inventory = hasInventory ? Number(raw?.inventory_count) : null
+  if (inventory !== null && (!Number.isInteger(inventory) || inventory < 0)) throw new Error('Inventory must be a whole number (0 or more)')
 
   return {
     retailer_id: retailerId,
@@ -226,9 +228,32 @@ export function parseProductInput(raw: Record<string, any> | null | undefined): 
     image_url: optionalHttpUrl(raw?.image_url, 'Image URL'),
     website_url: optionalHttpUrl(raw?.website_url, 'Website URL'),
     category: String(raw?.category ?? '').trim().slice(0, 60) || 'General',
-    is_available: raw?.is_available !== false && inventory > 0,
+    is_available: raw?.is_available !== false && (inventory === null || inventory > 0),
     inventory_count: inventory,
   }
+}
+
+/**
+ * The value "not tracked" was stored as before it became null (the column's old default, the
+ * product form's empty field and the Meta import all wrote it). See isStockTracked.
+ */
+export const LEGACY_UNTRACKED_STOCK = 100
+
+/**
+ * Whether selling a product counts its stock down. Untracked stock is null. Rows written before
+ * that hold the old placeholder 100, which cannot be told apart from a real stock of 100, so it
+ * is taken as untracked while the product has no `stock_tracked` column: a store must never see a
+ * product it never limited sell out. Migration 20261104_commerce_untracked_stock.sql turns those
+ * placeholders into null once and adds the (generated) column, after which every number counts.
+ */
+export function isStockTracked(product: { inventory_count?: unknown; stock_tracked?: unknown } | null | undefined): boolean {
+  const value = product?.inventory_count
+  // Checked before any Number(): Number(null) is 0, which would read as sold out
+  if (value === null || value === undefined || value === '') return false
+  const count = Number(value)
+  if (!Number.isFinite(count)) return false
+  if (product && 'stock_tracked' in product) return product.stock_tracked !== false
+  return count !== LEGACY_UNTRACKED_STOCK
 }
 
 /** The steps a store has to complete, in the order they are usually done. */
@@ -410,6 +435,12 @@ export interface PaymentRequestRecord {
   requested_at: string
   /** When a later request replaced this one and WhatsApp withdrew its card. */
   voided_at?: string | null
+  /**
+   * WhatsApp did not answer in time when this request was sent, so it may or may not have reached
+   * the customer. It is kept so a payment under its reference still finds its amount, and so its
+   * reference is never used again.
+   */
+  unconfirmed?: boolean
 }
 
 export function getPaymentRequests(order: { payment_requests?: unknown } | null | undefined): PaymentRequestRecord[] {

@@ -310,7 +310,11 @@ test('Commerce rules: only gateways Meta supports are used for in-chat payment',
 test('Commerce rules: product input is validated before it is saved', () => {
   const product = utils.parseProductInput({ title: ' Shirt ', retailer_id: ' SKU-1 ', price: '1499.999', inventory_count: '0', image_url: 'https://cdn.example.com/a.png' })
   assert.deepEqual([product.title, product.retailer_id, product.price, product.currency, product.inventory_count, product.is_available], ['Shirt', 'SKU-1', 1500, 'INR', 0, false])
-  assert.equal(utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 0 }).inventory_count, 100)
+  // An empty stock field is untracked stock: null, sellable, never counted down
+  assert.deepEqual(['', null, undefined].map(stock => [utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 0, inventory_count: stock }).inventory_count, utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 0, inventory_count: stock }).is_available]), [[null, true], [null, true], [null, true]])
+  assert.equal(utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 0, inventory_count: '', is_available: false }).is_available, false)
+  assert.equal(utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 0, inventory_count: '100' }).inventory_count, 100)
+  assert.throws(() => utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 1, inventory_count: '1.5' }), /whole number/)
   assert.throws(() => utils.parseProductInput({ title: 'A', retailer_id: 'B', price: 'abc' }), /valid price/)
   assert.throws(() => utils.parseProductInput({ title: 'A', retailer_id: 'B', price: -1 }), /valid price/)
   assert.throws(() => utils.parseProductInput({ title: '', retailer_id: 'B', price: 1 }), /title/)
@@ -744,10 +748,15 @@ test('Checkout buttons: Cash on Delivery confirms the order once and tells the c
   const sent = await withWhatsApp(async () => {
     const first = await tap(database, `cod_confirm_${ORDER_ID}`)
     assert.deepEqual([first.handled, first.outcome], [true, 'cod_confirmed'])
-    // The old button is tapped again
+    // The same tap again moments later (Meta redelivering it, or a double tap): nothing more is sent
+    const redelivered = await tap(database, `cod_confirm_${ORDER_ID}`)
+    assert.deepEqual([redelivered.handled, redelivered.outcome], [true, 'already_done'])
+    // The old button tapped again later on is answered
+    ageLastRequest(database)
     const again = await tap(database, `cod_confirm_${ORDER_ID}`)
     assert.deepEqual([again.handled, again.outcome], [true, 'already_done'])
   })
+  assert.equal(sent.length, 2)
   const order = database.tables.commerce_orders[0]
   assert.deepEqual([order.status, order.payment_method, order.payment_status], ['cod_confirmed', 'cod', 'pending'])
   assert.match(sent[0].text.body, /ORD-261013-AB12 is confirmed for Cash on Delivery/)
@@ -774,10 +783,11 @@ test('Checkout buttons: Pay online sends a payment request under a fresh referen
     ageLastRequest(database)
     assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested')
   })
-  // The first card is withdrawn before the second request goes out, so only one card can be paid
-  assert.deepEqual(sent.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12'], ['order_status', 'ORD-261013-AB12'], ['order_details', 'ORD-261013-AB12.2']])
-  assert.equal(sent[1].interactive.action.parameters.order.status, 'canceled')
-  assert.match(sent[1].interactive.body.text, /replaced by a new one/)
+  // The first card is withdrawn once the second one is out, so only one card can be paid and the
+  // customer is never left without one
+  assert.deepEqual(sent.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12'], ['order_details', 'ORD-261013-AB12.2'], ['order_status', 'ORD-261013-AB12']])
+  assert.equal(sent[2].interactive.action.parameters.order.status, 'canceled')
+  assert.match(sent[2].interactive.body.text, /replaced by a new one/)
   assert.equal(sent[0].interactive.action.parameters.total_amount.value, 104000)
   const order = database.tables.commerce_orders[0]
   assert.equal(order.meta_payment_reference, 'ORD-261013-AB12.2')
@@ -799,7 +809,7 @@ test('Checkout buttons: without the payment_requests column the latest reference
     ageLastRequest(database)
     await tap(database, `pay_online_${ORDER_ID}`)
   })
-  assert.deepEqual(sent.map(message => message.interactive.type), ['order_details', 'order_status', 'order_details'])
+  assert.deepEqual(sent.map(message => message.interactive.type), ['order_details', 'order_details', 'order_status'])
   assert.equal(database.tables.commerce_orders[0].meta_payment_reference, 'ORD-261013-AB12.2')
   assert.equal(database.tables.commerce_orders[0].payment_requests, undefined)
 })
@@ -1038,12 +1048,14 @@ test('Dashboard reminder: the customer is sent the step the order is waiting on'
   assert.equal(first[0].interactive.type, 'flow')
   assert.match(first[0].interactive.body.text, /reminder about your order #ORD-261013-AB12/)
 
-  // The address is on file and a payment request was already sent: that card is withdrawn and a
-  // new one goes out, under a new reference
+  // The address is on file and a payment request was already sent: a new one goes out, under a new
+  // reference, and only then is the earlier card withdrawn
   const needsPayment = seeded({ shipping_address: { address_line_1: '1 MG Road' }, meta_payment_reference: 'ORD-261013-AB12' })
   const second = await withWhatsApp(async () => { assert.equal((await remind(needsPayment, withGateway({ commerce_address_flow_id: '999', commerce_enable_cod: false }))).step, 'payment') })
-  assert.deepEqual(second.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_status', 'ORD-261013-AB12'], ['order_details', 'ORD-261013-AB12.2']])
+  assert.deepEqual(second.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12.2'], ['order_status', 'ORD-261013-AB12']])
   assert.equal(needsPayment.tables.commerce_orders[0].meta_payment_reference, 'ORD-261013-AB12.2')
+  // The earlier request was sent before payment_requests existed: its withdrawal is recorded all the same
+  assert.deepEqual(needsPayment.tables.commerce_orders[0].payment_requests.map(request => [request.reference, request.amount, Boolean(request.voided_at)]), [['ORD-261013-AB12', 1040, true], ['ORD-261013-AB12.2', 1040, false]])
 
   // Nothing is sent for an order that is no longer waiting on the customer
   for (const state of [{ status: 'paid', payment_status: 'paid' }, { status: 'shipped' }, { status: 'canceled' }]) {
@@ -1718,4 +1730,276 @@ test('Commerce send: every Meta call carries a deadline, and a timeout is a refu
   } finally {
     globalThis.fetch = original
   }
+})
+
+// ── Untracked stock, card replacement, redeliveries, changed totals ─────────
+
+test('Stock: an untracked product (null, or the old placeholder 100) is never counted down or taken off sale', async () => {
+  // Number(null) is 0: the check comes first, so an untracked product is not read as sold out
+  assert.deepEqual([null, undefined, ''].map(value => utils.isStockTracked({ inventory_count: value })), [false, false, false])
+  assert.equal(utils.isStockTracked({ inventory_count: 0 }), true)
+  assert.equal(utils.isStockTracked({ inventory_count: 7 }), true)
+  // 100 is the old "not tracked" placeholder until the migration has turned those into null (and
+  // added stock_tracked); after it, 100 is real stock
+  assert.equal(utils.isStockTracked({ inventory_count: 100 }), false)
+  assert.equal(utils.isStockTracked({ inventory_count: 100, stock_tracked: true }), true)
+  assert.equal(utils.isStockTracked({ inventory_count: null, stock_tracked: false }), false)
+
+  const products = [
+    { id: 'p1', organization_id: 'org', retailer_id: 'SKU-1', title: 'Shirt', price: 500, inventory_count: null, is_available: true },
+    { id: 'p2', organization_id: 'org', retailer_id: 'SKU-2', title: 'Cap', price: 200, inventory_count: 100, is_available: true },
+    { id: 'p3', organization_id: 'org', retailer_id: 'SKU-3', title: 'Belt', price: 100, inventory_count: 100, stock_tracked: true, is_available: true },
+  ]
+  const lines = ['SKU-1', 'SKU-2', 'SKU-3'].map((sku, index) => ({ id: `line-${index}`, order_id: ORDER_ID, product_id: products[index].id, retailer_id: sku, title: sku, unit_price: 1, quantity: 2 }))
+  const database = seeded({}, { commerce_products: products, commerce_order_items: lines })
+  const stock = () => database.tables.commerce_products.map(product => [product.retailer_id, product.inventory_count, product.is_available])
+
+  await withWhatsApp(async () => { assert.equal((await tap(database, `cod_confirm_${ORDER_ID}`)).outcome, 'cod_confirmed') })
+  assert.deepEqual(stock(), [['SKU-1', null, true], ['SKU-2', 100, true], ['SKU-3', 98, true]])
+  await handlers.adjustOrderStock({ organization: store(), order: database.tables.commerce_orders[0], action: 'restore', database })
+  assert.deepEqual(stock(), [['SKU-1', null, true], ['SKU-2', 100, true], ['SKU-3', 100, true]])
+
+  // The catalog is sent the untracked placeholder, which a sync reads back as untracked
+  const catalog = require('../lib/commerce/catalog-items.ts')
+  const defaults = { brand: 'Store', link: 'https://wa.me/919876543210', currency: 'INR' }
+  const item = product => catalog.toCatalogItem({ retailer_id: 'S', title: 'T', price: 10, is_available: true, ...product }, defaults)
+  assert.equal(item({ inventory_count: 100 }).quantity_to_sell_on_facebook, 100)
+  assert.equal(item({ inventory_count: null }).quantity_to_sell_on_facebook, 100)
+  assert.equal(item({ inventory_count: 100 }).availability, 'in stock')
+  assert.equal(item({ inventory_count: 100, stock_tracked: true }).quantity_to_sell_on_facebook, 100)
+  assert.equal(item({ inventory_count: 3 }).quantity_to_sell_on_facebook, 3)
+})
+
+test('Stock: the migration turns the old placeholder into untracked stock once, and only when the table exists', () => {
+  const fs = require('node:fs')
+  const sql = fs.readFileSync(require('node:path').join(__dirname, '../supabase/migrations/20261104_commerce_untracked_stock.sql'), 'utf8')
+  const code = sql.split('\n').filter(line => !line.trim().startsWith('--')).join('\n')
+  assert.match(code, /to_regclass\('public\.commerce_products'\) IS NULL[\s\S]*RETURN;/)
+  // The conversion runs in the step that adds the column, so applying the file again changes no stock
+  const guarded = code.slice(code.indexOf('IF NOT EXISTS'), code.indexOf('END IF;', code.indexOf('IF NOT EXISTS')))
+  assert.match(guarded, /column_name = 'stock_tracked'/)
+  assert.match(guarded, /UPDATE public\.commerce_products SET inventory_count = NULL WHERE inventory_count = 100;/)
+  assert.match(guarded, /ADD COLUMN stock_tracked boolean GENERATED ALWAYS AS \(inventory_count IS NOT NULL\) STORED/)
+  assert.ok(code.indexOf('DROP NOT NULL') < code.indexOf('SET inventory_count = NULL'))
+  assert.match(code, /ALTER COLUMN inventory_count DROP DEFAULT/)
+})
+
+const timeout = () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError') }
+
+test('Payment cards: a new card that WhatsApp refuses leaves the customer the card they have', async () => {
+  const database = seeded(requestedOrder())
+  const sent = await withWhatsApp(async () => {
+    assert.equal((await tap(database, `pay_online_${ORDER_ID}`, withGateway({ commerce_enable_cod: false }))).outcome, 'failed')
+  }, (count) => (count === 1 ? rejected(131056) : accepted()))
+  // The new card was refused and nothing was withdrawn: no "canceled" card for the old reference
+  assert.deepEqual(sent.map(message => message.type === 'text' ? 'text' : [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12.2'], 'text'])
+  const order = database.tables.commerce_orders[0]
+  assert.equal(order.meta_payment_reference, 'ORD-261013-AB12')
+  assert.deepEqual(order.payment_requests.map(request => [request.reference, Boolean(request.voided_at)]), [['ORD-261013-AB12', false]])
+})
+
+test('Payment cards: a card WhatsApp did not answer for in time keeps its reference, and the old card stays until a new one surely went out', async () => {
+  const database = seeded(requestedOrder())
+  const online = withGateway({ commerce_enable_cod: false })
+  const first = await withWhatsApp(async () => {
+    await tap(database, `pay_online_${ORDER_ID}`, online)
+  }, (count) => (count === 1 ? timeout() : accepted()))
+  const order = () => database.tables.commerce_orders[0]
+  // It may have arrived: its reference is never used again and a payment under it finds its amount
+  assert.equal(order().meta_payment_reference, 'ORD-261013-AB12.2')
+  assert.deepEqual(order().payment_requests.map(request => [request.reference, request.amount, Boolean(request.voided_at), Boolean(request.unconfirmed)]), [['ORD-261013-AB12', 1040, false, false], ['ORD-261013-AB12.2', 1040, false, true]])
+  assert.ok(first.every(message => message.type === 'text' || message.interactive.type !== 'order_status'))
+
+  // The next request goes out under a new reference, and then both earlier cards are withdrawn
+  ageLastRequest(database)
+  const next = await withWhatsApp(async () => { assert.equal((await tap(database, `pay_online_${ORDER_ID}`, online)).outcome, 'payment_requested') })
+  assert.deepEqual(next.map(message => [message.interactive.type, message.interactive.action.parameters.reference_id]), [['order_details', 'ORD-261013-AB12.3'], ['order_status', 'ORD-261013-AB12'], ['order_status', 'ORD-261013-AB12.2']])
+  assert.deepEqual(order().payment_requests.map(request => [request.reference, Boolean(request.voided_at)]), [['ORD-261013-AB12', true], ['ORD-261013-AB12.2', true], ['ORD-261013-AB12.3', false]])
+
+  // A payment under the request that timed out is still matched to its amount
+  await withWhatsApp(async () => { await pay(database, metaPaymentStatus('captured', 'success', 'ORD-261013-AB12.2')) })
+  assert.equal(order().payment_status, 'paid')
+})
+
+test('Commerce address: the same form delivered again sends nothing more, whatever the store offers', async () => {
+  const form = address()
+  const submit = (database, organization) => handlers.handleInboundAddressSubmission({ organization, ...party, flowToken: `order_${ORDER_ID}`, submissionData: form, database })
+
+  // Online and Cash on Delivery: one "how would you like to pay" message, not two
+  const choice = seeded({ status: 'awaiting_address' })
+  const chose = await withWhatsApp(async () => { await submit(choice, withGateway()); await submit(choice, withGateway()) })
+  assert.equal(chose.length, 1)
+  assert.equal(chose[0].interactive.type, 'button')
+
+  // Online only: one card, and it is not withdrawn by the redelivery
+  const online = seeded({ status: 'awaiting_address' })
+  const carded = await withWhatsApp(async () => { await submit(online, withGateway({ commerce_enable_cod: false })); await submit(online, withGateway({ commerce_enable_cod: false })) })
+  assert.deepEqual(carded.map(message => message.interactive.type), ['order_details'])
+  assert.deepEqual(online.tables.commerce_orders[0].payment_requests.map(request => [request.reference, Boolean(request.voided_at)]), [['ORD-261013-AB12', false]])
+
+  // Two deliveries handled at the same moment: one moves the checkout on, the other says nothing
+  const parallel = seeded({ status: 'awaiting_address' })
+  const once = await withWhatsApp(async () => { await Promise.all([submit(parallel, withGateway()), submit(parallel, withGateway())]) })
+  assert.equal(once.length, 1)
+
+  // A changed address is still taken, and the customer is answered
+  const changed = await withWhatsApp(async () => {
+    await handlers.handleInboundAddressSubmission({ organization: withGateway(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: address({ address_line_1: '9 Hill Road' }), database: choice })
+  })
+  assert.equal(choice.tables.commerce_orders[0].shipping_address.address_line_1, '9 Hill Road')
+  assert.equal(changed.length, 1)
+})
+
+test('Changed total: a card for the old amount is withdrawn, cannot settle the order, and Pay online sends one for the new total', async () => {
+  const onFile = { full_name: 'Asha Rao', phone_number: '+919876543210', address_line_1: '1 MG Road', address_line_2: '', city: 'Mumbai', state: 'MH', pincode: '400001', delivery_speed: 'standard', express_fee: 0, notes: '' }
+  const express = address({ address_line_1: '1 MG Road', delivery_speed: 'express' })
+  const submit = database => handlers.handleInboundAddressSubmission({ organization: withGateway(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: express, database })
+  const order = database => database.tables.commerce_orders[0]
+
+  const database = seeded(requestedOrder({ shipping_address: onFile }))
+  const sent = await withWhatsApp(async () => { await submit(database) })
+  assert.deepEqual([order(database).shipping_fee, order(database).total_amount], [90, 1090])
+  // The card for ₹1,040 is withdrawn, then the customer is asked how to pay the new total
+  assert.deepEqual([sent[0].interactive.type, sent[0].interactive.action.parameters.reference_id, sent[0].interactive.action.parameters.order.status], ['order_status', 'ORD-261013-AB12', 'canceled'])
+  assert.match(sent[0].interactive.body.text, /order total is now ₹\s?1,090/)
+  assert.equal(sent[1].interactive.type, 'button')
+  assert.ok(order(database).payment_requests[0].voided_at)
+
+  // The old card is paid anyway (it reached the customer first): held for the team, not marked paid
+  const held = await withWhatsApp(async () => { await pay(database, captured()) })
+  assert.deepEqual([order(database).status, order(database).payment_status], ['payment_pending', 'pending'])
+  assert.match(order(database).customer_note, /Payment of ₹\s?1,040 received .* but the order total is ₹\s?1,090; team to review\./)
+  assert.match(held[0].text.body, /The order total is ₹\s?1,090/)
+
+  // The withdrawal did not get through: the old card is still live and recent, yet Pay online
+  // sends a card for the new total instead of saying one was just sent
+  const unwithdrawn = seeded(requestedOrder({ shipping_address: onFile, payment_requests: [{ reference: 'ORD-261013-AB12', amount: 1040, currency: 'INR', requested_at: new Date().toISOString() }] }))
+  await withWhatsApp(async () => { await submit(unwithdrawn) }, (count) => (count === 1 ? rejected(131009) : accepted()))
+  assert.ok(!order(unwithdrawn).payment_requests[0].voided_at)
+  const fresh = await withWhatsApp(async () => { assert.equal((await tap(unwithdrawn, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested') })
+  assert.deepEqual([fresh[0].interactive.action.parameters.reference_id, fresh[0].interactive.action.parameters.total_amount.value], ['ORD-261013-AB12.2', 109000])
+  // And the old card, paid now, still cannot settle the order at the new total
+  await withWhatsApp(async () => { await pay(unwithdrawn, captured()) })
+  assert.equal(order(unwithdrawn).payment_status, 'pending')
+  // The new card can
+  await withWhatsApp(async () => { await pay(unwithdrawn, metaPaymentStatus('captured', 'success', 'ORD-261013-AB12.2', { amount: 109000, transactionId: 'pay_NEW', id: 'wamid.new' })) })
+  assert.equal(order(unwithdrawn).payment_status, 'paid')
+})
+
+test('Commerce payments: a different payment that loses the race to mark the order paid is still reported as a refund', async () => {
+  // The team clicks "Mark as paid" between the ledger write and the order update
+  let database
+  database = seeded(requestedOrder(), {}, {
+    failInsert: table => {
+      if (table === 'commerce_transactions') Object.assign(database.tables.commerce_orders[0], { status: 'paid', payment_status: 'paid', payment_method: 'manual' })
+      return null
+    },
+  })
+  const sent = await withWhatsApp(async () => { await pay(database, captured()) })
+  assert.deepEqual(ledger(database), [['duplicate', 1040, 'pay_ABC123', ORDER_ID]])
+  assert.match(database.tables.commerce_orders[0].customer_note, /^Second payment of ₹\s?1,040 received on .*; refund due\.$/)
+  assert.ok(bodies(database).includes('[Second payment of ₹1,040 received for Order #ORD-261013-AB12; refund due]'))
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].text.body, /second payment of ₹\s?1,040 .* refunded/)
+
+  // The same payment delivered twice at once, without the unique index: a redelivery, nothing to refund
+  let raced = false
+  let twice
+  twice = seeded(requestedOrder(), {}, {
+    failInsert: table => {
+      if (table === 'commerce_transactions' && !raced) {
+        raced = true
+        twice.tables.commerce_transactions.push({ id: 'parallel', organization_id: 'org', order_id: ORDER_ID, transaction_id: 'pay_ABC123', amount: 1040, status: 'captured' })
+        Object.assign(twice.tables.commerce_orders[0], { status: 'paid', payment_status: 'paid', payment_method: 'whatsapp_pay' })
+      }
+      return null
+    },
+  })
+  const quiet = await withWhatsApp(async () => { await pay(twice, captured()) })
+  assert.equal(quiet.length, 0)
+  assert.ok(!twice.tables.commerce_orders[0].customer_note)
+})
+
+test('Withdrawing a card sent before payment_requests existed is recorded, so it is never withdrawn twice', async () => {
+  const database = seeded({ meta_payment_reference: 'ORD-261013-AB12', payment_requests: [] })
+  const withdraw = () => handlers.voidPaymentRequest({ organization: store(), order: database.tables.commerce_orders[0], database })
+  const sent = await withWhatsApp(async () => {
+    assert.equal(await withdraw(), true)
+    assert.equal(await withdraw(), false)
+  })
+  assert.equal(sent.length, 1)
+  assert.deepEqual(database.tables.commerce_orders[0].payment_requests.map(request => [request.reference, request.amount, Boolean(request.voided_at)]), [['ORD-261013-AB12', 1040, true]])
+})
+
+test('Changed total: right after the old card is withdrawn, Pay online sends a card for the new total, with or without payment_requests', async () => {
+  const onFile = { full_name: 'Asha Rao', phone_number: '+919876543210', address_line_1: '1 MG Road', address_line_2: '', city: 'Mumbai', state: 'MH', pincode: '400001', delivery_speed: 'standard', express_fee: 0, notes: '' }
+  const express = address({ address_line_1: '1 MG Road', delivery_speed: 'express' })
+  const submit = database => handlers.handleInboundAddressSubmission({ organization: withGateway(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: express, database })
+  const recent = new Date().toISOString()
+
+  for (const database of [
+    seeded(requestedOrder({ shipping_address: onFile, updated_at: recent, payment_requests: [{ reference: 'ORD-261013-AB12', amount: 1040, currency: 'INR', requested_at: recent }] })),
+    seeded({ shipping_address: onFile, updated_at: recent, meta_payment_reference: 'ORD-261013-AB12' }, {}, { missingColumns: { commerce_orders: ['payment_requests'] } }),
+  ]) {
+    const withdrawn = await withWhatsApp(async () => { await submit(database) })
+    assert.deepEqual(withdrawn.map(message => message.interactive.type), ['order_status', 'button'])
+    // The customer was just told the card is gone: the tap is answered with a new one, not ignored
+    const sent = await withWhatsApp(async () => { assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'payment_requested') })
+    assert.deepEqual([sent[0].interactive.type, sent[0].interactive.action.parameters.reference_id, sent[0].interactive.action.parameters.total_amount.value], ['order_details', 'ORD-261013-AB12.2', 109000])
+    // The old card is not withdrawn a second time
+    assert.ok(sent.every(message => message.interactive.type !== 'order_status'))
+    // And a double tap on the new card still gets nothing more
+    const again = await withWhatsApp(async () => { assert.equal((await tap(database, `pay_online_${ORDER_ID}`)).outcome, 'already_requested') })
+    assert.equal(again.length, 0)
+  }
+})
+
+test('Changed total: two deliveries of a changed form at once withdraw the old card and ask how to pay once; an unrelated change does not lose the address', async () => {
+  const onFile = { full_name: 'Asha Rao', phone_number: '+919876543210', address_line_1: '1 MG Road', address_line_2: '', city: 'Mumbai', state: 'MH', pincode: '400001', delivery_speed: 'standard', express_fee: 0, notes: '' }
+  const express = address({ address_line_1: '1 MG Road', delivery_speed: 'express' })
+  const submit = database => handlers.handleInboundAddressSubmission({ organization: withGateway(), ...party, flowToken: `order_${ORDER_ID}`, submissionData: express, database })
+
+  const database = seeded(requestedOrder({ shipping_address: onFile, updated_at: '2026-10-13T09:05:00.000Z' }))
+  const sent = await withWhatsApp(async () => { await Promise.all([submit(database), submit(database)]) })
+  assert.deepEqual(sent.map(message => message.interactive.type), ['order_status', 'button'])
+  assert.deepEqual([database.tables.commerce_orders[0].shipping_fee, database.tables.commerce_orders[0].total_amount], [90, 1090])
+
+  // Something else touches the order between the read and the update: the form is handled again
+  // against the order as it is now, so the address is still taken and the customer answered
+  const touched = seeded(requestedOrder({ shipping_address: onFile, updated_at: '2026-10-13T09:05:00.000Z' }))
+  let bumped = false
+  const bumping = {
+    get tables() { return touched.tables },
+    from(table) {
+      const query = touched.from(table)
+      const update = query.update
+      query.update = function (data) {
+        if (table === 'commerce_orders' && !bumped) {
+          bumped = true
+          touched.tables.commerce_orders[0].updated_at = '2026-10-13T09:06:00.000Z'
+        }
+        return update.call(this, data)
+      }
+      return query
+    },
+  }
+  const answered = await withWhatsApp(async () => { await submit(bumping) })
+  assert.deepEqual(answered.map(message => message.interactive.type), ['order_status', 'button'])
+  assert.deepEqual([touched.tables.commerce_orders[0].shipping_address.delivery_speed, touched.tables.commerce_orders[0].total_amount], ['express', 1090])
+})
+
+test('Catalog: a product the store stops counting is not brought back as counted stock by the next sync', () => {
+  const catalog = require('../lib/commerce/catalog-items.ts')
+  const defaults = { brand: 'Store', link: 'https://wa.me/919876543210', currency: 'INR' }
+  const roundTrip = product => {
+    const item = catalog.toCatalogItem({ retailer_id: 'S', title: 'T', price: 10, ...product }, defaults)
+    const row = catalog.toCatalogProductRow({ retailer_id: 'S', price: '10 INR', currency: 'INR', availability: item.availability, inventory: item.quantity_to_sell_on_facebook })
+    return [row.is_available, row.inventory_count]
+  }
+  // Tracked at 5, then the stock field cleared: Meta is sent the untracked placeholder, not left at 5
+  assert.deepEqual(roundTrip({ inventory_count: 5, is_available: true }), [true, 5])
+  assert.deepEqual(roundTrip({ inventory_count: null, is_available: true }), [true, null])
+  // Untracked and taken off sale: it comes back untracked, not as 0 in stock
+  assert.deepEqual(roundTrip({ inventory_count: null, is_available: false }), [false, null])
+  assert.deepEqual(roundTrip({ inventory_count: 0, is_available: true }), [false, 0])
 })

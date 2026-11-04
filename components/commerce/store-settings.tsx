@@ -5,7 +5,7 @@ import { AlertCircle, Check, CheckCircle2, Link2, Loader2, Pencil, Plus, Refresh
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_EXPRESS_FEE, SUPPORTED_PAYMENT_GATEWAYS, formatMoney, getExpressFee } from '@/lib/commerce/commerce-utils'
-import { getStatusTemplate, getStatusTemplateBodyProblem, getStorefrontLink } from '@/lib/commerce/go-live-checks'
+import { getStatusTemplate, getStatusTemplateProblem, getStorefrontLink } from '@/lib/commerce/go-live-checks'
 import { MAX_STORE_AMOUNT, MAX_TEMPLATE_NAME_LENGTH } from '@/lib/organization-access'
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
@@ -23,6 +23,10 @@ interface TemplateChoice {
   language: string
   /** The body text, for the preview. */
   body: string
+  /** The template's structure as Meta lists it: the save sends it so the server can check it too. */
+  components: any[]
+  /** Why the order update cannot be sent with it (its body, header or buttons), or null. */
+  problem: string | null
 }
 
 /** One picker value per template: Meta names a template by name and language, and names never contain "|". */
@@ -106,11 +110,16 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       if (!res.ok) throw new Error(data.error || 'Meta did not list your templates.')
       const list: TemplateChoice[] = (Array.isArray(data.templates) ? data.templates : [])
         .filter((template: any) => String(template.status).toUpperCase() === 'APPROVED' && String(template.category).toUpperCase() === 'UTILITY')
-        .map((template: any) => ({
-          name: String(template.name || ''),
-          language: String(template.language || ''),
-          body: String((template.components || []).find((component: any) => component?.type === 'BODY')?.text || ''),
-        }))
+        .map((template: any) => {
+          const components = Array.isArray(template.components) ? template.components : []
+          return {
+            name: String(template.name || ''),
+            language: String(template.language || ''),
+            body: String(components.find((component: any) => component?.type === 'BODY')?.text || ''),
+            components,
+            problem: getStatusTemplateProblem(components),
+          }
+        })
         .sort((a: TemplateChoice, b: TemplateChoice) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language))
       setTemplates(list)
       setTemplatesError(null)
@@ -120,8 +129,9 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     }
   }, [orgId])
   const chosenTemplate = templates?.find((template) => templateKey(template) === templateKey(form.commerce_status_template)) || null
-  // Said before the save: the handler fills the body by position, and Meta refuses a mismatch only when the update is sent
-  const templateProblem = chosenTemplate ? getStatusTemplateBodyProblem(chosenTemplate.body) : null
+  // Said before the save: the update fills three numbered body variables and nothing else (no
+  // header media or variable, no button value), and Meta refuses a mismatch only when it is sent
+  const templateProblem = chosenTemplate?.problem || null
 
   const [isSaving, setIsSaving] = useState(false)
   // What Meta reports for the WhatsApp Business account: the choices below come only from here
@@ -441,9 +451,18 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       return
     }
 
-    // Typed by hand, the template may be half filled; the server says what is missing
+    // Typed by hand, the template may be half filled; the server says what is missing. A picked
+    // one carries its structure, so the server checks it as well (only the name and language are stored).
     const typed = form.commerce_status_template
     const statusTemplate = typed && (typed.name.trim() || typed.language.trim()) ? { name: typed.name.trim(), language: typed.language.trim() } : null
+    // A template every update would fail with is not newly chosen: shipping updates would never
+    // arrive. One saved before is only warned about (above the picker), so the rest of the
+    // settings, switching the store off included, can still be saved.
+    const templateChanged = templateKey(statusTemplate) !== templateKey(savedTemplate)
+    if (statusTemplateEditable && templateChanged && templateProblem) {
+      showToast('error', `${templateProblem} Choose another order-update template, or none.`)
+      return
+    }
 
     setIsSaving(true)
     try {
@@ -464,16 +483,19 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
       const res = await fetch('/api/organization', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationId: orgId, updates: update }),
+        body: JSON.stringify({
+          organizationId: orgId,
+          updates: statusTemplateEditable && templateChanged && statusTemplate && chosenTemplate
+            ? { ...update, commerce_status_template: { ...statusTemplate, components: chosenTemplate.components } }
+            : update,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Store settings could not be saved.')
       onSaved(update)
-      // Switching the store off withdraws the payment cards still open in chats; the answer counts them
-      const withdrawn = Number(data.paymentRequestsWithdrawn) || 0
       showToast('success', form.enable_commerce
         ? 'Store settings saved.'
-        : `Store settings saved. The store is switched off, so new carts are not turned into orders.${withdrawn ? ` ${withdrawn} open payment request${withdrawn === 1 ? ' was' : 's were'} withdrawn from customers’ chats.` : ''}`)
+        : 'Store settings saved. The store is switched off, so new carts are not turned into orders. Orders already in checkout can still be paid or confirmed.')
     } catch (err: any) {
       alert({ title: 'Settings not saved', message: err.message })
     } finally {
@@ -493,7 +515,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           <span className={`block ${subheading}`}>
             {form.enable_commerce
               ? 'A cart sent from your catalog becomes an order, and the customer is taken through address and payment.'
-              : 'Switched off: carts are not turned into orders and customers get no checkout messages.'}
+              : 'Switched off: new carts are not turned into orders. Orders already in checkout can still be paid or confirmed for Cash on Delivery, and their payments are recorded.'}
           </span>
         </span>
         <span className="relative shrink-0">
@@ -931,7 +953,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             </p>
           </div>
         )}
-        <p className={hintClass}>The template body needs three numbered variables, in this order: {'{{1}}'} the order number, {'{{2}}'} the new status (Shipped, Delivered…), {'{{3}}'} the tracking details (carrier and number, or a dash). For example: “Order {'{{1}}'} is {'{{2}}'}. Tracking: {'{{3}}'}”.</p>
+        <p className={hintClass}>The template body needs three numbered variables, in this order: {'{{1}}'} the order number, {'{{2}}'} the new status (Shipped, Delivered…), {'{{3}}'} the tracking details (carrier and number, or a dash). For example: “Order {'{{1}}'} is {'{{2}}'}. Tracking: {'{{3}}'}”. Nothing else is filled in, so the template can have a plain text header but no image, document or variable in it, and no button that needs a value (a link with a variable, a code or a form).</p>
       </section>
 
       <section className={`${cardClass} p-4 sm:p-5 space-y-4`}>

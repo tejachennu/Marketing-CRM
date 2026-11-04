@@ -300,3 +300,41 @@ test('Go live: a connected catalog missing from Meta\'s account list is not repo
   assert.equal(byId(getGoLiveChecks(store(), meta({ catalogStatus: { linked: null, linkedError: 'Unsupported get request', connected: null } }))).catalog.state, 'error')
   assert.equal(byId(getGoLiveChecks(store(), meta({ catalogStatus: { linked: { name: 'X', product_count: 0 }, connected: true } }))).catalog.state, 'error')
 })
+
+test('Order-update template: a header or button the update cannot fill is pointed out, as the body is', () => {
+  const { getStatusTemplateStructureProblem, getStatusTemplateProblem } = require('../lib/commerce/go-live-checks.ts')
+  const body = { type: 'BODY', text: 'Order {{1}} is {{2}}. Tracking: {{3}}' }
+  // Fine: no header, a plain text header, quick replies, a phone number and a fixed link
+  assert.equal(getStatusTemplateProblem([body]), null)
+  assert.equal(getStatusTemplateProblem([{ type: 'HEADER', format: 'TEXT', text: 'Order update' }, body, { type: 'FOOTER', text: 'Thanks' }]), null)
+  assert.equal(getStatusTemplateProblem([body, { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'Help' }, { type: 'PHONE_NUMBER', text: 'Call', phone_number: '+91' }, { type: 'URL', text: 'Track', url: 'https://shop.example.com/track' }] }]), null)
+  assert.equal(getStatusTemplateStructureProblem(undefined), null)
+
+  // Every one of these goes out without its value, so Meta refuses every update
+  for (const [components, wording] of [
+    [[{ type: 'HEADER', format: 'IMAGE', example: { header_handle: ['h'] } }, body], /image header/],
+    [[{ type: 'HEADER', format: 'DOCUMENT' }, body], /document header/],
+    [[{ type: 'HEADER', format: 'LOCATION' }, body], /location header/],
+    [[{ type: 'HEADER', format: 'TEXT', text: 'Order {{1}}' }, body], /header has a variable/],
+    [[body, { type: 'BUTTONS', buttons: [{ type: 'URL', text: 'Track', url: 'https://shop.example.com/track/{{1}}' }] }], /link button with a variable/],
+    [[body, { type: 'BUTTONS', buttons: [{ type: 'COPY_CODE', example: 'SAVE10' }] }], /copy-code button/],
+    [[body, { type: 'BUTTONS', buttons: [{ type: 'FLOW', text: 'Open', flow_id: '1' }] }], /form button/],
+  ]) {
+    assert.match(getStatusTemplateProblem(components), wording)
+    assert.match(getStatusTemplateProblem(components), /cannot fill, so Meta would refuse it\.$/)
+  }
+  // The body is checked first
+  assert.match(getStatusTemplateProblem([{ type: 'HEADER', format: 'IMAGE' }, { type: 'BODY', text: 'Shipped' }]), /no variables in its body/)
+})
+
+test('Order-update template: a saved template whose header or buttons the update cannot fill is a warning once Meta lists it', () => {
+  const saved = store({ commerce_status_template: { name: 'order_update', language: 'en' } })
+  const body = { type: 'BODY', text: 'Order {{1}} is {{2}}. Tracking: {{3}}' }
+  const listed = (components) => byId(getGoLiveChecks(saved, meta({ statusTemplateComponents: components }))).status_template
+  assert.equal(listed([body]).state, 'ok')
+  const media = listed([{ type: 'HEADER', format: 'IMAGE' }, body])
+  assert.deepEqual([media.state, media.required, media.fix], ['warning', false, 'store_settings'])
+  assert.match(media.detail, /“order_update” \(en\): This template has a image header/)
+  // Not looked up: nothing to go on, so the saved template stands
+  assert.equal(byId(getGoLiveChecks(saved, meta())).status_template.state, 'ok')
+})

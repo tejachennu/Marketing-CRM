@@ -1,7 +1,7 @@
 // Store setup settings: what /api/organization accepts for shipping amounts, the currency, the
 // payment gateway, the Meta app secret and the order-update template; a column whose migration has
-// not been applied; the address form checked against Meta before it is chosen; and the payment
-// requests withdrawn when the store is switched off. Nothing here reaches the network or a real database.
+// not been applied; the address form checked against Meta before it is chosen; and the store switch,
+// which leaves open checkouts alone. Nothing here reaches the network or a real database.
 require('./register-typescript.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -181,6 +181,20 @@ test('Store settings: the order-update template is a template name and a languag
   }
 })
 
+test('Store settings: a picked template the order update cannot fill is refused; only its name and language are stored', () => {
+  const body = { type: 'BODY', text: 'Order {{1}} is {{2}}. Tracking: {{3}}' }
+  // The picker sends the template's structure as Meta lists it: checked, then left out
+  assert.deepEqual(planOrganizationUpdate(manager, { commerce_status_template: { name: 'order_update', language: 'en', components: [{ type: 'HEADER', format: 'TEXT', text: 'Update' }, body] } }), { ok: true, values: { commerce_status_template: { name: 'order_update', language: 'en' } } })
+  const media = planOrganizationUpdate(manager, { commerce_status_template: { name: 'order_update', language: 'en', components: [{ type: 'HEADER', format: 'IMAGE' }, body] } })
+  assert.deepEqual([media.ok, media.status], [false, 400])
+  assert.match(media.error, /image header, which the order update cannot fill/)
+  assert.match(checkStatusTemplate({ name: 'order_update', language: 'en', components: [{ type: 'BODY', text: 'Order {{order}} shipped' }] }).error, /named variables/)
+  assert.match(checkStatusTemplate({ name: 'order_update', language: 'en', components: [body, { type: 'BUTTONS', buttons: [{ type: 'URL', url: 'https://x.example/{{1}}' }] }] }).error, /link button with a variable/)
+  assert.deepEqual(checkStatusTemplate({ name: 'order_update', language: 'en', components: 'header' }), { ok: false, error: STATUS_TEMPLATE_ERROR })
+  // Typed by hand (Meta did not list the templates): nothing to check beyond the name and language
+  assert.deepEqual(checkStatusTemplate({ name: 'order_update', language: 'en' }), { ok: true, value: { name: 'order_update', language: 'en' } })
+})
+
 test('Store settings: a column whose migration is not applied yet is a 400 with the reason, not a 500', async () => {
   reset()
   missingColumns = ['whatsapp_app_secret']
@@ -218,80 +232,26 @@ test('Store settings: the API refuses a bad amount before touching the database'
   const saved = await patch({ commerce_default_shipping_fee: '10', currency: 'inr' })
   assert.equal(saved.status, 200)
   assert.deepEqual(updates, [{ commerce_default_shipping_fee: 10, currency: 'INR' }])
-  assert.equal(saved.body.paymentRequestsWithdrawn, 0)
 })
 
-test('Store settings: switching the store off withdraws the payment requests still open in chats', async () => {
+test('Store settings: switching the store off stops new carts only; open checkouts keep their payment cards', async () => {
+  // The webhook still records payments and answers checkout taps for orders that exist, so the
+  // cards in customers' chats stay payable: nothing is withdrawn, nobody is messaged
   reset()
   row.enable_commerce = true
   orders = [
     { id: 'o1', organization_id: ORG, order_number: 'ORD-1', status: 'payment_pending', payment_status: 'pending', meta_payment_reference: 'ORD-1', created_at: '2026-11-01' },
     { id: 'o2', organization_id: ORG, order_number: 'ORD-2', status: 'cart_submitted', payment_status: 'pending', meta_payment_reference: 'ORD-2', created_at: '2026-11-02' },
-    // Not live: paid, no request sent, canceled, or another store's
-    { id: 'o3', organization_id: ORG, order_number: 'ORD-3', status: 'paid', payment_status: 'paid', meta_payment_reference: 'ORD-3' },
-    { id: 'o4', organization_id: ORG, order_number: 'ORD-4', status: 'awaiting_address', payment_status: 'pending', meta_payment_reference: null },
-    { id: 'o5', organization_id: ORG, order_number: 'ORD-5', status: 'canceled', payment_status: 'pending', meta_payment_reference: 'ORD-5' },
-    { id: 'o6', organization_id: OTHER_ORG, order_number: 'ORD-6', status: 'payment_pending', payment_status: 'pending', meta_payment_reference: 'ORD-6' },
   ]
-  voidResult = async ({ order }) => order.order_number !== 'ORD-2' // WhatsApp refuses one
   const saved = await patch({ enable_commerce: false, commerce_enable_cod: true })
   assert.equal(saved.status, 200)
-  assert.equal(saved.body.paymentRequestsWithdrawn, 1)
-  assert.deepEqual(voided.map((call) => call.order.order_number).sort(), ['ORD-1', 'ORD-2'])
-  // Withdrawn with the store as saved and this request's database, so the customer's number can be read
-  assert.equal(voided[0].organization.id, ORG)
-  assert.equal(voided[0].organization.enable_commerce, false)
-  assert.equal(voided[0].database, fakeDb)
-  assert.match(voided[0].description, /ORD-1/)
   assert.equal(row.enable_commerce, false)
-
-  // Saving the store while it is off does not message the customers again
-  voided = []
-  const again = await patch({ enable_commerce: false, commerce_enable_cod: false })
-  assert.equal(again.status, 200)
-  assert.equal(again.body.paymentRequestsWithdrawn, 0)
   assert.deepEqual(voided, [])
-  // Switching it on withdraws nothing either
-  assert.equal((await patch({ enable_commerce: true })).body.paymentRequestsWithdrawn, 0)
+  assert.equal('paymentRequestsWithdrawn' in saved.body, false)
+  // Off, on and off again: still nothing withdrawn, so no customer is told the store paused twice
+  await patch({ enable_commerce: true })
+  await patch({ enable_commerce: false })
   assert.deepEqual(voided, [])
-})
-
-test('Store settings: many open cards are withdrawn a few at a time, so the save answers in time', async () => {
-  reset()
-  row.enable_commerce = true
-  orders = Array.from({ length: 12 }, (_, index) => ({ id: `o${index}`, organization_id: ORG, order_number: `ORD-${index}`, status: 'payment_pending', payment_status: 'pending', meta_payment_reference: `ORD-${index}` }))
-  let inFlight = 0
-  let peak = 0
-  voidResult = async () => {
-    inFlight++
-    peak = Math.max(peak, inFlight)
-    await new Promise((resolve) => setTimeout(resolve, 2))
-    inFlight--
-    return true
-  }
-  const saved = await patch({ enable_commerce: false })
-  assert.equal(saved.status, 200)
-  assert.equal(saved.body.paymentRequestsWithdrawn, 12)
-  assert.equal(voided.length, 12)
-  assert.ok(peak > 1 && peak <= 5, `withdrawn ${peak} at a time`)
-})
-
-test('Store settings: a card WhatsApp will not withdraw, or orders that cannot be read, never fail the save', async () => {
-  reset()
-  row.enable_commerce = true
-  orders = [{ id: 'o1', organization_id: ORG, order_number: 'ORD-1', status: 'payment_pending', payment_status: 'pending', meta_payment_reference: 'ORD-1' }]
-  voidResult = async () => { throw new Error('WhatsApp could not be reached') }
-  const saved = await patch({ enable_commerce: false })
-  assert.equal(saved.status, 200)
-  assert.equal(saved.body.paymentRequestsWithdrawn, 0)
-  assert.equal(row.enable_commerce, false)
-  // The orders could not be read at all
-  reset()
-  row.enable_commerce = true
-  ordersError = { code: '42P01', message: 'relation "commerce_orders" does not exist' }
-  const alsoSaved = await patch({ enable_commerce: false })
-  assert.equal(alsoSaved.status, 200)
-  assert.equal(alsoSaved.body.paymentRequestsWithdrawn, 0)
   assert.equal(row.enable_commerce, false)
 })
 

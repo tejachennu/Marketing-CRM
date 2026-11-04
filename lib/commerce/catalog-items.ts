@@ -7,6 +7,8 @@
  * https://developers.facebook.com/docs/marketing-api/catalog-batch/reference
  */
 
+import { LEGACY_UNTRACKED_STOCK, isStockTracked } from './commerce-utils'
+
 export const PRODUCT_CONDITIONS = ['new', 'refurbished', 'used'] as const
 export type ProductCondition = (typeof PRODUCT_CONDITIONS)[number]
 
@@ -228,8 +230,13 @@ export function toCatalogItem(product: CatalogProduct, defaults: CatalogItemDefa
     item.image_link = image
   }
   if (onSale || options.endSale) item.sale_price = money(price)
-  // 0 is sent too: Meta then shows the item sold out and lists its stock as 0, as this table has it
-  if (Number.isInteger(inventory) && Number(inventory) >= 0) item.quantity_to_sell_on_facebook = Number(inventory)
+  // 0 is sent too: Meta then shows the item sold out and lists its stock as 0, as this table has it.
+  // Untracked stock is sent as the placeholder LEGACY_UNTRACKED_STOCK, which a catalog sync reads
+  // back as untracked (toCatalogProductRow). Sending nothing would not do: Meta keeps the last
+  // quantity it was sent, so a product the store stopped counting would come back from the next
+  // sync with its old count and start selling out again.
+  if (!isStockTracked(product)) item.quantity_to_sell_on_facebook = LEGACY_UNTRACKED_STOCK
+  else if (Number.isInteger(Number(inventory)) && Number(inventory) >= 0) item.quantity_to_sell_on_facebook = Number(inventory)
 
   const category = text(product.category, 750)
   if (category && category !== 'General') item.product_type = category
@@ -278,7 +285,8 @@ export interface CatalogProductRow {
   image_url: string | null
   website_url: string | null
   is_available: boolean
-  inventory_count: number
+  /** null: stock is not tracked (see isStockTracked in commerce-utils). */
+  inventory_count: number | null
   /** `source: 'meta'` marks the row as a copy of a catalog item, so a later sync may update or remove it. */
   metadata: { source: 'meta'; attributes: ProductAttributes; catalog: CatalogSync }
 }
@@ -316,7 +324,13 @@ export function toCatalogProductRow(product: any, kept: ProductAttributes = {}, 
     .slice(0, 5)
   const reviewStatus = String(product.review_status || '').toLowerCase()
   const available = AVAILABLE_STATES.has(String(product.availability || '').toLowerCase())
-  const stock = typeof product.inventory === 'number' && product.inventory > 0 ? product.inventory : null
+  // A quantity of exactly 100 is the placeholder this app used to send for untracked stock (Meta
+  // keeps the last quantity it was sent), so reading it back as tracked stock would start counting
+  // it down. A store that really holds 100 sees "Not tracked" and can enter the number again.
+  // That placeholder is what is sent for untracked stock too (toCatalogItem), whether or not the item
+  // is for sale, so it never comes back as 0 either.
+  const untracked = product.inventory === LEGACY_UNTRACKED_STOCK
+  const stock = typeof product.inventory === 'number' && product.inventory > 0 && !untracked ? product.inventory : null
 
   return {
     retailer_id: retailerId,
@@ -328,9 +342,9 @@ export function toCatalogProductRow(product: any, kept: ProductAttributes = {}, 
     // A chat link is what a product without a page is given when it is sent to the catalog
     website_url: product.url && !/^https?:\/\/(wa\.me|api\.whatsapp\.com)\//i.test(product.url) ? product.url : null,
     is_available: available,
-    // An item in stock without a quantity has untracked stock, which this table keeps as 100. Copying it
+    // An item in stock without a quantity has untracked stock (null: never counted down). Copying it
     // as 0 would show it sold out here and, once sent back, make it so in the catalog.
-    inventory_count: stock ?? (available ? 100 : 0),
+    inventory_count: untracked ? null : stock ?? (available ? null : 0),
     metadata: {
       source: 'meta',
       attributes,

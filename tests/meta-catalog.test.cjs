@@ -113,7 +113,7 @@ test('Catalog items: empty optional details fall back to what the store has', ()
   assert.equal(item.link, 'https://wa.me/919876543210')         // and a link: the chat with the business
   assert.equal(item.price, '9.50 USD')
   assert.equal(item.availability, 'in stock')                   // stock that is not tracked is sellable
-  assert.equal('quantity_to_sell_on_facebook' in item, false)
+  assert.equal(item.quantity_to_sell_on_facebook, 100)            // the untracked placeholder, read back as untracked
   assert.equal('product_type' in item, false)
 
   assert.deepEqual(items.getCatalogItemDefaults(ORG), DEFAULTS)
@@ -787,7 +787,9 @@ test('Catalog items: stock, availability and a sale survive the round trip throu
   // Sold out here: the catalog's own stock count says so too, not only its availability
   const soldOut = items.toCatalogItem(product({ inventory_count: 0 }), DEFAULTS)
   assert.deepEqual([soldOut.availability, soldOut.quantity_to_sell_on_facebook], ['out of stock', 0])
-  assert.equal('quantity_to_sell_on_facebook' in items.toCatalogItem(product({ inventory_count: null }), DEFAULTS), false)
+  // Untracked stock is sent as the placeholder 100 (Meta keeps the last quantity it was sent, so
+  // sending none would leave an old count there for the next sync to bring back)
+  assert.equal(items.toCatalogItem(product({ inventory_count: null }), DEFAULTS).quantity_to_sell_on_facebook, 100)
 
   const back = (item) => {
     const row = items.toCatalogProductRow({ retailer_id: 'X', price: '100 INR', currency: 'INR', ...item })
@@ -796,9 +798,11 @@ test('Catalog items: stock, availability and a sale survive the round trip throu
   assert.deepEqual(back({ availability: 'out of stock', inventory: 0 }), [false, 0])
   assert.deepEqual(back({ availability: 'in stock', inventory: 7 }), [true, 7])
   assert.deepEqual(back({ availability: 'out of stock', inventory: 12 }), [false, 12])            // "available to sell" unticked, stock still counted
-  // An item in stock with no stock count is not sold out: it comes back as untracked stock, as this table keeps it
-  assert.deepEqual(back({ availability: 'in stock', inventory: 0 }), [true, 100])
-  assert.deepEqual(back({ availability: 'in stock' }), [true, 100])
+  // An item in stock with no stock count is not sold out: it comes back as untracked stock (null), as
+  // does the placeholder quantity 100 this app used to send for untracked stock
+  assert.deepEqual(back({ availability: 'in stock', inventory: 0 }), [true, null])
+  assert.deepEqual(back({ availability: 'in stock' }), [true, null])
+  assert.deepEqual(back({ availability: 'in stock', inventory: 100 }), [true, null])
   assert.deepEqual(back({ availability: 'out of stock' }), [false, 0])
 
   // What was sent comes back as it went: a sale keeps its full price, an ended sale brings none

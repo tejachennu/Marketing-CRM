@@ -44,6 +44,11 @@ export interface MetaDetection {
   /** The address form the store sends, when one is set. */
   addressForm?: AddressFormReport | null
   /**
+   * The saved order-update template's components as Meta lists them, when they were looked up.
+   * A template saved before its header and buttons were checked is then warned about.
+   */
+  statusTemplateComponents?: unknown[] | null
+  /**
    * The linked catalog as GET /api/commerce/catalog reports it (what Store settings shows). Preferred
    * over `catalogs`: Meta's list of the account's catalogs can be empty while one is connected.
    */
@@ -153,6 +158,48 @@ export function getStatusTemplateBodyProblem(body: string): string | null {
   if (distinct === '1,2,3') return null
   const count = variables.length === 0 ? 'no variables' : variables.length === 1 ? 'one variable' : `${variables.length} variables`
   return `This template has ${count} in its body${listed ? ` (${listed})` : ''}, but the order update fills exactly three numbered ones ${expected}`
+}
+
+/** Buttons that are sent with a value of their own (a code, a form, products), which the order update has none of. */
+const BUTTONS_NEEDING_A_VALUE: Record<string, string> = {
+  COPY_CODE: 'copy-code', OTP: 'one-time code', FLOW: 'form', CATALOG: 'catalog', MPM: 'products', SPM: 'product', ORDER_DETAILS: 'order details',
+}
+
+/**
+ * Why a template's header or buttons cannot carry the order update, or null when they can. The
+ * update only fills the body (the template is stored as a name and a language), so a header with
+ * media or a variable, or a button that needs a value, goes out without it and Meta refuses every
+ * update sent with the template. A plain text header, quick replies, a phone button and a fixed
+ * link are fine.
+ */
+export function getStatusTemplateStructureProblem(components: unknown): string | null {
+  const list: any[] = Array.isArray(components) ? components : []
+  const ofType = (type: string) => list.find((component) => String(component?.type || '').toUpperCase() === type)
+  const variable = /\{\{[^{}]*\}\}/
+  const refused = 'which the order update cannot fill, so Meta would refuse it.'
+  const header = ofType('HEADER')
+  if (header) {
+    const format = String(header.format || 'TEXT').toUpperCase()
+    if (format !== 'TEXT') return `This template has a ${format.toLowerCase()} header, ${refused}`
+    if (variable.test(String(header.text || ''))) return `This template's header has a variable, ${refused}`
+  }
+  const buttons = ofType('BUTTONS')?.buttons
+  for (const button of Array.isArray(buttons) ? buttons : []) {
+    const type = String(button?.type || '').toUpperCase()
+    if (type === 'URL' && variable.test(String(button.url || ''))) return `This template has a link button with a variable, ${refused}`
+    if (BUTTONS_NEEDING_A_VALUE[type]) return `This template has a ${BUTTONS_NEEDING_A_VALUE[type]} button, ${refused}`
+  }
+  return null
+}
+
+/**
+ * Why a template, as Meta lists it, cannot carry the order update (its body first, then its
+ * header and buttons), or null when it can.
+ */
+export function getStatusTemplateProblem(components: unknown): string | null {
+  const list: any[] = Array.isArray(components) ? components : []
+  const body = list.find((component) => String(component?.type || '').toUpperCase() === 'BODY')
+  return getStatusTemplateBodyProblem(String(body?.text || '')) || getStatusTemplateStructureProblem(list)
 }
 
 /**
@@ -322,7 +369,10 @@ export function getGoLiveChecks(organization: Record<string, any> | null | undef
   // message is over 24 hours old (error 131047), the usual case when a Cash on Delivery order ships
   // the next day; only an approved template gets through then.
   const template = getStatusTemplate(organization)
-  if (template) {
+  const templateProblem = template && Array.isArray(meta?.statusTemplateComponents) ? getStatusTemplateProblem(meta!.statusTemplateComponents) : null
+  if (template && templateProblem) {
+    checks.push({ id: 'status_template', title: 'Order-update template', state: 'warning', required: false, fix: 'store_settings', detail: `“${template.name}” (${template.language}): ${templateProblem} Choose another template in Store settings.` })
+  } else if (template) {
     checks.push({ id: 'status_template', title: 'Order-update template', state: 'ok', required: false, detail: `“${template.name}” (${template.language}) carries shipping and delivery updates when a plain message is no longer allowed.` })
   } else {
     const migrated = !organization || 'commerce_status_template' in organization

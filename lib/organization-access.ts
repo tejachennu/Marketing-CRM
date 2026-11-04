@@ -5,6 +5,7 @@
 
 import { can, describeDenied, type Permission, type RoleSubject } from './rbac'
 import { SUPPORTED_PAYMENT_GATEWAYS } from './commerce/commerce-utils'
+import { getStatusTemplateProblem } from './commerce/go-live-checks'
 
 // Credentials never leave the server for someone who cannot manage settings
 const SECRET_COLUMN = /(token|secret|password|api_key|private_key|account_sid)/i
@@ -113,7 +114,9 @@ export interface StatusTemplate {
 
 /**
  * The order-update template as it is stored: `{ name, language }` or null for none. The language
- * is put in Meta's casing ("en_US") because the fallback input lets it be typed by hand.
+ * is put in Meta's casing ("en_US") because the fallback input lets it be typed by hand. When the
+ * picker sends the template's structure as Meta lists it (`components`), a template the update
+ * cannot fill (see getStatusTemplateProblem) is refused; the structure itself is not stored.
  */
 export function checkStatusTemplate(value: unknown): { ok: true; value: StatusTemplate | null } | { ok: false; error: string } {
   if (value === null || value === undefined || value === '') return { ok: true, value: null }
@@ -123,6 +126,11 @@ export function checkStatusTemplate(value: unknown): { ok: true; value: StatusTe
   const language = region === undefined ? base.toLowerCase() : `${base.toLowerCase()}_${region.toUpperCase()}`
   if (!name || name.length > MAX_TEMPLATE_NAME_LENGTH || !TEMPLATE_NAME.test(name) || !TEMPLATE_LANGUAGE.test(language)) {
     return { ok: false, error: STATUS_TEMPLATE_ERROR }
+  }
+  const components = (value as any).components
+  if (components !== undefined) {
+    const problem = Array.isArray(components) ? getStatusTemplateProblem(components) : STATUS_TEMPLATE_ERROR
+    if (problem) return { ok: false, error: problem }
   }
   return { ok: true, value: { name, language } }
 }

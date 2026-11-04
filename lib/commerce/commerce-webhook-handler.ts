@@ -47,6 +47,7 @@ import {
   getStatusTemplate,
   hasPaymentRequest,
   isMissingColumnError,
+  isStockTracked,
   isUniqueViolation,
   lineTotal,
   nextPaymentReference,
@@ -187,6 +188,8 @@ export interface SendResult {
   messageId?: string | null
   /** The same message is being sent by a parallel run (a redelivered or double tap); this one sent nothing. */
   superseded?: boolean
+  /** WhatsApp did not answer in time: the message may still arrive, so it is not a definite refusal. */
+  timedOut?: boolean
 }
 
 /** How long a send may take. A webhook or reminder run must not hang on a stalled Meta connection. */
@@ -231,7 +234,7 @@ export async function sendWhatsAppMessage(organization: any, payload: unknown): 
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
       console.error(`[Commerce] WhatsApp send timed out after ${WHATSAPP_SEND_TIMEOUT_MS / 1000} s`)
       // Meta may still deliver it; the caller treats this like any other refusal
-      return { ok: false, error: 'WhatsApp did not answer in time. The message may still arrive; check the chat before sending again.' }
+      return { ok: false, timedOut: true, error: 'WhatsApp did not answer in time. The message may still arrive; check the chat before sending again.' }
     }
     console.error('[Commerce] WhatsApp send error:', err)
     return { ok: false, error: 'WhatsApp could not be reached. Check your connection and try again.' }
@@ -306,9 +309,10 @@ async function loadOrderItems(supabase: Database, orderId: string): Promise<Orde
 /**
  * Ask for payment inside the chat. Each request gets a fresh reference (WhatsApp refuses to
  * reuse one) and the order remembers every one it sent, with the amount asked for, so the
- * payment that comes back finds its order and is checked against the right amount. The earlier
- * card is withdrawn first (best effort: WhatsApp may have expired it already), so the customer
- * has one card to pay, not two.
+ * payment that comes back finds its order and is checked against the right amount. Once the new
+ * card is out, the earlier one is withdrawn (best effort: WhatsApp may have expired it already),
+ * so the customer has one card to pay, not two. It is withdrawn only after the new one was
+ * accepted: a send that fails leaves the customer the card they already have.
  *
  * The reference is claimed on the order row before anything is sent: Meta delivers a tap twice
  * and customers double-tap, and both deliveries run at once. Only the one whose claim went
@@ -364,60 +368,107 @@ async function sendPaymentRequest(context: CheckoutContext, order: any, items: O
   }
   order.meta_payment_reference = reference
 
-  const previousReference = before && hasPaymentRequest({ order_number: order.order_number, meta_payment_reference: before }) ? String(before) : null
-  const withdrawn = previousReference
-    ? await voidPaymentRequest({
-        organization: context.organization,
-        order: { ...order, meta_payment_reference: previousReference },
-        database: context.supabase,
-        phone: context.customerPhone,
-        description: `This payment request for Order #${order.order_number} was replaced by a new one.`,
-        record: false,
-      })
-    : false
-
   const result = await sendAndLog(
     context,
     payload,
     `[Sent payment request for Order #${order.order_number} (${formatMoney(requestedAmount, currency)})]`
   )
-  if (result.ok) {
-    const now = new Date().toISOString()
-    const requests: PaymentRequestRecord[] = getPaymentRequests(order).map((entry) =>
-      withdrawn && entry.reference === previousReference && !entry.voided_at ? { ...entry, voided_at: now } : entry
-    )
-    requests.push({ reference, amount: requestedAmount, currency, requested_at: now })
-    await writeWithPaymentRequests(
-      { meta_payment_reference: reference, payment_requests: requests, updated_at: now },
-      (row) => context.supabase.from('commerce_orders').update(row).eq('id', order.id)
-    )
-    order.payment_requests = requests
-  } else {
-    // Nothing reached the customer: the claim is given back, so the order does not point at a
-    // request that was never sent (a later request gets the next reference anyway)
+  if (!result.ok && !result.timedOut) {
+    // WhatsApp refused it: nothing reached the customer and the earlier card was left alone, so
+    // the claim is given back and the order points at the card the customer still has
     await context.supabase
       .from('commerce_orders')
       .update({ meta_payment_reference: before, updated_at: new Date().toISOString() })
       .eq('id', order.id)
+      .eq('organization_id', context.organization.id)
       .eq('meta_payment_reference', reference)
     order.meta_payment_reference = before
+    return result
   }
+
+  // Sent, or perhaps sent (no answer in time). Either way the reference is spent: it stays on the
+  // order and in its list, so a payment under it finds its amount and the next request moves past
+  // it. The earlier cards are withdrawn only when the new one surely went out: the previous one,
+  // and any still live from a request that timed out.
+  const now = new Date().toISOString()
+  let requests: PaymentRequestRecord[] = getPaymentRequests(order)
+  if (result.ok) {
+    const earlier = new Set(requests.filter((entry) => !entry.voided_at).map((entry) => entry.reference))
+    if (before && hasPaymentRequest({ order_number: order.order_number, meta_payment_reference: before }) && !withdrawnByAddressForm(order, before)) earlier.add(String(before))
+    earlier.delete(reference)
+    for (const previousReference of earlier) {
+      const withdrawn = await voidPaymentRequest({
+        organization: context.organization,
+        order: { ...order, meta_payment_reference: previousReference, payment_requests: requests },
+        database: context.supabase,
+        phone: context.customerPhone,
+        description: `This payment request for Order #${order.order_number} was replaced by a new one.`,
+        record: false,
+      })
+      if (withdrawn) requests = withRequestVoided({ ...order, payment_requests: requests }, previousReference, now)
+    }
+  }
+  requests.push({ reference, amount: requestedAmount, currency, requested_at: now, ...(result.ok ? {} : { unconfirmed: true }) })
+  // Only while the order still points at this request: a newer one sent meanwhile is not overwritten
+  await writeWithPaymentRequests(
+    { payment_requests: requests, updated_at: now },
+    (row) => context.supabase.from('commerce_orders').update(row).eq('id', order.id).eq('organization_id', context.organization.id).eq('meta_payment_reference', reference)
+  )
+  order.payment_requests = requests
   return result
 }
 
-/** When the last live payment request of an order went out, in ms since the epoch; null when none did. */
-function lastPaymentRequestAt(order: any): number | null {
+/** The order's last payment request that was not withdrawn; null when none is recorded. */
+function latestLiveRequest(order: any): PaymentRequestRecord | null {
   const live = getPaymentRequests(order).filter((entry) => !entry.voided_at)
-  const latest = live[live.length - 1]
+  return live[live.length - 1] || null
+}
+
+/**
+ * When the last live payment request of an order went out, in ms since the epoch; null when no
+ * card is live in the chat. A withdrawn card (the order total changed, see the address form)
+ * does not count: the customer was just told it is gone, so a Pay online tap must get a new one.
+ */
+function lastPaymentRequestAt(order: any): number | null {
+  const latest = latestLiveRequest(order)
   if (latest) {
     const at = Date.parse(latest.requested_at || '')
     return Number.isFinite(at) ? at : null
   }
-  // Before the payment_requests column: the reference was written when the request went out
-  if (!hasPaymentRequest(order)) return null
+  // Requests are recorded and every one was withdrawn
+  if (getPaymentRequests(order).length > 0) return null
+  // Before the payment_requests column: the reference was written when the request went out,
+  // unless the address form withdrew that card since (it notes so on the address)
+  if (!hasPaymentRequest(order) || withdrawnByAddressForm(order, order.meta_payment_reference)) return null
   const at = Date.parse(order.updated_at || '')
   return Number.isFinite(at) ? at : null
 }
+
+/**
+ * Without the payment_requests column, a card the address form withdrew (the total changed) is
+ * noted on the address instead, so it is neither taken for a fresh card nor withdrawn again.
+ */
+function withdrawnByAddressForm(order: any, reference: unknown): boolean {
+  return Boolean(reference) && order.shipping_address?.withdrawn_payment_reference === reference
+}
+
+/**
+ * The order's payment requests with `reference` marked withdrawn. A request sent before the
+ * payment_requests column existed has no entry: one is added, with the amount the order had
+ * then, so the withdrawal is remembered (and never sent again) and a late payment under that
+ * reference is still checked against what it asked for.
+ */
+function withRequestVoided(order: any, reference: string, now: string): PaymentRequestRecord[] {
+  const requests = getPaymentRequests(order)
+  if (requests.some((entry) => entry.reference === reference)) {
+    return requests.map((entry) => (entry.reference === reference && !entry.voided_at ? { ...entry, voided_at: now } : entry))
+  }
+  const currency = String(order.currency || IN_CHAT_PAYMENT_CURRENCY).toUpperCase()
+  return [{ reference, amount: Number(order.total_amount) || 0, currency, requested_at: order.updated_at || now, voided_at: now }, ...requests]
+}
+
+/** Money amounts differ by more than a paisa of rounding. */
+const amountsDiffer = (a: number, b: number) => Math.abs(a - b) > 0.01
 
 export type CheckoutStep = 'address' | 'choice' | 'payment' | 'cod' | 'acknowledged' | 'not_sent'
 
@@ -770,15 +821,7 @@ export function orderIdFromFlowToken(flowToken: string | null | undefined): stri
  * A customer who sent a form is always answered: a corrected address on a confirmed order is
  * saved, an order that has already shipped is explained, a form without an address is said so.
  */
-export async function handleInboundAddressSubmission({
-  organization,
-  contact,
-  conversation,
-  submissionData,
-  flowToken,
-  customerPhone,
-  database,
-}: {
+export async function handleInboundAddressSubmission(args: {
   organization: any
   contact: any
   conversation: any
@@ -786,7 +829,16 @@ export async function handleInboundAddressSubmission({
   flowToken?: string
   customerPhone: string
   database?: Database
-}) {
+}): Promise<any> {
+  return handleAddressSubmission(args, false)
+}
+
+async function handleAddressSubmission(
+  args: Parameters<typeof handleInboundAddressSubmission>[0],
+  /** This form is being handled again because the order changed while it was handled the first time. */
+  retried: boolean
+): Promise<any> {
+  const { organization, contact, conversation, submissionData, flowToken, customerPhone, database } = args
   const supabase = database || getSupabase()
   const addressLine = clean(submissionData?.address_line_1, 200)
   // 1. Locate the order: the one named by the form's token, otherwise the customer's latest
@@ -888,7 +940,29 @@ export async function handleInboundAddressSubmission({
     notes: clean(submissionData.instructions, 300),
   }
 
-  const { error: updateErr } = await supabase
+  // The same form again (Meta redelivering it, or the customer sending it unchanged) after the
+  // checkout already moved on: the next step is already in the chat, so nothing is changed or
+  // sent. Sending it again would repeat the payment choice, or replace a card being paid.
+  if (order.status === 'payment_pending' && sameAddress(previous, shippingAddress)) {
+    console.log(`[Commerce] Address form for Order #${order.order_number} arrived again unchanged; nothing sent`)
+    return order
+  }
+
+  // A payment card already in the chat asks for the old total (the delivery option changed): it
+  // is withdrawn below, so it cannot settle the order at the wrong amount. A payment that still
+  // arrives under it is held for the team (see handleInboundPaymentConfirmation).
+  const liveRequest = latestLiveRequest(order)
+  const cardAmount = liveRequest ? liveRequest.amount : hasPaymentRequest(order) && !currentRequestVoided(order) ? Number(order.total_amount) : null
+  const withdrawCard = cardAmount !== null && amountsDiffer(cardAmount, updatedTotal)
+  // Without the payment_requests column the withdrawal has nowhere else to be remembered, and a
+  // Pay online tap right after it must not be taken for a double tap on that card
+  if (withdrawCard && !Array.isArray(order.payment_requests)) shippingAddress.withdrawn_payment_reference = order.meta_payment_reference
+
+  // The update only applies while the order is as this run read it: of two deliveries of one form
+  // handled at once, only one moves the checkout on and messages the customer. On an order
+  // already in payment_pending the status alone cannot tell them apart, so its last change is
+  // compared too.
+  let move = supabase
     .from('commerce_orders')
     .update({
       shipping_address: shippingAddress,
@@ -898,9 +972,31 @@ export async function handleInboundAddressSubmission({
       updated_at: new Date().toISOString(),
     })
     .eq('id', order.id)
+    .eq('organization_id', organization.id)
+    .eq('status', order.status)
+  if (order.status === 'payment_pending') move = order.updated_at ? move.eq('updated_at', order.updated_at) : move.is('updated_at', null)
+  const { data: moved, error: updateErr } = await move.select('id')
   if (updateErr) throw updateErr
+  if (!moved || moved.length === 0) {
+    // Something else changed the order first: another delivery of this form (which the second
+    // look finds already on file, so nothing is sent twice) or an unrelated update, in which case
+    // the address is still taken, against the order as it is now. Once only.
+    if (order.status === 'payment_pending' && !retried) return handleAddressSubmission(args, true)
+    console.log(`[Commerce] Order #${order.order_number} changed while its address form was handled; nothing sent twice`)
+    return order
+  }
 
   console.log(`[Commerce] Updated Order #${order.order_number} with shipping address`)
+
+  if (withdrawCard) {
+    await voidPaymentRequest({
+      organization,
+      order,
+      database: supabase,
+      phone: customerPhone,
+      description: `This payment request for Order #${order.order_number} was withdrawn: the order total is now ${formatMoney(updatedTotal, currency)}.`,
+    })
+  }
 
   // 3. Ask for payment (or COD confirmation) now that the address is on file
   const updatedOrder = { ...order, shipping_address: shippingAddress, shipping_fee: updatedShippingFee, total_amount: updatedTotal, status: 'payment_pending' }
@@ -915,6 +1011,13 @@ export async function handleInboundAddressSubmission({
   )
 
   return updatedOrder
+}
+
+/** The fields of a delivery address the form sets, compared as stored. */
+const ADDRESS_FIELDS = ['full_name', 'phone_number', 'address_line_1', 'address_line_2', 'city', 'state', 'pincode', 'delivery_speed', 'express_fee', 'notes']
+function sameAddress(stored: Record<string, any>, submitted: Record<string, any>): boolean {
+  if (!stored?.address_line_1) return false
+  return ADDRESS_FIELDS.every((field) => String(stored[field] ?? '') === String(submitted[field] ?? ''))
 }
 
 /**
@@ -973,7 +1076,10 @@ export type CheckoutButtonOutcome =
   | 'not_found'
   | 'failed'
 
-/** A second "Pay online" tap within this time gets no second card: the first one is still fresh. */
+/**
+ * A second "Pay online" tap within this time gets no second card: the first one is still fresh.
+ * A second "Cash on Delivery" tap within it after the order was confirmed gets no second reply.
+ */
 export const RECENT_PAYMENT_REQUEST_MS = 2 * 60 * 1000
 
 /**
@@ -1025,15 +1131,24 @@ export async function handleCheckoutButton({
     return { handled: true, outcome: 'canceled', order }
   }
   if (!isOpen(order.status) || order.payment_status === 'paid') {
+    // The same Cash on Delivery choice moments after it was confirmed (Meta redelivering the tap,
+    // or a double tap): the confirmation just sent answers it, so nothing is sent again
+    const updatedAt = Date.parse(order.updated_at || '')
+    if (action === 'cod_confirm' && order.status === 'cod_confirmed' && order.payment_status !== 'paid' && Number.isFinite(updatedAt) && Date.now() - updatedAt < RECENT_PAYMENT_REQUEST_MS) {
+      return { handled: true, outcome: 'already_done', order }
+    }
     const label = (ORDER_STATUS_LABELS[order.status as OrderStatus] || order.status).toLowerCase()
     await reply(`Order #${order.order_number} is already ${label}. There is nothing more you need to do.`, `[Told customer Order #${order.order_number} is already ${label}]`)
     return { handled: true, outcome: 'already_done', order }
   }
 
   if (action === 'pay_online') {
-    // A card that went out moments ago is still in the chat: a double tap gets no second one
+    // A card that went out moments ago is still in the chat: a double tap gets no second one,
+    // unless that card asks for an amount the order no longer has (its delivery option changed)
     const lastRequestAt = lastPaymentRequestAt(order)
-    if (order.status === 'payment_pending' && lastRequestAt !== null && Date.now() - lastRequestAt < RECENT_PAYMENT_REQUEST_MS) {
+    const liveRequest = latestLiveRequest(order)
+    const cardOutdated = liveRequest !== null && amountsDiffer(liveRequest.amount, Number(order.total_amount))
+    if (!cardOutdated && order.status === 'payment_pending' && lastRequestAt !== null && Date.now() - lastRequestAt < RECENT_PAYMENT_REQUEST_MS) {
       console.log(`[Commerce] Order #${order.order_number} got a payment request less than two minutes ago; not sending another`)
       return { handled: true, outcome: 'already_requested', order }
     }
@@ -1440,13 +1555,17 @@ export async function handleInboundPaymentConfirmation({
   }
 
   // 2. Money arrived. It is checked against the amount asked for under its reference (or the
-  //    order total, for requests sent before amounts were kept).
+  //    order total, for requests sent before amounts were kept). A request for an order still in
+  //    checkout whose total has changed since (the customer picked another delivery option) asked
+  //    for the wrong amount: the order total is what has to be paid then, so it cannot be settled
+  //    short (or over) and the team reviews it.
   const transactionId = transactionIdOf(update)
   const requested = findPaymentRequest(order, update.referenceId)
-  const expected = requested ? requested.amount : Number(order.total_amount)
-  // Meta did not report an amount: taken as the amount asked for
-  const paidAmount = update.amount > 0 ? update.amount : expected
-  const differs = (a: number, b: number) => Math.abs(a - b) > 0.01
+  const requestOutdated = Boolean(requested) && isOpen(order.status) && amountsDiffer(requested!.amount, Number(order.total_amount))
+  const expected = requested && !requestOutdated ? requested.amount : Number(order.total_amount)
+  // Meta did not report an amount: taken as what the reference asked for
+  const paidAmount = update.amount > 0 ? update.amount : requested ? requested.amount : expected
+  const differs = amountsDiffer
   const recorded = await findTransaction(supabase, organization.id, transactionId)
   const ledgerRow = (status: 'captured' | 'duplicate') => ({
     order_id: order.id,
@@ -1459,15 +1578,10 @@ export async function handleInboundPaymentConfirmation({
     raw_payload: paymentPayload,
   })
 
-  // 2a. Already paid: the same transaction again is Meta redelivering it; a different one is a
-  //     second payment, which has to go back to the customer.
-  if (order.payment_status === 'paid') {
-    if (recorded) {
-      console.log(`[Commerce] Order #${order.order_number} is already paid; ignoring duplicate payment update`)
-      return order
-    }
-    if (!(await recordTransaction(supabase, ledgerRow('duplicate')))) return order
-    await noteOnOrder(supabase, order, `Second payment of ${money(paidAmount)} received on ${today()} (reference ${update.referenceId}); refund due.`)
+  // A second payment for an order that is already paid has to go back to the customer: noted on
+  // the order, said in the chat, and told to the customer
+  const reportSecondPayment = async (target: any) => {
+    await noteOnOrder(supabase, target, `Second payment of ${money(paidAmount)} received on ${today()} (reference ${update.referenceId}); refund due.`)
     await logSystemLine(context, `[Second payment of ${money(paidAmount)} received for Order #${order.order_number}; refund due]`)
     if (receiptPhone) {
       await sendAndLog(
@@ -1476,6 +1590,17 @@ export async function handleInboundPaymentConfirmation({
         `[Told customer Order #${order.order_number} is already paid; the second payment will be refunded]`
       )
     }
+  }
+
+  // 2a. Already paid: the same transaction again is Meta redelivering it; a different one is a
+  //     second payment, which has to go back to the customer.
+  if (order.payment_status === 'paid') {
+    if (recorded) {
+      console.log(`[Commerce] Order #${order.order_number} is already paid; ignoring duplicate payment update`)
+      return order
+    }
+    if (!(await recordTransaction(supabase, ledgerRow('duplicate')))) return order
+    await reportSecondPayment(order)
     return order
   }
 
@@ -1518,8 +1643,24 @@ export async function handleInboundPaymentConfirmation({
     .select('id')
   if (updateErr) throw updateErr
   if (!marked || marked.length === 0) {
-    // Another delivery marked it paid in between; our copy of the transaction is marked as such
-    if (inserted?.id) await supabase.from('commerce_transactions').update({ status: 'duplicate' }).eq('id', inserted.id).eq('organization_id', organization.id)
+    // The order was marked paid in between: by another delivery of this same payment, by another
+    // payment (the customer paid two requests at once), or by the team by hand. Our ledger row is
+    // a duplicate either way; only in the last two cases is money to be given back.
+    if (inserted?.id) {
+      await supabase.from('commerce_transactions').update({ status: 'duplicate' }).eq('id', inserted.id).eq('organization_id', organization.id)
+      // Without the unique index the same payment can be in the ledger twice: then it is a redelivery
+      const { data: samePayment } = await supabase
+        .from('commerce_transactions')
+        .select('id')
+        .eq('organization_id', organization.id)
+        .eq('transaction_id', transactionId)
+        .neq('id', inserted.id)
+        .limit(1)
+      if (!samePayment || samePayment.length === 0) {
+        const { data: settled } = await supabase.from('commerce_orders').select('*').eq('id', order.id).eq('organization_id', organization.id).maybeSingle()
+        await reportSecondPayment(settled || order)
+      }
+    }
     return { ...order, payment_status: 'paid' }
   }
   if (requested && differs(paidAmount, Number(order.total_amount))) {
@@ -1777,16 +1918,14 @@ export async function voidPaymentRequest({ organization, order, database, phone,
     })
   )
   if (result.ok && record) {
+    // Recorded even for a request sent before payment_requests existed (an entry is added for it),
+    // so the same card is never withdrawn, and the customer messaged, a second time
     const now = new Date().toISOString()
-    const reference = String(order.meta_payment_reference)
-    const requests = getPaymentRequests(order)
-    if (requests.some((entry) => entry.reference === reference && !entry.voided_at)) {
-      const voided = requests.map((entry) => (entry.reference === reference && !entry.voided_at ? { ...entry, voided_at: now } : entry))
-      await writeWithPaymentRequests({ payment_requests: voided, updated_at: now }, (row) =>
-        supabase.from('commerce_orders').update(row).eq('id', order.id).eq('organization_id', organization.id)
-      )
-      order.payment_requests = voided
-    }
+    const voided = withRequestVoided(order, String(order.meta_payment_reference), now)
+    const { error } = await writeWithPaymentRequests({ payment_requests: voided, updated_at: now }, (row) =>
+      supabase.from('commerce_orders').update(row).eq('id', order.id).eq('organization_id', organization.id)
+    )
+    if (!error) order.payment_requests = voided
   }
   return result.ok
 }
@@ -1810,13 +1949,14 @@ async function findLineProduct(supabase: Database, organizationId: string, line:
 /**
  * Change a product's stock by `delta`, never below 0. The update only applies while the count
  * is what was read, so two orders settling at once are both counted; on a clash it is read
- * again. Returns the product as it is now, or null when it could not be changed.
+ * again. Returns the product as it is now, or null when it could not be changed. A product
+ * whose stock is not tracked (see isStockTracked) is never counted, so it never sells out.
  */
 async function changeInventory(supabase: Database, organizationId: string, product: any, delta: number): Promise<any | null> {
   let current = product
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (!isStockTracked(current)) return null
     const before = Number(current.inventory_count)
-    if (!Number.isFinite(before)) return null // stock not tracked for this product
     const after = Math.max(0, before + delta)
     const updates: Record<string, any> = { inventory_count: after, updated_at: new Date().toISOString() }
     // Sold out: off sale. Back from sold out: on sale again (it was the stock that took it off)
