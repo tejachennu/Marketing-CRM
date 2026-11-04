@@ -21,13 +21,13 @@ missing.
 | `20261104_commerce_stock.sql` | commerce tables | Stock taken once per order and given back on cancel |
 | `20261104_commerce_transactions_unique.sql` | commerce tables | One ledger row per payment. **Fails if duplicate rows exist**: keep the earliest row per `(organization_id, transaction_id)` and run it again |
 | `20261104_enable_flows.sql` | | Per-workspace Flow Builder switch for super admins |
-| `20261104_flow_sessions_form_token.sql` | flow tables (`scripts/db-migration-v31-flows.js`) | Late form answers filed under their flow; faster in-progress counts |
-| `20261104_flow_sessions_idle_index.sql` | flow tables | Cheap idle-session expiry |
+| `20261104_flow_sessions_form_token.sql` | flow tables (`scripts/db-migration-v31-flows.js`); skips with a notice without them | Late form answers filed under their flow; faster in-progress counts |
+| `20261104_flow_sessions_idle_index.sql` | flow tables; skips with a notice without them | Cheap idle-session expiry |
 | `20261104_handoff_queue.sql`, then `20261104_handoff_state.sql` | | Explicit hand-off state (`conversations.handed_off_at`); carries over open hand-offs |
-| `20261104_messages_provider_sid_unique.sql` | | Each inbound message stored once. **Deletes duplicate message rows** (keeps the earliest of each pair); take a backup first |
+| `20261104_messages_provider_sid_unique.sql` | | Each inbound message stored once. **Deletes redelivered inbound messages** (same workspace, provider id, chat and text; keeps the earliest) and renames any other rows sharing a provider id so the unique index can be built; take a backup first |
 | `20261104_scheduler_pg_cron.sql` | | Nothing when applied as is: a commented template for running the scheduler from Supabase |
 | `20261104_whatsapp_app_secret.sql` | | Webhook signature checks for workspaces on their own Meta app |
-| `20261104_workflows_pause_reason.sql` | flow tables | Shows why a live flow was paused automatically |
+| `20261104_workflows_pause_reason.sql` | flow tables; skips with a notice without them | Shows why a live flow was paused automatically |
 
 ### Environment variables (Vercel → Settings → Environment Variables)
 
@@ -39,7 +39,8 @@ missing.
 | `PG_CRON_SECRET` | Only with the pg_cron path | A separate secret for the Supabase scheduler |
 | `CAMPAIGN_WORKER_MAX_SECONDS` | If the plan allows under 300 s per function | The campaign worker pauses cleanly before the limit |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | If Deployment Protection is on | Lets the tick start campaign workers |
-| `NEXT_PUBLIC_DISABLED_MODULES` | No | Emergency kill switch, `commerce` and/or `flows`, applied at build time |
+| `DISABLED_MODULES` | No | Emergency kill switch, `commerce` and/or `flows`, read by the server on every request: webhooks stop running flows or taking new cart orders, the flows API refuses changes and checkout reminders stop. No rebuild needed |
+| `NEXT_PUBLIC_DISABLED_MODULES` | No | The same switch for the dashboard (hides the pages); applied at build time, so set both |
 | `META_WEBHOOK_ALLOW_UNSIGNED`, `TWILIO_WEBHOOK_ALLOW_UNSIGNED` | No, never in production | Turn signature checks off for local tunnels |
 
 ### Scheduler
@@ -62,9 +63,14 @@ campaigns. See the README section "Scheduled jobs".
 - **Order updates after 24 hours** need an approved utility template chosen in Store settings
   (body variables: order number, status, tracking). Without one the attempt is logged as failed in
   the chat and the dashboard says so.
-- **Flows**: activating a flow whose keyword is already used by another live flow is refused. New
-  flows start on keywords derived from their name. Live flows with unknown placeholders or broken
-  connections are paused automatically, with the reason shown in the builder.
+- **Flows**: activating a flow whose keyword an older live flow would always take is refused. New
+  flows start on keywords derived from their name. Unknown placeholders and stale connections block
+  saving and activation; a flow already live with them keeps running and shows "Live · needs
+  fixes". A live flow is paused automatically (reason shown in the builder) only for problems it
+  cannot run with, such as a missing next step or a form that was retired, unpublished or deleted.
+  A form cannot be retired while a live flow still sends it.
+- **Module switches**: switching the Flow Builder off for a workspace (super admin console) stops
+  its flows in the webhook and refuses changes through the API, not only the dashboard pages.
 - **Inbox**: "Needs an agent" lists only chats a flow handed to the team. A manager's reply no
   longer puts a chat in that queue or shows it to every agent.
 - Commerce and the Flow Builder are on for every workspace. Super admins can switch either off per
