@@ -20,9 +20,13 @@ export type CommerceMessage =
 export type CheckoutEvent =
   | 'address_requested' | 'payment_choice' | 'payment_requested' | 'cod_requested' | 'acknowledged'
   | 'cod_confirmed' | 'paid' | 'payment_failed' | 'not_sent' | 'online_failed' | 'told'
+  | 'payment_review' | 'second_payment' | 'earlier_request_paid' | 'status_changed' | 'payment_status_changed'
+
+// Which capture group holds what; the default is (order, amount, detail)
+type LineGroups = { order: number; amount?: number; detail?: number }
 
 // The lines commerce-webhook-handler writes; each names its order as "Order #<number>"
-const CHECKOUT_LINES: Array<[CheckoutEvent, RegExp]> = [
+const CHECKOUT_LINES: Array<[CheckoutEvent, RegExp, LineGroups?]> = [
   ['address_requested', /^\[Sent delivery address form for Order #(\S+)\]$/],
   ['payment_choice', /^\[Asked how to pay for Order #(\S+) \(([^)]+)\): online or Cash on Delivery\]$/],
   ['payment_requested', /^\[Sent payment request for Order #(\S+) \(([^)]+)\)\]$/],
@@ -34,6 +38,13 @@ const CHECKOUT_LINES: Array<[CheckoutEvent, RegExp]> = [
   ['not_sent', /^\[Checkout message for Order #(\S+) \(([^)]+)\) could not be sent\]$/],
   ['online_failed', /^\[Online payment for Order #(\S+) could not be started: ()([\s\S]+)\]$/],
   ['told', /^\[Told customer Order #(\S+) is ()([\s\S]+)\]$/],
+  // Payment review lines put the amount before the order number
+  ['payment_review', /^\[Payment of (.+?) received for Order #(\S+) but the order total is (.+?); team to review\]$/, { amount: 1, order: 2, detail: 3 }],
+  ['second_payment', /^\[Second payment of (.+?) received for Order #(\S+); refund due\]$/, { amount: 1, order: 2 }],
+  ['earlier_request_paid', /^\[Payment of (.+?) received for Order #(\S+) against an earlier request; the order total is now (.+?)\]$/, { amount: 1, order: 2, detail: 3 }],
+  // Dashboard changes, as /api/commerce/orders notes them
+  ['status_changed', /^\[Order #(\S+) marked (.+?)\]$/, { order: 1, detail: 2 }],
+  ['payment_status_changed', /^\[Order #(\S+) payment marked (.+?)\]$/, { order: 1, detail: 2 }],
 ]
 
 // A completed WhatsApp form (the delivery address form, or any other flow)
@@ -96,9 +107,12 @@ function parseCommerceLine(body: string | null | undefined): CommerceMessage | n
   match = text.match(CART_ORDER)
   if (match) return { kind: 'order', itemCount: parseInt(match[1], 10), note: match[2] ?? null }
 
-  for (const [event, pattern] of CHECKOUT_LINES) {
+  for (const [event, pattern, groups] of CHECKOUT_LINES) {
     match = text.match(pattern)
-    if (match) return { kind: 'checkout', event, orderNumber: match[1], amount: match[2] || null, detail: match[3]?.trim() || null }
+    if (!match) continue
+    const at = groups || { order: 1, amount: 2, detail: 3 }
+    const part = (index: number | undefined) => (index ? match![index] : undefined)
+    return { kind: 'checkout', event, orderNumber: match[at.order], amount: part(at.amount) || null, detail: part(at.detail)?.trim() || null }
   }
 
   match = text.match(FORM_SUBMISSION)
@@ -140,6 +154,11 @@ export const CHECKOUT_EVENT_LABELS: Record<CheckoutEvent, string> = {
   not_sent: 'Checkout message could not be sent',
   online_failed: 'Online payment could not be started',
   told: 'Customer was told about the order',
+  payment_review: 'Payment does not match the order total · team to review',
+  second_payment: 'Second payment received · refund due',
+  earlier_request_paid: 'An earlier payment request was paid · total updated',
+  status_changed: 'Order status changed by the team',
+  payment_status_changed: 'Payment status changed by the team',
 }
 
 /** One line for the chat list and quoted replies. */
@@ -150,7 +169,7 @@ export function describeCommerceMessage(parsed: CommerceMessage): string {
     case 'catalog': return '🛍️ Catalog'
     case 'website': return `🔗 ${parsed.title}`
     case 'order': return `🛒 Cart order · ${parsed.itemCount} ${parsed.itemCount === 1 ? 'item' : 'items'}`
-    case 'checkout': return `${parsed.event === 'cod_confirmed' || parsed.event === 'paid' ? '✅' : parsed.event === 'not_sent' || parsed.event === 'payment_failed' || parsed.event === 'online_failed' ? '⚠️' : '🧾'} ${CHECKOUT_EVENT_LABELS[parsed.event]}`
+    case 'checkout': return `${parsed.event === 'cod_confirmed' || parsed.event === 'paid' || parsed.event === 'earlier_request_paid' ? '✅' : ['not_sent', 'payment_failed', 'online_failed', 'payment_review', 'second_payment'].includes(parsed.event) ? '⚠️' : '🧾'} ${CHECKOUT_EVENT_LABELS[parsed.event]}`
     case 'form': return parsed.isAddress ? '📍 Delivery address submitted' : '📝 Form submitted'
   }
 }

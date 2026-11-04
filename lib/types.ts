@@ -40,7 +40,9 @@ export interface Organization {
   enable_commerce?: boolean | null
   meta_catalog_id?: string | null
   meta_commerce_account_id?: string | null
-  commerce_payment_gateway?: 'razorpay' | 'payu' | 'cashfree' | 'link' | 'cod' | null
+  commerce_payment_gateway?: 'razorpay' | 'payu' | 'billdesk' | 'zaakpay' | null
+  /** Write-only: set in Settings for numbers connected through the tenant's own Meta app; never returned to the browser. */
+  whatsapp_app_secret?: string | null
   commerce_gateway_config_name?: string | null
   commerce_enable_cod?: boolean | null
   commerce_default_shipping_fee?: number | null
@@ -184,6 +186,15 @@ export interface CommerceOrderItem {
   created_at: string
 }
 
+/** One in-chat payment request, as remembered on the order (commerce_orders.payment_requests). */
+export interface PaymentRequestRecord {
+  reference: string
+  amount: number
+  currency: string
+  requested_at: string
+  voided_at?: string | null
+}
+
 export interface CommerceOrder {
   id: string
   organization_id: string
@@ -192,12 +203,14 @@ export interface CommerceOrder {
   lead_id?: string | null
   order_number: string
   status: 'cart_submitted' | 'awaiting_address' | 'payment_pending' | 'paid' | 'cod_confirmed' | 'shipped' | 'delivered' | 'canceled'
-  checkout_type: 'in_chat' | 'website_redirect'
+  checkout_type: 'in_chat' | 'website_redirect' | 'campaign'
   catalog_id?: string | null
   subtotal: number
   shipping_fee: number
   tax_amount: number
   total_amount: number
+  /** Every payment request sent for this order, oldest first (after the 20261104 migration). */
+  payment_requests?: PaymentRequestRecord[] | null
   currency: string
   /** whatsapp_pay: paid in the chat · cod: Cash on Delivery · manual: marked as paid by the team */
   payment_method?: 'whatsapp_pay' | 'razorpay_link' | 'cod' | 'manual' | null
@@ -231,12 +244,14 @@ export interface CommerceOrder {
 
 export interface CommerceTransaction {
   id: string
-  order_id: string
+  /** Null for a capture that matched no order (status 'unmatched'). */
+  order_id: string | null
   organization_id: string
   gateway: string
   transaction_id: string
   amount: number
   currency: string
+  /** 'captured', 'duplicate' (a second payment, refund due) or 'unmatched'. */
   status: string
   raw_payload?: Record<string, any>
   created_at: string

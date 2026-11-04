@@ -37,9 +37,11 @@ interface StoreSettingsProps {
   /** Called with the saved values so the rest of the page (checklist, tabs) updates at once. */
   onSaved: (changes: Record<string, any>) => void
   showToast: ShowToast
+  /** Deleting the Meta catalog is destructive, so the route only allows admins (settings.manage). */
+  canDeleteCatalog?: boolean
 }
 
-export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onSaved, showToast }: StoreSettingsProps) {
+export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onSaved, showToast, canDeleteCatalog = false }: StoreSettingsProps) {
   const alert = useAlert()
   // The express charge is a setting only after the optional database update; until then it is fixed
   const expressFeeEditable = 'commerce_express_fee' in orgData
@@ -566,7 +568,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                     <button type="button" onClick={unlinkCatalog} disabled={catalogAction !== null} className={secondaryButton}>
                       {catalogAction === 'unlink' ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />} Stop using here
                     </button>
-                    {catalogInfo.canEdit === true && (
+                    {catalogInfo.canEdit === true && canDeleteCatalog && (
                       <button type="button" onClick={deleteLinkedCatalog} disabled={catalogAction !== null} className={`${secondaryButton} text-red-600 dark:text-red-400`}>
                         {catalogAction === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete catalog
                       </button>

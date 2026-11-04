@@ -68,10 +68,10 @@ function FlowStep({ icon: Icon, title, note, off, children, last }: { icon: Luci
 }
 
 /** One line of an order's checkout trail, without the bracket notation the chat log uses. */
-function trailText(body: string) {
-  const commerce = parseCommerceMessage(body)
+function trailText(entry: { body: string; sender_type?: string | null }) {
+  const commerce = parseCommerceMessage(entry.body, entry.sender_type)
   if (commerce?.kind === 'order') return `${describeCommerceMessage(commerce).replace(/^🛒 /, '')} received`
-  return body.replace(/^\[|\]$/g, '')
+  return entry.body.replace(/^\[|\]$/g, '')
 }
 
 export function OrderFlowTab({
@@ -355,7 +355,7 @@ export function OrderFlowTab({
                           <li key={index} className="flex items-start gap-2 text-[11.5px] leading-snug">
                             <Icon size={13} className={`shrink-0 mt-px ${entry.sender_type === 'contact' ? 'text-slate-400' : failed ? 'text-rose-500' : 'text-emerald-500'}`} />
                             <span className="min-w-0">
-                              <span className={failed ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300'}>{trailText(entry.body)}</span>
+                              <span className={failed ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300'}>{trailText(entry)}</span>
                               {failed && entry.error_message && <span className="block text-rose-600 dark:text-rose-400">{entry.error_message}</span>}
                             </span>
                           </li>

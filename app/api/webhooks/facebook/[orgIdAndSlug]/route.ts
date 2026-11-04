@@ -15,7 +15,7 @@ import {
   isMissingUniqueIndexError,
 } from '@/lib/meta-webhook'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
-import { executeFlowRuntime, saveUnownedSubmission } from '@/lib/flows/flow-executor'
+import { executeFlowRuntime, saveUnownedSubmission, FlowLockBusyError } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
@@ -806,8 +806,13 @@ async function processEvent(
         })
         if (flowExec.handled) return NextResponse.json({ success: true, handled_by: 'whatsapp_flow_engine', action: flowExec.actionTaken })
       } catch (error: any) {
+        // Only lease contention is worth a retry from Meta. Anything else has already been recorded on
+        // the session (FAILED, customer apologised to), so the assistants below answer instead of Meta
+        // redelivering the message for days.
+        if (error instanceof FlowLockBusyError) {
+          return NextResponse.json({ error: 'Workflow execution failed', details: error.message }, { status: 503 })
+        }
         console.error('[Facebook Webhook Flow] Execution failed:', error.message)
-        return NextResponse.json({ error: 'Workflow execution failed', details: error.message }, { status: 503 })
       }
     }
 

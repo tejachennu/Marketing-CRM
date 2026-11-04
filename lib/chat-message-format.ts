@@ -117,9 +117,9 @@ export function getMessageText(message: Pick<ChatMessageLike, 'body' | 'media_ur
 }
 
 /** One line describing a message, for the conversation list and quoted replies. */
-export function getMessagePreview(message: Pick<ChatMessageLike, 'body' | 'media_url'> | null | undefined): string {
+export function getMessagePreview(message: (Pick<ChatMessageLike, 'body' | 'media_url'> & { sender_type?: string | null }) | null | undefined): string {
   if (!message) return ''
-  const commerce = parseCommerceMessage(message.body)
+  const commerce = parseCommerceMessage(message.body, message.sender_type)
   if (commerce) return describeCommerceMessage(commerce)
   const text = getMessageText(message).replace(/\s+/g, ' ').trim()
   if (text) return text

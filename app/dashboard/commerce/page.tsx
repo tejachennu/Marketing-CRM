@@ -242,6 +242,7 @@ export default function CommercePage() {
 
         {orgId && orgData && activeTab === 'settings' && canManageStore && (
           <StoreSettings
+            canDeleteCatalog={can(viewer, 'settings.manage')}
             orgId={orgId}
             orgData={orgData}
             currency={currency}

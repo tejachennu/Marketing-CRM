@@ -269,6 +269,12 @@ Setting it up:
 
 Each run answers with a JSON summary, `{ ok, ran_at, jobs }`, with the duration and any error per job. To run it by hand: `curl -H "x-cron-secret: $CRON_SECRET" https://your-app/api/cron/tick`.
 
+## 🧩 Feature switches
+
+- Commerce and the Flow Builder are available to every organization. A super admin can switch the Flow Builder off per organization (`organizations.enable_flows`, added by `supabase/migrations/20261104_enable_flows.sql`); a store switches selling on and off in Commerce → Store settings.
+- `NEXT_PUBLIC_DISABLED_MODULES` (build-time, comma-separated: `commerce`, `flows`) hides a module for everyone, for emergencies. `NEXT_PUBLIC_SHOW_PREVIEW_MODULES` is no longer read.
+- `CRON_SECRET` protects `/api/cron/tick` (see Scheduled jobs).
+
 ## 🔄 Real-time Features
 
 ### Supabase Realtime

@@ -40,7 +40,15 @@ const CHECKOUT_EVENT_STYLE: Record<CheckoutEvent, { icon: LucideIcon; tone: stri
   not_sent: { icon: AlertTriangle, tone: 'bg-rose-500 text-white' },
   online_failed: { icon: AlertTriangle, tone: 'bg-rose-500 text-white' },
   told: { icon: Info, tone: 'bg-slate-500 text-white' },
+  payment_review: { icon: AlertTriangle, tone: 'bg-amber-500 text-white' },
+  second_payment: { icon: AlertTriangle, tone: 'bg-amber-500 text-white' },
+  earlier_request_paid: { icon: BadgeCheck, tone: 'bg-emerald-500 text-white' },
+  status_changed: { icon: Info, tone: 'bg-slate-500 text-white' },
+  payment_status_changed: { icon: Info, tone: 'bg-slate-500 text-white' },
 }
+
+// Events whose detail (an amount, a status, who changed it) is worth a second line on the card
+const DETAIL_EVENTS = new Set<CheckoutEvent>(['online_failed', 'payment_review', 'earlier_request_paid', 'status_changed', 'payment_status_changed'])
 
 export function CommerceCard({
   parsed,
@@ -140,7 +148,9 @@ export function CommerceCard({
           <span className="block text-[12px] text-[#667781] dark:text-[#8696a0] mt-0.5">
             #{parsed.orderNumber}{parsed.amount ? ` · ${parsed.amount}` : ''}
           </span>
-          {parsed.event === 'online_failed' && parsed.detail && <span className="block text-[12px] text-rose-700 dark:text-rose-300 mt-1">{parsed.detail}</span>}
+          {parsed.detail && DETAIL_EVENTS.has(parsed.event) && (
+            <span className={`block text-[12px] mt-1 ${parsed.event === 'online_failed' || parsed.event === 'payment_review' ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300'}`}>{parsed.detail}</span>
+          )}
         </span>
       </div>
     )

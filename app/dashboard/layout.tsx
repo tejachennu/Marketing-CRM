@@ -475,7 +475,8 @@ export default function DashboardLayout({
             .eq('status', 'open')
           const ticketConvIds = (openTickets || []).map(t => t.conversation_id).filter(Boolean)
 
-          let orConditions = `assigned_to.eq.${userId}`
+          // Chats the chatbot handed to the team count for everyone (HANDED_OFF_FILTER in lib/record-visibility.ts)
+          let orConditions = `assigned_to.eq.${userId},and(assigned_to.is.null,auto_reply_enabled.eq.false)`
           if (contactIds.length > 0) {
             orConditions += `,contact_id.in.(${contactIds.map(id => `"${id}"`).join(',')})`
           }
@@ -583,7 +584,9 @@ export default function DashboardLayout({
           // Chat auto-reply notification check
           if (payload.eventType === 'UPDATE') {
             const isAssignedToMe = payload.new.assigned_to === userId
-            if (!seeAll && !isAssignedToMe) return
+            // A chat the chatbot handed to the team belongs to nobody yet, so every agent hears about it
+            const handedOff = payload.new.assigned_to == null && payload.new.auto_reply_enabled === false
+            if (!seeAll && !isAssignedToMe && !handedOff) return
 
             const oldVal = payload.old?.auto_reply_enabled
             const newVal = payload.new?.auto_reply_enabled
@@ -600,7 +603,7 @@ export default function DashboardLayout({
                   ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.whatsapp_number || contact.phone_number || 'Unknown'
                   : 'Unknown'
                   
-                addAssistantNotification(`🤖 Auto-reply chatbot turned OFF for conversation with ${contactName}`)
+                addAssistantNotification(handedOff ? `🤖 The chatbot handed the chat with ${contactName} to the team` : `🤖 Auto-reply chatbot turned OFF for conversation with ${contactName}`)
               } catch (err) {
                 console.error('Error handling chatbot disabled notification:', err)
               }

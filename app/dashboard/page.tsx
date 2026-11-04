@@ -1593,7 +1593,7 @@ function ConversationsPageContent() {
   // the set of commerce messages changes, not on every new message.
   const [chatCommerce, setChatCommerce] = useState<{ conversationId: string; orders: ChatOrderCard[]; products: ChatProductCard[] } | null>(null)
   const commerceRefs = useMemo(() => {
-    const commerceMessages = messages.filter((message) => !message.media_url && parseCommerceMessage(message.body))
+    const commerceMessages = messages.filter((message) => !message.media_url && parseCommerceMessage(message.body, message.sender_type))
     if (commerceMessages.length === 0) return null
     return JSON.stringify({ ...collectProductRefs(commerceMessages), count: commerceMessages.length })
   }, [messages])

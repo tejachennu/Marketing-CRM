@@ -118,3 +118,25 @@ test('Chat commerce: a line only counts from the side that writes it', () => {
     { titles: ['B', 'C'], skus: [] }
   )
 })
+
+test('Chat commerce: payment review and dashboard audit lines become events with their amounts', () => {
+  assert.deepEqual(parseCommerceMessage('[Payment of ₹900 received for Order #ORD-1 but the order total is ₹1,050; team to review]', 'user'),
+    { kind: 'checkout', event: 'payment_review', orderNumber: 'ORD-1', amount: '₹900', detail: '₹1,050' })
+  assert.deepEqual(parseCommerceMessage('[Second payment of ₹1,050 received for Order #ORD-1; refund due]', 'user'),
+    { kind: 'checkout', event: 'second_payment', orderNumber: 'ORD-1', amount: '₹1,050', detail: null })
+  assert.deepEqual(parseCommerceMessage('[Payment of ₹1,000 received for Order #ORD-1 against an earlier request; the order total is now ₹1,050]', 'user'),
+    { kind: 'checkout', event: 'earlier_request_paid', orderNumber: 'ORD-1', amount: '₹1,000', detail: '₹1,050' })
+  assert.deepEqual(parseCommerceMessage('[Order #ORD-1 marked shipped by Asha Rao]', 'user'),
+    { kind: 'checkout', event: 'status_changed', orderNumber: 'ORD-1', amount: null, detail: 'shipped by Asha Rao' })
+  assert.deepEqual(parseCommerceMessage('[Order #ORD-1 payment marked refunded by asha@example.com]', 'user'),
+    { kind: 'checkout', event: 'payment_status_changed', orderNumber: 'ORD-1', amount: null, detail: 'refunded by asha@example.com' })
+  // The same lines typed by a customer stay plain text
+  assert.equal(parseCommerceMessage('[Second payment of ₹1,050 received for Order #ORD-1; refund due]', 'contact'), null)
+  assert.equal(describeCommerceMessage(parseCommerceMessage('[Second payment of ₹1,050 received for Order #ORD-1; refund due]')), '⚠️ Second payment received · refund due')
+})
+
+test('Chat commerce: the conversation preview ignores commerce lines a customer typed', () => {
+  const body = '[Payment received for Order #ORD-1 (₹1,050); receipt sent]'
+  assert.equal(getMessagePreview({ body, media_url: null, sender_type: 'user' }), '✅ Payment received · receipt sent')
+  assert.equal(getMessagePreview({ body, media_url: null, sender_type: 'contact' }), body)
+})
