@@ -5,7 +5,7 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { canSeeAll, describeDenied } from '@/lib/rbac'
 import { canAccessConversation } from '@/lib/record-visibility'
 import { MASTER_ORG_ID } from '@/lib/constants'
-import { isPublicHttpUrl } from '@/lib/utils'
+import { assertPublicHttpUrl } from '@/lib/utils'
 import { parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { isUuid } from '@/lib/record-visibility'
 import fs from 'fs'
@@ -23,7 +23,57 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
+/** WhatsApp itself accepts no larger upload, so nothing bigger is worth holding in memory */
+const MEDIA_MAX_BYTES = 16 * 1024 * 1024
+const MEDIA_MAX_REDIRECTS = 3
+const MEDIA_TIMEOUT_MS = 15_000
 
+/**
+ * WhatsApp delivers a free-form message only within 24 hours of the customer's last message
+ * (Meta error 131047; Twilio refuses too). Only an approved template gets through after that.
+ */
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000
+const OUTSIDE_WINDOW_MESSAGE = 'This customer last wrote more than 24 hours ago, so WhatsApp only allows an approved template message.'
+
+/** A phone number as digits only, so "+1 (416) 555-0123" and "whatsapp:14165550123" compare equal. */
+const phoneDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '')
+
+/**
+ * Fetch a media URL, following at most a few redirects and checking each one again: a public
+ * host may answer with a Location on the private network, which `fetch` would follow on its own.
+ */
+async function downloadMedia(url: string): Promise<Response> {
+  let current = url
+  for (let hop = 0; ; hop++) {
+    const res = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) })
+    const location = res.headers.get('location')
+    if (res.status < 300 || res.status >= 400 || !location) return res
+    await res.body?.cancel().catch(() => {})
+    if (hop >= MEDIA_MAX_REDIRECTS) throw new Error(`Media URL redirects more than ${MEDIA_MAX_REDIRECTS} times`)
+    current = new URL(location, current).toString()
+    await assertPublicHttpUrl(current)
+  }
+}
+
+/** The body of a response, refused before it is held in memory once it is known to exceed `maxBytes`. */
+async function readBodyUpTo(res: Response, maxBytes: number): Promise<Buffer> {
+  const tooLarge = () => new Error(`Media is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`)
+  if (Number(res.headers.get('content-length')) > maxBytes) throw tooLarge()
+  if (!res.body) return Buffer.alloc(0)
+
+  const chunks: Buffer[] = []
+  let total = 0
+  const reader = res.body.getReader()
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    total += next.value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {})
+      throw tooLarge()
+    }
+    chunks.push(Buffer.from(next.value))
+  }
+  return Buffer.concat(chunks)
+}
 
 async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
   try {
@@ -68,23 +118,22 @@ async function getMediaBufferAndType(mediaUrl: string): Promise<{ buffer: Buffer
       // A path on this app
       const runtimeUrl = process.env.V0_RUNTIME_URL || 'http://localhost:3000';
       fullUrl = `${runtimeUrl}${mediaUrl}`;
-    } else if (!isPublicHttpUrl(mediaUrl)) {
-      // The server downloads this address, so it must not point at this machine or the private network
-      console.warn('[Messages Send] Rejected media URL that is not a public http(s) address');
-      return null;
+    } else {
+      // The server downloads this address, so it must not point at this machine or the private
+      // network, whatever name it hides behind; a refusal throws and is logged below
+      await assertPublicHttpUrl(mediaUrl);
     }
 
     console.log(`[Messages Send] Fetching external media URL: ${fullUrl}`);
-    const res = await fetch(fullUrl);
+    const res = await downloadMedia(fullUrl);
     if (!res.ok) {
       throw new Error(`Failed to download media: ${res.status} ${res.statusText}`);
     }
 
     const mimeType = res.headers.get('content-type') || 'image/png';
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = await readBodyUpTo(res, MEDIA_MAX_BYTES);
     const filename = fullUrl.split('/').pop()?.split('?')[0] || 'file';
-    
+
     return { buffer, mimeType, filename };
   } catch (err) {
     console.error('[Messages Send] getMediaBufferAndType failed:', err);
@@ -124,6 +173,63 @@ async function uploadDirectMediaToMeta(mediaUrl: string, apiToken: string, phone
   }
 }
 
+/** The contact a message goes to, from its own organization; null when there is no such contact. */
+async function loadContact(supabase: any, contactId: string | null | undefined, orgId: string): Promise<{ id: string; phone_number: string | null } | null> {
+  if (!contactId) return null
+  const { data } = await supabase
+    .from('contacts')
+    .select('id, phone_number')
+    .eq('id', contactId)
+    .eq('organization_id', orgId)
+    .maybeSingle()
+  return data || null
+}
+
+/**
+ * The name of a teammate other than `userId` who holds an active lead for the contact or an open
+ * ticket on the chat (the same records that let them see the chat, see lib/record-visibility.ts).
+ * Null when nobody does, or when `userId` holds one as well and so works this customer too.
+ */
+async function findOtherHandler(supabase: any, orgId: string, userId: string, contactId: string, conversationId: string | null): Promise<string | null> {
+  const [leads, tickets] = await Promise.all([
+    supabase.from('leads').select('assigned_to').eq('organization_id', orgId).eq('contact_id', contactId).eq('status', 'active'),
+    conversationId
+      ? supabase.from('tickets').select('assigned_to').eq('organization_id', orgId).eq('conversation_id', conversationId).eq('status', 'open')
+      : Promise.resolve({ data: [] }),
+  ])
+  const holders: string[] = [...(leads.data || []), ...(tickets.data || [])].map((row: any) => row.assigned_to).filter(isUuid)
+  if (holders.length === 0 || holders.includes(userId)) return null
+
+  const { data: teammate } = await supabase
+    .from('users')
+    .select('full_name, email')
+    .eq('id', holders[0])
+    .eq('organization_id', orgId)
+    .maybeSingle()
+  return String(teammate?.full_name || teammate?.email || '').trim() || 'a teammate'
+}
+
+/**
+ * When the customer last wrote in a chat, in ms since the epoch: null when they never have,
+ * undefined when the lookup failed (the provider then decides, as it did before this check).
+ */
+async function latestInboundAt(supabase: any, orgId: string, conversationId: string): Promise<number | null | undefined> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('created_at')
+    .eq('organization_id', orgId)
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'contact')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) {
+    console.warn('[Messages Send] Could not read when the customer last wrote:', error.message || error)
+    return undefined
+  }
+  const at = Date.parse(data?.[0]?.created_at || '')
+  return Number.isNaN(at) ? null : at
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient()
@@ -137,11 +243,12 @@ export async function POST(request: NextRequest) {
     const msgBody = parsedBody.text
     const requestedReplyTo = body.replyToMessageId || parsedBody.replyToId || null
     let replyToId: string | null = isUuid(requestedReplyTo) ? requestedReplyTo : null
-    const contactPhone = phoneNumber
     const convId = conversationId
     let orgId = organizationId
     const msgMediaUrl = mediaUrl || media_url || null
     const requestChannel = body.channel
+    // Both providers take a template by name or SID; anything else is a free-form message
+    const isTemplateSend = Boolean(templateName || templateSid)
 
     // Determine organization context
     if (!orgId && convId) {
@@ -227,15 +334,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!contactPhone) {
-      return NextResponse.json(
-        { error: 'Missing phone number' },
-        { status: 400 }
-      )
-    }
-
-    // If we have a conversation ID, use it; otherwise get/create one
-    let conversation
+    // The chat, and the contact it belongs to. The message goes to the number on the contact's
+    // record: the request may repeat it, but cannot choose a different one.
+    let conversation: any = null
+    let contact: { id: string; phone_number: string | null } | null = null
+    // An assigned-only sender replying to a chat nobody owns takes it, but only once the message is away
+    let claimAfterSend = false
     if (convId) {
       const { data: conv, error: convError } = await supabase
         .from('conversations')
@@ -254,18 +358,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
       }
       conversation = conv
+      // A human reply switches the chatbot off below, so an unowned chat would otherwise land in
+      // the hand-off queue while this sender is already working it
+      claimAfterSend = !canSeeAll(sender) && conv.assigned_to == null
+      contact = await loadContact(supabase, conv.contact_id, orgId)
     } else if (contactId && orgId) {
-      const { data: contactRow } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('id', contactId)
-        .eq('organization_id', orgId)
-        .maybeSingle()
-      if (!contactRow) {
+      contact = await loadContact(supabase, contactId, orgId)
+      if (!contact) {
         return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
       }
 
-      // Create or get conversation for this contact
+      // Use the contact's latest conversation when there is one; a new one is created further
+      // down, once the message is known to be sendable
       const { data: existingConvs } = await supabase
         .from('conversations')
         .select('*')
@@ -277,34 +381,14 @@ export async function POST(request: NextRequest) {
       const existingConv = existingConvs?.[0] || null
 
       if (existingConv) {
-        // Someone limited to their own work may message a contact nobody is handling yet, and then owns that chat
+        // Someone limited to their own work may message a contact nobody is handling yet
         if (!canSeeAll(sender) && !(await canAccessConversation(supabase, sender, existingConv))) {
           if (existingConv.assigned_to) {
             return NextResponse.json({ error: describeDenied('records.view_all') }, { status: 403 })
           }
-          await supabase.from('conversations').update({ assigned_to: sender.id }).eq('id', existingConv.id)
-          existingConv.assigned_to = sender.id
         }
+        claimAfterSend = !canSeeAll(sender) && existingConv.assigned_to == null
         conversation = existingConv
-      } else {
-        const { data: newConv, error: createError } = await supabase
-          .from('conversations')
-          .insert([
-            {
-              organization_id: orgId,
-              contact_id: contactId,
-              is_active: true,
-              // Keeps a chat started by an assigned-only user in their own list
-              ...(canSeeAll(sender) ? {} : { assigned_to: sender.id }),
-            },
-          ])
-          .select()
-          .single()
-
-        if (createError || !newConv) {
-          throw createError || new Error('Failed to create conversation')
-        }
-        conversation = newConv
       }
     } else {
       return NextResponse.json(
@@ -313,21 +397,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The message being replied to must be in this conversation. If WhatsApp gave it an id,
-    // the customer sees it quoted above the reply.
-    let quotedWhatsAppId: string | null = null
-    if (replyToId) {
-      const { data: quoted } = await supabase
-        .from('messages')
-        .select('id, twilio_message_sid')
-        .eq('id', replyToId)
-        .eq('conversation_id', conversation.id)
-        .maybeSingle()
-      if (!quoted) {
-        replyToId = null
-      } else {
-        const providerId = String(quoted.twilio_message_sid || '').replace(/^FB_/, '')
-        if (providerId.startsWith('wamid.')) quotedWhatsAppId = providerId
+    if (!contact) {
+      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
+    }
+    const contactPhone = String(contact.phone_number || '').trim()
+    if (!contactPhone) {
+      return NextResponse.json({ error: 'This contact has no phone number' }, { status: 400 })
+    }
+    if (phoneNumber && phoneDigits(phoneNumber) !== phoneDigits(contactPhone)) {
+      return NextResponse.json({ error: 'The number does not match this contact' }, { status: 400 })
+    }
+
+    // A teammate holding an active lead for this customer, or an open ticket on this chat, is
+    // handling them. Someone limited to their own work does not reply over that teammate's head
+    // unless the chat itself is assigned to them.
+    if (!canSeeAll(sender) && conversation?.assigned_to !== sender.id) {
+      const handler = await findOtherHandler(supabase, orgId, sender.id, contact.id, conversation?.id || null)
+      if (handler) {
+        return NextResponse.json({ error: `This customer is being handled by ${handler}`, code: 'handled_by_teammate' }, { status: 403 })
       }
     }
 
@@ -352,6 +439,55 @@ export async function POST(request: NextRequest) {
         { error: 'SMS Gateway is currently disabled. Please enable it in Settings.' },
         { status: 400 }
       )
+    }
+
+    // Outside the 24-hour service window WhatsApp refuses anything but a template, so the send
+    // is not attempted and nothing is stored. A chat with no message from the customer (a new
+    // one included) has no window at all.
+    if (isWhatsApp && !isTemplateSend) {
+      const lastInboundAt = conversation ? await latestInboundAt(supabase, orgId, conversation.id) : null
+      if (lastInboundAt !== undefined && (lastInboundAt === null || Date.now() - lastInboundAt > SERVICE_WINDOW_MS)) {
+        return NextResponse.json({ error: OUTSIDE_WINDOW_MESSAGE, code: 'outside_24h_window' }, { status: 422 })
+      }
+    }
+
+    if (!conversation) {
+      const { data: newConv, error: createError } = await supabase
+        .from('conversations')
+        .insert([
+          {
+            organization_id: orgId,
+            contact_id: contact.id,
+            is_active: true,
+            // A chat started by an assigned-only user is theirs from the start: nobody else's work is taken
+            ...(canSeeAll(sender) ? {} : { assigned_to: sender.id }),
+          },
+        ])
+        .select()
+        .single()
+
+      if (createError || !newConv) {
+        throw createError || new Error('Failed to create conversation')
+      }
+      conversation = newConv
+    }
+
+    // The message being replied to must be in this conversation. If WhatsApp gave it an id,
+    // the customer sees it quoted above the reply.
+    let quotedWhatsAppId: string | null = null
+    if (replyToId) {
+      const { data: quoted } = await supabase
+        .from('messages')
+        .select('id, twilio_message_sid')
+        .eq('id', replyToId)
+        .eq('conversation_id', conversation.id)
+        .maybeSingle()
+      if (!quoted) {
+        replyToId = null
+      } else {
+        const providerId = String(quoted.twilio_message_sid || '').replace(/^FB_/, '')
+        if (providerId.startsWith('wamid.')) quotedWhatsAppId = providerId
+      }
     }
 
     // Send message via the appropriate provider
@@ -803,6 +939,17 @@ export async function POST(request: NextRequest) {
         auto_reply_enabled: false,
       })
       .eq('id', conversation.id)
+
+    // The chat becomes the sender's only once their message is away, and only if nobody took it
+    // meanwhile: the `assigned_to IS NULL` condition makes the claim atomic
+    if (claimAfterSend && sendStatus !== 'failed') {
+      await supabase
+        .from('conversations')
+        .update({ assigned_to: sender.id })
+        .eq('id', conversation.id)
+        .eq('organization_id', orgId)
+        .is('assigned_to', null)
+    }
 
     if (sendStatus === 'failed') {
       return NextResponse.json(
