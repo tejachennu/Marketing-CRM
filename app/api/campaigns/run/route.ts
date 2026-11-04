@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { workerDeadline } from '@/lib/scheduler/campaign-worker'
 import { runCampaignWorker } from './worker/route'
+
+// The campaign runs in this invocation, so it gets as long as Vercel allows (the plan's limit
+// applies when it is lower); the worker pauses before the end and the watchdog resumes it
+export const maxDuration = 300
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,8 +27,9 @@ export async function POST(request: NextRequest) {
     // Run the worker after the response is sent. `after` keeps the serverless
     // function alive until the worker settles; a bare floating promise can be
     // frozen as soon as the response returns.
+    const deadline = workerDeadline(maxDuration)
     after(() =>
-      runCampaignWorker(campaignId).catch(err => {
+      runCampaignWorker(campaignId, { deadline }).catch(err => {
         console.error('[Campaign Run] Background worker execution failed for campaign:', campaignId, err)
       })
     )

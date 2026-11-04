@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import nodemailer from 'nodemailer'
@@ -6,6 +6,31 @@ import { cleanWhatsAppRecipient } from '@/lib/whatsapp-bsuid'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
 import { buildSendComponents } from '@/lib/whatsapp-templates/send-components'
 import { getPaymentGateway } from '@/lib/commerce/commerce-utils'
+import { authorizeCronRequest, cronSecretsFromEnv } from '@/lib/scheduler/cron-auth'
+import { RESUME_REQUESTED_AT, STOP_MARGIN_MS, workerDeadline } from '@/lib/scheduler/campaign-worker'
+
+/**
+ * A campaign runs in this invocation, so it gets as long as Vercel allows (the plan's limit
+ * applies when it is lower). The worker pauses before the end and the watchdog resumes it.
+ */
+export const maxDuration = 300
+/** No provider call may hold a batch for longer than this; a stalled one fails its message and the campaign moves on. */
+const PROVIDER_TIMEOUT_MS = 15 * 1000
+
+export interface WorkerOptions {
+  /** When this invocation ends (a Date.now() value); the worker stops between batches shortly before it. */
+  deadline?: number
+  /** The clock, for tests. */
+  now?: () => number
+}
+
+export interface WorkerResult {
+  success: boolean
+  message: string
+  error?: string
+  /** The worker ran out of time with messages still pending; the campaign stays PROCESSING for the watchdog. */
+  paused?: true
+}
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,7 +51,7 @@ async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId
   }
 
   try {
-    const downloadRes = await fetch(url);
+    const downloadRes = await fetch(url, { signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
     if (!downloadRes.ok) return null;
 
     const contentType = downloadRes.headers.get('content-type') || 'image/png';
@@ -44,7 +69,8 @@ async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId
       headers: {
         'Authorization': `Bearer ${apiToken}`
       },
-      body: formData
+      body: formData,
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
     });
 
     const data = await uploadRes.json();
@@ -58,9 +84,10 @@ async function uploadMediaUrlToMeta(url: string, apiToken: string, phoneNumberId
   }
 }
 
-export async function runCampaignWorker(campaignId: string): Promise<{ success: boolean; message: string; error?: string }> {
+export async function runCampaignWorker(campaignId: string, { deadline, now = Date.now }: WorkerOptions = {}): Promise<WorkerResult> {
   try {
     const supabase = getSupabaseClient()
+    const outOfTime = () => deadline !== undefined && now() >= deadline - STOP_MARGIN_MS
 
     // 1. Update status to PROCESSING
     await supabase
@@ -92,6 +119,17 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       .eq('status', 'PENDING')
 
     if (!initialPendingCount || initialPendingCount === 0) {
+      // Logs another worker claimed and never settled (it was killed mid-batch) are not done:
+      // the watchdog gives them back to PENDING once that worker's heartbeat is old enough
+      const { count: inFlight } = await supabase
+        .from('campaign_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'SENDING')
+      if (inFlight && inFlight > 0) {
+        return { success: true, message: `No pending logs remaining, but ${inFlight} still being sent. Campaign left PROCESSING.` }
+      }
+
       const { count: finalSent } = await supabase
         .from('campaign_logs')
         .select('id', { count: 'exact', head: true })
@@ -199,7 +237,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
     if (channel === 'whatsapp' && whatsappProvider === 'facebook' && campaign.template_sid && campaign.template_sid.startsWith('META_')) {
       const templateId = campaign.template_sid.replace('META_', '')
       try {
-        const tplRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${templateId}?access_token=${whatsappApiToken}`)
+        const tplRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${templateId}?access_token=${whatsappApiToken}`, { signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) })
         if (tplRes.ok) {
           const tplData = await tplRes.json()
           metaTemplateComponents = tplData.components || []
@@ -229,7 +267,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
         if (!twilioAccountSid || !twilioAuthToken) {
           throw new Error('Twilio credentials must be configured in settings')
         }
-        _twilioClient = twilio(twilioAccountSid, twilioAuthToken)
+        _twilioClient = twilio(twilioAccountSid, twilioAuthToken, { timeout: PROVIDER_TIMEOUT_MS })
       }
       return _twilioClient
     }
@@ -250,9 +288,19 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
     let failedCount = initialFailed || 0
 
     const BATCH_SIZE = 15
+    let paused = false
 
-    // Continuous processing loop: runs until all PENDING logs are sent or campaign is STOPPED
+    // Continuous processing loop: runs until all PENDING logs are sent, the campaign is
+    // STOPPED, or this invocation is about to end
     while (true) {
+      // 0. Out of time: stop between batches, so no message is cut off halfway, and leave the
+      //    campaign for the watchdog (the heartbeat is set below so it resumes at once)
+      if (outOfTime()) {
+        console.log(`[Campaign Worker] Out of time for campaign ${campaignId}; pausing with messages still pending.`)
+        paused = true
+        break
+      }
+
       // 1. Check if campaign was STOPPED or CANCELLED by user
       const { data: latestCamp } = await supabase
         .from('campaigns')
@@ -284,10 +332,28 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
         break
       }
 
+      // 3. Claim the batch before any provider is called. A worker killed mid-batch leaves
+      //    these SENDING, and the watchdog hands them back to PENDING later; without the
+      //    claim the resumed worker would send them again, since a log only becomes SENT
+      //    once Meta or Twilio has accepted the message. The claim also keeps two workers
+      //    on the same campaign (a resume racing a running worker) from sharing a batch.
+      const { data: claimedRows, error: claimErr } = await supabase
+        .from('campaign_logs')
+        .update({ status: 'SENDING' })
+        .in('id', batchChunk.map((log: any) => log.id))
+        .eq('status', 'PENDING')
+        .select('id')
+      if (claimErr) {
+        console.error(`[Campaign Worker] Error claiming batch for campaign ${campaignId}:`, claimErr)
+        break
+      }
+      const claimedIds = new Set((claimedRows || []).map((row: any) => row.id))
+      const batch = batchChunk.filter((log: any) => claimedIds.has(log.id))
+
       let rateLimitEncountered = false
 
       await Promise.allSettled(
-        batchChunk.map(async (log) => {
+        batch.map(async (log: any) => {
           const recipientPhone = log.phone_number
           const recipientEmail = log.email_address
           const mappedVars = log.variables_mapped || {}
@@ -437,7 +503,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                 const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
-                  body: JSON.stringify(payload)
+                  body: JSON.stringify(payload),
+                  signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
                 })
 
                 if (!fbRes.ok) {
@@ -551,7 +618,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
               if (emailProvider === 'smtp') {
                 const transporter = nodemailer.createTransport({
                   host: smtpHost, port: smtpPort || 587, secure: smtpPort === 465,
-                  auth: { user: smtpEmail, pass: smtpPassword }
+                  auth: { user: smtpEmail, pass: smtpPassword },
+                  connectionTimeout: PROVIDER_TIMEOUT_MS, greetingTimeout: PROVIDER_TIMEOUT_MS, socketTimeout: PROVIDER_TIMEOUT_MS
                 })
                 const info = await transporter.sendMail({ from: fromEmail, to: recipientEmail, subject: subjectText, text: plainTextBody, html: htmlBody })
                 twilioMessageSid = info.messageId || `SMTP_${Date.now()}`
@@ -559,7 +627,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                 const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sendgridKey}` },
-                  body: JSON.stringify({ personalizations: [{ to: [{ email: recipientEmail }] }], from: { email: fromEmail }, subject: subjectText, content: [{ type: 'text/plain', value: plainTextBody }, { type: 'text/html', value: htmlBody }] })
+                  body: JSON.stringify({ personalizations: [{ to: [{ email: recipientEmail }] }], from: { email: fromEmail }, subject: subjectText, content: [{ type: 'text/plain', value: plainTextBody }, { type: 'text/html', value: htmlBody }] }),
+                  signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
                 })
                 if (!response.ok) throw new Error(`SendGrid API error: ${response.status}`)
                 twilioMessageSid = `SG_${Date.now()}`
@@ -698,15 +767,18 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
               }
 
               if (contactId) {
+                // A contact can have more than one conversation; the message goes to the latest.
+                // (maybeSingle() errors on two rows, which used to create a third every campaign.)
                 let conversationId = null
-                const { data: existingConv } = await supabase.from('conversations').select('id').eq('contact_id', contactId).eq('organization_id', campaign.organization_id).maybeSingle()
-                if (existingConv) conversationId = existingConv.id
+                const latestConversation = () => supabase.from('conversations').select('id').eq('contact_id', contactId).eq('organization_id', campaign.organization_id).order('last_message_at', { ascending: false, nullsFirst: false }).limit(1)
+                const { data: existingConvs } = await latestConversation()
+                if (existingConvs?.[0]) conversationId = existingConvs[0].id
                 else {
                   const { data: newConv } = await supabase.from('conversations').insert([{ organization_id: campaign.organization_id, contact_id: contactId, is_active: true, last_message_at: new Date().toISOString() }]).select().maybeSingle()
                   if (newConv) conversationId = newConv.id
                   else {
-                    const { data: retryConv } = await supabase.from('conversations').select('id').eq('contact_id', contactId).eq('organization_id', campaign.organization_id).maybeSingle()
-                    if (retryConv) conversationId = retryConv.id
+                    const { data: retryConvs } = await latestConversation()
+                    if (retryConvs?.[0]) conversationId = retryConvs[0].id
                   }
                 }
 
@@ -770,11 +842,12 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       .eq('id', campaignId)
       .maybeSingle()
 
+    // Logs still PENDING, or SENDING under another worker, mean the campaign is not finished
     const { count: finalPending } = await supabase
       .from('campaign_logs')
       .select('id', { count: 'exact', head: true })
       .eq('campaign_id', campaignId)
-      .eq('status', 'PENDING')
+      .in('status', ['PENDING', 'SENDING'])
 
     const { count: finalSent } = await supabase
       .from('campaign_logs')
@@ -795,19 +868,23 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
       terminalStatus = 'PROCESSING'
     }
 
+    // A worker that paused on purpose asks for an immediate resume with a heartbeat at the
+    // epoch; one that is done, or stopped, leaves a current one
+    const resumeNow = paused && terminalStatus === 'PROCESSING'
     await supabase
       .from('campaigns')
       .update({
         status: terminalStatus,
         sent_count: finalSent || 0,
         failed_count: finalFailed || 0,
-        updated_at: new Date().toISOString()
+        updated_at: resumeNow ? RESUME_REQUESTED_AT : new Date().toISOString()
       })
       .eq('id', campaignId)
 
     return {
       success: true,
-      message: `Campaign execution finished with status: ${terminalStatus}. Sent: ${finalSent || 0}, Failed: ${finalFailed || 0}`
+      ...(resumeNow ? { paused: true as const } : {}),
+      message: `Campaign execution ${resumeNow ? 'paused' : 'finished'} with status: ${terminalStatus}. Sent: ${finalSent || 0}, Failed: ${finalFailed || 0}`
     }
   } catch (error: any) {
     console.error(`[Campaign Worker] General execution failure:`, error)
@@ -815,13 +892,31 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
   }
 }
 
+/**
+ * POST /api/campaigns/run/worker: run a campaign's worker.
+ *
+ * With the cron secret (lib/scheduler/cron-auth.ts) the scheduler starts a campaign in an
+ * invocation of its own: the answer is 202 at once and the worker runs after it, for up to
+ * maxDuration. With a session, as before, the worker runs within the request and its result
+ * is the answer.
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { campaignId } = body
 
-    if (!campaignId) {
+    if (!campaignId || typeof campaignId !== 'string') {
       return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 })
+    }
+
+    if (authorizeCronRequest(request.headers, cronSecretsFromEnv()).ok) {
+      const deadline = workerDeadline(maxDuration)
+      after(() =>
+        runCampaignWorker(campaignId, { deadline }).catch((err) => {
+          console.error('[Campaign Worker POST] Background worker execution failed for campaign:', campaignId, err)
+        })
+      )
+      return NextResponse.json({ success: true, message: 'Campaign worker started.' }, { status: 202 })
     }
 
     const authResult = await verifyRecordAccess(request, 'campaigns', campaignId, { permission: 'campaigns.manage' })
@@ -829,7 +924,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    const result = await runCampaignWorker(campaignId)
+    const result = await runCampaignWorker(campaignId, { deadline: workerDeadline(maxDuration) })
     if (result.error && !result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 })
     }

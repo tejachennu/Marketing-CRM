@@ -17,7 +17,7 @@ const stub = (file, exports) => { require.cache[file] = { id: file, filename: fi
 let resends = []
 let resendResult = { step: 'address' }
 stub(path.join(PROJECT, 'lib/commerce/commerce-webhook-handler.ts'), {
-  resendCheckoutStep: async (args) => { resends.push(args); return resendResult },
+  resendCheckoutStep: async (args) => { resends.push(args); return typeof resendResult === 'function' ? resendResult(args) : resendResult },
 })
 let warnings = []
 for (const level of ['log', 'warn', 'error']) {
@@ -39,6 +39,7 @@ function createDb(tables) {
       case 'lt': return actual != null && actual < expected
       case 'lte': return actual != null && actual <= expected
       case 'gt': return actual != null && actual > expected
+      case 'gte': return actual != null && actual >= expected
       case 'in': return expected.includes(actual)
       case 'is': return expected === null ? actual == null : actual === expected
       default: throw new Error(`Unsupported operator ${operator}`)
@@ -107,26 +108,41 @@ const STORE = {
 }
 const QUIET_STORE = { ...STORE, id: ORG_B, commerce_reminders_enabled: false }
 
-/** An open checkout abandoned two hours ago, whose customer wrote two hours ago. */
+/** An open checkout abandoned two hours ago, by a customer of its own, whose customer wrote two hours ago. */
 function order(id, overrides = {}) {
   return {
-    id, organization_id: ORG_A, contact_id: 'contact-1', conversation_id: `conv-${id}`, order_number: `ORD-${id}`,
+    id, organization_id: ORG_A, contact_id: `contact-${id}`, conversation_id: `conv-${id}`, order_number: `ORD-${id}`,
     status: 'cart_submitted', payment_status: 'pending', total_amount: 500, currency: 'INR',
     created_at: hoursAgo(2), updated_at: hoursAgo(2), reminder_count: 0, next_reminder_at: null,
     ...overrides,
   }
 }
-function setup(orders, { lastInbound = {} } = {}) {
-  const messages = orders.flatMap((o) => (o.conversation_id ? [{ id: `m-${o.id}`, organization_id: o.organization_id, conversation_id: o.conversation_id, sender_type: 'contact', created_at: lastInbound[o.id] || hoursAgo(2) }, { id: `u-${o.id}`, organization_id: o.organization_id, conversation_id: o.conversation_id, sender_type: 'user', created_at: hoursAgo(0.1) }] : []))
+/**
+ * The chat of each order: the customer's cart message (`lastInbound`, two hours ago by default)
+ * and the store's own next step right after it, which the checkout notes as sent by the team.
+ * `chats` overrides the conversation row, `lines` adds messages.
+ */
+function setup(orders, { lastInbound = {}, chats = {}, lines = [] } = {}) {
+  const messages = orders.flatMap((o) => (o.conversation_id ? [
+    { id: `m-${o.id}`, organization_id: o.organization_id, conversation_id: o.conversation_id, sender_type: 'contact', body: '🛒 [WhatsApp Cart Order]: 1 item(s) selected', created_at: lastInbound[o.id] || hoursAgo(2) },
+    { id: `u-${o.id}`, organization_id: o.organization_id, conversation_id: o.conversation_id, sender_type: 'user', body: `[Sent delivery address form for Order #${o.order_number}]`, created_at: hoursAgo(1.9) },
+  ] : [])).concat(lines)
+  const conversations = orders.filter((o) => o.conversation_id).map((o) => ({
+    id: o.conversation_id, organization_id: o.organization_id, contact_id: o.contact_id, assigned_to: null, auto_reply_enabled: true,
+    last_message_at: messages.filter((m) => m.conversation_id === o.conversation_id).map((m) => m.created_at).sort().pop() || null,
+    ...(chats[o.id] || {}),
+  }))
   return createDb({
     organizations: [STORE, QUIET_STORE],
     commerce_orders: orders,
     commerce_order_items: orders.map((o) => ({ id: `item-${o.id}`, order_id: o.id, retailer_id: 'BOOK-1', title: 'Gitanjali', unit_price: 500, quantity: 1 })),
-    contacts: [{ id: 'contact-1', organization_id: ORG_A, phone_number: '919000000001' }],
+    contacts: orders.map((o) => ({ id: o.contact_id, organization_id: o.organization_id, phone_number: '919000000001' })),
+    conversations,
     messages,
   })
 }
 const byId = (db, id) => db.tables.commerce_orders.find((row) => row.id === id)
+const queriesOf = (db, table) => db.calls.filter((call) => call.table === table)
 function reset() { resends = []; resendResult = { step: 'address' }; warnings = [] }
 
 test('Reminders: only an open checkout abandoned for an hour, inside the 24-hour window, is reminded', async () => {
@@ -146,7 +162,7 @@ test('Reminders: only an open checkout abandoned for an hour, inside the 24-hour
   ], { lastInbound: { outside_window: hoursAgo(30) } })
 
   const result = await sendCheckoutReminders({ supabase: db, now: NOW })
-  assert.deepEqual(result, { scanned: 2, sent: 1, failed: 0, waiting: 1 })
+  assert.deepEqual(result, { scanned: 2, sent: 1, failed: 0, waiting: 1, held: 0 })
 
   assert.equal(resends.length, 1)
   assert.deepEqual(resends[0].organization, STORE, 'the store settings go along, so the right step is sent')
@@ -172,6 +188,22 @@ test('Reminders: only an open checkout abandoned for an hour, inside the 24-hour
   assert.equal(byId(db, 'not_due_yet').next_reminder_at, hoursAgo(-2))
 })
 
+test('Reminders: checkouts begun more than a week ago are over, not abandoned', async () => {
+  reset()
+  const db = setup([
+    order('last_week', { created_at: hoursAgo(6 * 24), updated_at: hoursAgo(6 * 24) }),
+    order('old', { created_at: hoursAgo(8 * 24), updated_at: hoursAgo(2) }),
+  ], { lastInbound: { last_week: hoursAgo(2), old: hoursAgo(2) } })
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW })
+  assert.deepEqual(result, { scanned: 1, sent: 1, failed: 0, waiting: 0, held: 0 })
+  assert.deepEqual(resends.map((r) => r.order.id), ['last_week'])
+  assert.equal(byId(db, 'old').next_reminder_at, null, 'not even claimed')
+
+  // The bound is in the query itself, so the database never hands over the old carts
+  const [candidates] = queriesOf(db, 'commerce_orders')
+  assert.ok(candidates.ops.some(([op, column, value]) => op === 'gte' && column === 'created_at' && value === hoursAgo(7 * 24)), JSON.stringify(candidates.ops))
+})
+
 test('Reminders: the second reminder goes out a day later, and there is never a third', async () => {
   reset()
   const db = setup([order('once', { reminder_count: 1, next_reminder_at: hoursAgo(1), created_at: hoursAgo(22), updated_at: hoursAgo(21) })], { lastInbound: { once: hoursAgo(21) } })
@@ -190,12 +222,27 @@ test('Reminders: when WhatsApp refuses the message, the order is tried again in 
   resendResult = { step: 'not_sent', error: 'This customer has not messaged you in the last 24 hours' }
   const db = setup([order('refused')])
   const result = await sendCheckoutReminders({ supabase: db, now: NOW })
-  assert.deepEqual(result, { scanned: 1, sent: 0, failed: 1, waiting: 0 })
+  assert.deepEqual(result, { scanned: 1, sent: 0, failed: 1, waiting: 0, held: 0 })
   assert.equal(resends.length, 1)
   const refused = byId(db, 'refused')
   assert.equal(refused.reminder_count, 0)
   assert.equal(refused.next_reminder_at, hoursAgo(-6))
   assert.ok(warnings.some((line) => line.includes('ORD-refused') && line.includes('6 hours')))
+})
+
+test('Reminders: a step WhatsApp does not accept in time counts as refused, and the run moves on', async () => {
+  reset()
+  const db = setup([order('hanging'), order('fine', { created_at: hoursAgo(3) })])
+  // WhatsApp never answers for one of them
+  resendResult = ({ order }) => (order.id === 'hanging' ? new Promise(() => {}) : { step: 'address' })
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW, sendTimeoutMs: 20 })
+  assert.deepEqual(result, { scanned: 2, sent: 1, failed: 1, waiting: 0, held: 0 })
+  assert.deepEqual(resends.map((r) => r.order.id), ['fine', 'hanging'], 'oldest first; the hanging send did not stop the next')
+  const hanging = byId(db, 'hanging')
+  assert.equal(hanging.reminder_count, 0)
+  assert.equal(hanging.next_reminder_at, hoursAgo(-6), 'tried again in six hours')
+  assert.ok(warnings.some((line) => line.includes('ORD-hanging') && line.includes('did not answer')))
+  assert.equal(byId(db, 'fine').reminder_count, 1)
 })
 
 test('Reminders: an order with no conversation, or a store without WhatsApp, waits instead of failing', async () => {
@@ -204,10 +251,96 @@ test('Reminders: an order with no conversation, or a store without WhatsApp, wai
   db.tables.organizations.push({ ...STORE, id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', whatsapp_api_token: null })
   byId(db, 'disconnected').organization_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
   const result = await sendCheckoutReminders({ supabase: db, now: NOW })
-  assert.deepEqual(result, { scanned: 2, sent: 0, failed: 0, waiting: 2 })
+  assert.deepEqual(result, { scanned: 2, sent: 0, failed: 0, waiting: 2, held: 0 })
   assert.equal(resends.length, 0)
   assert.equal(byId(db, 'no_chat').next_reminder_at, hoursAgo(-6))
   assert.equal(byId(db, 'disconnected').next_reminder_at, hoursAgo(-6))
+})
+
+test('Reminders: a chat a person is handling, or one active in the last hour, is not interrupted', async () => {
+  reset()
+  const db = setup([
+    order('chatbot_off'),
+    order('assigned'),
+    order('active'),
+    order('team_wrote'),
+    order('team_wrote_earlier'),
+    order('step_sent_later'),
+  ], {
+    chats: {
+      chatbot_off: { auto_reply_enabled: false },
+      assigned: { assigned_to: 'user-1' },
+      active: { last_message_at: hoursAgo(0.5) },
+    },
+    lines: [
+      // A person replied from the inbox after the cart came in
+      { id: 'h1', organization_id: ORG_A, conversation_id: 'conv-team_wrote', sender_type: 'user', body: 'Hi! Shall I keep the book aside for you?', created_at: hoursAgo(1.5) },
+      // A person wrote before the cart; the cart is the newer event
+      { id: 'h2', organization_id: ORG_A, conversation_id: 'conv-team_wrote_earlier', sender_type: 'user', body: 'Welcome to the store', created_at: hoursAgo(3) },
+      // The checkout's own payment request, written after the order changed, is not a person
+      { id: 'h3', organization_id: ORG_A, conversation_id: 'conv-step_sent_later', sender_type: 'user', body: '[Sent payment request for Order #ORD-step_sent_later (₹500.00)]', created_at: hoursAgo(1.5) },
+    ],
+  })
+
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW })
+  assert.deepEqual(result, { scanned: 6, sent: 2, failed: 0, waiting: 0, held: 4 })
+  assert.deepEqual(resends.map((r) => r.order.id).sort(), ['step_sent_later', 'team_wrote_earlier'])
+
+  for (const id of ['chatbot_off', 'assigned', 'active', 'team_wrote']) {
+    const held = byId(db, id)
+    assert.equal(held.reminder_count, 0, `${id} got no reminder`)
+    assert.equal(held.next_reminder_at, hoursAgo(-6), `${id} is looked at again in six hours`)
+  }
+  const reasons = Object.fromEntries(warnings.filter((line) => line.includes('looking again')).map((line) => [line.match(/Order #ORD-(\w+)/)[1], line]))
+  assert.match(reasons.chatbot_off, /chatbot is off/)
+  assert.match(reasons.assigned, /assigned/)
+  assert.match(reasons.active, /active in the last hour/)
+  assert.match(reasons.team_wrote, /team wrote last/)
+
+  // The chat is read before the step is sent, never after
+  const chatReads = queriesOf(db, 'conversations')
+  assert.equal(chatReads.length, 6)
+  assert.deepEqual(chatReads[0].ops, [
+    ['select', 'id, assigned_to, auto_reply_enabled, last_message_at'],
+    ['eq', 'organization_id', ORG_A],
+    ['or', 'contact_id.eq.contact-chatbot_off,id.eq.conv-chatbot_off'],
+    ['order', 'last_message_at', { ascending: false, nullsFirst: false }],
+    ['limit', 20],
+  ])
+})
+
+test('Reminders: the 24-hour window and the live-chat rule look at every conversation of the customer', async () => {
+  reset()
+  // The order's own chat went quiet long ago; the customer has since written in a newer one
+  const db = setup([order('split'), order('split_assigned')], { lastInbound: { split: hoursAgo(30), split_assigned: hoursAgo(30) } })
+  db.tables.conversations.push(
+    { id: 'conv-split-2', organization_id: ORG_A, contact_id: 'contact-split', assigned_to: null, auto_reply_enabled: true, last_message_at: hoursAgo(2) },
+    { id: 'conv-split_assigned-2', organization_id: ORG_A, contact_id: 'contact-split_assigned', assigned_to: 'user-2', auto_reply_enabled: true, last_message_at: hoursAgo(2) },
+    { id: 'conv-other-org', organization_id: ORG_B, contact_id: 'contact-split', assigned_to: 'user-9', auto_reply_enabled: false, last_message_at: hoursAgo(0.1) },
+  )
+  db.tables.messages.push(
+    { id: 'n1', organization_id: ORG_A, conversation_id: 'conv-split-2', sender_type: 'contact', body: 'Is the book still available?', created_at: hoursAgo(2) },
+    { id: 'n2', organization_id: ORG_A, conversation_id: 'conv-split_assigned-2', sender_type: 'contact', body: 'Hello?', created_at: hoursAgo(2) },
+  )
+
+  const result = await sendCheckoutReminders({ supabase: db, now: NOW })
+  assert.deepEqual(result, { scanned: 2, sent: 1, failed: 0, waiting: 0, held: 1 })
+  assert.deepEqual(resends.map((r) => r.order.id), ['split'])
+  assert.equal(byId(db, 'split').reminder_count, 1)
+  assert.equal(byId(db, 'split_assigned').reminder_count, 0, 'a person has the customer in another chat')
+
+  // The inbound message is looked for across the customer's chats in this organization
+  const windowRead = queriesOf(db, 'messages').find(({ ops }) => ops.some(([op, column, value]) => op === 'eq' && column === 'sender_type' && value === 'contact'))
+  const [select, organization, chats, ...rest] = windowRead.ops
+  assert.deepEqual([select, organization], [['select', 'created_at'], ['eq', 'organization_id', ORG_A]])
+  assert.deepEqual(chats.slice(0, 2), ['in', 'conversation_id'])
+  assert.deepEqual([...chats[2]].sort(), ['conv-split', 'conv-split-2'], 'the other organization\'s chat is not among them')
+  assert.deepEqual(rest, [
+    ['eq', 'sender_type', 'contact'],
+    ['order', 'created_at', { ascending: false }],
+    ['limit', 1],
+    ['maybeSingle'],
+  ])
 })
 
 test('Reminders: at most `limit` reminders per run, oldest checkout first; the rest wait for the next run', async () => {
@@ -225,7 +358,7 @@ test('Reminders: an order another scheduler claimed a moment ago is left alone',
   // The other run bumps the counter between our read and our claim
   db.beforeQuery = (table, ops) => { if (table === 'commerce_orders' && ops[0][0] === 'update') byId(db, 'contested').reminder_count = 1 }
   const result = await sendCheckoutReminders({ supabase: db, now: NOW })
-  assert.deepEqual(result, { scanned: 1, sent: 0, failed: 0, waiting: 0 })
+  assert.deepEqual(result, { scanned: 1, sent: 0, failed: 0, waiting: 0, held: 0 })
   assert.equal(resends.length, 0)
 })
 
@@ -234,7 +367,7 @@ test('Reminders: without the migration the job skips, saying so once', async () 
   const db = setup([order('eligible')])
   db.beforeQuery = (table, ops) => (table === 'commerce_orders' && ops[0][0] === 'select' ? { code: '42703', message: 'column commerce_orders.reminder_count does not exist' } : null)
   let result = await sendCheckoutReminders({ supabase: db, now: NOW })
-  assert.deepEqual(result, { skipped: true, scanned: 0, sent: 0, failed: 0, waiting: 0 })
+  assert.deepEqual(result, { skipped: true, scanned: 0, sent: 0, failed: 0, waiting: 0, held: 0 })
   assert.equal(resends.length, 0)
   result = await sendCheckoutReminders({ supabase: db, now: NOW })
   assert.equal(result.skipped, true)
@@ -252,12 +385,16 @@ test('Reminders: any other database error is raised for the tick to report', asy
   const db = setup([order('eligible')])
   db.beforeQuery = (table) => (table === 'messages' ? { code: '57014', message: 'canceling statement due to statement timeout' } : null)
   await assert.rejects(() => sendCheckoutReminders({ supabase: db, now: NOW }), /statement timeout/)
+
+  const fresh = setup([order('eligible')]) // the claim above holds that order for six hours
+  fresh.beforeQuery = (table) => (table === 'conversations' ? { code: '57014', message: 'conversations timed out' } : null)
+  await assert.rejects(() => sendCheckoutReminders({ supabase: fresh, now: NOW }), /conversations timed out/)
 })
 
 test('Reminders: a run whose time is up stops before the next order', async () => {
   reset()
   const db = setup([order('eligible')])
   const result = await sendCheckoutReminders({ supabase: db, now: NOW, deadline: Date.now() - 1 })
-  assert.deepEqual(result, { scanned: 0, sent: 0, failed: 0, waiting: 0, out_of_time: true })
+  assert.deepEqual(result, { scanned: 0, sent: 0, failed: 0, waiting: 0, held: 0, out_of_time: true })
   assert.equal(resends.length, 0)
 })

@@ -15,6 +15,16 @@ create index if not exists commerce_orders_reminder_idx
   on public.commerce_orders (status, next_reminder_at)
   where reminder_count < 2;
 
+-- Checkouts begun more than a week ago are over, not abandoned: the job only looks at the
+-- last 7 days, and the open orders older than that are marked as already reminded here, so
+-- the day reminders go live does not send one to every cart from the past months. Running
+-- this again changes nothing (the rows it touched no longer match).
+update public.commerce_orders
+  set reminder_count = 2
+  where reminder_count = 0
+    and status in ('cart_submitted', 'awaiting_address', 'payment_pending')
+    and created_at < now() - interval '7 days';
+
 -- The store's switch. Reminders stop for an organization when this is false.
 alter table public.organizations
   add column if not exists commerce_reminders_enabled boolean not null default true;

@@ -1,22 +1,37 @@
 -- Template: run the scheduler tick from Supabase instead of (or as well as) Vercel Cron.
 -- Applying this file as it is changes nothing: every statement below is commented out.
 --
--- Vercel Cron on the Hobby plan runs a job at most once a day. pg_cron inside the Supabase
--- database can call GET /api/cron/tick every 10 minutes on any plan, through pg_net.
+-- Vercel Cron on the Hobby plan runs a job at most once a day, and only to within the hour.
+-- pg_cron inside the Supabase database can call GET /api/cron/tick every 10 minutes on any
+-- plan, through pg_net; it is the recommended way to a 10-minute cadence on Hobby.
 --
 -- How to use it:
 --   1. In the Supabase dashboard, Database -> Extensions, enable pg_cron and pg_net
 --      (or run the two "create extension" lines below as the postgres user).
---   2. Replace YOUR-APP-HOST with the deployed host (for example wamacrm.magnetora.in) and
---      YOUR_CRON_SECRET with the value of the CRON_SECRET environment variable of the app.
---   3. Run the "select cron.schedule(...)" statement once, in the SQL editor.
---      The secret ends up in the cron.job table, readable by anyone with database access;
---      rotate it there and in Vercel together.
+--   2. In Vercel, set PG_CRON_SECRET to a long random value of its own (next to CRON_SECRET,
+--      which Vercel Cron uses). The tick accepts either. A dedicated secret matters because
+--      this one ends up in the cron.job table, readable by anyone with database access: it
+--      can be rotated there and in Vercel without touching the one Vercel holds.
+--   3. Replace YOUR-APP-HOST with the deployed host (for example wamacrm.magnetora.in) and
+--      YOUR_PG_CRON_SECRET with the value of PG_CRON_SECRET, then run the
+--      "select cron.schedule(...)" statement once, in the SQL editor.
+--      timeout_milliseconds: pg_net gives up after 5 seconds by default, and a tick that has
+--      reminders to send takes longer than that; without it real runs are logged as timeouts
+--      (the tick itself still completes). 60 seconds matches the tick's own limit.
 --   4. Check the runs with: select * from cron.job_run_details order by start_time desc limit 20;
---      and the tick's own answer in net._http_response.
+--      and the tick's own answer in net._http_response (a 500 means a job failed; its
+--      "jobs" object says which one and why).
 --   5. To stop it: select cron.unschedule('wama-tick');
 --
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 --
--- select cron.schedule('wama-tick', '*/10 * * * *', $$ select net.http_post(url := 'https://YOUR-APP-HOST/api/cron/tick', headers := '{"x-cron-secret": "YOUR_CRON_SECRET"}'::jsonb) $$);
+-- select cron.schedule(
+--   'wama-tick',
+--   '*/10 * * * *',
+--   $$ select net.http_post(
+--        url := 'https://YOUR-APP-HOST/api/cron/tick',
+--        headers := '{"x-cron-secret": "YOUR_PG_CRON_SECRET"}'::jsonb,
+--        timeout_milliseconds := 60000
+--      ) $$
+-- );
