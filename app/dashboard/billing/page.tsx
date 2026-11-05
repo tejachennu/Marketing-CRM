@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  AlertCircle, AlertTriangle, BadgeCheck, Bot, CalendarClock, CheckCircle2, ChevronDown, Clock, CreditCard, Loader2, Lock,
-  Mail, Megaphone, MessageCircle, Receipt, RotateCcw, ShieldCheck, ShoppingBag, Sparkles, TrendingUp, Users, Workflow, Wallet,
+  AlertCircle, AlertTriangle, ArrowRight, BadgeCheck, Bot, Building2, CalendarClock, CheckCircle2, ChevronDown, Clock, CreditCard,
+  GraduationCap, Headphones, Loader2, Lock, Mail, Megaphone, MessageCircle, Package, Receipt, RotateCcw, ShieldCheck, ShoppingBag,
+  Sparkles, Stethoscope, Store, TrendingUp, Users, Workflow, Wallet,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -11,6 +12,7 @@ import { authSessionManager } from '@/lib/auth-context'
 import { can, type RoleSubject } from '@/lib/rbac'
 import { openRazorpay } from '@/lib/use-razorpay'
 import { useConfirm } from '@/lib/dialog-context'
+import { FEATURE_GROUPS, USE_CASES } from '@/lib/product-features'
 
 interface Billing {
   configured: boolean
@@ -39,8 +41,20 @@ const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLo
 const SUPPORT_EMAIL = (process.env.NEXT_PUBLIC_SUPPORT_EMAIL || '').trim()
 const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
-// Icons for the plan's features, in the order lib/billing.ts lists them
-const FEATURE_ICONS: LucideIcon[] = [Users, MessageCircle, Megaphone, ShoppingBag, Workflow, TrendingUp]
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  inbox: MessageCircle, ai: Bot, commerce: ShoppingBag, campaigns: Megaphone, flows: Workflow, sales: TrendingUp, team: Users,
+}
+const USE_CASE_ICONS: Record<string, LucideIcon> = {
+  retail: Store, d2c: Package, clinics: Stethoscope, education: GraduationCap, 'real-estate': Building2, support: Headphones,
+}
+const TINTS = [
+  'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
+  'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300',
+  'bg-[#fdeef3] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300',
+  'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300',
+  'bg-[#f1ecfe] text-[#6d28d9] dark:bg-violet-950/40 dark:text-violet-300',
+  'bg-[#e6f6fb] text-[#0e7490] dark:bg-cyan-950/40 dark:text-cyan-300',
+]
 const AI_USES = ['WhatsApp AI replies', 'Shopping assistant', 'Reply suggestions', 'Lead scoring', 'Writing help']
 
 const FAQ = [
@@ -137,6 +151,8 @@ export default function BillingPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [amount, setAmount] = useState<number | 'other'>(1000)
   const [customAmount, setCustomAmount] = useState('')
+  const [featureTab, setFeatureTab] = useState(FEATURE_GROUPS[0].id)
+  const featureGroup = FEATURE_GROUPS.find((group) => group.id === featureTab) || FEATURE_GROUPS[0]
 
   const load = useCallback(async (organizationId: string) => {
     const res = await fetch(`/api/billing?organizationId=${organizationId}`, { cache: 'no-store' })
@@ -314,11 +330,10 @@ export default function BillingPage() {
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* On phones the columns dissolve so AI credit comes right after the plan */}
-          <div className="contents lg:block lg:col-span-7 lg:space-y-5">
-          {/* The plan */}
-          <section className={`${card} order-1 lg:order-none`}>
-            <div className="p-5 sm:p-6">
+          <div className="lg:col-span-7">
+          {/* The plan: everything included */}
+          <section className={card}>
+            <div className="p-5 sm:p-6 border-b border-[#eef1f6] dark:border-slate-800">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <p className="text-[13.5px] font-semibold text-[#6B7894]">Your plan</p>
@@ -328,69 +343,59 @@ export default function BillingPage() {
                   <p className="text-right"><span className="text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{rupees(billing.plan.price)}</span><span className="text-[15px] font-semibold text-[#6B7894]"> / month</span></p>
                 )}
               </div>
-              <p className="text-[14.5px] text-[#4a5672] dark:text-slate-400 mt-1">Everything WAMA CRM does, for your whole team. No per-user fees.</p>
-              <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3.5">
-                {billing.plan.features.map((feature, index) => {
-                  const Icon = FEATURE_ICONS[index] || CheckCircle2
+              <p className="text-[14.5px] text-[#4a5672] dark:text-slate-400 mt-1">Everything below is included for your whole team. No per-user fees and no add-ons.</p>
+            </div>
+
+            <div className="md:grid md:grid-cols-[256px_1fr]">
+              <div role="tablist" aria-label="What is included" aria-orientation="vertical" className="flex md:flex-col gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-3 border-b md:border-b-0 md:border-r border-[#eef1f6] dark:border-slate-800">
+                {FEATURE_GROUPS.map((group) => {
+                  const Icon = GROUP_ICONS[group.id] || CheckCircle2
+                  const selected = group.id === featureGroup.id
                   return (
-                    <li key={feature} className="flex items-center gap-3 text-[14.5px] text-[#0E1B3D] dark:text-slate-200">
-                      <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center"><Icon size={17} /></span>
-                      {feature}
-                    </li>
+                    <button key={group.id} id={`feature-tab-${group.id}`} type="button" role="tab" aria-selected={selected} onClick={() => setFeatureTab(group.id)}
+                      className={`shrink-0 flex items-center gap-2.5 h-11 px-3 rounded-xl text-left text-[14px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${selected ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'text-[#4a5672] dark:text-slate-400 hover:bg-[#f6f8fc] hover:text-[#0E1B3D] dark:hover:bg-slate-800 dark:hover:text-white'}`}>
+                      <Icon size={17} className="shrink-0" /> {group.title}
+                    </button>
                   )
                 })}
-              </ul>
+              </div>
+
+              <div role="tabpanel" className="p-5 sm:p-6">
+                {(() => {
+                  const Icon = GROUP_ICONS[featureGroup.id] || CheckCircle2
+                  const index = FEATURE_GROUPS.findIndex((group) => group.id === featureGroup.id)
+                  const next = FEATURE_GROUPS[(index + 1) % FEATURE_GROUPS.length]
+                  return (
+                    <>
+                      <span className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#00A884] to-[#1D5BEA] text-white flex items-center justify-center"><Icon size={23} /></span>
+                      <h3 className="text-[20px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">{featureGroup.title}</h3>
+                      <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1">{featureGroup.summary}</p>
+                      <ul className="mt-5 space-y-3.5">
+                        {featureGroup.points.map((point) => (
+                          <li key={point} className="flex items-start gap-3 text-[15px] leading-snug text-[#0E1B3D] dark:text-slate-200">
+                            <CheckCircle2 size={19} className="shrink-0 mt-px text-[#00A884]" /> {point}
+                          </li>
+                        ))}
+                      </ul>
+                      <button type="button" onClick={() => { setFeatureTab(next.id); document.getElementById(`feature-tab-${next.id}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }) }} className="mt-6 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#1D5BEA] hover:underline cursor-pointer">
+                        Next: {next.title} <ArrowRight size={15} />
+                      </button>
+                    </>
+                  )
+                })()}
+              </div>
             </div>
+
             <div className="border-t border-[#eef1f6] dark:border-slate-800 px-5 sm:px-6 py-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] text-[#4a5672] dark:text-slate-400">
               <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#00A884]" /> UPI, cards and net banking</span>
               <span className="inline-flex items-center gap-1.5"><RotateCcw size={15} className="text-[#00A884]" /> Stop any time</span>
               <span className="inline-flex items-center gap-1.5"><Mail size={15} className="text-[#00A884]" /> Receipt emailed for every payment</span>
             </div>
           </section>
-
-          {/* Payments */}
-          {canPay && !billing.exempt && (
-            <section className={`${card} order-3 lg:order-none`}>
-              <div className="px-5 sm:px-6 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
-                <Receipt size={18} className="text-[#1D5BEA]" />
-                <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white">Payments</h2>
-              </div>
-              {billing.payments.length === 0 ? (
-                <div className="px-5 sm:px-6 py-10 text-center">
-                  <div className="mx-auto h-11 w-11 rounded-2xl bg-[#f1f4f9] dark:bg-slate-800 flex items-center justify-center text-[#8a94a8]"><Receipt size={20} /></div>
-                  <p className="text-[15px] font-semibold text-[#0E1B3D] dark:text-white mt-3">No payments yet</p>
-                  <p className="text-[14px] text-[#6B7894] mt-0.5">Your plan and AI credit payments will show here.</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
-                  {billing.payments.map((payment, index) => {
-                    const isPlan = payment.purpose === 'subscription'
-                    return (
-                      <li key={`${payment.date}-${index}`} className="px-5 sm:px-6 py-3.5 flex items-center gap-3">
-                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
-                          {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{isPlan ? 'WAMA CRM Pro · monthly' : 'AI credit'}</span>
-                          <span className="block text-[13px] text-[#6B7894]">{formatDate(payment.date)}</span>
-                        </span>
-                        <span className="text-right">
-                          <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{rupees(payment.amount)}</span>
-                          <span className="block text-[12.5px] font-semibold text-[#047857] dark:text-emerald-300">Paid</span>
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </section>
-          )}
-
           </div>
-
-          <div className="contents lg:block lg:col-span-5 lg:space-y-5">
+          <div className="lg:col-span-5">
           {/* AI credit */}
-          <section className={`${card} p-5 sm:p-6 order-2 lg:order-none`}>
+          <section className={`${card} p-5 sm:p-6`}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#1D5BEA]" /> AI credit</h2>
               {aiTracked && (
@@ -457,8 +462,80 @@ export default function BillingPage() {
             )}
           </section>
 
+          </div>
+        </div>
+
+        {/* How businesses use it */}
+        <section aria-labelledby="use-cases" className="pt-2">
+          <h2 id="use-cases" className="text-[22px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">How businesses use WAMA CRM</h2>
+          <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-0.5">A few of the ways teams put it to work every day.</p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {USE_CASES.map((useCase, index) => {
+              const Icon = USE_CASE_ICONS[useCase.id] || Sparkles
+              const tint = TINTS[index % TINTS.length]
+              return (
+                <article key={useCase.id} className={`${card} p-5 flex flex-col`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${tint}`}><Icon size={19} /></span>
+                    <span className="text-[13.5px] font-semibold text-[#6B7894]">{useCase.business}</span>
+                  </div>
+                  <h3 className="text-[17px] font-bold leading-snug text-[#0E1B3D] dark:text-white mt-3.5">{useCase.headline}</h3>
+                  <ol className="mt-3.5 space-y-2.5">
+                    {useCase.steps.map((step, stepIndex) => (
+                      <li key={step} className="flex items-start gap-2.5 text-[14px] leading-snug text-[#4a5672] dark:text-slate-300">
+                        <span className="h-5 w-5 shrink-0 mt-px rounded-full bg-[#f1f4f9] dark:bg-slate-800 text-[11.5px] font-bold text-[#0E1B3D] dark:text-white flex items-center justify-center">{stepIndex + 1}</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start pt-2">
+          {canPay && !billing.exempt && (
+            <div className="lg:col-span-7">
+            <section className={`${card}`}>
+              <div className="px-5 sm:px-6 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
+                <Receipt size={18} className="text-[#1D5BEA]" />
+                <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white">Payments</h2>
+              </div>
+              {billing.payments.length === 0 ? (
+                <div className="px-5 sm:px-6 py-10 text-center">
+                  <div className="mx-auto h-11 w-11 rounded-2xl bg-[#f1f4f9] dark:bg-slate-800 flex items-center justify-center text-[#8a94a8]"><Receipt size={20} /></div>
+                  <p className="text-[15px] font-semibold text-[#0E1B3D] dark:text-white mt-3">No payments yet</p>
+                  <p className="text-[14px] text-[#6B7894] mt-0.5">Your plan and AI credit payments will show here.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
+                  {billing.payments.map((payment, index) => {
+                    const isPlan = payment.purpose === 'subscription'
+                    return (
+                      <li key={`${payment.date}-${index}`} className="px-5 sm:px-6 py-3.5 flex items-center gap-3">
+                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+                          {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{isPlan ? 'WAMA CRM Pro · monthly' : 'AI credit'}</span>
+                          <span className="block text-[13px] text-[#6B7894]">{formatDate(payment.date)}</span>
+                        </span>
+                        <span className="text-right">
+                          <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{rupees(payment.amount)}</span>
+                          <span className="block text-[12.5px] font-semibold text-[#047857] dark:text-emerald-300">Paid</span>
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </section>
+            </div>
+          )}
+          <div className={canPay && !billing.exempt ? 'lg:col-span-5' : 'lg:col-span-12'}>
           {/* Questions */}
-          <section className={`${card} order-4 lg:order-none`}>
+          <section className={`${card}`}>
             <div className="px-5 sm:px-6 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
               <Bot size={18} className="text-[#1D5BEA]" />
               <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white">Common questions</h2>
