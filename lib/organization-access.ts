@@ -30,7 +30,8 @@ export function getOrganizationCredentials(organization: Record<string, any> | n
   return {
     messaging: metaConnected || twilioConnected,
     email: hasValue(organization?.sendgrid_api_key) || smtpConfigured,
-    ai: hasValue(organization?.openai_api_key),
+    // AI is built in (WAMA CRM's key, paid from the AI credits); exempt workspaces may still use their own
+    ai: hasValue(organization?.openai_api_key) || hasValue(process.env.OPENAI_API_KEY),
   }
 }
 

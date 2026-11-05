@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { SynonymGroup } from '@/lib/query-expander'
+import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -12,14 +13,11 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-async function generateEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+async function generateEmbedding(text: string, db: any, ai: AiAccess): Promise<number[] | null> {
   try {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const res = await aiFetch(db, ai, 'knowledge', 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: text.substring(0, 8000)
@@ -144,10 +142,10 @@ export async function POST(request: NextRequest) {
     if (orgError) throw orgError
 
     const allSynonyms: SynonymGroup[] = orgData?.service_synonyms || []
-    const openAiKey = orgData?.openai_api_key || process.env.OPENAI_API_KEY || ''
+    const ai = await getAiAccess(supabase, organizationId, orgData)
 
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'No OpenAI API key configured' }, { status: 400 })
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     // Fetch all articles for this organization
@@ -190,7 +188,7 @@ export async function POST(request: NextRequest) {
       const wasEnriched = textToEmbed !== `${article.title}\n${article.content || ''}`
       if (wasEnriched) enriched++
 
-      const embedding = await generateEmbedding(textToEmbed, openAiKey)
+      const embedding = await generateEmbedding(textToEmbed, supabase, ai)
       if (!embedding) {
         failed++
         continue

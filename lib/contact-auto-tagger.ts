@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { aiFetch, getAiAccess } from './ai-access';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -44,17 +45,9 @@ export async function autoTagContact(contactId: string, conversationId: string, 
 
         const chatHistory = messages.reverse().map(m => `${m.sender_type}: ${m.body}`).join('\n');
 
-        // 4. Fetch org's openai_api_key
-        const { data: orgData } = await supabase
-            .from('organizations')
-            .select('openai_api_key')
-            .eq('id', orgId)
-            .single();
-
-        const openAiKey = orgData?.openai_api_key;
-
-        // 5. Return early if no key
-        if (!openAiKey) {
+        // 4. AI access; nothing to do when AI is off or the credits are used up
+        const ai = await getAiAccess(supabase, orgId);
+        if (!ai.allowed) {
             return existingTags;
         }
 
@@ -85,12 +78,9 @@ ${chatHistory}`;
 
         let newTags: string[] = [];
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await aiFetch(supabase, ai, 'auto_tagging', 'https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${openAiKey}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
                     temperature: 0,

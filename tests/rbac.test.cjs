@@ -59,15 +59,19 @@ test('Roles: stored values keep "superadmin" and "owner", everything else is can
   assert.equal(rbac.toStoredRole('Manager'), 'org_manager')
   assert.equal(rbac.toStoredRole('OrgAdmin'), 'org_admin')
   assert.equal(rbac.toStoredRole('agent'), 'sales_employee')
+  assert.equal(rbac.toStoredRole('viewer'), 'viewer')
 })
 
-test('Roles: badges show one label per role, with the owner called out', () => {
-  assert.equal(rbac.getRoleDisplay('Manager').label, 'Org Manager')
-  assert.equal(rbac.getRoleDisplay('saleslead').label, 'Org Manager')
-  assert.equal(rbac.getRoleDisplay('agent').label, 'Sales Employee')
+test('Roles: badges show one plain label per role, with the owner and viewers called out', () => {
+  assert.equal(rbac.getRoleDisplay('Manager').label, 'Manager')
+  assert.equal(rbac.getRoleDisplay('saleslead').label, 'Manager')
+  assert.equal(rbac.getRoleDisplay('org_admin').label, 'Admin')
+  assert.equal(rbac.getRoleDisplay('agent').label, 'Agent')
+  assert.equal(rbac.getRoleDisplay('viewer').label, 'Viewer')
   assert.equal(rbac.getRoleDisplay('owner').label, 'Owner')
   assert.equal(rbac.getRoleDisplay('superadmin').label, 'Super Admin')
-  assert.equal(rbac.getRoleDisplay(null).label, 'Sales Employee')
+  assert.equal(rbac.getRoleDisplay(null).label, 'Agent')
+  assert.deepEqual(rbac.ASSIGNABLE_ROLES.map((r) => r.label), ['Admin', 'Manager', 'Agent', 'Viewer'])
   assert.equal(rbac.ASSIGNABLE_ROLES.some((r) => r.value === rbac.DEFAULT_TEAMMATE_ROLE), true)
   assert.equal(rbac.DEFAULT_TEAMMATE_ROLE, 'sales_employee')
 })
@@ -203,14 +207,58 @@ test('Team: an organization always keeps at least one admin', () => {
   assert.equal(rbac.getTeamChangeError(admin, employee, { remove: true }, { adminCount: 1 }), null)
 })
 
-test('Team: managers may widen or limit a sales employee, and only a sales employee', () => {
+test('Team: managers may widen or limit an agent, and only an agent', () => {
   const ctx = { adminCount: 1 }
   assert.equal(rbac.getTeamChangeError(manager, employee, { access: true }, ctx), null)
   assert.equal(rbac.getTeamChangeError(admin, employeeReadOnly, { access: true }, ctx), null)
-  assert.match(rbac.getTeamChangeError(manager, admin, { access: true }, ctx), /only apply to sales employees/)
-  assert.match(rbac.getTeamChangeError(manager, { id: 'u-m2', role: 'Manager' }, { access: true }, ctx), /only apply to sales employees/)
+  assert.match(rbac.getTeamChangeError(manager, admin, { access: true }, ctx), /only apply to agents/)
+  assert.match(rbac.getTeamChangeError(manager, { id: 'u-m2', role: 'Manager' }, { access: true }, ctx), /only apply to agents/)
+  assert.match(rbac.getTeamChangeError(manager, { id: 'u-v', role: 'viewer' }, { access: true }, ctx), /Viewers always see everything/)
   assert.match(rbac.getTeamChangeError(employeeSeeAll, employee, { access: true }, ctx), /Only admins and managers/)
   assert.match(rbac.getTeamChangeError(admin, null, { access: true }, ctx), /not found/)
+})
+
+test('Viewer: sees everything, changes nothing, and is never an admin', () => {
+  const viewer = { id: 'u-viewer', role: 'viewer' }
+  assert.equal(rbac.isViewer(viewer), true)
+  assert.equal(rbac.canSeeAll(viewer), true)
+  assert.equal(rbac.isReadOnly(viewer), true)
+  for (const permission of ['records.write', 'contacts.manage', 'campaigns.manage', 'automation.manage', 'records.assign', 'team.grant_access', 'team.manage', 'settings.manage', 'billing.manage']) {
+    assert.equal(rbac.can(viewer, permission), false, permission)
+  }
+  assert.equal(rbac.can(viewer, 'records.view_all'), true)
+  // Even with stale switches left on the row
+  assert.equal(rbac.can({ ...viewer, see_all: true, read_only: false }, 'records.write'), false)
+  assert.equal(rbac.canAccessPage(viewer, '/dashboard/campaigns'), true)
+  assert.equal(rbac.canAccessPage(viewer, '/dashboard/settings'), false)
+  assert.equal(rbac.canAccessPage(viewer, '/dashboard/team'), false)
+})
+
+test('Team page: roles admins can give, and the value stored for each', () => {
+  assert.equal(rbac.storedTeammateRole('viewer'), 'viewer')
+  assert.equal(rbac.storedTeammateRole('Manager'), 'org_manager')
+  assert.equal(rbac.storedTeammateRole('admin'), 'org_admin')
+  assert.equal(rbac.storedTeammateRole('agent'), 'sales_employee')
+  // The owner role is only the workspace creator's; it is stored as admin if it ever got here
+  assert.equal(rbac.storedTeammateRole('owner'), 'org_admin')
+  assert.equal(rbac.storedTeammateRole('superadmin'), null)
+  assert.equal(rbac.storedTeammateRole('wizard'), null)
+  assert.match(rbac.getTeamChangeError(admin, employee, { role: 'owner' }, { adminCount: 2 }), /only one owner/)
+  assert.equal(rbac.getTeamChangeError(admin, employee, { role: 'viewer' }, { adminCount: 2 }), null)
+  assert.equal(rbac.assignableRoleOf({ role: 'viewer' }), 'viewer')
+  assert.equal(rbac.assignableRoleOf({ role: 'owner' }), 'org_admin')
+  assert.equal(rbac.assignableRoleOf({ role: 'agent' }), 'sales_employee')
+})
+
+test('Team page: who opens it, and what the permissions table says', () => {
+  assert.deepEqual([owner, admin, manager, employee, employeeSeeAll].map((person) => rbac.canAccessPage(person, '/dashboard/team')), [true, true, true, false, false])
+  assert.deepEqual([owner, admin, manager, employee].map((person) => rbac.canAccessPage(person, '/dashboard/billing')), [true, true, false, false])
+  const table = Object.fromEntries(rbac.ROLE_CAPABILITIES.map((capability) => [capability.permission, rbac.ROLE_TABLE.map((role) => rbac.can(role.subject, capability.permission))]))
+  //                                   owner  admin  manager agent  viewer
+  assert.deepEqual(table['billing.manage'],   [true, true, false, false, false])
+  assert.deepEqual(table['records.view_all'], [true, true, true,  false, true])
+  assert.deepEqual(table['records.write'],    [true, true, true,  true,  false])
+  assert.deepEqual(table['team.grant_access'], [true, true, true, false, false])
 })
 
 // ── Organization settings ───────────────────────────────────────────────────

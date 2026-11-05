@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyRecordAccess } from '@/lib/api-auth-helper'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -38,25 +39,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }
 
-    // 3. Load org OpenAI key
-    let openAiKey = process.env.OPENAI_API_KEY || ''
-    if (lead.organization_id) {
-      try {
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('openai_api_key')
-          .eq('id', lead.organization_id)
-          .single()
-        if (orgData?.openai_api_key) {
-          openAiKey = orgData.openai_api_key
-        }
-      } catch (dbErr) {
-        console.error('[AI Summarize] Error loading organization OpenAI key:', dbErr)
-      }
-    }
-
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'OpenAI API key is not configured' }, { status: 400 })
+    // 3. AI access (WAMA CRM's key and AI credits, or the workspace's own key when exempt)
+    const ai = await getAiAccess(supabase, lead.organization_id)
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     // 4. Find conversation for this lead
@@ -202,12 +188,9 @@ Return ONLY a JSON object with these exact keys: summary, suggestions, lead_rati
     userPrompt += '\n\nAnalyze all available data and generate the JSON intelligence report.'
 
     // 10. Call OpenAI API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await aiFetch(supabase, ai, 'lead_summary', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [

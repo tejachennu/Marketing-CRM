@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -29,25 +30,9 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
-    // Load custom credentials per organization
-    let openAiKey = process.env.OPENAI_API_KEY || ''
-    if (orgId) {
-      try {
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('openai_api_key')
-          .eq('id', orgId)
-          .single()
-        if (orgData && orgData.openai_api_key) {
-          openAiKey = orgData.openai_api_key
-        }
-      } catch (dbErr) {
-        console.error('[Template Gen] Error loading organization OpenAI key:', dbErr)
-      }
-    }
-
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'OpenAI API key is not configured for this workspace. Please add it in Settings.' }, { status: 400 })
+    const ai = await getAiAccess(supabase, orgId || authResult.user?.organization_id || '')
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     const systemPrompt = `You are an expert email template designer and Tailwind CSS developer.
@@ -66,12 +51,9 @@ RULES:
       : `USER INSTRUCTIONS FOR NEW TEMPLATE:\n${prompt}\n\nGenerate the complete HTML template code from scratch.`
 
     // Call OpenAI API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await aiFetch(supabase, ai, 'email_template', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [

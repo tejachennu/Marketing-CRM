@@ -71,7 +71,7 @@ export async function sendEmail({
     try {
       const payload: any = {
         personalizations: [{ to: [{ email: to }] }],
-        from: { email: sendgridFromEmail, name: 'OmniCRM Security' },
+        from: { email: sendgridFromEmail, name: 'WAMA CRM Security' },
         subject,
         content: [
           { type: 'text/html', value: html },

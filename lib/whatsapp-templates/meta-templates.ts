@@ -7,7 +7,15 @@ import { metaRequest, type MetaCredentials } from '@/lib/flows/meta-client'
 import { buildComponents, buildCreatePayload, type TemplateDraft } from './template-model'
 
 const LIST_FIELDS = 'id,name,status,category,language,components,quality_score,rejected_reason,previous_category,parameter_format,sub_category'
+/** For older Graph API versions that reject one of the newer fields above. */
+const BASIC_FIELDS = 'id,name,status,category,language,components,quality_score,rejected_reason'
 const MAX_PAGES = 20 // 2,000 templates
+
+/** Meta refusing a field the account's API version does not have: "(#100) Tried accessing nonexisting field". */
+function isUnknownFieldError(error: any): boolean {
+  const detail = error?.details?.[0]
+  return Number(detail?.code) === 100 && /nonexisting field|unknown field|invalid field/i.test(String(detail?.message || error?.message || ''))
+}
 
 export interface MetaTemplate {
   id: string
@@ -25,11 +33,23 @@ export interface MetaTemplate {
 
 /** Every template on the WhatsApp Business account, all statuses and languages. */
 export async function listTemplates(credentials: MetaCredentials, fetcher: typeof fetch = fetch): Promise<MetaTemplate[]> {
+  try {
+    return await listTemplatesWith(credentials, LIST_FIELDS, fetcher)
+  } catch (error) {
+    if (!isUnknownFieldError(error)) throw error
+    return listTemplatesWith(credentials, BASIC_FIELDS, fetcher)
+  }
+}
+
+async function listTemplatesWith(credentials: MetaCredentials, fields: string, fetcher: typeof fetch): Promise<MetaTemplate[]> {
   const templates: MetaTemplate[] = []
-  let path: string | null = `${credentials.businessAccountId}/message_templates?fields=${LIST_FIELDS}&limit=100`
+  let path: string | null = `${credentials.businessAccountId}/message_templates?fields=${fields}&limit=100`
   for (let page = 0; path && page < MAX_PAGES; page++) {
     const data: any = await metaRequest(credentials, path, { cache: 'no-store' } as RequestInit, fetcher)
-    templates.push(...(data.data || []))
+    for (const row of data.data || []) {
+      if (!row?.id || !row?.name) continue
+      templates.push({ ...row, language: row.language || 'en', status: String(row.status || 'PENDING').toUpperCase(), category: String(row.category || 'UTILITY').toUpperCase(), components: Array.isArray(row.components) ? row.components : [] })
+    }
     const next: string | undefined = data.paging?.next
     // The next page as a path relative to the Graph API version
     path = next ? next.replace(/^https:\/\/graph\.facebook\.com\/v\d+\.\d+\//, '') : null

@@ -1,2759 +1,750 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/supabase'
-import { authSessionManager } from '@/lib/auth-context'
-import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
-  Shield,
-  Building,
-  Users,
-  Megaphone,
-  Phone,
-  Trash2,
-  Edit2,
-  Search,
-  Plus,
-  Loader2,
-  Sparkles,
-  MessageSquare,
-  Key,
-  Check,
-  X,
-  AlertTriangle,
-  UserCheck,
-  Sliders,
-  Mail,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Database,
-  BookOpen,
-  FileText,
-  Upload,
-  ChevronLeft,
-  ChevronRight
+  AlertTriangle, ArrowUpRight, Building2, CalendarPlus, Check, ChevronRight, CreditCard, IndianRupee, Loader2, Mail, Plus,
+  RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, X,
 } from 'lucide-react'
+import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
+import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
 import { PlatformEmailSettings } from '@/components/superadmin/platform-email-settings'
 
-// Define interfaces
-interface OrgStats {
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface WorkspaceBilling {
+  configured: boolean
+  exempt: boolean
+  status: 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired'
+  hasAccess: boolean
+  trialDaysLeft: number | null
+  accessUntil: string | null
+  cancelAtPeriodEnd: boolean
+  aiPercentLeft: number | null
+  aiPaused: boolean
+  aiBalance: number | null
+  hasSubscription: boolean
+  onTrial: boolean
+}
+
+interface Workspace {
   id: string
   name: string
   slug: string
   created_at: string
-  usersCount: number
-  contactsCount: number
-  campaignsCount: number
-  messagesCount: number
-  aiTokens: number
-  aiCost: number
+  contact_email: string | null
+  whatsapp: 'meta' | 'twilio' | null
+  members: number
+  max_teammates: number | null
+  enable_ai: boolean
+  billing: WorkspaceBilling
 }
 
-interface UserProfile {
+interface Totals {
+  workspaces: number
+  paying: number
+  trialing: number
+  expired: number
+  exempt: number
+  pastDue: number
+  aiPaused: number
+  monthlyRevenue: number
+  people: number
+}
+
+interface WorkspaceDetails {
+  workspace: Workspace
+  organization: Record<string, any>
+  billingRow: { trial_ends_at: string; current_period_end: string | null; razorpay_subscription_id: string | null; ai_allowance: number } | null
+  members: { id: string; email: string; full_name: string | null; role: string; created_at: string }[]
+  aiActivity: { kind: string; amount: number; feature: string | null; created_at: string }[]
+  aiUsageThisMonth: Record<string, number>
+  payments: { purpose: string; amount_paise: number; razorpay_payment_id: string; created_at: string }[]
+}
+
+interface Person {
   id: string
   email: string
   full_name: string | null
   role: string
+  organization_id: string | null
   created_at: string
-  organization_id: string
-  organization?: {
-    name: string
-    slug: string
-  }
+  organization?: { name: string; slug: string } | null
 }
 
-interface Organization {
-  id: string
-  name: string
-  slug: string
-  created_at: string
-  enable_ai: boolean
-  enable_email: boolean
-  enable_messages: boolean
-  enable_phone_calls: boolean
-  enable_sms: boolean
-  twilio_account_sid?: string | null
-  twilio_auth_token?: string | null
-  twilio_whatsapp_number?: string | null
-  sendgrid_api_key?: string | null
-  sendgrid_from_email?: string | null
-  openai_api_key?: string | null
-  chatbot_base_prompt?: string | null
-  contact_name?: string | null
-  contact_email?: string | null
-  contact_phone?: string | null
-  contact_address?: string | null
-  email_provider?: string | null
-  smtp_host?: string | null
-  smtp_port?: number | null
-  smtp_email?: string | null
-  smtp_password?: string | null
-  whatsapp_provider?: string | null
-  whatsapp_api_token?: string | null
-  whatsapp_default_phone?: string | null
-  whatsapp_graph_api_version?: string | null
-  whatsapp_phone_number_id?: string | null
-  whatsapp_business_account_id?: string | null
+type Tab = 'overview' | 'workspaces' | 'people' | 'email'
+type Filter = 'all' | 'paying' | 'trial' | 'ended' | 'exempt'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800'
+const field = 'h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+const input = `w-full ${field}`
+const primary = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[14px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+const secondary = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-100 text-[14px] font-semibold hover:bg-[#f4f6fa] dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50'
+const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
+
+async function api(path: string, init: RequestInit = {}) {
+  const token = authSessionManager.getSession()?.access_token
+  const headers = new Headers(init.headers || {})
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (init.body) headers.set('Content-Type', 'application/json')
+  const res = await fetch(path, { ...init, headers, cache: 'no-store' })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+  return data
 }
 
-// iOS Style Toggle Switch
-interface ToggleProps {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  label: string
-  description?: string
+function planLabel(billing: WorkspaceBilling): [string, string] {
+  if (!billing.configured) return ['No billing yet', 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300']
+  if (billing.exempt) return ['Exempt', 'bg-[#e8ecf5] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
+  if (billing.status === 'active') return [billing.cancelAtPeriodEnd ? `Paid till ${formatDate(billing.accessUntil)}` : 'Paying', 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300']
+  if (billing.status === 'trialing') return [`Trial · ${billing.trialDaysLeft}d left`, 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
+  if (billing.status === 'past_due') return ['Payment failed', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
+  if (billing.status === 'cancelled') return [`Cancelled · till ${formatDate(billing.accessUntil)}`, 'bg-[#fff7e8] text-[#92400e] dark:bg-amber-950/40 dark:text-amber-300']
+  return [billing.onTrial ? 'Trial ended' : 'Plan ended', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
 }
 
-function ToggleSwitch({ checked, onChange, label, description }: ToggleProps) {
+function PlanPill({ billing }: { billing: WorkspaceBilling }) {
+  const [label, tone] = planLabel(billing)
+  return <span className={`inline-flex items-center px-2.5 h-7 rounded-lg text-[12.5px] font-bold whitespace-nowrap ${tone}`}>{label}</span>
+}
+
+function CreditBar({ billing }: { billing: WorkspaceBilling }) {
+  if (billing.exempt || billing.aiPercentLeft === null) return <span className="text-[13px] text-[#6B7894]">Own key</span>
+  const percent = billing.aiPercentLeft
+  const color = billing.aiPaused ? '#E5484D' : percent <= 20 ? '#F59E0B' : '#00A884'
   return (
-    <div className="flex items-center justify-between py-2.5 select-none transition-all">
-      <div className="flex flex-col pr-4">
-        <span className="text-[11px] font-bold text-neutral-800 dark:text-neutral-100 transition-colors">
-          {label}
-        </span>
-        {description && (
-          <span className="text-[10px] text-neutral-500 dark:text-[#8696a0] font-semibold mt-0.5 leading-tight">
-            {description}
-          </span>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5.5 w-10.5 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-          checked ? 'bg-[#00a884] shadow-[0_0_8px_rgba(0,168,132,0.3)]' : 'bg-neutral-200 dark:bg-neutral-700'
-        }`}
-      >
-        <span
-          className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out ${
-            checked ? 'translate-x-5' : 'translate-x-0'
-          }`}
-        />
-      </button>
+    <div className="flex items-center gap-2 min-w-[110px]">
+      <div className="h-2 w-16 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${percent}%`, background: color }} /></div>
+      <span className="text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-200">{percent}%</span>
     </div>
   )
 }
 
-export default function SuperAdminPage() {
+function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: 'green' | 'red' | 'blue' | 'amber' }) {
+  const color = tone === 'green' ? 'text-[#047857]' : tone === 'red' ? 'text-[#b91c1c]' : tone === 'blue' ? 'text-[#1D5BEA]' : tone === 'amber' ? 'text-[#92400e]' : 'text-[#0E1B3D] dark:text-white'
+  return (
+    <div className={`${card} px-4 py-4`}>
+      <div className="text-[13px] font-semibold text-[#6B7894]">{label}</div>
+      <div className={`text-[26px] font-extrabold leading-tight mt-1 ${color}`}>{value}</div>
+      {hint && <div className="text-[12.5px] text-[#8a94a8] mt-0.5">{hint}</div>}
+    </div>
+  )
+}
+
+const FEATURE_NAMES: Record<string, string> = {
+  chatbot: 'WhatsApp AI replies', shopping_assistant: 'Shopping assistant', copilot: 'Reply suggestions', playground: 'AI playground',
+  assistant: 'CRM assistant', assistant_draft: 'CRM assistant', lead_summary: 'Lead summaries', lead_scoring: 'Lead scoring',
+  auto_tagging: 'Auto tagging', knowledge: 'Knowledge base', rephrase: 'Rephrase', email_template: 'Email templates', flow_builder: 'Flow builder',
+}
+
+const ROLE_OPTIONS = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'org_admin', label: 'Admin' },
+  { value: 'org_manager', label: 'Manager' },
+  { value: 'sales_employee', label: 'Agent' },
+  { value: 'viewer', label: 'Viewer' },
+  { value: 'superadmin', label: 'Super Admin' },
+]
+const roleValue = (role: string) => {
+  const stored = toStoredRole(role)
+  return ROLE_OPTIONS.some((option) => option.value === stored) ? stored : 'sales_employee'
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function SuperAdminConsole() {
   const confirm = useConfirm()
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'analytics' | 'organizations' | 'users' | 'email'>('analytics')
+  const [tab, setTab] = useState<Tab>('overview')
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [totals, setTotals] = useState<Totals | null>(null)
+  const [billingReady, setBillingReady] = useState(true)
+  const [people, setPeople] = useState<Person[]>([])
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [search, setSearch] = useState('')
+  const [peopleSearch, setPeopleSearch] = useState('')
+  const [peopleWorkspace, setPeopleWorkspace] = useState('all')
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [details, setDetails] = useState<WorkspaceDetails | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [creditAmount, setCreditAmount] = useState('')
+  const [paidUntil, setPaidUntil] = useState('')
+  const [seatLimit, setSeatLimit] = useState('')
+  const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false)
+  const [newPersonOpen, setNewPersonOpen] = useState(false)
 
-  // Selected Organization Settings
-  const [selectedOrgSettings, setSelectedOrgSettings] = useState<Organization | null>(null)
-  const [savingSettings, setSavingSettings] = useState(false)
-
-  // Organization settings page tab
-  const [settingsActiveTab, setSettingsActiveTab] = useState<'general' | 'knowledge'>('general')
-
-  // Organization settings states
-  const [twilioAccountSid, setTwilioAccountSid] = useState('')
-  const [twilioAuthToken, setTwilioAuthToken] = useState('')
-  const [twilioWhatsappNumber, setTwilioWhatsappNumber] = useState('')
-  const [sendgridApiKey, setSendgridApiKey] = useState('')
-  const [sendgridFromEmail, setSendgridFromEmail] = useState('')
-  const [openaiApiKey, setOpenaiApiKey] = useState('')
-  const [chatbotBasePrompt, setChatbotBasePrompt] = useState('')
-  const [emailProvider, setEmailProvider] = useState<'sendgrid' | 'smtp'>('sendgrid')
-  const [smtpHost, setSmtpHost] = useState('')
-  const [smtpPort, setSmtpPort] = useState('')
-  const [smtpEmail, setSmtpEmail] = useState('')
-  const [smtpPassword, setSmtpPassword] = useState('')
-  const [whatsappProvider, setWhatsappProvider] = useState<'twilio' | 'facebook'>('twilio')
-  const [whatsappApiToken, setWhatsappApiToken] = useState('')
-  const [whatsappDefaultPhone, setWhatsappDefaultPhone] = useState('')
-  const [whatsappGraphApiVersion, setWhatsappGraphApiVersion] = useState('v25.0')
-  const [whatsappPhoneNumberId, setWhatsappPhoneNumberId] = useState('')
-  const [whatsappBusinessAccountId, setWhatsappBusinessAccountId] = useState('')
-  const [savingCredentials, setSavingCredentials] = useState(false)
-
-  // Contact Information states
-  const [contactName, setContactName] = useState('')
-  const [contactPhone, setContactPhone] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
-  const [contactAddress, setContactAddress] = useState('')
-
-  // Organization Info states
-  const [orgName, setOrgName] = useState('')
-  const [orgSlug, setOrgSlug] = useState('')
-
-  // Webhook URLs
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [facebookWebhookUrl, setFacebookWebhookUrl] = useState('')
-
-  // Show/Hide credentials state
-  const [showTwilioToken, setShowTwilioToken] = useState(false)
-  const [showSgKey, setShowSgKey] = useState(false)
-  const [showOpenaiKey, setShowOpenaiKey] = useState(false)
-  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
-  const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
-
-  // Knowledge base state for RAG FAQ
-  const [articles, setArticles] = useState<any[]>([])
-  const [loadingArticles, setLoadingArticles] = useState(false)
-  const [manualTitle, setManualTitle] = useState('')
-  const [manualContent, setManualContent] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
-  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const totalPages = Math.ceil(articles.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedArticles = articles.slice(startIndex, startIndex + itemsPerPage)
-
-  // Load selected organization settings into state
-  useEffect(() => {
-    if (selectedOrgSettings) {
-      setSettingsActiveTab('general')
-      setTwilioAccountSid(selectedOrgSettings.twilio_account_sid || '')
-      setTwilioAuthToken(selectedOrgSettings.twilio_auth_token || '')
-      setTwilioWhatsappNumber(selectedOrgSettings.twilio_whatsapp_number || '')
-      setSendgridApiKey(selectedOrgSettings.sendgrid_api_key || '')
-      setSendgridFromEmail(selectedOrgSettings.sendgrid_from_email || '')
-      setOpenaiApiKey(selectedOrgSettings.openai_api_key || '')
-      setChatbotBasePrompt(selectedOrgSettings.chatbot_base_prompt || '')
-      setEmailProvider((selectedOrgSettings.email_provider as 'sendgrid' | 'smtp') || 'sendgrid')
-      setSmtpHost(selectedOrgSettings.smtp_host || '')
-      setSmtpPort(selectedOrgSettings.smtp_port ? String(selectedOrgSettings.smtp_port) : '')
-      setSmtpEmail(selectedOrgSettings.smtp_email || '')
-      setSmtpPassword(selectedOrgSettings.smtp_password || '')
-      setWhatsappProvider((selectedOrgSettings.whatsapp_provider as 'twilio' | 'facebook') || 'twilio')
-      setWhatsappApiToken(selectedOrgSettings.whatsapp_api_token || '')
-      setWhatsappDefaultPhone(selectedOrgSettings.whatsapp_default_phone || '')
-      setWhatsappGraphApiVersion(selectedOrgSettings.whatsapp_graph_api_version || 'v25.0')
-      setWhatsappPhoneNumberId(selectedOrgSettings.whatsapp_phone_number_id || '')
-      setWhatsappBusinessAccountId(selectedOrgSettings.whatsapp_business_account_id || '')
-
-      setContactName(selectedOrgSettings.contact_name || '')
-      setContactPhone(selectedOrgSettings.contact_phone || '')
-      setContactEmail(selectedOrgSettings.contact_email || '')
-      setContactAddress(selectedOrgSettings.contact_address || '')
-      setOrgName(selectedOrgSettings.name || '')
-      setOrgSlug(selectedOrgSettings.slug || '')
-
-      if (typeof window !== 'undefined') {
-        const orgSlug = selectedOrgSettings.slug || 'org'
-        const dynamicPath = `${selectedOrgSettings.id}_${orgSlug}`
-        setWebhookUrl(`${window.location.origin}/api/webhooks/twilio/${dynamicPath}`)
-        setFacebookWebhookUrl(`${window.location.origin}/api/webhooks/facebook/${dynamicPath}`)
-      }
-
-      loadOrgArticles(selectedOrgSettings.id)
-    }
-  }, [selectedOrgSettings])
-
-  async function loadOrgArticles(orgId: string) {
-    setLoadingArticles(true)
-    try {
-      const res = await fetch(`/api/knowledge?organizationId=${orgId}`)
-      const data = await res.json()
-      setArticles(data.articles || [])
-      setCurrentPage(1)
-    } catch (err) {
-      console.error('Failed to load articles:', err)
-    } finally {
-      setLoadingArticles(false)
-    }
+  const flash = (tone: 'success' | 'error', text: string) => {
+    setToast({ tone, text })
+    window.setTimeout(() => setToast((current) => (current?.text === text ? null : current)), 5000)
   }
 
-  async function handleExcelImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !selectedOrgSettings) return
-
-    const reader = new FileReader()
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result
-        const wb = XLSX.read(bstr, { type: 'binary' })
-        const wsname = wb.SheetNames[0]
-        const ws = wb.Sheets[wsname]
-        const data = XLSX.utils.sheet_to_json<any>(ws)
-
-        if (data.length === 0) {
-          triggerAlert('error', 'The uploaded Excel file is empty.')
-          return
-        }
-
-        const sampleRow = data[0]
-        let questionCol = ''
-        let answerCol = ''
-
-        const questionHeaders = ['question', 'title', 'faq', 'topic', 'q']
-        const answerHeaders = ['answer', 'content', 'response', 'a', 'description']
-
-        for (const key of Object.keys(sampleRow)) {
-          const lowerKey = key.toLowerCase().trim()
-          if (!questionCol && questionHeaders.some(h => lowerKey.includes(h))) {
-            questionCol = key
-          } else if (!answerCol && answerHeaders.some(h => lowerKey.includes(h))) {
-            answerCol = key
-          }
-        }
-
-        if (!questionCol || !answerCol) {
-          const keys = Object.keys(sampleRow)
-          if (keys.length >= 2) {
-            questionCol = questionCol || keys[0]
-            answerCol = answerCol || keys[1]
-          } else {
-            triggerAlert('error', 'Could not identify Question and Answer columns. Please ensure your Excel sheet has columns named "Question" and "Answer".')
-            return
-          }
-        }
-
-        const parsedItems = data
-          .map(row => ({
-            title: String(row[questionCol] || '').trim(),
-            content: String(row[answerCol] || '').trim()
-          }))
-          .filter(item => item.title && item.content)
-
-        if (parsedItems.length === 0) {
-          triggerAlert('error', 'No valid FAQ rows found. Make sure questions and answers are not blank.')
-          return
-        }
-
-        setImportProgress({ current: 0, total: parsedItems.length })
-        let importedCount = 0
-
-        for (let i = 0; i < parsedItems.length; i++) {
-          const item = parsedItems[i]
-          try {
-            const res = await fetch('/api/knowledge', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                organizationId: selectedOrgSettings.id,
-                type: 'manual',
-                title: item.title,
-                content: item.content
-              })
-            })
-            if (res.ok) {
-              importedCount++
-            } else {
-              const errData = await res.json().catch(() => ({}))
-              console.error(`Failed to import item ${i + 1}:`, errData.error || res.statusText)
-            }
-          } catch (err) {
-            console.error(`Failed to import item ${i + 1}:`, err)
-          }
-          setImportProgress({ current: i + 1, total: parsedItems.length })
-        }
-
-        triggerAlert('success', `Successfully imported ${importedCount} of ${parsedItems.length} FAQ items!`)
-        await loadOrgArticles(selectedOrgSettings.id)
-      } catch (err: any) {
-        console.error('Excel parse error:', err)
-        triggerAlert('error', err.message || 'Failed to read Excel file.')
-      } finally {
-        setImportProgress(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''
-        }
-      }
-    }
-
-    reader.readAsBinaryString(file)
-  }
-
-  async function handleAddManual() {
-    if (!manualTitle.trim() || !manualContent.trim() || !selectedOrgSettings) return
-    setActionLoading(true)
-    try {
-      const res = await fetch('/api/knowledge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organizationId: selectedOrgSettings.id,
-          type: 'manual',
-          title: manualTitle.trim(),
-          content: manualContent.trim()
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to add FAQ')
-      setManualTitle('')
-      setManualContent('')
-      triggerAlert('success', 'FAQ successfully added to knowledge base!')
-      await loadOrgArticles(selectedOrgSettings.id)
-    } catch (err: any) {
-      console.error('Add manual error:', err)
-      triggerAlert('error', err.message || 'Failed to add FAQ.')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleDeleteArticle(id: string) {
-    if (!selectedOrgSettings) return
-    const confirmed = await confirm({
-      title: 'Delete Article',
-      message: 'Are you sure you want to delete this article? It will be removed from the AI search index.',
-      confirmLabel: 'Delete',
-      cancelLabel: 'Cancel'
-    })
-    if (!confirmed) return
-    try {
-      const res = await fetch(`/api/knowledge?id=${id}`, {
-        method: 'DELETE'
-      })
-      if (!res.ok) throw new Error('Delete failed')
-      await loadOrgArticles(selectedOrgSettings.id)
-    } catch (err) {
-      console.error('Delete article error:', err)
-      triggerAlert('error', 'Failed to delete article.')
-    }
-  }
-
-  async function handleToggleFeature(featureKey: 'enable_ai' | 'enable_email' | 'enable_messages' | 'enable_phone_calls' | 'enable_sms', value: boolean) {
-    if (!selectedOrgSettings) return
-    
-    // Optimistic update
-    const updatedOrg = { ...selectedOrgSettings, [featureKey]: value }
-    setSelectedOrgSettings(updatedOrg)
-    
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/organizations/${selectedOrgSettings.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ [featureKey]: value })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update feature settings')
-      
-      triggerAlert('success', `Successfully ${value ? 'enabled' : 'disabled'} feature.`)
-      loadOrganizations()
-    } catch (err: any) {
-      console.error('Failed to update feature:', err)
-      triggerAlert('error', err.message || 'Failed to update feature settings.')
-      setSelectedOrgSettings(selectedOrgSettings)
-    }
-  }
-
-  async function handleSaveCredentials() {
-    if (!selectedOrgSettings) return
-    setSavingCredentials(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/organizations/${selectedOrgSettings.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: orgName.trim() || null,
-          slug: orgSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '') || null,
-          twilio_account_sid: twilioAccountSid.trim() || null,
-          twilio_auth_token: twilioAuthToken.trim() || null,
-          twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
-          sendgrid_api_key: sendgridApiKey.trim() || null,
-          sendgrid_from_email: sendgridFromEmail.trim() || null,
-          openai_api_key: openaiApiKey.trim() || null,
-          chatbot_base_prompt: chatbotBasePrompt.trim() || null,
-          email_provider: emailProvider,
-          smtp_host: smtpHost.trim() || null,
-          smtp_port: smtpPort ? parseInt(smtpPort) : null,
-          smtp_email: smtpEmail.trim() || null,
-          smtp_password: smtpPassword.trim() || null,
-          whatsapp_provider: whatsappProvider,
-          whatsapp_api_token: whatsappApiToken.trim() || null,
-          whatsapp_default_phone: whatsappDefaultPhone.trim() || null,
-          whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
-          whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
-          whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
-          contact_name: contactName.trim() || null,
-          contact_phone: contactPhone.trim() || null,
-          contact_email: contactEmail.trim() || null,
-          contact_address: contactAddress.trim() || null,
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save settings')
-
-      setSelectedOrgSettings({
-        ...selectedOrgSettings,
-        name: orgName.trim() || selectedOrgSettings.name,
-        slug: orgSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '') || selectedOrgSettings.slug,
-        twilio_account_sid: twilioAccountSid.trim() || null,
-        twilio_auth_token: twilioAuthToken.trim() || null,
-        twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
-        sendgrid_api_key: sendgridApiKey.trim() || null,
-        sendgrid_from_email: sendgridFromEmail.trim() || null,
-        openai_api_key: openaiApiKey.trim() || null,
-        chatbot_base_prompt: chatbotBasePrompt.trim() || null,
-        email_provider: emailProvider,
-        smtp_host: smtpHost.trim() || null,
-        smtp_port: smtpPort ? parseInt(smtpPort) : null,
-        smtp_email: smtpEmail.trim() || null,
-        smtp_password: smtpPassword.trim() || null,
-        whatsapp_provider: whatsappProvider,
-        whatsapp_api_token: whatsappApiToken.trim() || null,
-        whatsapp_default_phone: whatsappDefaultPhone.trim() || null,
-        whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
-        whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
-        whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
-        contact_name: contactName.trim() || null,
-        contact_phone: contactPhone.trim() || null,
-        contact_email: contactEmail.trim() || null,
-        contact_address: contactAddress.trim() || null,
-      })
-
-      triggerAlert('success', 'Organization settings updated successfully.')
-      loadOrganizations()
-    } catch (err: any) {
-      console.error('Failed to save settings:', err)
-      triggerAlert('error', err.message || 'Failed to save settings.')
-    } finally {
-      setSavingCredentials(false)
-    }
-  }
-
-  // Overall statistics
-  const [stats, setStats] = useState({
-    organizations: 0,
-    users: 0,
-    contacts: 0,
-    messages: 0,
-    campaigns: 0,
-    totalAiTokens: 0,
-    totalAiCost: 0,
-  })
-
-  // Data lists
-  const [orgStatsList, setOrgStatsList] = useState<OrgStats[]>([])
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [users, setUsers] = useState<UserProfile[]>([])
-
-  // Loadings
-  const [loadingStats, setLoadingStats] = useState(true)
-  const [loadingOrgs, setLoadingOrgs] = useState(true)
-  const [loadingUsers, setLoadingUsers] = useState(true)
-
-  // Modals state
-  const [showOrgModal, setShowOrgModal] = useState(false)
-  const [showUserModal, setShowUserModal] = useState(false)
-  const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
-
-  // Search/Filters
-  const [orgSearch, setOrgSearch] = useState('')
-  const [userSearch, setUserSearch] = useState('')
-  const [userOrgFilter, setUserOrgFilter] = useState('all')
-
-  // Form states
-  const [orgForm, setOrgForm] = useState({
-    name: '',
-    slug: '',
-    contact_name: '',
-    contact_email: '',
-    contact_phone: '',
-    contact_address: '',
-    enable_ai: true,
-    enable_email: true,
-    enable_messages: true,
-    enable_phone_calls: true,
-    enable_sms: true,
-    twilio_account_sid: '',
-    twilio_auth_token: '',
-    twilio_whatsapp_number: '',
-    sendgrid_api_key: '',
-    sendgrid_from_email: '',
-    openai_api_key: '',
-    chatbot_base_prompt: '',
-  })
-  const [userForm, setUserForm] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-    role: 'org_manager',
-    organizationId: ''
-  })
-
-
-
-  // Show/Hide password field
-  const [showPass, setShowPass] = useState(false)
-
-  // Error/Success banners
-  const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [submittingOrg, setSubmittingOrg] = useState(false)
-  const [submittingUser, setSubmittingUser] = useState(false)
-
-  // Trigger alert banner
-  const triggerAlert = (type: 'success' | 'error', message: string) => {
-    setAlert({ type, message })
-    setTimeout(() => setAlert(null), 5000)
-  }
-
-  // Load overall metrics & activity list
-  async function loadAnalytics() {
-    setLoadingStats(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch('/api/superadmin/analytics', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!res.ok) throw new Error('Failed to load analytics')
-      const data = await res.json()
-      if (data.success) {
-        setStats(data.stats)
-        setOrgStatsList(data.organizationsList)
-      }
-    } catch (err: any) {
-      console.error(err)
-      triggerAlert('error', err.message || 'Failed to load system metrics')
-    } finally {
-      setLoadingStats(false)
-    }
-  }
-
-  // Load all organizations
-  async function loadOrganizations() {
-    setLoadingOrgs(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch('/api/superadmin/organizations', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!res.ok) throw new Error('Failed to fetch organizations')
-      const data = await res.json()
-      if (data.success) {
-        setOrganizations(data.organizations)
-      }
-    } catch (err: any) {
-      console.error(err)
-      triggerAlert('error', err.message || 'Failed to load organizations')
-    } finally {
-      setLoadingOrgs(false)
-    }
-  }
-
-  // Load all users
-  async function loadUsers() {
-    setLoadingUsers(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch('/api/superadmin/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!res.ok) throw new Error('Failed to fetch users')
-      const data = await res.json()
-      if (data.success) {
-        setUsers(data.users)
-      }
-    } catch (err: any) {
-      console.error(err)
-      triggerAlert('error', err.message || 'Failed to load users list')
-    } finally {
-      setLoadingUsers(false)
-    }
-  }
-
-  // Initial fetch
-  useEffect(() => {
-    loadAnalytics()
-    loadOrganizations()
-    loadUsers()
+  const loadWorkspaces = useCallback(async () => {
+    const data = await api('/api/superadmin/workspaces')
+    setWorkspaces(data.workspaces || [])
+    setTotals(data.totals || null)
+    setBillingReady(data.billingReady !== false)
+  }, [])
+  const loadPeople = useCallback(async () => {
+    const data = await api('/api/superadmin/users')
+    setPeople(data.users || [])
   }, [])
 
-  // Auto-fill slug from organization name
-  const handleOrgNameChange = (name: string) => {
-    const slug = name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-    setOrgForm({ ...orgForm, name, slug })
-  }
-
-  // Create Organization
-  async function handleCreateOrg(e: React.FormEvent) {
-    e.preventDefault()
-    if (!orgForm.name || !orgForm.slug) return
-
-    setSubmittingOrg(true)
+  const reload = useCallback(async () => {
+    setLoading(true)
     try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch('/api/superadmin/organizations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(orgForm)
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to create organization')
-
-      triggerAlert('success', `Organization "${orgForm.name}" created successfully.`)
-      setOrgForm({
-        name: '',
-        slug: '',
-        contact_name: '',
-        contact_email: '',
-        contact_phone: '',
-        contact_address: '',
-        enable_ai: true,
-        enable_email: true,
-        enable_messages: true,
-        enable_phone_calls: true,
-        enable_sms: true,
-        twilio_account_sid: '',
-        twilio_auth_token: '',
-        twilio_whatsapp_number: '',
-        sendgrid_api_key: '',
-        sendgrid_from_email: '',
-        openai_api_key: '',
-        chatbot_base_prompt: '',
-      })
-      setShowOrgModal(false)
-      loadOrganizations()
-      loadAnalytics()
+      await Promise.all([loadWorkspaces(), loadPeople()])
     } catch (err: any) {
-      triggerAlert('error', err.message)
+      flash('error', err.message)
     } finally {
-      setSubmittingOrg(false)
+      setLoading(false)
+    }
+  }, [loadWorkspaces, loadPeople])
+
+  useEffect(() => { reload() }, [reload])
+
+  async function openWorkspace(id: string) {
+    setOpenId(id)
+    setDetails(null)
+    setDetailsLoading(true)
+    setCreditAmount('')
+    setPaidUntil('')
+    try {
+      const data: WorkspaceDetails = await api(`/api/superadmin/workspaces/${id}`)
+      setDetails(data)
+      setSeatLimit(data.workspace.max_teammates ? String(data.workspace.max_teammates) : '')
+    } catch (err: any) {
+      flash('error', err.message)
+      setOpenId(null)
+    } finally {
+      setDetailsLoading(false)
     }
   }
 
-  // Edit organization details (e.g. rename slug)
-  async function handleUpdateOrgDetails(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editingOrg) return
-
-    setSubmittingOrg(true)
+  async function act(body: Record<string, unknown>, success: string) {
+    if (!openId) return
+    setBusy(String(body.action))
     try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/organizations/${editingOrg.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ name: editingOrg.name, slug: editingOrg.slug })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update organization details')
-
-      triggerAlert('success', 'Organization renamed successfully.')
-      setEditingOrg(null)
-      loadOrganizations()
-      loadAnalytics()
+      const data: WorkspaceDetails = await api(`/api/superadmin/workspaces/${openId}`, { method: 'POST', body: JSON.stringify(body) })
+      setDetails(data)
+      setWorkspaces((current) => current.map((w) => (w.id === openId ? data.workspace : w)))
+      flash('success', success)
+      loadWorkspaces().catch(() => {})
     } catch (err: any) {
-      triggerAlert('error', err.message)
+      flash('error', err.message)
     } finally {
-      setSubmittingOrg(false)
+      setBusy(null)
     }
   }
 
+  async function deleteWorkspace(workspace: Workspace) {
+    if (!(await confirm({ title: `Delete ${workspace.name}?`, message: `This permanently deletes the workspace, its ${workspace.members} login${workspace.members === 1 ? '' : 's'}, chats, contacts and orders. It cannot be undone.`, confirmLabel: 'Delete for good', destructive: true }))) return
+    setBusy('delete')
+    try {
+      await api(`/api/superadmin/organizations/${workspace.id}`, { method: 'DELETE' })
+      setOpenId(null)
+      flash('success', `${workspace.name} was deleted.`)
+      await reload()
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setBusy(null)
+    }
+  }
 
+  async function changePersonRole(person: Person, role: string) {
+    const label = ROLE_OPTIONS.find((option) => option.value === role)?.label || role
+    if (!(await confirm({ title: `Make ${person.full_name || person.email} ${label === 'Admin' || label === 'Owner' ? 'an' : 'a'} ${label}?`, message: role === 'superadmin' ? 'Super admins can open this console and change every workspace.' : getRoleDisplay(role).description, confirmLabel: 'Change role' }))) return
+    try {
+      const data = await api(`/api/superadmin/users/${person.id}`, { method: 'PUT', body: JSON.stringify({ role }) })
+      setPeople((current) => current.map((p) => (p.id === person.id ? { ...p, ...(data.user || { role }) } : p)))
+      flash('success', `${person.full_name || person.email} is now ${label}.`)
+    } catch (err: any) {
+      flash('error', err.message)
+    }
+  }
 
-  // Delete Organization
-  async function handleDeleteOrg(orgId: string, name: string) {
-    const confirmed = await confirm({
-      title: 'Delete Organization',
-      message: `Are you absolutely sure you want to delete organization "${name}"?\nAll users, contacts, messages, and campaigns under this organization will be permanently deleted.`,
-      confirmLabel: 'Delete Permanently',
-      cancelLabel: 'Cancel'
+  async function deletePerson(person: Person) {
+    if (!(await confirm({ title: `Delete ${person.full_name || person.email}?`, message: 'Their login is removed and they can no longer sign in.', confirmLabel: 'Delete', destructive: true }))) return
+    try {
+      await api(`/api/superadmin/users/${person.id}`, { method: 'DELETE' })
+      setPeople((current) => current.filter((p) => p.id !== person.id))
+      flash('success', `${person.email} was deleted.`)
+      loadWorkspaces().catch(() => {})
+    } catch (err: any) {
+      flash('error', err.message)
+    }
+  }
+
+  // ── Derived lists ──
+  const filteredWorkspaces = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return workspaces.filter((w) => {
+      if (q && !`${w.name} ${w.slug} ${w.contact_email || ''}`.toLowerCase().includes(q)) return false
+      const b = w.billing
+      if (filter === 'paying') return !b.exempt && (b.status === 'active' || b.status === 'past_due')
+      if (filter === 'trial') return !b.exempt && b.status === 'trialing'
+      if (filter === 'ended') return b.configured && !b.exempt && !b.hasAccess
+      if (filter === 'exempt') return b.exempt
+      return true
     })
-    if (!confirmed) return
+  }, [workspaces, filter, search])
 
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/organizations/${orgId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to delete organization')
-      }
+  const attention = useMemo(() => workspaces.filter((w) => {
+    const b = w.billing
+    if (!b.configured || b.exempt) return false
+    return b.status === 'past_due' || !b.hasAccess || b.aiPaused || (b.status === 'trialing' && (b.trialDaysLeft ?? 99) <= 3)
+  }), [workspaces])
 
-      triggerAlert('success', `Organization "${name}" has been deleted.`)
-      if (selectedOrgSettings?.id === orgId) {
-        setSelectedOrgSettings(null)
-      }
-      loadOrganizations()
-      loadAnalytics()
-      loadUsers()
-    } catch (err: any) {
-      triggerAlert('error', err.message)
-    }
-  }
+  const filteredPeople = useMemo(() => {
+    const q = peopleSearch.trim().toLowerCase()
+    return people.filter((p) => (peopleWorkspace === 'all' || p.organization_id === peopleWorkspace) && (!q || `${p.full_name || ''} ${p.email}`.toLowerCase().includes(q)))
+  }, [people, peopleSearch, peopleWorkspace])
 
-  // Create User
-  async function handleCreateUser(e: React.FormEvent) {
-    e.preventDefault()
-    const { fullName, email, password, role, organizationId } = userForm
-    if (!fullName || !email || !password || !role || !organizationId) {
-      triggerAlert('error', 'All fields are required to create a user.')
-      return
-    }
+  const open = openId ? workspaces.find((w) => w.id === openId) : null
 
-    setSubmittingUser(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch('/api/superadmin/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(userForm)
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to create user')
-
-      triggerAlert('success', `User/Manager "${fullName}" created successfully.`)
-      setUserForm({ fullName: '', email: '', password: '', role: 'org_manager', organizationId: '' })
-      setShowUserModal(false)
-      loadUsers()
-      loadAnalytics()
-    } catch (err: any) {
-      triggerAlert('error', err.message)
-    } finally {
-      setSubmittingUser(false)
-    }
-  }
-
-  // Update User profile
-  async function handleUpdateUser(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editingUser) return
-
-    setSubmittingUser(true)
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          fullName: editingUser.full_name,
-          // Your own role is not sent: the server refuses to let a super admin demote themselves
-          ...(editingUser.id === currentUserId ? {} : { role: editingUser.role }),
-          organizationId: editingUser.organization_id,
-          email: editingUser.email
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update user profile')
-
-      triggerAlert('success', 'User profile updated successfully.')
-      setEditingUser(null)
-      loadUsers()
-    } catch (err: any) {
-      triggerAlert('error', err.message)
-    } finally {
-      setSubmittingUser(false)
-    }
-  }
-
-  // Delete User
-  async function handleDeleteUser(userId: string, email: string) {
-    const confirmed = await confirm({
-      title: 'Delete User',
-      message: `Are you sure you want to delete user "${email}"?\nThis action will delete their profile and disable their authentication credentials.`,
-      confirmLabel: 'Delete User',
-      cancelLabel: 'Cancel'
-    })
-    if (!confirmed) return
-
-    try {
-      const token = authSessionManager.getSession()?.access_token
-      const res = await fetch(`/api/superadmin/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to delete user')
-      }
-
-      triggerAlert('success', `User "${email}" deleted successfully.`)
-      loadUsers()
-      loadAnalytics()
-    } catch (err: any) {
-      triggerAlert('error', err.message)
-    }
-  }
-
-  // The roles a user can hold. Accounts created before these existed keep working: older role
-  // names are shown under the role they map to (see normalizeRole in lib/rbac.ts).
-  const rolesList = [
-    { value: 'org_admin', label: 'Org Admin — full access to the organization' },
-    { value: 'org_manager', label: 'Org Manager — sees everything, assigns work' },
-    { value: 'sales_employee', label: 'Sales Employee — assigned chats and leads only' },
-    { value: 'owner', label: 'Owner — the admin who created the organization' },
-    { value: 'superadmin', label: 'Super Admin — this console, every organization' },
-  ]
-  const currentUserId = authSessionManager.getUser()?.id || null
-
-  // Filters calculation
-  const filteredOrgs = organizations.filter(org =>
-    org.name.toLowerCase().includes(orgSearch.toLowerCase()) ||
-    org.slug.toLowerCase().includes(orgSearch.toLowerCase())
-  )
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch =
-      user.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-      (user.full_name || '').toLowerCase().includes(userSearch.toLowerCase())
-    const matchesOrg = userOrgFilter === 'all' || user.organization_id === userOrgFilter
-    return matchesSearch && matchesOrg
-  })
-
+  // ── Render ──
   return (
-    <div className="h-full w-full overflow-y-auto bg-gradient-to-br from-neutral-50 via-neutral-100 to-amber-50/10 dark:from-[#0b141a] dark:via-[#0c1317] dark:to-[#080d10] p-6 space-y-6 transition-all duration-300">
-      
-      {/* Alert banner */}
-      {alert && (
-        <div className={`fixed top-16 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-4 duration-300 ${
-          alert.type === 'success' 
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
-            : 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
-        }`}>
-          {alert.type === 'success' ? (
-            <div className="h-6 w-6 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
-              <Check size={14} />
-            </div>
-          ) : (
-            <div className="h-6 w-6 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-500">
-              <AlertTriangle size={14} />
-            </div>
-          )}
-          <span className="text-xs font-bold tracking-tight">{alert.message}</span>
-        </div>
-      )}
-
-      {/* Header Dashboard section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 select-none pb-2">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 dark:border-emerald-500/40 text-[10px] font-extrabold uppercase tracking-wider text-[#00a884] dark:text-emerald-400">
-            <Shield size={10} className="animate-pulse" />
-            <span>SUPER ADMIN POWER PANEL</span>
+    <div className="flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D5BEA]"><ShieldCheck size={15} /> WAMA CRM staff</div>
+            <h1 className="text-[26px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">Super Admin</h1>
+            <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1">Every workspace, its plan, AI credit and team, in one place.</p>
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-neutral-800 dark:text-white mt-2 leading-none">
-            System Administration
-          </h1>
-          <p className="text-xs text-neutral-500 dark:text-[#8696a0] font-semibold mt-2.5">
-            Configure gateways, control feature gates, and manage users and tenants globally.
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {/* Refresh action */}
-          <button
-            onClick={() => {
-              loadAnalytics()
-              loadOrganizations()
-              loadUsers()
-              triggerAlert('success', 'Data reloaded successfully.')
-            }}
-            className="flex items-center justify-center h-10 w-10 rounded-xl bg-white dark:bg-[#111b21] border border-neutral-200 dark:border-[#202d36] text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-[#202d36]/50 transition-all cursor-pointer shadow-sm"
-            title="Reload Data"
-          >
-            <RefreshCw size={15} />
-          </button>
-          
-          <button
-            onClick={() => {
-              if (organizations.length === 0) {
-                triggerAlert('error', 'Please load organizations first.')
-                return
-              }
-              setUserForm({
-                fullName: '',
-                email: '',
-                password: '',
-                role: 'org_manager',
-                organizationId: organizations[0]?.id || ''
-              })
-              setShowUserModal(true)
-            }}
-            className="flex items-center gap-1.5 h-10 px-4 bg-neutral-800 hover:bg-neutral-900 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-800 rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md active:scale-95"
-          >
-            <Plus size={14} />
-            <span>Add User</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setOrgForm({
-                name: '',
-                slug: '',
-                contact_name: '',
-                contact_email: '',
-                contact_phone: '',
-                contact_address: '',
-                enable_ai: true,
-                enable_email: true,
-                enable_messages: true,
-                enable_phone_calls: true,
-                enable_sms: true,
-                twilio_account_sid: '',
-                twilio_auth_token: '',
-                twilio_whatsapp_number: '',
-                sendgrid_api_key: '',
-                sendgrid_from_email: '',
-                openai_api_key: '',
-                chatbot_base_prompt: '',
-              })
-              setShowOrgModal(true)
-            }}
-            className="flex items-center gap-1.5 h-10 px-4 bg-gradient-to-r from-[#00a884] to-teal-600 hover:from-[#009070] hover:to-teal-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md hover:shadow-teal-500/10 active:scale-95"
-          >
-            <Plus size={14} />
-            <span>Add Organization</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs navigation */}
-      <div className="bg-white/80 dark:bg-[#111b21]/80 backdrop-blur-md border border-neutral-200/60 dark:border-neutral-800/60 p-1.5 rounded-2xl flex items-center gap-1.5 select-none w-fit shadow-sm">
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'analytics' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Analytics Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('organizations')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'organizations' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Organizations ({organizations.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'users' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Users & Managers ({users.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('email')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'email' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Platform Email
-        </button>
-      </div>
-
-      {/* TAB CONTENT: PLATFORM EMAIL */}
-      {activeTab === 'email' && <PlatformEmailSettings />}
-
-      {/* TAB CONTENT: ANALYTICS OVERVIEW */}
-      {activeTab === 'analytics' && (
-        <div className="space-y-6">
-          {/* KPI grid panel */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            
-            {/* Organizations count */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#00a884]/30 dark:hover:border-emerald-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
-                <div className="h-8 w-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Building size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.organizations}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">active</span>
-              </div>
-            </div>
-
-            {/* Users count */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-blue-500/30 dark:hover:border-blue-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Users</span>
-                <div className="h-8 w-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Users size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.users}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">system</span>
-              </div>
-            </div>
-
-            {/* Contacts count */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-indigo-500/30 dark:hover:border-indigo-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Contacts</span>
-                <div className="h-8 w-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <UserCheck size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.contacts}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">records</span>
-              </div>
-            </div>
-
-            {/* Messages sent/received */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-emerald-500/30 dark:hover:border-emerald-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
-                <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <MessageSquare size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.messages}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">sent/recv</span>
-              </div>
-            </div>
-
-            {/* Campaigns sent */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-rose-500/30 dark:hover:border-rose-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Campaigns</span>
-                <div className="h-8 w-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Megaphone size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.campaigns}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">dispatched</span>
-              </div>
-            </div>
-
-            {/* AI Costing */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-amber-500/30 dark:hover:border-amber-500/30">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]" title="Estimated from message and campaign volume. AI usage is not metered yet.">Est. AI Costing</span>
-                <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Sparkles size={15} />
-                </div>
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
-                  {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : `$${stats.totalAiCost.toFixed(4)}`}
-                </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
-              </div>
-            </div>
-
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={reload} className={`${secondary} w-10 px-0`} aria-label="Reload"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+            <button type="button" onClick={() => setNewPersonOpen(true)} className={secondary}><Users size={16} /> Add person</button>
+            <button type="button" onClick={() => setNewWorkspaceOpen(true)} className={primary}><Plus size={16} /> New workspace</button>
           </div>
+        </div>
 
-          {/* Org activity breakdown list */}
-          <div className="bg-white/90 dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-5 select-none">
-              <div className="flex items-center gap-2">
-                <Database size={16} className="text-[#00a884]" />
-                <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
-                  Tenant Resource Allocation & Metrics
-                </h3>
-              </div>
+        {toast && (
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#047857]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+            {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <AlertTriangle size={18} className="mt-0.5 shrink-0" />}
+            <span>{toast.text}</span>
+          </div>
+        )}
+
+        {!billingReady && (
+          <div className="rounded-xl bg-[#fff7e8] text-[#92400e] px-4 py-3 text-[14px]">
+            Billing is not switched on yet: run <code className="font-mono text-[13px]">supabase/migrations/20261105_billing_and_ai_wallet.sql</code> in Supabase. Until then every workspace works as before.
+          </div>
+        )}
+
+        <div className="flex gap-1 overflow-x-auto border-b border-[#e3e8f2] dark:border-slate-800">
+          {([['overview', 'Overview'], ['workspaces', `Workspaces (${workspaces.length})`], ['people', `People (${people.length})`], ['email', 'Platform email']] as [Tab, string][]).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setTab(id)} className={`px-4 h-11 text-[14.5px] font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-[#1D5BEA] text-[#1D5BEA]' : 'border-transparent text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>{label}</button>
+          ))}
+          <Link href="/dashboard/superadmin/advanced" className="ml-auto px-3 h-11 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white whitespace-nowrap"><Settings2 size={15} /> Advanced</Link>
+        </div>
+
+        {loading && workspaces.length === 0 ? (
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
+        ) : tab === 'overview' ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Stat label="Monthly revenue" value={rupees(totals?.monthlyRevenue || 0)} hint={`${totals?.paying || 0} paying × ₹3,000`} tone="green" />
+              <Stat label="On free trial" value={String(totals?.trialing || 0)} tone="blue" />
+              <Stat label="Trial or plan ended" value={String(totals?.expired || 0)} tone={totals?.expired ? 'red' : undefined} />
+              <Stat label="Payment failed" value={String(totals?.pastDue || 0)} tone={totals?.pastDue ? 'red' : undefined} />
+              <Stat label="Workspaces" value={String(totals?.workspaces || 0)} hint={`${totals?.exempt || 0} exempt`} />
+              <Stat label="People" value={String(totals?.people || 0)} />
+              <Stat label="AI paused (no credit)" value={String(totals?.aiPaused || 0)} tone={totals?.aiPaused ? 'amber' : undefined} />
+              <Stat label="Paying" value={String(totals?.paying || 0)} tone="green" />
             </div>
-            
-            {loadingStats ? (
-              <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                <Loader2 className="animate-spin text-[#00a884]" size={24} />
-                <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Analyzing database tables...</span>
-              </div>
-            ) : orgStatsList.length === 0 ? (
-              <div className="text-center py-16 text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">
-                No organizations exist in the system yet.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
-                      <th className="py-3 px-4">Organization Name</th>
-                      <th className="py-3 px-4">Slug Identifier</th>
-                      <th className="py-3 px-4 text-center">Users</th>
-                      <th className="py-3 px-4 text-center">Contacts</th>
-                      <th className="py-3 px-4 text-center">Campaigns</th>
-                      <th className="py-3 px-4 text-center">Messages</th>
-                      <th className="py-3 px-4 text-center" title="Estimated from message and campaign volume">Est. AI Cost</th>
-                      <th className="py-3 px-4 text-right">Created Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-                    {orgStatsList.map((org) => (
-                      <tr key={org.id} className="hover:bg-neutral-50/50 dark:hover:bg-[#1f2c34]/20 transition-all">
-                        <td className="py-3.5 px-4 font-bold text-neutral-800 dark:text-white">{org.name}</td>
-                        <td className="py-3.5 px-4"><span className="font-mono text-[10px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-lg">{org.slug}</span></td>
-                        <td className="py-3.5 px-4 text-center font-bold text-neutral-700 dark:text-neutral-200">{org.usersCount}</td>
-                        <td className="py-3.5 px-4 text-center font-bold text-blue-500">{org.contactsCount}</td>
-                        <td className="py-3.5 px-4 text-center font-bold text-rose-500">{org.campaignsCount}</td>
-                        <td className="py-3.5 px-4 text-center font-bold text-emerald-500">{org.messagesCount}</td>
-                        <td className="py-3.5 px-4 text-center font-bold text-amber-500">${(org.aiCost || 0).toFixed(4)}</td>
-                        <td className="py-3.5 px-4 text-right text-neutral-400 dark:text-[#8696a0] font-semibold">
-                          {new Date(org.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className={card}>
+                <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><AlertTriangle size={17} className="text-[#F59E0B]" /><h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Needs attention</h2></div>
+                {attention.length === 0 ? <p className="px-5 py-8 text-[14px] text-[#6B7894] text-center">All good. No failed payments, ending trials or empty AI credit.</p> : (
+                  <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
+                    {attention.slice(0, 8).map((w) => (
+                      <li key={w.id}>
+                        <button type="button" onClick={() => openWorkspace(w.id)} className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#f6f8fc] dark:hover:bg-slate-800/50 cursor-pointer">
+                          <span className="flex-1 min-w-0"><span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{w.name}</span><span className="block text-[13px] text-[#6B7894]">{w.billing.aiPaused && w.billing.hasAccess ? 'AI credit used up' : planLabel(w.billing)[0]}</span></span>
+                          <ChevronRight size={16} className="text-[#8a94a8]" />
+                        </button>
+                      </li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB CONTENT: ORGANIZATIONS MANAGER */}
-      {activeTab === 'organizations' && selectedOrgSettings === null && (
-        <div className="bg-white/95 dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-6 shadow-sm space-y-4">
-          
-          {/* Table controls */}
-          <div className="flex items-center justify-between gap-4 select-none">
-            <div className="relative flex-1 max-w-sm">
-              <Search size={14} className="absolute left-3.5 top-3 text-neutral-400 dark:text-[#8696a0]" />
-              <input
-                type="text"
-                placeholder="Search organizations by name or slug..."
-                value={orgSearch}
-                onChange={(e) => setOrgSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] dark:focus:border-[#00a884] text-neutral-800 dark:text-white"
-              />
-            </div>
-          </div>
-
-          {/* List */}
-          {loadingOrgs ? (
-            <div className="flex flex-col items-center justify-center py-16 space-y-3">
-              <Loader2 className="animate-spin text-[#00a884]" size={24} />
-              <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Fetching organizations...</span>
-            </div>
-          ) : filteredOrgs.length === 0 ? (
-            <div className="text-center py-16 text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">
-              No organizations match the filter criteria.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
-                    <th className="py-3 px-4">Organization Name</th>
-                    <th className="py-3 px-4">Slug Identifier</th>
-                    <th className="py-3 px-4">Feature Toggles</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-                  {filteredOrgs.map((org) => {
-                    return (
-                      <tr 
-                        key={org.id} 
-                        className="hover:bg-neutral-50/50 dark:hover:bg-[#1f2c34]/20 transition-all cursor-pointer"
-                        onClick={() => setSelectedOrgSettings(org)}
-                      >
-                        <td className="py-4 px-4 font-bold text-neutral-800 dark:text-white">
-                          {org.name}
-                        </td>
-                        <td className="py-4 px-4">
-                          <span className="font-mono text-[10px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-lg">
-                            {org.slug}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex flex-wrap gap-1.5 select-none">
-                            {org.enable_ai !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-purple-500 animate-pulse" /> AI
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
-                            )}
-                            
-                            {org.enable_email !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-blue-500" /> Email
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
-                            )}
-                            
-                            {org.enable_messages !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-emerald-500" /> Chat
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
-                            )}
-                            
-                            {org.enable_phone_calls !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-amber-500" /> Phone
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
-                            )}
-
-                            {org.enable_sms !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-rose-500" /> SMS
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-right space-x-1" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              setEditingOrg(org)
-                            }}
-                            className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
-                            title="Rename Organization"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteOrg(org.id, org.name)}
-                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
-                            title="Delete Organization"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'organizations' && selectedOrgSettings !== null && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          
-          {/* Header block with Back button */}
-          <div className="flex items-center gap-3 border-b border-neutral-200 dark:border-[#202d36] pb-4 select-none">
-            <button
-              onClick={() => setSelectedOrgSettings(null)}
-              className="flex items-center justify-center h-10 px-3 rounded-xl bg-white dark:bg-[#111b21] border border-neutral-200 dark:border-[#202d36] text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-[#202d36]/50 transition-all cursor-pointer shadow-sm gap-1.5"
-            >
-              <ChevronLeft size={16} />
-              <span className="text-xs font-bold">Back to Organizations</span>
-            </button>
-            <div className="h-6 w-px bg-neutral-200 dark:bg-[#202d36]" />
-            <div>
-              <h2 className="text-base font-black text-neutral-800 dark:text-white flex items-center gap-2">
-                <span>{selectedOrgSettings.name} Settings</span>
-                <span className="font-mono text-[10px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                  {selectedOrgSettings.slug}
-                </span>
-              </h2>
-              <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] font-semibold mt-0.5">
-                Configure features, custom credentials, integrations and knowledge base for this organization.
-              </p>
-            </div>
-          </div>
-
-          {/* Tab Selection */}
-          <div className="flex border-b border-neutral-200 dark:border-[#202d36] mb-6">
-            <button
-              onClick={() => setSettingsActiveTab('general')}
-              className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 ${
-                settingsActiveTab === 'general'
-                  ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
-                  : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-              }`}
-            >
-              General Settings
-            </button>
-            {selectedOrgSettings.enable_ai !== false && (
-              <button
-                onClick={() => setSettingsActiveTab('knowledge')}
-                className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
-                  settingsActiveTab === 'knowledge'
-                    ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
-                    : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-                }`}
-              >
-                <BookOpen size={13} />
-                Knowledge Base (AI Search)
-              </button>
-            )}
-          </div>
-
-          {settingsActiveTab === 'general' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start animate-in fade-in duration-200">
-              
-              {/* Left Column: Organization detail, features toggles, SMTP, Webhooks */}
-              <div className="space-y-6">
-                
-                {/* Card: Organization Details & Contact Info */}
-                <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#00a884] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
-                    <Building size={14} />
-                    <span>Organization Info</span>
-                  </h3>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        value={orgName}
-                        onChange={(e) => setOrgName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                      />
-                    </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                        Slug Identifier
-                      </label>
-                      <input
-                        type="text"
-                        value={orgSlug}
-                        onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, ''))}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                        Contact Person
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="John Doe"
-                        value={contactName}
-                        onChange={(e) => setContactName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                      />
-                    </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                        Contact Phone
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="+1..."
-                        value={contactPhone}
-                        onChange={(e) => setContactPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                      Contact Email
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="info@org.com"
-                      value={contactEmail}
-                      onChange={(e) => setContactEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                      Address
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="123 Main St, City"
-                      value={contactAddress}
-                      onChange={(e) => setContactAddress(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
-                    />
-                  </div>
-                </div>
-
-                {/* Card: Feature Gateways */}
-                <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#00a884] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
-                    <Sliders size={14} />
-                    <span>Global Features Configuration</span>
-                  </h3>
-                  <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] font-semibold leading-relaxed">
-                    Enable or disable core functionalities. Disabling a feature hides all related menu items, pages, tabs, and buttons across the workspace in real-time.
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {/* AI Copilot toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
-                      <div className="flex flex-col gap-0.5 pr-2">
-                        <span className="text-xs font-bold text-[#111b21] dark:text-white">AI Copilot & Knowledge Base</span>
-                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Suggested conversation replies and scraped article indexing</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeature('enable_ai', selectedOrgSettings.enable_ai !== false ? false : true)}
-                        className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                            selectedOrgSettings.enable_ai !== false ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Chat / Messaging toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
-                      <div className="flex flex-col gap-0.5 pr-2">
-                        <span className="text-xs font-bold text-[#111b21] dark:text-white">Messaging (WhatsApp & SMS)</span>
-                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Live chat conversations, SMS broadcasts and templates</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeature('enable_messages', selectedOrgSettings.enable_messages !== false ? false : true)}
-                        className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                            selectedOrgSettings.enable_messages !== false ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Email Broadcast toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
-                      <div className="flex flex-col gap-0.5 pr-2">
-                        <span className="text-xs font-bold text-[#111b21] dark:text-white">Email Campaigns</span>
-                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Mass broadcast email marketing and custom templates</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeature('enable_email', selectedOrgSettings.enable_email !== false ? false : true)}
-                        className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                            selectedOrgSettings.enable_email !== false ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Phone Calls toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34]">
-                      <div className="flex flex-col gap-0.5 pr-2">
-                        <span className="text-xs font-bold text-[#111b21] dark:text-white">Phone Calls & IVR</span>
-                        <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-normal">Dynamic call flows, automated menus and logs</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFeature('enable_phone_calls', selectedOrgSettings.enable_phone_calls !== false ? false : true)}
-                        className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 bg-white w-5 h-5 rounded-full shadow transition-transform duration-200 ${
-                            selectedOrgSettings.enable_phone_calls !== false ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card: Webhooks */}
-                <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-bold text-neutral-800 dark:text-white flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
-                    <Database size={14} className="text-[#00a884]" />
-                    <span>Dynamic Webhook Configurations</span>
-                  </h3>
-                  <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] leading-relaxed font-semibold">
-                    Configure messaging gateway webhook triggers directly in your gateway dashboards:
-                  </p>
-
-                  {whatsappProvider === 'twilio' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
-                          Incoming Message Webhook (Twilio)
-                        </span>
-                        <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
-                          Status Callback Webhook (Twilio)
-                        </span>
-                        <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">
-                            {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
-                          </code>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div>
-                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
-                          Callback URL (Facebook Webhook)
-                        </span>
-                        <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase mb-1">
-                          Verify Token (Facebook Webhook Verification)
-                        </span>
-                        <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{selectedOrgSettings.id}</code>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-              </div>
-
-              {/* Right Column: Custom Gateways (WhatsApp, SMS, Email, AI) and Save */}
-              <div className="space-y-6 bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm">
-                
-                <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 select-none">
-                  <div className="flex items-center gap-2">
-                    <Key size={16} className="text-[#00a884]" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">Credentials & Integrations</h3>
-                  </div>
-                  <button
-                    onClick={handleSaveCredentials}
-                    disabled={savingCredentials}
-                    className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
-                    <span>Save Configuration</span>
-                  </button>
-                </div>
-
-                <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] leading-relaxed font-semibold">
-                  Manage organization-specific credentials for external gateways. If any field is left blank, it will automatically fall back to using default environment configurations.
-                </p>
-
-                {/* WhatsApp Gateway Settings */}
-                <div className="space-y-4 pt-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp Gateway</h4>
-                  
-                  <div className="flex flex-col gap-2">
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                      Provider Selection
-                    </label>
-                    <div className="flex gap-4 select-none">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="whatsappProvider"
-                          value="twilio"
-                          checked={whatsappProvider === 'twilio'}
-                          onChange={() => setWhatsappProvider('twilio')}
-                          className="accent-[#00a884]"
-                        />
-                        Twilio Gateway
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="whatsappProvider"
-                          value="facebook"
-                          checked={whatsappProvider === 'facebook'}
-                          onChange={() => setWhatsappProvider('facebook')}
-                          className="accent-[#00a884]"
-                        />
-                        Direct Facebook API
-                      </label>
-                    </div>
-                  </div>
-
-                  {whatsappProvider === 'twilio' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Account SID
-                        </label>
-                        <input
-                          type="text"
-                          value={twilioAccountSid}
-                          onChange={(e) => setTwilioAccountSid(e.target.value)}
-                          placeholder="Twilio Account SID"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Auth Token
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showTwilioToken ? 'text' : 'password'}
-                            value={twilioAuthToken}
-                            onChange={(e) => setTwilioAuthToken(e.target.value)}
-                            placeholder="Twilio Auth Token"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowTwilioToken(!showTwilioToken)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                          >
-                            {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          WhatsApp Sender Number
-                        </label>
-                        <input
-                          type="text"
-                          value={twilioWhatsappNumber}
-                          onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
-                          placeholder="whatsapp:+14155238886"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          WhatsApp Cloud API Token
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showWhatsappApiToken ? 'text' : 'password'}
-                            value={whatsappApiToken}
-                            onChange={(e) => setWhatsappApiToken(e.target.value)}
-                            placeholder="EAAG..."
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowWhatsappApiToken(!showWhatsappApiToken)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                          >
-                            {showWhatsappApiToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            Phone Number ID
-                          </label>
-                          <input
-                            type="text"
-                            value={whatsappPhoneNumberId}
-                            onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
-                            placeholder="Phone Number ID"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            Business ID
-                          </label>
-                          <input
-                            type="text"
-                            value={whatsappBusinessAccountId}
-                            onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
-                            placeholder="WABA ID"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            Default Sender Phone
-                          </label>
-                          <input
-                            type="text"
-                            value={whatsappDefaultPhone}
-                            onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
-                            placeholder="+1..."
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            API Version
-                          </label>
-                          <input
-                            type="text"
-                            value={whatsappGraphApiVersion}
-                            onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
-                            placeholder="v25.0"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h4>
-                  
-                  {whatsappProvider === 'facebook' && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Twilio Account SID (for SMS)
-                        </label>
-                        <input
-                          type="text"
-                          value={twilioAccountSid}
-                          onChange={(e) => setTwilioAccountSid(e.target.value)}
-                          placeholder="Twilio Account SID"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Twilio Auth Token (for SMS)
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showTwilioToken ? 'text' : 'password'}
-                            value={twilioAuthToken}
-                            onChange={(e) => setTwilioAuthToken(e.target.value)}
-                            placeholder="Twilio Auth Token"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowTwilioToken(!showTwilioToken)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                          >
-                            {showTwilioToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                      SMS Sender Phone Number
-                    </label>
-                    <input
-                      type="text"
-                      value={twilioWhatsappNumber}
-                      onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
-                      placeholder="e.g. +14155238886"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Email Broadcast Settings */}
-                <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h4>
-                  
-                  <div className="flex flex-col gap-2">
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                      Provider Selection
-                    </label>
-                    <div className="flex gap-4 select-none">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="emailProvider"
-                          value="sendgrid"
-                          checked={emailProvider === 'sendgrid'}
-                          onChange={() => setEmailProvider('sendgrid')}
-                          className="accent-[#00a884]"
-                        />
-                        SendGrid API
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-white cursor-pointer">
-                        <input
-                          type="radio"
-                          name="emailProvider"
-                          value="smtp"
-                          checked={emailProvider === 'smtp'}
-                          onChange={() => setEmailProvider('smtp')}
-                          className="accent-[#00a884]"
-                        />
-                        Custom SMTP
-                      </label>
-                    </div>
-                  </div>
-
-                  {emailProvider === 'sendgrid' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Sendgrid API Key
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showSgKey ? 'text' : 'password'}
-                            value={sendgridApiKey}
-                            onChange={(e) => setSendgridApiKey(e.target.value)}
-                            placeholder="SG..."
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowSgKey(!showSgKey)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                          >
-                            {showSgKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          Verified From Email
-                        </label>
-                        <input
-                          type="email"
-                          value={sendgridFromEmail}
-                          onChange={(e) => setSendgridFromEmail(e.target.value)}
-                          placeholder="info@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            SMTP Host
-                          </label>
-                          <input
-                            type="text"
-                            value={smtpHost}
-                            onChange={(e) => setSmtpHost(e.target.value)}
-                            placeholder="smtp.gmail.com"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                            SMTP Port
-                          </label>
-                          <input
-                            type="text"
-                            value={smtpPort}
-                            onChange={(e) => setSmtpPort(e.target.value)}
-                            placeholder="465"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          SMTP Username / Email
-                        </label>
-                        <input
-                          type="email"
-                          value={smtpEmail}
-                          onChange={(e) => setSmtpEmail(e.target.value)}
-                          placeholder="user@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                          SMTP Password
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showSmtpPassword ? 'text' : 'password'}
-                            value={smtpPassword}
-                            onChange={(e) => setSmtpPassword(e.target.value)}
-                            placeholder="Password"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                          >
-                            {showSmtpPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* AI Assistant Settings */}
-                <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h4>
-                  
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                      OpenAI API Key
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showOpenaiKey ? 'text' : 'password'}
-                        value={openaiApiKey}
-                        onChange={(e) => setOpenaiApiKey(e.target.value)}
-                        placeholder="sk-proj-..."
-                        className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                      >
-                        {showOpenaiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                      AI Chatbot Base Prompt (System Prompt)
-                    </label>
-                    <textarea
-                      rows={6}
-                      value={chatbotBasePrompt}
-                      onChange={(e) => setChatbotBasePrompt(e.target.value)}
-                      placeholder="You are a helpful customer support agent representing our company..."
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
-                    />
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-          )}
-
-          {settingsActiveTab === 'knowledge' && (
-            <div className="space-y-6 max-w-4xl animate-in fade-in duration-200">
-
-              {/* Add FAQ panel */}
-              <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <FileText size={20} className="text-[#00a884]" />
-                  <h2 className="text-base font-bold text-neutral-900 dark:text-white">Add Manual FAQ / Policy</h2>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      Question or Title
-                    </label>
-                    <input
-                      type="text"
-                      value={manualTitle}
-                      onChange={e => setManualTitle(e.target.value)}
-                      placeholder="e.g. What is the fee for passport renewal?"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
-                      Answer or Content
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={manualContent}
-                      onChange={e => setManualContent(e.target.value)}
-                      placeholder="e.g. The standard passport renewal fee is $130..."
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
-                    />
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleAddManual}
-                      disabled={actionLoading || !manualTitle.trim() || !manualContent.trim()}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Plus size={13} />
-                      <span>Add FAQ Item</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Indexed Knowledge panel */}
-              <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-bold text-neutral-900 dark:text-white">Indexed Knowledge Base</h3>
-                    <span className="text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-neutral-200 dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
-                      {articles.length} items
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleExcelImport}
-                      accept=".xlsx, .xls"
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={importProgress !== null || loadingArticles}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Upload size={12} />
-                      <span>Import Excel</span>
-                    </button>
-                  </div>
-                </div>
-
-                {loadingArticles ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 size={24} className="animate-spin text-[#00a884]" />
-                  </div>
-                ) : articles.length === 0 ? (
-                  <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
-                    <BookOpen size={36} className="text-[#e9edef] dark:text-[#202d36] mx-auto mb-3" />
-                    <p className="text-xs font-bold">No knowledge items added yet</p>
-                    <p className="text-[10px] font-medium mt-1">Add your first FAQ item above to build your knowledge base.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-[#8696a0]">
-                          <th className="px-6 py-3">Question</th>
-                          <th className="px-6 py-3">Answer Preview</th>
-                          <th className="px-6 py-3">Indexed Date</th>
-                          <th className="px-6 py-3 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedArticles.map((art) => (
-                          <tr key={art.id} className="border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors">
-                            <td className="px-6 py-3.5 font-bold text-neutral-900 dark:text-white max-w-xs">
-                              <p className="truncate">{art.title}</p>
-                            </td>
-                            <td className="px-6 py-3.5 text-neutral-500 dark:text-[#8696a0] font-medium text-[10px] max-w-sm">
-                              <p className="line-clamp-2 whitespace-normal">{art.content?.substring(0, 120)}{art.content?.length > 120 ? '...' : ''}</p>
-                            </td>
-                            <td className="px-6 py-3.5 text-neutral-500 dark:text-[#8696a0] font-medium">
-                              {new Date(art.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="px-6 py-3.5 text-center">
-                              <button
-                                onClick={() => handleDeleteArticle(art.id)}
-                                className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                      <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 bg-[#f0f2f5] dark:bg-[#1f2c34]/20 flex items-center justify-between select-none text-[11px] text-neutral-500 dark:text-[#8696a0]">
-                        <div className="font-semibold">
-                          Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} items
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1.5 border border-neutral-200 dark:border-[#2a3942] hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 disabled:opacity-50 text-neutral-800 dark:text-white rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-bold"
-                          >
-                            <ChevronLeft size={12} />
-                            <span>Previous</span>
-                          </button>
-                          <span className="font-bold text-neutral-800 dark:text-white px-2">
-                            Page {currentPage} of {totalPages}
-                          </span>
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1.5 border border-neutral-200 dark:border-[#2a3942] hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 disabled:opacity-50 text-neutral-800 dark:text-white rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-bold"
-                          >
-                            <span>Next</span>
-                            <ChevronRight size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  </ul>
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB CONTENT: USER & MANAGER MANAGEMENT */}
-      {activeTab === 'users' && (
-        <div className="bg-white/95 dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-6 shadow-sm space-y-5">
-          
-          {/* Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
-            
-            {/* Search inputs */}
-            <div className="flex items-center gap-3 w-full sm:w-auto flex-1 max-w-xl">
-              <div className="relative flex-1">
-                <Search size={14} className="absolute left-3.5 top-3.5 text-neutral-400 dark:text-[#8696a0]" />
-                <input
-                  type="text"
-                  placeholder="Search system users by name or email..."
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                />
-              </div>
-
-              {/* Organization filter dropdown */}
-              <div className="w-52">
-                <select
-                  value={userOrgFilter}
-                  onChange={(e) => setUserOrgFilter(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
-                >
-                  <option value="all">All Organizations</option>
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
+              <div className={card}>
+                <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Building2 size={17} className="text-[#1D5BEA]" /><h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Newest workspaces</h2></div>
+                <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
+                  {workspaces.slice(0, 8).map((w) => (
+                    <li key={w.id}>
+                      <button type="button" onClick={() => openWorkspace(w.id)} className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#f6f8fc] dark:hover:bg-slate-800/50 cursor-pointer">
+                        <span className="flex-1 min-w-0"><span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{w.name}</span><span className="block text-[13px] text-[#6B7894]">Joined {formatDate(w.created_at)} · {w.members} {w.members === 1 ? 'person' : 'people'}</span></span>
+                        <PlanPill billing={w.billing} />
+                      </button>
+                    </li>
                   ))}
-                </select>
+                </ul>
               </div>
             </div>
-
           </div>
-
-          {/* User profiles Table */}
-          {loadingUsers ? (
-            <div className="flex flex-col items-center justify-center py-16 space-y-3">
-              <Loader2 className="animate-spin text-[#00a884]" size={24} />
-              <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Retrieving users database...</span>
+        ) : tab === 'workspaces' ? (
+          <div className={card}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800">
+              <div className="flex gap-1.5 overflow-x-auto">
+                {([['all', 'All'], ['paying', 'Paying'], ['trial', 'On trial'], ['ended', 'Ended'], ['exempt', 'Exempt']] as [Filter, string][]).map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setFilter(id)} className={`px-3 h-8 rounded-lg text-[13.5px] font-semibold whitespace-nowrap cursor-pointer ${filter === id ? 'bg-[#0E1B3D] text-white dark:bg-white dark:text-[#0E1B3D]' : 'bg-[#f1f4f9] dark:bg-slate-800 text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D]'}`}>{label}</button>
+                ))}
+              </div>
+              <label className="relative lg:w-72">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search workspaces" className={`${input} pl-9`} aria-label="Search workspaces" />
+              </label>
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-16 text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">
-              No users match the search terms.
-            </div>
-          ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[820px] text-[14px]">
                 <thead>
-                  <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
-                    <th className="py-3 px-4">Full Name</th>
-                    <th className="py-3 px-4">Email</th>
-                    <th className="py-3 px-4">Assigned Tenant</th>
-                    <th className="py-3 px-4">Role Permission</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                  <tr className="text-left text-[13px] text-[#6B7894]">
+                    <th className="px-5 py-3 font-semibold">Workspace</th>
+                    <th className="px-3 py-3 font-semibold">Plan</th>
+                    <th className="px-3 py-3 font-semibold">AI credit</th>
+                    <th className="px-3 py-3 font-semibold">People</th>
+                    <th className="px-3 py-3 font-semibold">WhatsApp</th>
+                    <th className="px-3 py-3 font-semibold">Joined</th>
+                    <th className="px-3 py-3" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-neutral-50/50 dark:hover:bg-[#1f2c34]/20 transition-all">
-                      <td className="py-4 px-4 font-bold text-neutral-800 dark:text-white">
-                        {user.full_name || '—'}
-                      </td>
-                      <td className="py-4 px-4 font-semibold text-neutral-500 dark:text-neutral-300">
-                        {user.email}
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <Building size={12} className="text-neutral-400" />
-                          <span className="font-semibold text-neutral-700 dark:text-neutral-200">
-                            {user.organization?.name || 'Isolated tenant'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${getRoleDisplay(user.role).bg} ${getRoleDisplay(user.role).color} ${getRoleDisplay(user.role).border}`}>
-                          {getRoleDisplay(user.role).label}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-right space-x-1">
-                        <button
-                          onClick={() => setEditingUser(user)}
-                          className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
-                          title="Edit User Details"
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                        {/* You cannot delete the account you are signed in with */}
-                        {user.id !== currentUserId && (
-                          <button
-                            onClick={() => handleDeleteUser(user.id, user.email)}
-                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
-                            title="Delete User"
-                            aria-label={`Delete ${user.email}`}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </td>
+                <tbody>
+                  {filteredWorkspaces.map((w) => (
+                    <tr key={w.id} onClick={() => openWorkspace(w.id)} className="border-t border-[#eef1f6] dark:border-slate-800 hover:bg-[#f6f8fc] dark:hover:bg-slate-800/40 cursor-pointer">
+                      <td className="px-5 py-3"><div className="font-semibold text-[#0E1B3D] dark:text-white">{w.name}</div><div className="text-[13px] text-[#6B7894]">{w.contact_email || w.slug}</div></td>
+                      <td className="px-3 py-3"><PlanPill billing={w.billing} /></td>
+                      <td className="px-3 py-3"><CreditBar billing={w.billing} /></td>
+                      <td className="px-3 py-3 text-[#0E1B3D] dark:text-slate-200">{w.members}{w.max_teammates ? ` / ${w.max_teammates}` : ''}</td>
+                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300">{w.whatsapp === 'meta' ? 'Meta' : w.whatsapp === 'twilio' ? 'Twilio' : <span className="text-[#8a94a8]">Not connected</span>}</td>
+                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300 whitespace-nowrap">{formatDate(w.created_at)}</td>
+                      <td className="px-3 py-3 text-right"><ChevronRight size={16} className="inline text-[#8a94a8]" /></td>
                     </tr>
                   ))}
+                  {filteredWorkspaces.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-[#6B7894]">No workspaces match.</td></tr>}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ) : tab === 'people' ? (
+          <div className={card}>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800">
+              <label className="relative sm:w-72">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
+                <input value={peopleSearch} onChange={(e) => setPeopleSearch(e.target.value)} placeholder="Search by name or email" className={`${input} pl-9`} aria-label="Search people" />
+              </label>
+              <select value={peopleWorkspace} onChange={(e) => setPeopleWorkspace(e.target.value)} className={`${field} w-full sm:w-64`} aria-label="Workspace">
+                <option value="all">All workspaces</option>
+                {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+              <span className="sm:ml-auto text-[13px] text-[#6B7894]">{filteredPeople.length} {filteredPeople.length === 1 ? 'person' : 'people'}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-[14px]">
+                <thead>
+                  <tr className="text-left text-[13px] text-[#6B7894]">
+                    <th className="px-5 py-3 font-semibold">Person</th>
+                    <th className="px-3 py-3 font-semibold">Workspace</th>
+                    <th className="px-3 py-3 font-semibold">Role</th>
+                    <th className="px-3 py-3 font-semibold">Joined</th>
+                    <th className="px-3 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPeople.slice(0, 300).map((p) => (
+                    <tr key={p.id} className="border-t border-[#eef1f6] dark:border-slate-800">
+                      <td className="px-5 py-3"><div className="font-semibold text-[#0E1B3D] dark:text-white">{p.full_name || p.email.split('@')[0]}</div><div className="text-[13px] text-[#6B7894]">{p.email}</div></td>
+                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300">{p.organization?.name || workspaces.find((w) => w.id === p.organization_id)?.name || '—'}</td>
+                      <td className="px-3 py-3">
+                        <select value={roleValue(p.role)} onChange={(e) => changePersonRole(p, e.target.value)} className="h-9 pl-2.5 pr-7 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[13.5px] font-semibold text-[#0E1B3D] dark:text-white cursor-pointer" aria-label={`Role for ${p.email}`}>
+                          {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300 whitespace-nowrap">{formatDate(p.created_at)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button type="button" onClick={() => deletePerson(p)} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-[#b91c1c] hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 cursor-pointer" aria-label={`Delete ${p.email}`}><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredPeople.length === 0 && <tr><td colSpan={5} className="px-5 py-12 text-center text-[#6B7894]">Nobody matches.</td></tr>}
+                </tbody>
+              </table>
+              {filteredPeople.length > 300 && <p className="px-5 py-3 text-[13px] text-[#6B7894]">Showing the first 300. Search or pick a workspace to narrow it down.</p>}
+            </div>
+          </div>
+        ) : (
+          <PlatformEmailSettings />
+        )}
+      </div>
 
-      {/* MODAL: ADD ORGANIZATION */}
-      {showOrgModal && (
-        <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
-          <div className="bg-white dark:bg-[#111b21] rounded-3xl max-w-lg w-full border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-[#202d36] pb-3">
-              <div>
-                <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
-                  Create Organization
-                </h3>
-                <span className="text-[10px] text-neutral-400 dark:text-[#8696a0] font-bold mt-1 block">
-                  Fill in the basic and contact information below.
-                </span>
+      {/* Workspace panel */}
+      {openId && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#0E1B3D]/30" onClick={() => setOpenId(null)}>
+          <aside onClick={(e) => e.stopPropagation()} className="h-full w-full sm:max-w-xl bg-[#f6f8fc] dark:bg-[#0b141a] shadow-2xl overflow-y-auto">
+            <div className="sticky top-0 z-10 bg-white dark:bg-[#111b21] border-b border-[#e3e8f2] dark:border-slate-800 px-5 py-4 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-[20px] font-extrabold text-[#0E1B3D] dark:text-white truncate">{details?.workspace.name || open?.name || 'Workspace'}</h2>
+                <p className="text-[13px] text-[#6B7894] truncate">{details?.organization.contact_email || details?.workspace.slug || open?.slug} · joined {formatDate(details?.workspace.created_at || open?.created_at)}</p>
               </div>
-              <button 
-                onClick={() => setShowOrgModal(false)}
-                className="text-[#667781] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full hover:bg-white dark:hover:bg-[#2a3942] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
+              <button type="button" onClick={() => setOpenId(null)} aria-label="Close" className="h-9 w-9 rounded-lg flex items-center justify-center text-[#6B7894] hover:bg-[#f1f4f9] dark:hover:bg-slate-800 cursor-pointer"><X size={18} /></button>
             </div>
 
-            <form onSubmit={handleCreateOrg} className="space-y-4 animate-in fade-in duration-200">
-              {/* Name & Slug */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                    Organization Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Acme Corporation"
-                    value={orgForm.name}
-                    onChange={(e) => handleOrgNameChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                  />
+            {detailsLoading || !details ? (
+              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={26} /></div>
+            ) : (
+              <div className="p-5 space-y-4">
+                {/* Plan */}
+                <section className={`${card} p-4 space-y-3`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#1D5BEA]" /> Plan</h3>
+                    <PlanPill billing={details.workspace.billing} />
+                  </div>
+                  {!details.workspace.billing.configured ? (
+                    <p className="text-[14px] text-[#6B7894]">Billing is not switched on in the database yet.</p>
+                  ) : (
+                    <>
+                      <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
+                        {details.workspace.billing.exempt
+                          ? 'Never billed. Uses its own AI key when it has one.'
+                          : details.workspace.billing.status === 'trialing'
+                            ? `Free trial until ${formatDate(details.billingRow?.trial_ends_at)}.`
+                            : details.workspace.billing.accessUntil
+                              ? `${details.workspace.billing.hasAccess ? 'Access until' : 'Access ended'} ${formatDate(details.workspace.billing.accessUntil)}.`
+                              : 'Paid by Razorpay subscription.'}
+                        {details.billingRow?.razorpay_subscription_id ? ` Razorpay: ${details.billingRow.razorpay_subscription_id}` : ''}
+                      </p>
+                      {!details.workspace.billing.exempt && (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200 mr-1">Extend trial</span>
+                            {[7, 14, 30].map((days) => (
+                              <button key={days} type="button" disabled={busy !== null} onClick={() => act({ action: 'extend_trial', days }, `Trial extended by ${days} days.`)} className={`${secondary} h-9 px-3`}><CalendarPlus size={15} /> {days} days</button>
+                            ))}
+                          </div>
+                          <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); act({ action: 'paid_until', date: paidUntil }, `Marked as paid until ${formatDate(paidUntil)}.`) }}>
+                            <span className="text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200 mr-1">Paid outside Razorpay</span>
+                            <input type="date" required value={paidUntil} onChange={(e) => setPaidUntil(e.target.value)} className={`${field} h-9`} aria-label="Paid until" />
+                            <button type="submit" disabled={busy !== null || !paidUntil} className={`${primary} h-9 px-3`}>Mark paid</button>
+                          </form>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button type="button" disabled={busy !== null} onClick={async () => {
+                          const exempt = !details.workspace.billing.exempt
+                          if (await confirm({ title: exempt ? 'Exempt this workspace from billing?' : 'Start billing this workspace?', message: exempt ? 'It keeps every feature with no plan, and uses its own AI key when it has one (otherwise WAMA CRM\'s, free).' : 'It needs the ₹3,000 plan (or a trial) to keep access, and AI comes out of its AI credit.', confirmLabel: exempt ? 'Exempt' : 'Start billing' })) {
+                            act({ action: 'set_exempt', exempt }, exempt ? 'Workspace is now exempt.' : 'Workspace is now billed.')
+                          }
+                        }} className={`${secondary} h-9 px-3`}><ShieldCheck size={15} /> {details.workspace.billing.exempt ? 'Start billing' : 'Make exempt'}</button>
+                        {!details.workspace.billing.exempt && details.workspace.billing.hasAccess && (
+                          <button type="button" disabled={busy !== null} onClick={async () => {
+                            if (await confirm({ title: 'End access now?', message: 'The workspace is locked until it subscribes. Nothing is deleted.', confirmLabel: 'End access', destructive: true })) act({ action: 'end_access' }, 'Access ended.')
+                          }} className="inline-flex items-center gap-2 h-9 px-3 rounded-xl border border-[#f3c7c7] text-[#b91c1c] text-[14px] font-semibold hover:bg-[#fdf0f0] dark:border-red-900 dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-50">End access</button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                {/* AI credit */}
+                {details.workspace.billing.configured && !details.workspace.billing.exempt && (
+                  <section className={`${card} p-4 space-y-3`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={16} className="text-[#00A884]" /> AI credit</h3>
+                      <CreditBar billing={details.workspace.billing} />
+                    </div>
+                    <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
+                      {rupees(details.workspace.billing.aiBalance || 0)} left of {rupees(details.billingRow?.ai_allowance || 0)}. The customer only sees the percentage.
+                    </p>
+                    {Object.keys(details.aiUsageThisMonth).length > 0 && (
+                      <div className="rounded-xl bg-[#f6f8fc] dark:bg-slate-900 px-3 py-2.5">
+                        <div className="text-[12.5px] font-semibold text-[#6B7894] mb-1">Used this month</div>
+                        {Object.entries(details.aiUsageThisMonth).sort((a, b) => b[1] - a[1]).map(([feature, amount]) => (
+                          <div key={feature} className="flex justify-between text-[13.5px] py-0.5"><span className="text-[#0E1B3D] dark:text-slate-200">{FEATURE_NAMES[feature] || feature}</span><span className="font-semibold text-[#0E1B3D] dark:text-white">{rupees(amount)}</span></div>
+                        ))}
+                      </div>
+                    )}
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); act({ action: 'add_ai_credit', amount: Number(creditAmount) }, `${rupees(Number(creditAmount))} of AI credit added.`); setCreditAmount('') }}>
+                      <span className="relative">
+                        <IndianRupee size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
+                        <input type="number" min={1} max={100000} required value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} placeholder="500" className={`${field} w-32 h-9 pl-8`} aria-label="Amount of AI credit" />
+                      </span>
+                      <button type="submit" disabled={busy !== null || !creditAmount} className={`${primary} h-9 px-3`}><Plus size={15} /> Add credit free</button>
+                    </form>
+                  </section>
+                )}
+
+                {/* Team */}
+                <section className={`${card} p-4 space-y-3`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Users size={16} className="text-[#1D5BEA]" /> Team ({details.members.length})</h3>
+                    <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); act({ action: 'set_seat_limit', limit: seatLimit === '' ? null : Number(seatLimit) }, seatLimit ? `Seat limit set to ${seatLimit}.` : 'No seat limit.') }}>
+                      <input type="number" min={1} max={1000} value={seatLimit} onChange={(e) => setSeatLimit(e.target.value)} placeholder="No limit" className={`${field} w-24 h-8 text-[13px]`} aria-label="Seat limit" />
+                      <button type="submit" disabled={busy !== null} className={`${secondary} h-8 px-2.5 text-[13px] whitespace-nowrap`}>Set limit</button>
+                    </form>
+                  </div>
+                  <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
+                    {details.members.map((member) => {
+                      const display = getRoleDisplay(member.role)
+                      return (
+                        <li key={member.id} className="flex items-center gap-3 py-2">
+                          <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white truncate">{member.full_name || member.email.split('@')[0]}</span><span className="block text-[12.5px] text-[#6B7894] truncate">{member.email}</span></span>
+                          <span className={`px-2 h-6 inline-flex items-center rounded-md border text-[12px] font-bold ${display.bg} ${display.color} ${display.border}`}>{display.label}</span>
+                        </li>
+                      )
+                    })}
+                    {details.members.length === 0 && <li className="py-3 text-[14px] text-[#6B7894]">No one has an account here yet.</li>}
+                  </ul>
+                </section>
+
+                {/* Payments */}
+                {details.payments.length > 0 && (
+                  <section className={`${card} p-4 space-y-2`}>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><IndianRupee size={16} className="text-[#047857]" /> Payments</h3>
+                    {details.payments.map((payment) => (
+                      <div key={payment.razorpay_payment_id} className="flex justify-between text-[13.5px] py-1">
+                        <span className="text-[#4a5672] dark:text-slate-300">{payment.purpose === 'ai_topup' ? 'AI credit' : 'Plan'} · {formatDate(payment.created_at)}</span>
+                        <span className="font-semibold text-[#0E1B3D] dark:text-white">{rupees(payment.amount_paise / 100)}</span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Link href={`/dashboard/superadmin/advanced?org=${details.workspace.id}`} className={`${secondary} flex-1`}><Settings2 size={15} /> Channels, keys and knowledge <ArrowUpRight size={14} /></Link>
+                  {details.organization.contact_email && <a href={`mailto:${details.organization.contact_email}`} className={`${secondary} flex-1`}><Mail size={15} /> Email the owner</a>}
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                    Slug Identifier *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="acme-corp"
-                    value={orgForm.slug}
-                    onChange={(e) => setOrgForm({ ...orgForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                  />
-                </div>
+                <button type="button" disabled={busy !== null} onClick={() => deleteWorkspace(details.workspace)} className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[#b91c1c] text-[14px] font-semibold hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-50"><Trash2 size={15} /> Delete workspace</button>
               </div>
-
-              {/* Contact Name & Phone */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                    Contact Person
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="John Doe"
-                    value={orgForm.contact_name}
-                    onChange={(e) => setOrgForm({ ...orgForm, contact_name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                    Contact Phone
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="+1..."
-                    value={orgForm.contact_phone}
-                    onChange={(e) => setOrgForm({ ...orgForm, contact_phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              {/* Contact Email */}
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Contact Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="contact@acme.com"
-                  value={orgForm.contact_email}
-                  onChange={(e) => setOrgForm({ ...orgForm, contact_email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                />
-              </div>
-
-              {/* Address */}
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Address
-                </label>
-                <input
-                  type="text"
-                  placeholder="123 Corporate Way, Suite 100"
-                  value={orgForm.contact_address}
-                  onChange={(e) => setOrgForm({ ...orgForm, contact_address: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
-                />
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={submittingOrg || !orgForm.name || !orgForm.slug}
-                  className="px-5 py-2.5 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-500/10 active:scale-[0.98]"
-                >
-                  {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
-                  <span>Save & Create Org</span>
-                </button>
-              </div>
-            </form>
-
-          </div>
+            )}
+          </aside>
         </div>
       )}
 
-      {/* MODAL: RENAME ORGANIZATION */}
-      {editingOrg && (
-        <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
-          <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
-                Edit Organization Details
-              </h3>
-              <button 
-                onClick={() => setEditingOrg(null)}
-                className="text-[#667781] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full hover:bg-white dark:hover:bg-[#2a3942] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateOrgDetails} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Organization Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingOrg.name}
-                  onChange={(e) => setEditingOrg({ ...editingOrg, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Slug
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingOrg.slug}
-                  onChange={(e) => setEditingOrg({ ...editingOrg, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingOrg}
-                className="w-full mt-2 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
-              >
-                {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
-                <span>Save Changes</span>
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ADD USER / MANAGER */}
-      {showUserModal && (
-        <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
-          <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
-                Add New Manager / User
-              </h3>
-              <button 
-                onClick={() => setShowUserModal(false)}
-                className="text-[#667781] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full hover:bg-white dark:hover:bg-[#2a3942] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateUser} className="space-y-3">
-              
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Organization Assignment
-                </label>
-                <select
-                  required
-                  value={userForm.organizationId}
-                  onChange={(e) => setUserForm({ ...userForm, organizationId: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
-                >
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Sarah Jenkins"
-                  value={userForm.fullName}
-                  onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="name@organization.com"
-                  value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Temporary Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-3 text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                  >
-                    {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  System Role
-                </label>
-                <select
-                  required
-                  value={userForm.role}
-                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
-                >
-                  {rolesList.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingUser}
-                className="w-full mt-3 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
-              >
-                {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
-                <span>Create User Profile</span>
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: EDIT USER PROFILE */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
-          <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
-                Edit User Details
-              </h3>
-              <button 
-                onClick={() => setEditingUser(null)}
-                className="text-[#667781] hover:text-[#111b21] dark:hover:text-white p-1 rounded-full hover:bg-white dark:hover:bg-[#2a3942] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateUser} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Organization Assignment
-                </label>
-                <select
-                  required
-                  value={editingUser.organization_id}
-                  onChange={(e) => setEditingUser({ ...editingUser, organization_id: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
-                >
-                  {organizations.map(org => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingUser.full_name || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, full_name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={editingUser.email}
-                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                  System Role
-                </label>
-                <select
-                  required
-                  value={toStoredRole(editingUser.role)}
-                  disabled={editingUser.id === currentUserId}
-                  title={editingUser.id === currentUserId ? 'You cannot change your own role' : undefined}
-                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-bold focus:outline-none text-neutral-800 dark:text-white cursor-pointer"
-                >
-                  {rolesList.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingUser}
-                className="w-full mt-2 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
-              >
-                {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
-                <span>Save Changes</span>
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {newWorkspaceOpen && <NewWorkspaceDialog onClose={() => setNewWorkspaceOpen(false)} onCreated={(name) => { setNewWorkspaceOpen(false); flash('success', `${name} was created.`); reload() }} />}
+      {newPersonOpen && <NewPersonDialog workspaces={workspaces} onClose={() => setNewPersonOpen(false)} onCreated={(email) => { setNewPersonOpen(false); flash('success', `${email} can now sign in.`); reload() }} />}
     </div>
+  )
+}
+
+// ── Dialogs ───────────────────────────────────────────────────────────────────
+
+function Dialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#0E1B3D]/40 sm:p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-lg bg-white dark:bg-[#111b21] rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 pt-5">
+          <h2 className="text-[20px] font-extrabold text-[#0E1B3D] dark:text-white">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="h-9 w-9 rounded-lg flex items-center justify-center text-[#6B7894] hover:bg-[#f1f4f9] dark:hover:bg-slate-800 cursor-pointer"><X size={18} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block"><span className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">{label}</span>{children}</label>
+}
+
+function NewWorkspaceDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
+  const [form, setForm] = useState({ name: '', slug: '', contactEmail: '', ownerName: '', ownerEmail: '', ownerPassword: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const created = await api('/api/superadmin/organizations', { method: 'POST', body: JSON.stringify({ name: form.name.trim(), slug: form.slug, contact_email: form.contactEmail.trim() || form.ownerEmail.trim() || null, contact_name: form.ownerName.trim() || null }) })
+      if (form.ownerEmail.trim()) {
+        try {
+          await api('/api/superadmin/users', { method: 'POST', body: JSON.stringify({ email: form.ownerEmail.trim(), password: form.ownerPassword, fullName: form.ownerName.trim() || form.ownerEmail.split('@')[0], role: 'owner', organizationId: created.organization.id }) })
+        } catch (err: any) {
+          throw new Error(`The workspace was created, but the owner's login was not: ${err.message}`)
+        }
+      }
+      onCreated(form.name.trim())
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title="New workspace" onClose={onClose}>
+      <form onSubmit={submit} className="px-5 py-4 space-y-4">
+        {error && <div className="rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-3.5 py-2.5 text-[14px]">{error}</div>}
+        <Field label="Business name"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, slug: slugify(e.target.value) })} placeholder="Radhakrishna Books" className={input} autoFocus /></Field>
+        <Field label="Short name (used in webhook links)"><input required value={form.slug} onChange={(e) => setForm({ ...form, slug: slugify(e.target.value) })} placeholder="radhakrishna-books" className={input} /></Field>
+        <Field label="Contact email"><input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} placeholder="owner@business.in" className={input} /></Field>
+        <div className="rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3.5 space-y-3">
+          <div className="text-[14px] font-semibold text-[#0E1B3D] dark:text-white">Owner login (optional)</div>
+          <input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} placeholder="Owner's name" className={input} aria-label="Owner's name" />
+          <input type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} placeholder="Owner's email" className={input} aria-label="Owner's email" />
+          {form.ownerEmail && <input type="text" required minLength={8} value={form.ownerPassword} onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })} placeholder="Temporary password (8+ characters)" className={input} aria-label="Temporary password" />}
+        </div>
+        <p className="text-[13px] text-[#6B7894]">New workspaces start a 14-day free trial with ₹300 of AI credit.</p>
+        <div className="flex justify-end gap-2 pb-1">
+          <button type="button" onClick={onClose} className={secondary}>Cancel</button>
+          <button type="submit" disabled={saving} className={primary}>{saving && <Loader2 size={16} className="animate-spin" />} Create workspace</button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+function NewPersonDialog({ workspaces, onClose, onCreated }: { workspaces: Workspace[]; onClose: () => void; onCreated: (email: string) => void }) {
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', role: 'org_admin', organizationId: workspaces[0]?.id || '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      await api('/api/superadmin/users', { method: 'POST', body: JSON.stringify(form) })
+      onCreated(form.email)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title="Add a person" onClose={onClose}>
+      <form onSubmit={submit} className="px-5 py-4 space-y-4">
+        {error && <div className="rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-3.5 py-2.5 text-[14px]">{error}</div>}
+        <Field label="Workspace">
+          <select required value={form.organizationId} onChange={(e) => setForm({ ...form, organizationId: e.target.value })} className={input}>
+            {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Full name"><input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className={input} /></Field>
+        <Field label="Email"><input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} /></Field>
+        <Field label="Temporary password"><input required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="8+ characters" className={input} /></Field>
+        <Field label="Role">
+          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={input}>
+            {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </Field>
+        <div className="flex justify-end gap-2 pb-1">
+          <button type="button" onClick={onClose} className={secondary}>Cancel</button>
+          <button type="submit" disabled={saving} className={primary}>{saving && <Loader2 size={16} className="animate-spin" />} Add person</button>
+        </div>
+      </form>
+    </Dialog>
   )
 }

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 import { SynonymGroup } from '@/lib/query-expander'
+import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -13,14 +14,11 @@ function getSupabaseClient() {
 }
 
 // Generate embedding for a text using OpenAI text-embedding-3-small
-async function generateEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+async function generateEmbedding(text: string, db: any, ai: AiAccess): Promise<number[] | null> {
   try {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const res = await aiFetch(db, ai, 'knowledge', 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: text.substring(0, 8000) // Limit input to avoid token overflow
@@ -182,20 +180,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing title or content' }, { status: 400 })
     }
 
-    // Resolve OpenAI API key (organization-level or global)
-    let openAiKey = process.env.OPENAI_API_KEY || ''
-    try {
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('openai_api_key')
-        .eq('id', organizationId)
-        .single()
-      if (orgData?.openai_api_key) {
-        openAiKey = orgData.openai_api_key
-      }
-    } catch (e) {
-      // Ignore — fall back to global key
-    }
+    // AI for the search embedding; without it the FAQ is still saved and found by keywords
+    const ai = await getAiAccess(supabase, organizationId)
 
     // Load organization synonyms for embedding enrichment
     let orgSynonyms: SynonymGroup[] = []
@@ -212,9 +198,9 @@ export async function POST(request: NextRequest) {
 
     // Generate vector embedding for the FAQ content (enriched with synonym context)
     let embedding: number[] | null = null
-    if (openAiKey) {
+    if (ai.allowed) {
       const textToEmbed = enrichTextWithSynonyms(title, content, orgSynonyms)
-      embedding = await generateEmbedding(textToEmbed, openAiKey)
+      embedding = await generateEmbedding(textToEmbed, supabase, ai)
       if (embedding) {
         console.log(`[Knowledge] Embedding generated for FAQ: "${title}" (${embedding.length} dimensions)`)
       } else {
@@ -297,20 +283,8 @@ export async function PATCH(request: NextRequest) {
 
     const organizationId = existing.organization_id
 
-    // Resolve OpenAI API key (organization-level or global)
-    let openAiKey = process.env.OPENAI_API_KEY || ''
-    try {
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('openai_api_key')
-        .eq('id', organizationId)
-        .single()
-      if (orgData?.openai_api_key) {
-        openAiKey = orgData.openai_api_key
-      }
-    } catch (e) {
-      // Ignore
-    }
+    // AI for the search embedding; without it the FAQ is still saved and found by keywords
+    const ai = await getAiAccess(supabase, organizationId)
 
     // Load organization synonyms for embedding enrichment
     let orgSynonyms: SynonymGroup[] = []
@@ -327,9 +301,9 @@ export async function PATCH(request: NextRequest) {
 
     // Generate vector embedding for the FAQ content (enriched with synonym context)
     let embedding: number[] | null = null
-    if (openAiKey) {
+    if (ai.allowed) {
       const textToEmbed = enrichTextWithSynonyms(title, content, orgSynonyms)
-      embedding = await generateEmbedding(textToEmbed, openAiKey)
+      embedding = await generateEmbedding(textToEmbed, supabase, ai)
     }
 
     // Update the FAQ article title and content

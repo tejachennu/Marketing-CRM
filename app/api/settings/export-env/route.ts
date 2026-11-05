@@ -152,7 +152,7 @@ function formatEnvFile(envVars: { [key: string]: string }, recipient: string): s
   }
 
   let output = `# ==============================================================================\n`
-  output += `# OmniCRM Environment Variables Export (.env)\n`
+  output += `# WAMA CRM Environment Variables Export (.env)\n`
   output += `# Generated on: ${new Date().toISOString()} (UTC)\n`
   output += `# Target Recipient: ${recipient}\n`
   output += `# Total Variables Exported: ${keys.length}\n`
@@ -187,7 +187,7 @@ function buildHtmlSummary(envVars: { [key: string]: string }, rawEnv: string): s
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
       <div style="background: #00a884; color: #ffffff; padding: 24px; text-align: center;">
-        <h1 style="margin: 0; font-size: 20px; font-weight: 700;">🔐 OmniCRM Environment Export</h1>
+        <h1 style="margin: 0; font-size: 20px; font-weight: 700;">🔐 WAMA CRM Environment Export</h1>
         <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Complete server environment variables (.env.local)</p>
       </div>
 
@@ -218,7 +218,7 @@ function buildHtmlSummary(envVars: { [key: string]: string }, rawEnv: string): s
         <pre style="background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; font-size: 11px; font-family: monospace; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${rawEnv.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
 
         <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-          OmniCRM • System Security & Backup Service • Generated automatically upon user request
+          WAMA CRM • System Security & Backup Service • Generated automatically upon user request
         </div>
       </div>
     </div>
@@ -254,9 +254,9 @@ export async function POST(request: NextRequest) {
       const htmlBody = buildHtmlSummary(envVars, formattedEnv)
       const emailResult = await sendEmail({
         to: recipientEmail,
-        subject: `🔐 [OmniCRM] Complete Environment Variables Export (${varCount} vars)`,
+        subject: `🔐 [WAMA CRM] Complete Environment Variables Export (${varCount} vars)`,
         html: htmlBody,
-        text: `OmniCRM Environment Export (${varCount} variables).\n\nFind the complete .env below:\n\n${formattedEnv}`,
+        text: `WAMA CRM Environment Export (${varCount} variables).\n\nFind the complete .env below:\n\n${formattedEnv}`,
         attachments: [
           {
             filename: '.env',

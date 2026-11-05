@@ -3,6 +3,7 @@ import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { isSuperAdmin } from '@/lib/rbac'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 
 function getSupabaseClient() {
@@ -258,11 +259,9 @@ export async function POST(request: NextRequest) {
         .eq('id', orgId)
         .maybeSingle()
 
-      const openAiKey = (orgData?.openai_api_key || process.env.OPENAI_API_KEY || '').trim()
-      if (!openAiKey) {
-        return NextResponse.json({ 
-          error: 'OpenAI API Key is not configured for this organization. Please add it in Settings.' 
-        }, { status: 400 })
+      const ai = await getAiAccess(supabase, orgId, orgData)
+      if (!ai.allowed) {
+        return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
       }
 
       // Ensure session exists or auto-create if new/missing
@@ -339,12 +338,9 @@ Latest customer message: ${cleanMessage}
 
 Rewritten standalone query:`
 
-          const condensationRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          const condensationRes = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openAiKey}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: 'gpt-4o-mini',
               messages: [{ role: 'user', content: condensationPrompt }],
@@ -373,12 +369,9 @@ Rewritten standalone query:`
       // Step 2: Generate embedding
       let embedding: number[] | null = null
       try {
-        const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+        const embedRes = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/embeddings', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiKey}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'text-embedding-3-small',
             input: vectorQuery.substring(0, 8000)
@@ -479,12 +472,9 @@ ${LANGUAGE_RULES}
           { role: 'user', content: cleanMessage }
         ]
 
-        const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const gptResponse = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiKey}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: gptMessages,

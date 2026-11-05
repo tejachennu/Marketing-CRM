@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -644,9 +644,24 @@ export default function DashboardLayout({
     window.location.href = '/login'
   }
 
+  // The plan and AI credit: drives the Billing menu item, reminders and the paywall when a trial ends
+  const [billing, setBilling] = useState<{ exempt: boolean; hasAccess: boolean; status: string; trialDaysLeft: number | null; aiPercentLeft: number | null; aiPaused: boolean; onTrial?: boolean } | null>(null)
+  useEffect(() => {
+    if (!orgId || isSuperAdmin({ role: userRole })) return
+    let cancelled = false
+    const load = () => fetch(`/api/billing?organizationId=${orgId}`, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setBilling(data) })
+      .catch(() => {})
+    load()
+    window.addEventListener('billing:changed', load)
+    return () => { cancelled = true; window.removeEventListener('billing:changed', load) }
+  }, [orgId, userRole])
+
   const currentUser = { id: userId, role: userRole, see_all: userSeeAll, read_only: userReadOnly }
   const seeAll = canSeeAll(currentUser)
   const isPlatformAdmin = isSuperAdmin(currentUser)
+  const canManageBilling = can(currentUser, 'billing.manage')
   const flowsEnabled = isFlowBetaAllowed(orgId, orgSlug, orgName)
 
   // Badges are small pills: cap the label so a busy inbox cannot overflow them
@@ -661,7 +676,9 @@ export default function DashboardLayout({
     { href: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
+    { href: '/dashboard/team', label: 'Team', icon: UserCog },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+    { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
     { href: '/dashboard/playground', label: 'AI Playground', icon: Sparkles },
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
@@ -694,6 +711,8 @@ export default function DashboardLayout({
         (item) =>
           isListedInMenu(item.href) &&
           canAccessPage(currentUser, item.href) &&
+          // Billing is for workspace admins, and only where there is a plan to manage
+          (item.href !== '/dashboard/billing' || (canManageBilling && !isPlatformAdmin && billing !== null && !billing.exempt)) &&
           (isPlatformAdmin || isFeatureEnabled(item.href))
       )
     : []
@@ -706,13 +725,30 @@ export default function DashboardLayout({
     { href: '/dashboard/profile', label: 'My Profile', icon: User },
   ]
 
-  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' = !profileLoaded
+  // Once a trial or plan has ended, only Billing and the profile stay open
+  const billingLocked = Boolean(billing && !billing.exempt && !billing.hasAccess && !isPlatformAdmin)
+    && !pathname.startsWith('/dashboard/billing') && !pathname.startsWith('/dashboard/profile')
+  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' = !profileLoaded
     ? 'loading'
     : !canAccessPage(currentUser, pathname)
       ? 'role'
       : !isPlatformAdmin && !isFeatureEnabled(pathname)
         ? 'feature'
-        : 'allowed'
+        : billingLocked
+          ? 'billing'
+          : 'allowed'
+  // A short reminder above the page: trial ending, payment failed, AI credits low or used up
+  const billingBanner = !billing || billing.exempt || isPlatformAdmin || pageAccess === 'billing' || pathname.startsWith('/dashboard/billing')
+    ? null
+    : billing.status === 'past_due'
+      ? { tone: 'red', text: 'Your last payment failed. Update your payment to keep using WAMA CRM.' }
+      : billing.status === 'trialing' && billing.trialDaysLeft !== null && billing.trialDaysLeft <= 5
+        ? { tone: 'blue', text: `Your free trial ends in ${billing.trialDaysLeft} day${billing.trialDaysLeft === 1 ? '' : 's'}. Subscribe to keep everything running.` }
+        : billing.aiPaused
+          ? { tone: 'red', text: 'AI credits are used up, so AI replies are paused. Add credits to switch them back on.' }
+          : billing.aiPercentLeft !== null && billing.aiPercentLeft <= 15
+            ? { tone: 'amber', text: `Only ${billing.aiPercentLeft}% of your AI credits are left.` }
+            : null
 
   if (isStandalone) {
     return (
@@ -1262,8 +1298,31 @@ export default function DashboardLayout({
             : 'pb-[68px] h-[calc(100dvh-68px)]'
         }`}>
           <div className="h-full w-full p-0 flex flex-col overflow-hidden">
+            {billingBanner && pageAccess === 'allowed' && (
+              <div className={`shrink-0 px-4 py-2 text-[13px] font-semibold flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center ${
+                billingBanner.tone === 'red' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : billingBanner.tone === 'amber' ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+              }`}>
+                <span className="inline-flex items-center gap-1.5"><AlertTriangle size={14} /> {billingBanner.text}</span>
+                {canManageBilling && <Link href="/dashboard/billing" className="underline underline-offset-2">Go to Billing</Link>}
+              </div>
+            )}
             {pageAccess === 'allowed' ? (
-              children
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{children}</div>
+            ) : pageAccess === 'billing' ? (
+              <div className="flex items-center justify-center h-full p-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-8 max-w-md w-full text-center shadow-xl">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-[#1D5BEA] mb-4"><CreditCard size={22} /></div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{billing?.onTrial ? 'Your free trial has ended' : billing?.status === 'past_due' ? 'Your payment did not go through' : 'Your WAMA CRM plan has ended'}</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                    {canManageBilling
+                      ? 'Subscribe to WAMA CRM Pro (₹3,000 a month, every feature) to continue. Your chats, contacts and settings are safe.'
+                      : 'Your workspace admin needs to renew the plan. Your chats, contacts and settings are safe.'}
+                  </p>
+                  {canManageBilling && (
+                    <Link href="/dashboard/billing" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Subscribe now</Link>
+                  )}
+                </div>
+              </div>
             ) : pageAccess === 'loading' ? (
               <div className="flex items-center justify-center h-full" role="status" aria-label="Loading">
                 <div className="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-[#00a884] animate-spin" />

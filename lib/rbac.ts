@@ -70,6 +70,7 @@ function rankOf(user: RoleSubject): number {
  */
 export function toStoredRole(role: unknown): string {
   if (roleKey(role) === 'owner') return 'owner'
+  if (roleKey(role) === 'viewer') return 'viewer'
   const canonical = normalizeRole(role)
   return canonical === 'super_admin' ? 'superadmin' : canonical
 }
@@ -99,6 +100,11 @@ export function isOwner(user: RoleSubject): boolean {
   return roleKey(user?.role) === 'owner'
 }
 
+/** A Viewer sees everything in the workspace and cannot change anything. */
+export function isViewer(user: RoleSubject): boolean {
+  return roleKey(user?.role) === 'viewer'
+}
+
 // ── Access control checks ───────────────────────────────────────────────────
 
 /**
@@ -107,7 +113,7 @@ export function isOwner(user: RoleSubject): boolean {
  */
 export function canSeeAll(user: RoleSubject): boolean {
   if (!user) return false
-  if (isManager(user)) return true
+  if (isManager(user) || isViewer(user)) return true
   return user.see_all === true
 }
 
@@ -118,7 +124,7 @@ export function canSeeAll(user: RoleSubject): boolean {
 export function isReadOnly(user: RoleSubject): boolean {
   if (!user) return false
   if (isManager(user)) return false
-  return user.read_only === true || roleKey(user.role) === 'viewer'
+  return user.read_only === true || isViewer(user)
 }
 
 export type Permission =
@@ -140,6 +146,8 @@ export type Permission =
   | 'team.manage'
   /** Organization settings: channels, API credentials, integrations, feature switches. */
   | 'settings.manage'
+  /** The plan, payments and AI credits. */
+  | 'billing.manage'
   /** The Super Admin console: every organization and user. */
   | 'platform.manage'
 
@@ -150,6 +158,7 @@ export function can(user: RoleSubject, permission: Permission): boolean {
       return isSuperAdmin(user)
     case 'settings.manage':
     case 'team.manage':
+    case 'billing.manage':
       return isAdmin(user)
     case 'team.grant_access':
     case 'records.assign':
@@ -177,6 +186,7 @@ const PERMISSION_DENIED: Record<Permission, string> = {
   'team.grant_access': 'Only admins and managers can change teammate access.',
   'team.manage': 'Only organization admins can add, remove or change teammates.',
   'settings.manage': 'Only organization admins can change organization settings.',
+  'billing.manage': 'Only organization admins can change the plan or add AI credits.',
   'platform.manage': 'Super admin access is required.',
 }
 
@@ -224,8 +234,11 @@ export function canAccessPage(user: RoleSubject, pathname: string): boolean {
   if (isSuperAdmin(user)) return under('/dashboard/superadmin') || under('/dashboard/profile')
   if (under('/dashboard/superadmin')) return false
 
-  // Managers open Settings for the Team and Knowledge tabs; the page hides the rest from them
+  // Managers open Settings for the Knowledge tab; the page hides the rest from them
   if (under('/dashboard/settings')) return isManager(user)
+  // The team page: admins manage everyone, managers set what agents can see and do
+  if (under('/dashboard/team')) return can(user, 'team.grant_access')
+  if (under('/dashboard/billing')) return can(user, 'billing.manage')
   if (under('/dashboard/flows')) return can(user, 'automation.manage')
   if (under('/dashboard/campaigns') || under('/dashboard/contacts') || under('/dashboard/templates')) return canSeeAll(user)
   return true
@@ -272,7 +285,8 @@ export function getTeamChangeError(
   if (change.access) {
     if (!can(actor, 'team.grant_access')) return describeDenied('team.grant_access')
     if (isSelf) return 'You cannot change your own access.'
-    if (isManager(target)) return 'Admins and managers always have full access; these switches only apply to sales employees.'
+    if (isManager(target)) return 'Admins and managers always have full access; these switches only apply to agents.'
+    if (isViewer(target)) return 'Viewers always see everything and cannot make changes; these switches only apply to agents.'
   }
 
   if (change.remove || change.role !== undefined) {
@@ -280,6 +294,7 @@ export function getTeamChangeError(
     if (isSelf) return change.remove ? 'You cannot remove your own account.' : 'You cannot change your own role.'
     if (isSuperAdmin(target) && !actorIsPlatform) return 'Only a super admin can change a super admin account.'
     if (isOwner(target) && !actorIsPlatform) return 'The organization owner cannot be removed or given a different role.'
+    if (change.role !== undefined && roleKey(change.role) === 'owner') return 'There is only one owner: the person who created the workspace.'
   }
 
   if (change.role !== undefined) {
@@ -309,25 +324,69 @@ export type RoleDisplay = {
 }
 
 const ROLE_DISPLAY: Record<CanonicalRole, RoleDisplay> = {
-  super_admin:    { label: 'Super Admin',    description: 'Platform-level access across all organizations', color: 'text-violet-700 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-950/20', border: 'border-violet-200 dark:border-violet-900' },
-  org_admin:      { label: 'Org Admin',      description: 'Full org access — all chats, leads, settings and team', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/20', border: 'border-purple-200 dark:border-purple-900' },
-  org_manager:    { label: 'Org Manager',    description: 'Sees everything, assigns work, grants employee access', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-900' },
-  sales_employee: { label: 'Sales Employee', description: 'Assigned leads & chats only by default', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-200 dark:border-emerald-900' },
+  super_admin:    { label: 'Super Admin', description: 'WAMA CRM staff: every workspace', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200 dark:border-violet-900' },
+  org_admin:      { label: 'Admin',       description: 'Everything, including team, settings and billing', color: 'text-[#1D5BEA] dark:text-blue-300', bg: 'bg-[#eef3fe] dark:bg-blue-950/30', border: 'border-[#cddbfb] dark:border-blue-900' },
+  org_manager:    { label: 'Manager',     description: 'All chats, leads and campaigns; assigns work', color: 'text-teal-700 dark:text-teal-300', bg: 'bg-teal-50 dark:bg-teal-950/30', border: 'border-teal-200 dark:border-teal-900' },
+  sales_employee: { label: 'Agent',       description: 'Chats, leads and tickets assigned to them', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-900' },
 }
+
+const OWNER_DISPLAY: RoleDisplay = { label: 'Owner', description: 'Created the workspace: everything, and cannot be removed', color: 'text-[#0E1B3D] dark:text-white', bg: 'bg-[#e8ecf5] dark:bg-slate-800', border: 'border-[#cfd7e6] dark:border-slate-700' }
+const VIEWER_DISPLAY: RoleDisplay = { label: 'Viewer', description: 'Sees everything, changes nothing', color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800', border: 'border-slate-200 dark:border-slate-700' }
 
 /** Label and colours for a role badge. Legacy role names show under the role they map to. */
 export function getRoleDisplay(role: string | null | undefined): RoleDisplay {
-  const display = ROLE_DISPLAY[normalizeRole(role)]
-  if (roleKey(role) === 'owner') return { ...display, label: 'Owner', description: 'Created this organization — full access' }
-  return display
+  if (roleKey(role) === 'owner') return OWNER_DISPLAY
+  if (roleKey(role) === 'viewer') return VIEWER_DISPLAY
+  return ROLE_DISPLAY[normalizeRole(role)]
 }
 
-/** The 3 roles that org admins can assign to teammates (super_admin is internal only) */
-export const ASSIGNABLE_ROLES: { value: CanonicalRole; label: string; description: string }[] = [
-  { value: 'org_admin',      label: 'Org Admin',      description: 'Full access — all chats, leads, settings & team management' },
-  { value: 'org_manager',    label: 'Org Manager',    description: 'Sees everything, assigns work & can grant employees wider access' },
-  { value: 'sales_employee', label: 'Sales Employee', description: 'Sees only assigned leads & chats (can be expanded per-user)' },
+/** A role an admin can give a teammate. */
+export type AssignableRole = 'org_admin' | 'org_manager' | 'sales_employee' | 'viewer'
+
+/** The roles admins give teammates, most access first. Owner and Super Admin are never handed out. */
+export const ASSIGNABLE_ROLES: { value: AssignableRole; label: string; description: string }[] = [
+  { value: 'org_admin',      label: 'Admin',   description: 'Everything, including the team, settings and billing.' },
+  { value: 'org_manager',    label: 'Manager', description: 'Every chat, lead, ticket and campaign. Assigns work and sets what agents can see. No settings or billing.' },
+  { value: 'sales_employee', label: 'Agent',   description: 'Replies to the chats and works the leads and tickets assigned to them.' },
+  { value: 'viewer',         label: 'Viewer',  description: 'Sees every chat, lead and report, but cannot reply or change anything.' },
+]
+
+/** The assignable role a teammate holds now (the owner shows as Admin, the highest role that can be given). */
+export function assignableRoleOf(user: RoleSubject): AssignableRole {
+  if (isViewer(user)) return 'viewer'
+  const role = normalizeRole(user?.role)
+  return role === 'super_admin' ? 'org_admin' : role
+}
+
+/** The value stored for a role chosen in the team page. */
+export function storedTeammateRole(role: unknown): AssignableRole | null {
+  if (!isKnownRole(role)) return null
+  if (roleKey(role) === 'viewer') return 'viewer'
+  const canonical = normalizeRole(role)
+  return canonical === 'super_admin' ? null : canonical
+}
+
+/** What each role can do, for the permissions table on the team page. Worked out from `can`, so it never drifts. */
+export const ROLE_CAPABILITIES: { label: string; permission: Permission }[] = [
+  { label: 'See every chat, lead and ticket', permission: 'records.view_all' },
+  { label: 'Reply to customers and update records', permission: 'records.write' },
+  { label: 'Assign chats and leads to teammates', permission: 'records.assign' },
+  { label: 'Contacts, campaigns and templates', permission: 'campaigns.manage' },
+  { label: 'Flows, AI knowledge and store setup', permission: 'automation.manage' },
+  { label: 'Set what agents can see and do', permission: 'team.grant_access' },
+  { label: 'Invite, remove and change teammates', permission: 'team.manage' },
+  { label: 'WhatsApp, email and workspace settings', permission: 'settings.manage' },
+  { label: 'Plan, payments and AI credits', permission: 'billing.manage' },
+]
+
+/** The roles in the permissions table, with a stand-in account for each. */
+export const ROLE_TABLE: { label: string; subject: { role: string } }[] = [
+  { label: 'Owner', subject: { role: 'owner' } },
+  { label: 'Admin', subject: { role: 'org_admin' } },
+  { label: 'Manager', subject: { role: 'org_manager' } },
+  { label: 'Agent', subject: { role: 'sales_employee' } },
+  { label: 'Viewer', subject: { role: 'viewer' } },
 ]
 
 /** Role the "add teammate" forms start on: the least access, so an admin has to choose to give more. */
-export const DEFAULT_TEAMMATE_ROLE: CanonicalRole = 'sales_employee'
+export const DEFAULT_TEAMMATE_ROLE: AssignableRole = 'sales_employee'

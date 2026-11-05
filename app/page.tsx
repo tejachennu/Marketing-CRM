@@ -1552,7 +1552,7 @@ export default function LandingPage() {
                   </h3>
 
                   <p className="text-[15px] sm:text-[16px] text-[#5d6b67] leading-relaxed mb-8">
-                    Connect your direct Meta Cloud API and OpenAI keys. You pay raw provider rates (~$0.005/msg) directly to Meta with zero token markup.
+                    Connect your own WhatsApp number through Meta&apos;s Cloud API. You pay Meta&apos;s own message rates directly, with no markup from us, and AI is built in.
                   </p>
 
                   <a 

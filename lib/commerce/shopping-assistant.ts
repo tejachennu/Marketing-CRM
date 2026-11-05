@@ -9,6 +9,7 @@
  */
 
 import { formatSentProduct } from '@/lib/chat-commerce'
+import { aiFetch, type AiAccess } from '@/lib/ai-access'
 import { LANGUAGE_RULES, fuzzyWordMatch } from '@/lib/chat-language'
 import { buildMultiProductMessage, buildSingleProductMessage, buildTextMessage } from './commerce-messages'
 import { sendWhatsAppMessage } from './commerce-webhook-handler'
@@ -35,7 +36,10 @@ export interface ShoppingAssistantInput {
   contact: { id: string; first_name?: string | null }
   conversationId: string
   customerPhone: string
-  openAiKey: string
+  /** WAMA CRM AI access: the call is charged to the workspace's AI credits when billed */
+  ai?: AiAccess
+  /** A plain key (no charging); used only when `ai` is not given */
+  openAiKey?: string
   /** The customer's latest message. */
   message: string
   /** Recent chat, oldest first, as the assistant should read it. */
@@ -281,9 +285,11 @@ async function sendReply(input: ShoppingAssistantInput, message: string, product
 // ── The loop ────────────────────────────────────────────────────────────────
 
 export async function runShoppingAssistant(input: ShoppingAssistantInput): Promise<ShoppingAssistantResult> {
-  const { supabase, organization, contact, openAiKey } = input
+  const { supabase, organization, contact } = input
   if (!shoppingAssistantEnabled(organization)) return { handled: false, reason: 'disabled' }
   const fetcher = input.fetcher || fetch
+  const access: AiAccess = input.ai || { organizationId: String(organization?.id || ''), apiKey: String(input.openAiKey || ''), billed: false, allowed: true }
+  if (!access.allowed || !access.apiKey) return { handled: false, reason: 'ai_unavailable' }
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt(organization, String(contact.first_name || '').trim()) },
@@ -294,11 +300,11 @@ export async function runShoppingAssistant(input: ShoppingAssistantInput): Promi
   const seen = new Map<string, AssistantProduct>()
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const res = await fetcher('https://api.openai.com/v1/chat/completions', {
+    const res = await aiFetch(supabase, access, 'shopping_assistant', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiKey}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, tool_choice: 'required', temperature: 0.2, max_tokens: 400 }),
-    })
+    }, fetcher)
     if (!res.ok) return { handled: false, reason: `openai_${res.status}` }
     const data = await res.json()
     const reply = data.choices?.[0]?.message

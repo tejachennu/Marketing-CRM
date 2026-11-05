@@ -2,12 +2,11 @@ import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sendEmail } from '@/lib/email'
-import { getRoleDisplay, getTeamChangeError, isAdmin, isSuperAdmin, normalizeRole } from '@/lib/rbac'
+import { getRoleDisplay, getTeamChangeError, isAdmin, isSuperAdmin, storedTeammateRole } from '@/lib/rbac'
 import { isUuid } from '@/lib/record-visibility'
 import { escapeHtml } from '@/lib/utils'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const DEFAULT_TEAMMATE_LIMIT = 4
 
 // Only what the team list and the assignment pickers need
 const TEAMMATE_COLUMNS = 'id, organization_id, email, full_name, role, see_all, read_only, created_at'
@@ -43,27 +42,17 @@ async function sendPasswordLink(
   const roleLabel = escapeHtml(getRoleDisplay(teammate.role).label)
 
   const inviteHtml = `
-    <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e9edef; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="height: 48px; width: 48px; border-radius: 12px; background: linear-gradient(135deg, #00a884, #3b82f6); display: inline-block; line-height: 48px; color: white; font-weight: 900; font-size: 20px;">OM</div>
-        <h2 style="color: #111b21; font-weight: 800; font-size: 22px; margin-top: 16px; margin-bottom: 4px;">Welcome to ${orgName}!</h2>
-        <p style="color: #667781; font-size: 13px; margin: 0;">You have been invited to join the OmniCRM workspace.</p>
-      </div>
-      <div style="border-top: 1px solid #e9edef; border-bottom: 1px solid #e9edef; padding: 20px 0; margin-bottom: 24px;">
-        <p style="color: #111b21; font-size: 13px; font-weight: 700; margin-bottom: 8px;">Workspace Role:</p>
-        <p style="color: #00a884; font-size: 13px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">${roleLabel}</p>
-        <p style="color: #54656f; font-size: 12px; line-height: 1.6; margin-top: 16px; margin-bottom: 0;">
-          Before you can access your account, you need to set up a password. Please click the button below to secure your account. This link will expire in 24 hours.
-        </p>
-      </div>
-      <div style="text-align: center; margin-bottom: 24px;">
-        <a href="${setupLink}" style="background-color: #00a884; color: #ffffff; padding: 12px 28px; border-radius: 10px; font-weight: 800; font-size: 13px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(0, 168, 132, 0.15);">
-          Set Up Password
-        </a>
-      </div>
-      <p style="color: #8696a0; font-size: 10px; line-height: 1.4; margin-top: 24px; border-top: 1px solid #e9edef; padding-top: 16px;">
-        If the button doesn't work, copy and paste this link in your browser:<br/>
-        <a href="${setupLink}" style="color: #3b82f6; text-decoration: underline;">${setupLink}</a>
+    <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e3e8f2; border-radius: 16px; background: #ffffff;">
+      <div style="font-size: 18px; font-weight: 800; color: #0E1B3D; margin-bottom: 20px;">WAMA <span style="color: #1D5BEA;">CRM</span></div>
+      <h2 style="color: #0E1B3D; font-weight: 800; font-size: 22px; margin: 0 0 8px;">You're invited to ${orgName}</h2>
+      <p style="color: #4a5672; font-size: 14px; line-height: 1.6; margin: 0 0 18px;">
+        ${orgName} added you to their WAMA CRM workspace as <strong style="color: #0E1B3D;">${roleLabel}</strong>.
+        Set your password to sign in. This link works for 24 hours.
+      </p>
+      <a href="${setupLink}" style="background: #1D5BEA; color: #ffffff; padding: 12px 26px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; display: inline-block;">Set my password</a>
+      <p style="color: #8a94a8; font-size: 12px; line-height: 1.5; margin: 24px 0 0; border-top: 1px solid #eef1f6; padding-top: 14px;">
+        If the button doesn't work, open this link:<br/>
+        <a href="${setupLink}" style="color: #1D5BEA; word-break: break-all;">${setupLink}</a>
       </p>
     </div>
   `
@@ -71,9 +60,9 @@ async function sendPasswordLink(
   try {
     await sendEmail({
       to: teammate.email,
-      subject: `Set up your password for ${organizationName} on OmniCRM`,
+      subject: `You're invited to ${organizationName} on WAMA CRM`,
       html: inviteHtml,
-      text: `Welcome to ${organizationName}! Open this link to set up your password (valid for 24 hours): ${setupLink}`,
+      text: `${organizationName} added you to their WAMA CRM workspace. Set your password here (valid for 24 hours): ${setupLink}`,
     })
     return true
   } catch (err) {
@@ -87,6 +76,12 @@ async function countOrgAdmins(supabase: any, organizationId: string): Promise<nu
   const { data, error } = await supabase.from('users').select('id, role').eq('organization_id', organizationId)
   if (error) throw error
   return (data || []).filter((member: any) => isAdmin(member) && !isSuperAdmin(member)).length
+}
+
+/** The most people the workspace may have, or null for no limit. */
+async function seatLimit(supabase: any, organizationId: string): Promise<number | null> {
+  const { data } = await supabase.from('organizations').select('max_teammates').eq('id', organizationId).maybeSingle()
+  return data?.max_teammates && data.max_teammates > 0 ? data.max_teammates : null
 }
 
 async function loadTeammate(supabase: any, userId: string, organizationId: string) {
@@ -124,7 +119,18 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ success: true, teammates })
+    // Who has not set a password from their invite yet
+    const ids = (teammates || []).map((member: any) => member.id)
+    const { data: pending } = ids.length
+      ? await supabase.from('password_setup_tokens').select('user_id, expires_at').in('user_id', ids)
+      : { data: [] as any[] }
+    const pendingIds = new Set((pending || []).map((row: any) => row.user_id))
+
+    return NextResponse.json({
+      success: true,
+      teammates: (teammates || []).map((member: any) => ({ ...member, invite_pending: pendingIds.has(member.id) })),
+      seatLimit: await seatLimit(supabase, orgId),
+    })
   } catch (error: any) {
     console.error('[API] Get teammates error:', error)
     return NextResponse.json(
@@ -163,15 +169,15 @@ export async function POST(request: NextRequest) {
     if (roleError) {
       return NextResponse.json({ error: roleError }, { status: 400 })
     }
-    // Stored under its canonical name; `owner` and `superadmin` cannot be handed out from here
-    const storedRole = normalizeRole(role)
-    if (storedRole === 'super_admin') {
-      return NextResponse.json({ error: 'Super admin accounts are created from the Super Admin console.' }, { status: 400 })
+    // `owner` and `superadmin` cannot be handed out from here
+    const storedRole = storedTeammateRole(role)
+    if (!storedRole) {
+      return NextResponse.json({ error: 'Choose Admin, Manager, Agent or Viewer.' }, { status: 400 })
     }
 
     const supabase = getSupabaseAdminClient()
 
-    // 1. Fetch organization limit
+    // 1. The organization, and its seat limit (none on the plan unless WAMA CRM set one)
     const { data: orgData, error: orgError } = await supabase
       .from('organizations')
       .select('name, max_teammates')
@@ -180,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     if (orgError) throw orgError
 
-    const limit = orgData?.max_teammates && orgData.max_teammates > 0 ? orgData.max_teammates : DEFAULT_TEAMMATE_LIMIT
+    const limit = orgData?.max_teammates && orgData.max_teammates > 0 ? orgData.max_teammates : null
 
     // 2. Fetch current teammate count
     const { count, error: countError } = await supabase
@@ -190,9 +196,18 @@ export async function POST(request: NextRequest) {
 
     if (countError) throw countError
 
-    if (count !== null && count >= limit) {
+    if (limit !== null && count !== null && count >= limit) {
       return NextResponse.json(
-        { error: `Teammate limit reached. Your organization is limited to ${limit} teammates.` },
+        { error: `This workspace can have up to ${limit} people. Remove someone first, or contact support for more.` },
+        { status: 400 }
+      )
+    }
+
+    // Already a member here or elsewhere: say so plainly instead of the auth service's wording
+    const { data: existingProfile } = await supabase.from('users').select('id, organization_id').eq('email', email).maybeSingle()
+    if (existingProfile) {
+      return NextResponse.json(
+        { error: existingProfile.organization_id === organizationId ? 'This person is already in your team.' : 'This email already has a WAMA CRM account in another workspace.' },
         { status: 400 }
       )
     }
@@ -369,12 +384,12 @@ export async function PATCH(request: NextRequest) {
     if (seeAll !== undefined) updateFields.see_all = seeAll
     if (readOnly !== undefined) updateFields.read_only = readOnly
     if (changesRole) {
-      const nextRole = normalizeRole(role)
-      if (nextRole === 'super_admin') {
-        return NextResponse.json({ error: 'Super admin accounts are managed from the Super Admin console.' }, { status: 400 })
+      const nextRole = storedTeammateRole(role)
+      if (!nextRole) {
+        return NextResponse.json({ error: 'Choose Admin, Manager, Agent or Viewer.' }, { status: 400 })
       }
       updateFields.role = nextRole
-      // The switches only mean something for a sales employee; clear them so a later demotion starts clean
+      // The switches only mean something for an agent; clear them so a later change back starts clean
       if (nextRole !== 'sales_employee') {
         updateFields.see_all = false
         updateFields.read_only = false

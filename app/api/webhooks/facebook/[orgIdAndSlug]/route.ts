@@ -9,6 +9,7 @@ import { executeFlowRuntime, saveUnownedSubmission } from '@/lib/flows/flow-exec
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 import { classifyGreeting } from '@/lib/greeting-classifier'
 import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
@@ -363,7 +364,9 @@ async function processEvent(
     const whatsappApiToken = orgData.whatsapp_api_token || ''
     const whatsappGraphApiVersion = orgData.whatsapp_graph_api_version || process.env.WHATSAPP_GRAPH_API_VERSION || 'v25.0'
     const whatsappPhoneNumberId = orgData.whatsapp_phone_number_id || ''
-    const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
+    // WAMA CRM AI (charged to the AI credits) or, for exempt workspaces, their own key; paused when credits run out
+    const ai = orgData.enable_ai !== false ? await getAiAccess(supabase, orgId, orgData) : null
+    const openAiKey = ai?.allowed ? ai.apiKey : ''
 
     // Parse message type and content
     let messageBody = ''
@@ -840,7 +843,7 @@ async function processEvent(
             contact,
             conversationId: conversation.id,
             customerPhone: phoneNumber,
-            openAiKey,
+            ai: ai!,
             message: messageBody,
             history,
           })
@@ -892,12 +895,9 @@ Latest customer message: ${messageBody}
 
 Rewritten standalone query:`
 
-            const condensationRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            const condensationRes = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/chat/completions', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openAiKey}`
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: condensationPrompt }],
@@ -929,12 +929,9 @@ Rewritten standalone query:`
         console.log(`[Facebook Webhook Chatbot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
 
         // 2. Generate query embedding (using expanded vector query)
-        const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+        const embedRes = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/embeddings', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiKey}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'text-embedding-3-small',
             input: vectorQuery.substring(0, 8000)
@@ -1062,12 +1059,9 @@ ${LANGUAGE_RULES}
 - The fixed "support team will reply" notice is also given in the customer's language; set "isRiseTicket" to true for it as before.`
 
             // 6. Call GPT-4o-mini with conversation history
-            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            const gptResponse = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/chat/completions', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openAiKey}`
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 model: 'gpt-4o-mini',
                 messages: [

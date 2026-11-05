@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { WamaLogo } from '@/components/brand/wama-logo'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -98,13 +100,8 @@ function SetPasswordContent() {
       <div className="w-full max-w-[440px] relative z-10">
         
         {/* Brand Header */}
-        <div className="flex items-center justify-center gap-3 mb-8 select-none">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#00a884] to-[#008069] flex items-center justify-center shadow-lg shadow-[#00a884]/10 dark:shadow-[#00a884]/20">
-            <Sparkles size={20} className="text-white" />
-          </div>
-          <span className="text-slate-900 dark:text-white text-2xl font-black tracking-wider">
-            OMNI<span className="text-[#00a884] font-extrabold">CRM</span>
-          </span>
+        <div className="flex justify-center mb-8">
+          <Link href="/" aria-label="WAMA CRM home"><WamaLogo size={38} /></Link>
         </div>
 
         {/* Card */}

@@ -58,6 +58,8 @@ export default function TemplatesPage() {
   const [viewer, setViewer] = useState<RoleSubject>(null)
   const [templates, setTemplates] = useState<MetaTemplate[] | null>(null)
   const [loadError, setLoadError] = useState('')
+  // WhatsApp is not on Meta's Cloud API here (not connected yet, or a Twilio number)
+  const [notConnected, setNotConnected] = useState<{ kind: string; message: string } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncedAt, setSyncedAt] = useState<string | null>(null)
   const [flows, setFlows] = useState<Array<{ id: string; name: string }>>([])
@@ -97,6 +99,7 @@ export default function TemplatesPage() {
       const res = await fetch(`/api/whatsapp-templates?organizationId=${organizationId}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Templates could not be loaded from Meta.')
+      setNotConnected(data.notConnected ? { kind: data.notConnected, message: data.error } : null)
       const list: MetaTemplate[] = data.templates || []
       // Report what changed since the last sync, like WhatsApp Manager's notifications
       const previous = lastStatuses.current
@@ -157,7 +160,7 @@ export default function TemplatesPage() {
     (!category || template.category === category) &&
     (!language || template.language === language) &&
     (!status || template.status === status)
-  ).sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language)), [templates, query, category, language, status])
+  ).sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.language).localeCompare(String(b.language))), [templates, query, category, language, status])
 
   const problems = useMemo(() => validateDraft(draft), [draft])
   const editing = view.kind === 'edit' ? view.template : undefined
@@ -451,6 +454,13 @@ export default function TemplatesPage() {
           {canManage && <button type="button" onClick={startCreate} className={primary}><Plus size={16} /> Create template</button>}
         </div>
       </div>
+
+      {notConnected && (
+        <div className="mb-4 rounded-xl border border-[#cfe0fb] bg-[#f5f9ff] dark:bg-blue-950/20 dark:border-blue-900 px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <span className="flex items-start gap-2"><AlertCircle size={17} className="shrink-0 mt-0.5 text-[#0064e0]" /> {notConnected.message}</span>
+          {notConnected.kind === 'meta' && <a href="/dashboard/settings" className={`${primary} shrink-0`}>Connect WhatsApp</a>}
+        </div>
+      )}
 
       {loadError && (
         <div role="alert" className="mb-4 rounded-xl border border-[#f2b8c0] bg-[#fde8ea] dark:bg-rose-950/30 dark:border-rose-900 px-4 py-3 text-[13.5px] text-[#c11231] dark:text-rose-200 flex items-start gap-2">

@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         <h2 style="color: #111b21; font-weight: 800; font-size: 20px; margin-bottom: 8px;">Verification Code</h2>
         <p style="color: #54656f; font-size: 13px; line-height: 1.5; margin-bottom: 24px;">
           Hi there, <br/>
-          Use the following verification code to complete your login to <strong>OmniCRM</strong>. This code is valid for 5 minutes.
+          Use the following verification code to complete your login to <strong>WAMA CRM</strong>. This code is valid for 5 minutes.
         </p>
         <div style="background-color: #f0f2f5; padding: 16px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
           <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #00a884; font-family: monospace;">${otpCode}</span>
@@ -97,9 +97,9 @@ export async function POST(request: NextRequest) {
     
     await sendEmail({
       to: email.trim().toLowerCase(),
-      subject: `🔑 ${otpCode} is your OmniCRM verification code`,
+      subject: `🔑 ${otpCode} is your WAMA CRM verification code`,
       html: emailHtml,
-      text: `Your OmniCRM verification code is: ${otpCode}. It expires in 5 minutes.`
+      text: `Your WAMA CRM verification code is: ${otpCode}. It expires in 5 minutes.`
     })
     */
 

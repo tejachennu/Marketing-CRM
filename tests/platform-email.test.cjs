@@ -59,7 +59,7 @@ function reset(env = {}) {
 
 test('Platform email: the environment mailbox, never mixing the old and new variable names', () => {
   const old = { HOSTINGER_SMTP_HOST: 'smtp.hostinger.com', HOSTINGER_SMTP_PORT: '465', HOSTINGER_SMTP_SECURE: 'true', HOSTINGER_SMTP_USER: 'noreply@consularhelpdesk.com', HOSTINGER_SMTP_PASS: 'old-pass' }
-  assert.deepEqual(platform.settingsFromEnvironment(old), { host: 'smtp.hostinger.com', port: 465, secure: true, user: 'noreply@consularhelpdesk.com', password: 'old-pass', fromName: 'OmniCRM Security' })
+  assert.deepEqual(platform.settingsFromEnvironment(old), { host: 'smtp.hostinger.com', port: 465, secure: true, user: 'noreply@consularhelpdesk.com', password: 'old-pass', fromName: 'WAMA CRM Security' })
   // Any PLATFORM_SMTP_* switches to that set entirely: no old password sent with the new address
   assert.equal(platform.settingsFromEnvironment({ ...old, PLATFORM_SMTP_USER: 'info@magnetora.in' }), null)
   const fresh = platform.settingsFromEnvironment({ ...old, PLATFORM_SMTP_HOST: 'smtp.office365.com', PLATFORM_SMTP_PORT: '587', PLATFORM_SMTP_USER: 'info@magnetora.in', PLATFORM_SMTP_PASS: 'new-pass', PLATFORM_EMAIL_FROM_NAME: 'WAMACRM' })

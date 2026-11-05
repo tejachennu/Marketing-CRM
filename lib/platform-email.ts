@@ -19,7 +19,7 @@ export interface PlatformEmailSettings {
 export type PlatformEmailSource = 'admin_panel' | 'environment' | 'none'
 
 /** The sender name the platform's emails had before it could be set. */
-export const DEFAULT_FROM_NAME = 'OmniCRM Security'
+export const DEFAULT_FROM_NAME = 'WAMA CRM Security'
 
 export const PLATFORM_EMAIL_TABLE = 'platform_email_settings'
 export const PLATFORM_EMAIL_MIGRATION = 'supabase/migrations/20261016_platform_email_settings.sql'

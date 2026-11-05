@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { verifyConversationAccess } from '@/lib/record-visibility'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
+import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,14 +16,11 @@ function getSupabaseClient() {
 }
 
 // Generate embedding for a query using OpenAI text-embedding-3-small
-async function generateQueryEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+async function generateQueryEmbedding(text: string, db: any, ai: AiAccess): Promise<number[] | null> {
   try {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const res = await aiFetch(db, ai, 'copilot', 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: text.substring(0, 8000)
@@ -43,7 +41,7 @@ async function generateQueryEmbedding(text: string, apiKey: string): Promise<num
 }
 
 // Rewrites follow-up messages using chat history to restore context for semantic search
-async function rephraseQuery(chatHistory: any[], apiKey: string): Promise<string> {
+async function rephraseQuery(chatHistory: any[], db: any, ai: AiAccess): Promise<string> {
   const lastMsg = chatHistory[chatHistory.length - 1]
   if (!lastMsg || !lastMsg.body) return ''
 
@@ -80,12 +78,9 @@ INSTRUCTIONS:
 
 Standalone search query:`
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await aiFetch(db, ai, 'copilot', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
@@ -141,8 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
-    // Load custom credentials per organization
-    let openAiKey = process.env.OPENAI_API_KEY || ''
+    // Load organization settings
     let orgData: any = null
     if (conv.organization_id) {
       try {
@@ -152,16 +146,14 @@ export async function POST(request: NextRequest) {
           .eq('id', conv.organization_id)
           .single()
         orgData = data
-        if (orgData && orgData.openai_api_key) {
-          openAiKey = orgData.openai_api_key
-        }
       } catch (dbErr) {
-        console.error('[Copilot] Error loading organization OpenAI key:', dbErr)
+        console.error('[Copilot] Error loading organization settings:', dbErr)
       }
     }
 
-    if (!openAiKey) {
-      return NextResponse.json({ suggestions: [], error: 'OpenAI API key is not configured' }, { status: 200 })
+    const ai = await getAiAccess(supabase, conv.organization_id, orgData)
+    if (!ai.allowed) {
+      return NextResponse.json({ suggestions: [], error: ai.reason, aiPaused: true }, { status: 200 })
     }
 
     // 2. Fetch last 15 messages
@@ -189,7 +181,7 @@ export async function POST(request: NextRequest) {
 
     if (lastMsg && lastMsg.sender_type === 'contact' && lastMsg.body) {
       // Rephrase follow-up query using history to preserve context
-      queryText = await rephraseQuery(chatHistory, openAiKey)
+      queryText = await rephraseQuery(chatHistory, supabase, ai)
 
       // Expand query with synonym dictionary for better matching
       const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(queryText, synonyms)
@@ -199,7 +191,7 @@ export async function POST(request: NextRequest) {
       let keywordFaqs: any[] = []
 
       // Generate embedding for the expanded vector query
-      const queryEmbedding = await generateQueryEmbedding(vectorQuery, openAiKey)
+      const queryEmbedding = await generateQueryEmbedding(vectorQuery, supabase, ai)
 
       if (queryEmbedding) {
         // Use pgvector similarity search via the match_faqs RPC function
@@ -332,12 +324,9 @@ RESPONSE FORMAT (strict JSON):
     const userPrompt = `Here is the conversation history:\n${formattedHistory}\n\nGenerate 3 structured suggestion objects in the JSON format specified.`
 
     // 5. Call OpenAI API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await aiFetch(supabase, ai, 'copilot', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
@@ -524,9 +513,9 @@ async function handlePlayground(request: NextRequest, body: any) {
       .eq('id', orgId)
       .maybeSingle()
 
-    const openAiKey = orgData?.openai_api_key || process.env.OPENAI_API_KEY
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'OpenAI API Key is not configured.' }, { status: 400 })
+    const ai = await getAiAccess(supabase, orgId, orgData)
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     // Step 0: Expand query with synonym dictionary
@@ -537,12 +526,9 @@ async function handlePlayground(request: NextRequest, body: any) {
     // Step 1: Generate Embedding (using expanded vector query)
     let embedding: number[] | null = null
     try {
-      const embedRes = await fetch('https://api.openai.com/v1/embeddings', {
+      const embedRes = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/embeddings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openAiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'text-embedding-3-small',
           input: vectorQuery.substring(0, 8000)
@@ -678,12 +664,9 @@ You MUST respond in JSON format. The JSON object must contain two keys:
     let callError: string | null = null
 
     try {
-      const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      const gptResponse = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openAiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [

@@ -4,6 +4,7 @@ import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 
 import { useEffect, useState, useRef } from 'react'
+import Link from 'next/link'
 import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
@@ -13,7 +14,7 @@ import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff
 import type { LucideIcon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-type SettingsTab = 'general' | 'knowledge' | 'teammates' | 'appearance'
+type SettingsTab = 'general' | 'knowledge' | 'appearance'
 
 // ── Shared styles: defined once so every section looks and focuses the same ──
 const cardClass =
@@ -148,7 +149,6 @@ export default function SettingsPage() {
   const [twilioWhatsappNumber, setTwilioWhatsappNumber] = useState('')
   const [sendgridApiKey, setSendgridApiKey] = useState('')
   const [sendgridFromEmail, setSendgridFromEmail] = useState('')
-  const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [chatbotBasePrompt, setChatbotBasePrompt] = useState('')
   const [emailProvider, setEmailProvider] = useState<'sendgrid' | 'smtp'>('sendgrid')
   const [smtpHost, setSmtpHost] = useState('')
@@ -164,7 +164,6 @@ export default function SettingsPage() {
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [showTwilioToken, setShowTwilioToken] = useState(false)
   const [showSgKey, setShowSgKey] = useState(false)
-  const [showOpenaiKey, setShowOpenaiKey] = useState(false)
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
   const [currency, setCurrency] = useState('USD')
@@ -210,17 +209,8 @@ export default function SettingsPage() {
     setCurrentPage(1)
   }, [ragSearchQuery])
 
-  // Teammates management state
+  // The team, for choosing who gets ticket alert emails (the team itself is managed on the Team page)
   const [teammates, setTeammates] = useState<any[]>([])
-  const [loadingTeammates, setLoadingTeammates] = useState(false)
-  const [addingTeammate, setAddingTeammate] = useState(false)
-  const [teammateForm, setTeammateForm] = useState({
-    email: '',
-    fullName: '',
-    role: DEFAULT_TEAMMATE_ROLE as string
-  })
-  const [teammateError, setTeammateError] = useState('')
-  const [teammateSuccess, setTeammateSuccess] = useState('')
 
   // Service Synonyms State
   type SynonymGroup = { canonical: string; aliases: string[] }
@@ -353,186 +343,18 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user?.organization_id) {
-      loadTeammates(user.organization_id)
+      if (activeTab === 'general' && teammates.length === 0) {
+        fetch(`/api/teammates?organizationId=${user.organization_id}`)
+          .then((res) => res.json())
+          .then((data) => data.success && setTeammates(data.teammates || []))
+          .catch(() => {})
+      }
       if (activeTab === 'knowledge') {
         loadArticles(user.organization_id)
         loadSynonyms(user.organization_id)
       }
     }
   }, [user, activeTab])
-
-  async function loadTeammates(orgId: string) {
-    setLoadingTeammates(true)
-    try {
-      const res = await fetch(`/api/teammates?organizationId=${orgId}`)
-      const data = await res.json()
-      if (data.success) {
-        setTeammates(data.teammates || [])
-      } else {
-        showNotification('error', data.error || 'Failed to load teammates', 'Error')
-      }
-    } catch (err: any) {
-      console.error('Failed to load teammates:', err)
-      showNotification('error', err.message || 'Failed to load teammates', 'Error')
-    } finally {
-      setLoadingTeammates(false)
-    }
-  }
-
-  async function handleAddTeammate(e: React.FormEvent) {
-    e.preventDefault()
-    if (!user?.organization_id) return
-
-    const limit = organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4
-    if (teammates.length >= limit) {
-      showNotification('error', `Teammate limit reached. Your organization is limited to ${limit} teammates.`, 'Limit Reached')
-      return
-    }
-
-    setAddingTeammate(true)
-    setTeammateError('')
-    setTeammateSuccess('')
-    try {
-      const res = await fetch('/api/teammates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: teammateForm.email.trim(),
-          fullName: teammateForm.fullName.trim(),
-          role: teammateForm.role,
-          organizationId: user.organization_id
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to add teammate')
-      }
-      setTeammateForm({
-        email: '',
-        fullName: '',
-        role: DEFAULT_TEAMMATE_ROLE
-      })
-      // The account exists either way; say so honestly when the email did not go out
-      if (data.inviteSent === false) {
-        setTeammateSuccess('Teammate added, but the invitation email could not be sent. Use "Send password link" next to their name to try again.')
-        showNotification('error', 'Teammate added, but the invitation email could not be sent.', 'Email Not Sent')
-      } else {
-        setTeammateSuccess('Teammate successfully added and invitation email sent!')
-        showNotification('success', 'Teammate added and invitation email sent!', 'Teammate Added')
-      }
-      await loadTeammates(user.organization_id)
-    } catch (err: any) {
-      console.error('Add teammate error:', err)
-      setTeammateError(err.message || 'Failed to add teammate')
-      showNotification('error', err.message || 'Failed to add teammate', 'Add Failed')
-    } finally {
-      setAddingTeammate(false)
-    }
-  }
-
-  async function handleDeleteTeammate(teammateId: string) {
-    if (!user?.organization_id) return
-    if (!(await confirm({ title: 'Remove this teammate?', message: 'They will no longer be able to log in.', confirmLabel: 'Remove', destructive: true }))) return
-
-    try {
-      const res = await fetch(`/api/teammates?userId=${teammateId}&organizationId=${user.organization_id}`, {
-        method: 'DELETE'
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete teammate')
-      }
-      showNotification('success', 'Teammate removed successfully.', 'Teammate Removed')
-      await loadTeammates(user.organization_id)
-    } catch (err: any) {
-      console.error('Delete teammate error:', err)
-      showNotification('error', err.message || 'Failed to remove teammate.', 'Remove Failed')
-    }
-  }
-
-  async function handleToggleTeammatePermission(teammateId: string, field: 'see_all' | 'read_only', currentVal: boolean) {
-    if (!user?.organization_id) return
-    const newVal = !currentVal
-    try {
-      const res = await fetch('/api/teammates', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: teammateId,
-          organizationId: user.organization_id,
-          [field === 'see_all' ? 'seeAll' : 'readOnly']: newVal
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to update teammate permission')
-      }
-
-      setTeammates(prev => prev.map(member =>
-        member.id === teammateId
-          ? { ...member, [field]: newVal }
-          : member
-      ))
-
-      showNotification('success', 'Teammate permissions updated successfully.', 'Permissions Updated')
-    } catch (err: any) {
-      console.error('Update teammate permission error:', err)
-      showNotification('error', err.message || 'Failed to update teammate permission.', 'Update Failed')
-    }
-  }
-
-  async function handleChangeTeammateRole(member: any, nextRole: string) {
-    if (!user?.organization_id || normalizeRole(member.role) === nextRole) return
-    const option = ASSIGNABLE_ROLES.find(r => r.value === nextRole)
-    const name = member.full_name || member.email
-    if (!(await confirm({
-      title: `Change ${name}'s role to ${option?.label || nextRole}?`,
-      message: option?.description || '',
-      confirmLabel: 'Change role',
-    }))) return
-
-    try {
-      const res = await fetch('/api/teammates', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: member.id, organizationId: user.organization_id, role: nextRole })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to change role')
-      }
-      setTeammates(prev => prev.map(m => (m.id === member.id ? { ...m, ...data.teammate } : m)))
-      showNotification('success', `${name} is now ${option?.label || nextRole}.`, 'Role Updated')
-    } catch (err: any) {
-      console.error('Change teammate role error:', err)
-      showNotification('error', err.message || 'Failed to change role.', 'Update Failed')
-    }
-  }
-
-  async function handleSendPasswordLink(member: any) {
-    if (!user?.organization_id) return
-    if (!(await confirm({
-      title: 'Send a password link?',
-      message: `${member.email} will get an email with a link to set a new password. The link works for 24 hours.`,
-      confirmLabel: 'Send link',
-    }))) return
-
-    try {
-      const res = await fetch('/api/teammates', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: member.id, organizationId: user.organization_id, resendInvite: true })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'The email could not be sent')
-      }
-      showNotification('success', `Password link sent to ${member.email}.`, 'Email Sent')
-    } catch (err: any) {
-      console.error('Send password link error:', err)
-      showNotification('error', err.message || 'The email could not be sent.', 'Email Not Sent')
-    }
-  }
 
   /** Save organization settings through the API, which checks the caller's role for every field. */
   async function saveOrganization(updates: Record<string, any>) {
@@ -756,7 +578,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (organization && organization.enable_ai === false && activeTab === 'knowledge') {
-      setActiveTab(canManageSettings ? 'general' : 'teammates')
+      setActiveTab(canManageSettings ? 'general' : 'appearance')
     }
   }, [organization, activeTab])
 
@@ -793,9 +615,9 @@ export default function SettingsPage() {
 
       setUser(userData)
 
-      // Managers come here for the Team and Knowledge tabs; General (channels and API keys) is for admins
+      // Managers come here for the Knowledge tab; General (channels and API keys) is for admins
       const loadsCredentials = can(userData, 'settings.manage')
-      if (!loadsCredentials) setActiveTab('teammates')
+      if (!loadsCredentials) setActiveTab('knowledge')
 
       // Get organization. The stored credentials are only returned to someone who may manage them.
       const orgRes = await fetch(`/api/organization?organizationId=${userData.organization_id}${loadsCredentials ? '&full=1' : ''}`)
@@ -808,7 +630,6 @@ export default function SettingsPage() {
         setTwilioWhatsappNumber(orgData.twilio_whatsapp_number || '')
         setSendgridApiKey(orgData.sendgrid_api_key || '')
         setSendgridFromEmail(orgData.sendgrid_from_email || '')
-        setOpenaiApiKey(orgData.openai_api_key || '')
         setChatbotBasePrompt(orgData.chatbot_base_prompt || '')
         setEmailProvider(orgData.email_provider || 'sendgrid')
         setSmtpHost(orgData.smtp_host || '')
@@ -842,7 +663,6 @@ export default function SettingsPage() {
           twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
           sendgrid_api_key: sendgridApiKey.trim() || null,
           sendgrid_from_email: sendgridFromEmail.trim() || null,
-          openai_api_key: openaiApiKey.trim() || null,
           chatbot_base_prompt: chatbotBasePrompt.trim() || null,
           email_provider: emailProvider,
           smtp_host: smtpHost.trim() || null,
@@ -867,7 +687,6 @@ export default function SettingsPage() {
         twilio_whatsapp_number: twilioWhatsappNumber.trim() || null,
         sendgrid_api_key: sendgridApiKey.trim() || null,
         sendgrid_from_email: sendgridFromEmail.trim() || null,
-        openai_api_key: openaiApiKey.trim() || null,
         chatbot_base_prompt: chatbotBasePrompt.trim() || null,
         email_provider: emailProvider,
         smtp_host: smtpHost.trim() || null,
@@ -1062,16 +881,9 @@ export default function SettingsPage() {
     ...(organization?.enable_ai !== false && canManageKnowledge
       ? [{ id: 'knowledge' as const, label: 'Knowledge Base', icon: BookOpen }]
       : []),
-    { id: 'teammates', label: 'Teammates', icon: Users },
     { id: 'appearance', label: 'Appearance', icon: Palette },
   ]
 
-  // Team rules, shared with the server so a control is only offered when the request would be accepted
-  const orgAdminCount = teammates.filter(member => isAdmin(member) && !isSuperAdmin(member)).length
-  const accessChangeError = (member: any) => getTeamChangeError(user, member, { access: true }, { adminCount: orgAdminCount })
-  const canRemoveTeammate = (member: any) => getTeamChangeError(user, member, { remove: true }, { adminCount: orgAdminCount }) === null
-  const canChangeRoleOf = (member: any) =>
-    canManageTeamMembers && member.id !== user?.id && !isOwner(member) && !isSuperAdmin(member)
 
   return (
     <div className="p-4 pb-20 md:pb-6 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-5 relative">
@@ -1279,7 +1091,7 @@ export default function SettingsPage() {
 
                   {teammates.length === 0 ? (
                     <div className="text-xs text-[#667781] dark:text-[#8696a0] py-2 italic font-semibold">
-                      No active teammates found. Please add team members in the "Teammates" tab first.
+                      No teammates yet. Invite people from the Team page first.
                     </div>
                   ) : (
                     <div className="max-h-48 overflow-y-auto border border-[#e9edef] dark:border-[#2a3942] rounded-xl p-3 bg-[#f8f9fa] dark:bg-[#0b0f19] space-y-3">
@@ -1865,25 +1677,14 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className={labelClass}>
-                        AI API Key
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showOpenaiKey ? 'text' : 'password'}
-                          value={openaiApiKey}
-                          onChange={(e) => setOpenaiApiKey(e.target.value)}
-                          placeholder="AI Model API Key"
-                          className={secretInputClass}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8696a0] hover:text-[#111b21] dark:hover:text-[#e9edef] cursor-pointer"
-                        >
-                          {showOpenaiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
+                    <div className="flex items-start gap-3 rounded-xl border border-[#1D5BEA]/20 bg-[#1D5BEA]/5 p-3">
+                      <Sparkles size={16} className="mt-0.5 shrink-0 text-[#1D5BEA]" />
+                      <div className="text-[11px] leading-relaxed text-[#3b4a54] dark:text-[#aebac1]">
+                        <p className="font-bold text-[#111b21] dark:text-white">AI is built in. No key needed.</p>
+                        <p>
+                          AI replies, suggestions and scoring use WAMA CRM&apos;s AI. Every workspace starts with free AI credit; see how much is left and add more in{' '}
+                          <Link href="/dashboard/billing" className="font-bold text-[#1D5BEA] hover:underline">Billing</Link>.
+                        </p>
                       </div>
                     </div>
 
@@ -2320,377 +2121,6 @@ export default function SettingsPage() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'teammates' && (
-        <div className="space-y-5 w-full max-w-6xl mx-auto">
-          {/* Teammates Usage & Limits Card */}
-          <div className={cardClass}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="h-9 w-9 shrink-0 rounded-xl bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] flex items-center justify-center">
-                  <Users size={18} />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-[15px] font-bold leading-tight text-[#111b21] dark:text-white">Teammate Account Slots</h2>
-                  <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 leading-relaxed">
-                    {canManageTeamMembers
-                      ? "Manage your organization's members, roles, and system logins."
-                      : 'As a manager you can widen or limit what sales employees see. Adding, removing and changing roles is done by an organization admin.'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col sm:items-end">
-                <span className="text-xs font-bold text-[#111b21] dark:text-white">
-                  {teammates.length} / {organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4} Slots Filled
-                </span>
-                <div className="w-40 bg-[#f0f2f5] dark:bg-[#1f2c34] h-2 rounded-full mt-1.5 overflow-hidden">
-                  <div
-                    className="bg-[#00a884] h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: `${Math.min(
-                        (teammates.length / (organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4)) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Role Guide */}
-          <div className="bg-gradient-to-r from-[#f0fdf9] to-[#f0f2f5] dark:from-[#0d2318]/30 dark:to-[#1f2c34]/40 rounded-lg border border-[#e9edef] dark:border-[#202d36] p-4 shadow-sm">
-            <h3 className="text-[10px] font-black uppercase tracking-wider text-[#00a884] mb-3 flex items-center gap-1.5">
-              <Shield size={12} />
-              Role Permissions Guide
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {ASSIGNABLE_ROLES.map(r => {
-                const rd = getRoleDisplay(r.value)
-                return (
-                  <div key={r.value} className="flex items-start gap-2.5">
-                    <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border flex-shrink-0 ${rd.bg} ${rd.color} ${rd.border}`}>
-                      {rd.label}
-                    </span>
-                    <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold leading-tight">{r.description}</p>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="text-[10px] text-[#8696a0] mt-3 border-t border-[#e9edef] dark:border-[#2a3942] pt-2.5">
-              💡 <strong className="text-[#667781]">Full Access</strong> toggle grants a Sales Employee visibility into all org chats & leads. &nbsp;
-              <strong className="text-[#667781]">Read Only</strong> toggle allows viewing but blocks sending/editing.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Add Teammate Form */}
-            {canManageTeamMembers && (
-            <div className={`lg:col-span-1 ${cardClass} h-fit`}>
-              <h3 className="text-xs font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0] mb-4">
-                Add New Teammate
-              </h3>
-              <form onSubmit={handleAddTeammate} className="space-y-4">
-                {teammateError && (
-                  <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-lg text-rose-600 dark:text-rose-400 text-[10px] font-semibold">
-                    {teammateError}
-                  </div>
-                )}
-                {teammateSuccess && (
-                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
-                    {teammateSuccess}
-                  </div>
-                )}
-                <div>
-                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={teammateForm.fullName}
-                    onChange={(e) => setTeammateForm({ ...teammateForm, fullName: e.target.value })}
-                    placeholder="e.g. Jane Doe"
-                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={teammateForm.email}
-                    onChange={(e) => setTeammateForm({ ...teammateForm, email: e.target.value })}
-                    placeholder="jane@company.com"
-                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1">
-                    Workspace Role
-                  </label>
-                  <select
-                    value={teammateForm.role}
-                    onChange={(e) => setTeammateForm({ ...teammateForm, role: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
-                  >
-                    {ASSIGNABLE_ROLES.map(r => (
-                      <option key={r.value} value={r.value}>{r.label} — {r.description}</option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-[#8696a0] mt-1">
-                    {ASSIGNABLE_ROLES.find(r => r.value === teammateForm.role)?.description}
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={addingTeammate || teammates.length >= (organization?.max_teammates && organization.max_teammates > 0 ? organization.max_teammates : 4)}
-                  className="w-full bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {addingTeammate ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                  <span>Create Account</span>
-                </button>
-              </form>
-            </div>
-            )}
-
-            {/* Teammates List */}
-            <div className={`${canManageTeamMembers ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white dark:bg-[#111b21] rounded-2xl border border-[#e9edef] dark:border-[#202d36] shadow-sm overflow-hidden flex flex-col justify-start`}>
-              <div className="px-6 py-4 border-b border-[#e9edef] dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#1f2c34] flex items-center justify-between">
-                <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Active Teammates</h3>
-                <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] bg-[#f0f2f5] dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] px-2.5 py-0.5 rounded-full">
-                  {teammates.length} users
-                </span>
-              </div>
-
-              {loadingTeammates ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 size={24} className="animate-spin text-[#00a884]" />
-                </div>
-              ) : teammates.length === 0 ? (
-                <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
-                  <Users size={36} className="text-[#e9edef] dark:text-[#202d36] mx-auto mb-3" />
-                  <p className="text-xs font-bold">No teammates found</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  {/* Table view on larger screens, card list on small screens */}
-                  <div className="hidden sm:block">
-                    <table className="w-full min-w-[850px] text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-[#667781] dark:text-[#8696a0]">
-                          <th className="px-4 py-3">Name</th>
-                          <th className="px-4 py-3">Email</th>
-                          <th className="px-4 py-3">Role</th>
-                          <th className="px-4 py-3 text-center">See All</th>
-                          <th className="px-4 py-3 text-center">Read Only</th>
-                          <th className="px-4 py-3">Joined Date</th>
-                          <th className="px-4 py-3 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {teammates.map((member) => (
-                          <tr
-                            key={member.id}
-                            className="border-b border-[#e9edef] dark:border-[#202d36] last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors"
-                          >
-                            <td className="px-4 py-3.5 font-bold text-[#111b21] dark:text-white">
-                              {member.full_name || 'N/A'}
-                            </td>
-                            <td className="px-4 py-3.5 text-[#667781] dark:text-[#8696a0] font-semibold">
-                              {member.email}
-                            </td>
-                            <td className="px-4 py-3.5">
-                              {canChangeRoleOf(member) ? (
-                                <select
-                                  aria-label={`Role for ${member.full_name || member.email}`}
-                                  value={normalizeRole(member.role)}
-                                  onChange={(e) => handleChangeTeammateRole(member, e.target.value)}
-                                  className="px-2 py-1 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-[11px] font-bold text-[#111b21] dark:text-white cursor-pointer"
-                                >
-                                  {ASSIGNABLE_ROLES.map(r => (
-                                    <option key={r.value} value={r.value}>{r.label}</option>
-                                  ))}
-                                </select>
-                              ) : (() => {
-                                const rd = getRoleDisplay(member.role)
-                                return (
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
-                                    {rd.label}{member.id === user?.id ? ' (you)' : ''}
-                                  </span>
-                                )
-                              })()}
-                            </td>
-                            <td className="px-4 py-3.5 text-center">
-                              {/* Full Access toggle: see_all ON + read_only OFF */}
-                              <div className="flex flex-col items-center gap-0.5">
-                                <button
-                                  onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
-                                  disabled={accessChangeError(member) !== null}
-                                  title={accessChangeError(member) || (member.see_all ? 'Revoke access' : 'Grant full access')}
-                                  aria-label={`See all chats and leads: ${isManager(member) || member.see_all ? 'on' : 'off'}`}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager(member) ? 'bg-[#00a884]' : 'bg-slate-200 dark:bg-slate-700'
-                                    }`}
-                                >
-                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager(member) ? 'translate-x-3' : 'translate-x-0'
-                                    }`} />
-                                </button>
-                                <span className="text-[10px] text-[#8696a0] font-semibold">{isManager(member) ? 'always' : member.see_all ? 'on' : 'off'}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 text-center">
-                              {/* Read-only toggle: restricts editing even if see_all is on */}
-                              <div className="flex flex-col items-center gap-0.5">
-                                <button
-                                  onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
-                                  disabled={accessChangeError(member) !== null}
-                                  title={accessChangeError(member) || (member.read_only ? 'Remove read-only' : 'Set read-only')}
-                                  aria-label={`Read only: ${member.read_only && !isManager(member) ? 'on' : 'off'}`}
-                                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager(member) ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
-                                    }`}
-                                >
-                                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager(member) ? 'translate-x-3' : 'translate-x-0'
-                                    }`} />
-                                </button>
-                                <span className="text-[10px] text-[#8696a0] font-semibold">{member.read_only && !isManager(member) ? 'on' : 'off'}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium">
-                              {new Date(member.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="px-4 py-3.5 text-center">
-                              <div className="inline-flex items-center gap-1">
-                                {canManageTeamMembers && member.id !== user?.id && (
-                                  <button
-                                    onClick={() => handleSendPasswordLink(member)}
-                                    className="p-1 text-[#667781] hover:text-[#008069] hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
-                                    title="Send password link"
-                                    aria-label={`Send a password link to ${member.email}`}
-                                  >
-                                    <Mail size={14} />
-                                  </button>
-                                )}
-                                {canRemoveTeammate(member) ? (
-                                  <button
-                                    onClick={() => handleDeleteTeammate(member.id)}
-                                    className="p-1 text-rose-500 hover:text-rose-600 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
-                                    title="Remove Teammate"
-                                    aria-label={`Remove ${member.email}`}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-[#8696a0] font-semibold">{canManageTeamMembers ? 'Protected' : '—'}</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Responsive Cards list view on mobile */}
-                  <div className="sm:hidden p-4 space-y-3">
-                    {teammates.map((member) => (
-                      <div
-                        key={member.id}
-                        className="p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5]/40 dark:bg-[#1f2c34]/20 space-y-2 relative"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="text-xs font-bold text-[#111b21] dark:text-white">
-                              {member.full_name || 'N/A'}
-                            </h4>
-                            <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold">
-                              {member.email}
-                            </p>
-                          </div>
-                          {(() => {
-                            const rd = getRoleDisplay(member.role)
-                            return (
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${rd.bg} ${rd.color} ${rd.border}`}>
-                                {rd.label}
-                              </span>
-                            )
-                          })()}
-                        </div>
-                        <div className="flex items-center gap-4 py-1.5 border-t border-b border-[#e9edef]/60 dark:border-[#2a3942]/60 select-none text-[10px] font-bold">
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-wide">Full Access</span>
-                            <button
-                              onClick={() => handleToggleTeammatePermission(member.id, 'see_all', member.see_all)}
-                              disabled={accessChangeError(member) !== null}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.see_all || isManager(member) ? 'bg-[#00a884]' : 'bg-slate-200 dark:bg-slate-700'
-                                }`}
-                            >
-                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.see_all || isManager(member) ? 'translate-x-3' : 'translate-x-0'
-                                }`} />
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-600 dark:text-slate-400 text-[10px] uppercase tracking-wide">Read Only</span>
-                            <button
-                              onClick={() => handleToggleTeammatePermission(member.id, 'read_only', member.read_only)}
-                              disabled={accessChangeError(member) !== null}
-                              className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${member.read_only && !isManager(member) ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
-                                }`}
-                            >
-                              <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${member.read_only && !isManager(member) ? 'translate-x-3' : 'translate-x-0'
-                                }`} />
-                            </button>
-                          </div>
-                        </div>
-                        {canManageTeamMembers && member.id !== user?.id && (
-                          <div className="flex items-center justify-between gap-2">
-                            {canChangeRoleOf(member) ? (
-                              <select
-                                aria-label={`Role for ${member.full_name || member.email}`}
-                                value={normalizeRole(member.role)}
-                                onChange={(e) => handleChangeTeammateRole(member, e.target.value)}
-                                className="px-2 py-1 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-lg focus:outline-none text-[11px] font-bold text-[#111b21] dark:text-white"
-                              >
-                                {ASSIGNABLE_ROLES.map(r => (
-                                  <option key={r.value} value={r.value}>{r.label}</option>
-                                ))}
-                              </select>
-                            ) : <span />}
-                            <button
-                              onClick={() => handleSendPasswordLink(member)}
-                              className="text-[10px] font-bold text-[#008069] dark:text-[#00e676] flex items-center gap-1 px-2 py-1 rounded hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] cursor-pointer"
-                            >
-                              <Mail size={11} />
-                              <span>Send password link</span>
-                            </button>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between text-[10px] text-[#667781] dark:text-[#8696a0] pt-1">
-                          <span>Joined {new Date(member.created_at).toLocaleDateString()}</span>
-                          {canRemoveTeammate(member) ? (
-                            <button
-                              onClick={() => handleDeleteTeammate(member.id)}
-                              className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1 rounded transition-all cursor-pointer"
-                            >
-                              <Trash2 size={11} />
-                              <span>Remove</span>
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-[#8696a0] font-bold bg-[#f0f2f5] dark:bg-[#111b21] px-2 py-1 rounded border border-[#e9edef] dark:border-[#2a3942]">
-                              Protected
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}

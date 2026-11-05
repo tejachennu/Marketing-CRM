@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -50,36 +51,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid tone. Must be one of: professional, friendly, short, grammar' }, { status: 400 })
     }
 
-    // Load org-level OpenAI key if available
-    let openAiKey = process.env.OPENAI_API_KEY || ''
-    if (user.organization_id) {
-      try {
-        const supabase = getSupabaseClient()
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('openai_api_key')
-          .eq('id', user.organization_id)
-          .single()
-        if (orgData?.openai_api_key) {
-          openAiKey = orgData.openai_api_key
-        }
-      } catch (err) {
-        console.error('[Rephrase] Error loading org OpenAI key:', err)
-      }
-    }
-
-    if (!openAiKey) {
-      return NextResponse.json({ error: 'OpenAI API key is not configured' }, { status: 400 })
+    const supabase = getSupabaseClient()
+    const ai = await getAiAccess(supabase, user.organization_id || '')
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     const systemPrompt = TONE_PROMPTS[tone]
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await aiFetch(supabase, ai, 'rephrase', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [

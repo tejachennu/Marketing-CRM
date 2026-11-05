@@ -332,7 +332,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
       console.error('Failed to send message:', err)
       const errorMsg: ChatMessage = {
         role: 'assistant',
-        content: `⚠️ Error: ${err.message || 'Failed to communicate with AI service. Please check your OpenAI API key in Settings.'}`,
+        content: `⚠️ Error: ${err.message || 'The AI could not answer right now. Please try again.'}`,
         timestamp: new Date().toISOString(),
         isError: true
       }

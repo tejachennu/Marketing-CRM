@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { can, describeDenied } from '@/lib/rbac'
+import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
 
 // Tools that change data; refused for read-only accounts
 const WRITE_TOOLS = new Set(['create_contact', 'update_lead', 'create_ticket'])
@@ -333,7 +334,7 @@ async function executeCreateTicket(params: any, orgId: string, supabase: any, us
   return { success: true, ticket_id: data.id, message: `Ticket "${params.subject}" created successfully` }
 }
 
-async function executeDraftMessage(params: any, orgId: string, supabase: any, apiKey: string) {
+async function executeDraftMessage(params: any, orgId: string, supabase: any, ai: AiAccess) {
   const { data: conv } = await supabase.from('conversations').select('id, contact:contacts(first_name, last_name)').eq('id', params.conversation_id).eq('organization_id', orgId).maybeSingle()
   if (!conv) return { error: 'Conversation not found or access denied' }
 
@@ -361,12 +362,9 @@ ${contextStr}
 Response must be concise, ready to send, and formatted for WhatsApp (use *bold* only, no Markdown headings or other syntax). Avoid conversational fillers like "Here is your message:".`
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await aiFetch(supabase, ai, 'assistant_draft', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
@@ -471,9 +469,9 @@ export async function POST(request: NextRequest) {
       .eq('id', orgId)
       .maybeSingle()
 
-    const apiKey = org?.openai_api_key || process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: 'OpenAI API Key is not configured for your organization.' }, { status: 400 })
+    const ai = await getAiAccess(supabase, orgId, org)
+    if (!ai.allowed) {
+      return NextResponse.json({ error: ai.reason, aiPaused: true }, { status: 402 })
     }
 
     const currencySymbol = org?.currency || '$'
@@ -690,12 +688,9 @@ Rules:
     while (loopCount < 3) {
       loopCount++
 
-      const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      const openAiRes = await aiFetch(supabase, ai, 'assistant', 'https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages,
@@ -770,7 +765,7 @@ Rules:
               result = await executeCreateTicket(toolArgs, orgId, supabase, user.id)
               break
             case 'draft_message':
-              result = await executeDraftMessage(toolArgs, orgId, supabase, apiKey)
+              result = await executeDraftMessage(toolArgs, orgId, supabase, ai)
               break
             case 'get_daily_briefing':
               result = await executeGetDailyBriefing(orgId, supabase)

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
+import { aiFetch, getAiAccess } from '@/lib/ai-access'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createStarterWorkflow, sanitizeWorkflowGraph } from '@/lib/flows/flow-templates'
 
@@ -34,11 +35,11 @@ export async function POST(request: NextRequest) {
       .eq('id', organizationId)
       .single()
 
-    const apiKey = orgData?.openai_api_key || process.env.OPENAI_API_KEY
+    const ai = await getAiAccess(supabase, organizationId, orgData)
 
-    // Without an AI key there is nothing to generate from; hand back the standard starter flow
+    // Without AI there is nothing to generate from; hand back the standard starter flow
     // and say so, instead of presenting a canned graph as if it were written for the prompt.
-    if (!apiKey) {
+    if (!ai.allowed) {
       const starter = createStarterWorkflow()
       return NextResponse.json({
         flow: {
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
           ...starter,
         },
         generatedByAi: false,
-        notice: 'No AI key is configured in Settings, so this is the standard starter flow. Edit it in the builder.',
+        notice: `${ai.reason || 'AI is not available.'} This is the standard starter flow; edit it in the builder.`,
         validationErrors: validateWorkflow(starter.canvas_nodes, starter.canvas_edges),
       })
     }
@@ -92,12 +93,9 @@ Use {{form.field_name}} to reference native form answers. A native_flow_trigger 
 Do not generate delay, webhook or notification actions: they are not supported. Avoid automatic loops.
 Return ONLY valid JSON without markdown fences.`
 
-    const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openAiRes = await aiFetch(supabase, ai, 'flow_builder', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [

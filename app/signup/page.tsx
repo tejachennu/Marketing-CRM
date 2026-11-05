@@ -1,5 +1,6 @@
 'use client'
 
+import { WamaLogo } from '@/components/brand/wama-logo'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -117,13 +118,8 @@ export default function SignupPage() {
       <div className="w-full max-w-[440px] relative z-10 my-8">
         
         {/* Brand Header */}
-        <div className="flex items-center justify-center gap-3 mb-8 select-none">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/10 dark:shadow-teal-500/20">
-            <Sparkles size={20} className="text-white animate-pulse" />
-          </div>
-          <span className="text-slate-900 dark:text-white text-2xl font-black tracking-wider">
-            OMNI<span className="text-teal-600 dark:text-teal-400 font-extrabold">CRM</span>
-          </span>
+        <div className="flex justify-center mb-8">
+          <Link href="/" aria-label="WAMA CRM home"><WamaLogo size={38} /></Link>
         </div>
 
         {/* Glassmorphism Card */}
@@ -131,7 +127,7 @@ export default function SignupPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Create Account</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-medium leading-relaxed">
-              Get started with OmniCRM to unify your messages, voice channels, and AI workflows.
+              Start your 14-day free trial. Every feature included, with ₹300 of free AI credit.
             </p>
           </div>
 

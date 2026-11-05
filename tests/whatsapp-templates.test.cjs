@@ -192,3 +192,16 @@ test('Templates: product, order, calling templates and the validity period', () 
   assert.equal(M.draftFromMeta({ category: 'UTILITY', components: [{ type: 'BODY', text: 'x' }, { type: 'BUTTONS', buttons: [{ type: 'ORDER_DETAILS', text: 'Review and pay' }] }] }).type, 'order_details')
   assert.equal(M.draftFromMeta({ category: 'MARKETING', components: [{ type: 'BODY', text: 'x' }, { type: 'CALL_PERMISSION_REQUEST' }] }).type, 'call_permission')
 })
+
+test('Templates: listing falls back to basic fields when the API version rejects newer ones', async () => {
+  const { listTemplates } = require('../lib/whatsapp-templates/meta-templates.ts')
+  const asked = []
+  const fetcher = async (url) => {
+    asked.push(url)
+    if (url.includes('sub_category')) return { ok: false, status: 400, json: async () => ({ error: { code: 100, message: '(#100) Tried accessing nonexisting field (sub_category) on node type (WhatsAppBusinessAccount)' } }) }
+    return { ok: true, status: 200, json: async () => ({ data: [{ id: '1', name: 'hello', status: 'approved' }, { id: '2' }] }) }
+  }
+  const templates = await listTemplates({ token: 't', version: 'v19.0', businessAccountId: '123', phoneNumberId: '' }, fetcher)
+  assert.equal(asked.length, 2)
+  assert.deepEqual(templates, [{ id: '1', name: 'hello', status: 'APPROVED', language: 'en', category: 'UTILITY', components: [] }])
+})

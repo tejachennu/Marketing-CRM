@@ -5,13 +5,17 @@ import { createTemplate, deleteTemplate, editTemplate, listTemplates } from '@/l
 import { validateDraft, type TemplateDraft } from '@/lib/whatsapp-templates/template-model'
 
 /** The organization's WhatsApp connection, or a message saying what is missing. */
-async function credentialsFor(organizationId: string): Promise<{ credentials?: MetaCredentials; error?: string }> {
+async function credentialsFor(organizationId: string): Promise<{ credentials?: MetaCredentials; error?: string; notConnected?: string }> {
   const { data: org } = await getSupabaseAdminClient().from('organizations').select('*').eq('id', organizationId).maybeSingle()
   if (!org) return { error: 'Organization not found' }
+  // Twilio numbers keep their templates in Twilio's console; this page manages Meta's
+  if (org.whatsapp_provider && org.whatsapp_provider !== 'facebook') {
+    return { error: 'This workspace sends WhatsApp through Twilio, so its templates are managed in the Twilio console.', notConnected: 'twilio' }
+  }
   try {
     return { credentials: getMetaCredentials(org) }
   } catch {
-    return { error: 'Connect WhatsApp (Cloud API) in Settings to manage message templates.' }
+    return { error: 'Connect WhatsApp (Meta Cloud API) in Settings to manage message templates.', notConnected: 'meta' }
   }
 }
 
@@ -26,8 +30,9 @@ export async function GET(request: NextRequest) {
   const organizationId = new URL(request.url).searchParams.get('organizationId')
   const access = await verifyOrgAccess(request, organizationId)
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
-  const { credentials, error } = await credentialsFor(organizationId!)
-  if (!credentials) return NextResponse.json({ error, templates: [] }, { status: 400 })
+  const { credentials, error, notConnected } = await credentialsFor(organizationId!)
+  // Not an error to show in red: the page explains what to connect instead
+  if (!credentials) return NextResponse.json({ error, notConnected, templates: [] }, { status: notConnected ? 200 : 400 })
   try {
     const templates = await listTemplates(credentials)
     return NextResponse.json({ templates, syncedAt: new Date().toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
