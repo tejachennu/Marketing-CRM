@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { billingSummary } from '@/lib/billing-service'
 import { razorpayKeys } from '@/lib/razorpay'
+import { can } from '@/lib/rbac'
 import { AI_TOPUP_OPTIONS, MAX_AI_TOPUP, MIN_AI_TOPUP } from '@/lib/billing'
 
 // GET: the workspace's plan, access and AI credit (as a percentage). Every member may see it.
@@ -10,7 +11,8 @@ export async function GET(request: NextRequest) {
   const access = await verifyOrgAccess(request, organizationId)
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   try {
-    const summary = await billingSummary(getSupabaseAdminClient(), organizationId!)
+    // Payment history is for the people who pay; everyone else sees the plan and AI credit only
+    const summary = await billingSummary(getSupabaseAdminClient(), organizationId!, { payments: can(access.user, 'billing.manage') })
     return NextResponse.json({
       ...summary,
       topupOptions: AI_TOPUP_OPTIONS,

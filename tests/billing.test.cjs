@@ -418,3 +418,42 @@ test('Console: totals count paying workspaces at ₹3,000 each', () => {
   assert.equal(list[4].whatsapp, 'twilio')
   assert.deepEqual(W.workspaceTotals(list), { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 6000, people: 12 })
 })
+
+// ── When the first charge happens ───────────────────────────────────────────
+
+test('Subscribing during the trial charges when the trial ends, not now', () => {
+  const start = S.subscriptionStartAt(row({ status: 'trialing', trial_ends_at: iso(4) }), NOW)
+  assert.equal(start, Math.floor(Date.parse(iso(4)) / 1000))
+  // Trial already over, or ending within the hour: charge now
+  assert.equal(S.subscriptionStartAt(row({ status: 'trialing', trial_ends_at: iso(-1) }), NOW), undefined)
+  assert.equal(S.subscriptionStartAt(row({ status: 'trialing', trial_ends_at: new Date(NOW + 20 * 60000).toISOString() }), NOW), undefined)
+})
+
+test('Turning auto-renew back on charges when the paid month ends', () => {
+  const cancelling = row({ status: 'active', cancel_at_period_end: true, current_period_end: iso(12) })
+  assert.equal(S.subscriptionStartAt(cancelling, NOW), Math.floor(Date.parse(iso(12)) / 1000))
+  // A failed or ended plan is charged straight away
+  assert.equal(S.subscriptionStartAt(row({ status: 'past_due', current_period_end: iso(-1) }), NOW), undefined)
+  assert.equal(S.subscriptionStartAt(row({ status: 'cancelled', current_period_end: iso(-3) }), NOW), undefined)
+})
+
+test('Auto-pay set up for a later start keeps access, clears "renewal stopped" and records no payment yet', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ status: 'active', cancel_at_period_end: true, current_period_end: iso(12), razorpay_subscription_id: 'sub_new' })] })
+    const fetcher = fakeFetch({ 'GET /subscriptions/sub_new': { id: 'sub_new', status: 'authenticated', paid_count: 0, charge_at: Math.floor(Date.parse(iso(12)) / 1000), notes: { app: 'wamacrm', organization_id: 'org-1' } } })
+    await S.activateSubscription(db, 'org-1', 'sub_new', 'pay_auth', fetcher)
+    const billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.status, billing.cancel_at_period_end, billing.current_period_end], ['active', false, iso(12)])
+    assert.equal(db.tables.billing_payments.length, 0)
+  })
+})
+
+test('Webhook: events from a replaced subscription do not touch the current one', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ status: 'active', razorpay_subscription_id: 'sub_new', current_period_end: iso(20) })] })
+    const { POST } = loadWebhook(db)
+    const old = { event: 'subscription.cancelled', payload: { subscription: { entity: { id: 'sub_old', status: 'cancelled', current_end: Math.floor(NOW / 1000), notes: { app: 'wamacrm', organization_id: 'org-1' } } } } }
+    assert.equal((await POST(webhookRequest(old))).status, 200)
+    assert.deepEqual([db.tables.organization_billing[0].status, db.tables.organization_billing[0].razorpay_subscription_id], ['active', 'sub_new'])
+  })
+})

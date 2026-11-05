@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getBilling } from '@/lib/billing'
-import { activateSubscription } from '@/lib/billing-service'
-import { createSubscription, fetchSubscription, razorpayKeys, verifySubscriptionSignature } from '@/lib/razorpay'
+import { activateSubscription, subscriptionStartAt } from '@/lib/billing-service'
+import { cancelSubscription, createSubscription, fetchSubscription, razorpayKeys, verifySubscriptionSignature } from '@/lib/razorpay'
 
 /**
  * POST { organizationId }: start (or reuse) a Razorpay subscription for Checkout.
@@ -36,22 +36,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    if (billing.status === 'active' && billing.razorpay_subscription_id) {
-      return NextResponse.json({ error: 'This workspace already has an active plan.' }, { status: 400 })
+    if (billing.status === 'active' && billing.razorpay_subscription_id && !billing.cancel_at_period_end) {
+      return NextResponse.json({ error: 'Auto-pay is already set up for this workspace.' }, { status: 400 })
     }
-    // A subscription created earlier and not paid yet can be used again
+    // The first charge waits for the end of the trial or of the month already paid for
+    const startAt = subscriptionStartAt(billing)
     let subscriptionId = billing.razorpay_subscription_id
     if (subscriptionId) {
       const existing = await fetchSubscription(subscriptionId).catch(() => null)
-      if (!existing || !['created', 'authenticated'].includes(String(existing.status))) subscriptionId = null
+      // One created earlier for the same start and never paid can be used again
+      const reusable = existing?.status === 'created' && (Number(existing.start_at) || undefined) === startAt
+      if (!reusable) {
+        // A failing one is stopped so Razorpay does not keep retrying it next to the new one
+        if (existing && ['pending', 'halted'].includes(String(existing.status))) {
+          await cancelSubscription(subscriptionId, fetch, false).catch((error) => console.warn('[Billing subscribe] Could not cancel the failing subscription:', error?.message))
+        }
+        subscriptionId = null
+      }
     }
     if (!subscriptionId) {
-      const created = await createSubscription(organizationId)
+      const created = await createSubscription(organizationId, { startAt })
       subscriptionId = created.id
       const { error } = await db.from('organization_billing').update({ razorpay_subscription_id: subscriptionId, updated_at: new Date().toISOString() }).eq('organization_id', organizationId)
       if (error) throw new Error(error.message)
     }
-    return NextResponse.json({ subscriptionId, keyId: keys.keyId })
+    return NextResponse.json({ subscriptionId, keyId: keys.keyId, startsAt: startAt ? new Date(startAt * 1000).toISOString() : null })
   } catch (error: any) {
     console.error('[Billing subscribe]', error?.message)
     return NextResponse.json({ error: error?.message || 'The subscription could not be started' }, { status: 502 })

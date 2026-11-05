@@ -58,12 +58,20 @@ export async function ensurePlan(fetcher: typeof fetch = fetch): Promise<string>
   return created.id
 }
 
-/** A subscription for one workspace; the first payment happens in Razorpay Checkout. */
-export async function createSubscription(organizationId: string, fetcher: typeof fetch = fetch): Promise<{ id: string; status: string; short_url?: string }> {
+/**
+ * A subscription for one workspace, set up in Razorpay Checkout. With `startAt` (Unix seconds) the
+ * customer only authorises auto-pay now and the first ₹3,000 is charged on that date, so subscribing
+ * during the trial (or before a paid month runs out) never costs them the days they already have.
+ */
+export async function createSubscription(organizationId: string, options: { startAt?: number } = {}, fetcher: typeof fetch = fetch): Promise<{ id: string; status: string; start_at?: number; short_url?: string }> {
   const planId = await ensurePlan(fetcher)
   return call('/subscriptions', {
     method: 'POST',
-    body: { plan_id: planId, total_count: 120, quantity: 1, customer_notify: 1, notes: { app: 'wamacrm', organization_id: organizationId } },
+    body: {
+      plan_id: planId, total_count: 120, quantity: 1, customer_notify: 1,
+      ...(options.startAt ? { start_at: options.startAt } : {}),
+      notes: { app: 'wamacrm', organization_id: organizationId },
+    },
   }, fetcher)
 }
 
@@ -71,9 +79,9 @@ export function fetchSubscription(id: string, fetcher: typeof fetch = fetch) {
   return call(`/subscriptions/${encodeURIComponent(id)}`, {}, fetcher)
 }
 
-/** Cancel at the end of the paid month (the workspace keeps access until then). */
-export function cancelSubscription(id: string, fetcher: typeof fetch = fetch) {
-  return call(`/subscriptions/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: { cancel_at_cycle_end: 1 } }, fetcher)
+/** Cancel at the end of the paid month (the workspace keeps access until then), or straight away. */
+export function cancelSubscription(id: string, fetcher: typeof fetch = fetch, atCycleEnd = true) {
+  return call(`/subscriptions/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: { cancel_at_cycle_end: atCycleEnd ? 1 : 0 } }, fetcher)
 }
 
 /** An order for an AI wallet top-up. */
