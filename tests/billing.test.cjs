@@ -44,8 +44,10 @@ function database(seed = {}) {
   const rpc = async (fn, args) => {
     const billing = tables.organization_billing.find((r) => r.organization_id === args.p_org)
     if (fn === 'ai_wallet_charge') {
-      billing.ai_balance = Math.max(0, Number(billing.ai_balance) - args.p_amount)
-      tables.ai_wallet_transactions.push({ organization_id: args.p_org, kind: 'usage', amount: -args.p_amount, feature: args.p_feature, model: args.p_model, tokens: args.p_tokens })
+      // As the SQL function does: never below zero, and the ledger records what was actually taken
+      const before = Number(billing.ai_balance)
+      billing.ai_balance = Math.max(0, before - args.p_amount)
+      tables.ai_wallet_transactions.push({ organization_id: args.p_org, kind: 'usage', amount: -(before - billing.ai_balance), feature: args.p_feature, model: args.p_model, tokens: args.p_tokens })
       return { data: billing.ai_balance, error: null }
     }
     if (fn === 'ai_wallet_credit') {

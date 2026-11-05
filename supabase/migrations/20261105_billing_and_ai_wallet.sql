@@ -64,17 +64,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  old_balance NUMERIC;
   new_balance NUMERIC;
 BEGIN
-  UPDATE organization_billing
-     SET ai_balance = GREATEST(ai_balance - p_amount, 0), updated_at = NOW()
-   WHERE organization_id = p_org
-  RETURNING ai_balance INTO new_balance;
-  IF new_balance IS NULL THEN
+  -- Locks the row so calls running at the same time are charged one after the other
+  SELECT ai_balance INTO old_balance FROM organization_billing WHERE organization_id = p_org FOR UPDATE;
+  IF old_balance IS NULL THEN
     RETURN NULL;
   END IF;
+  new_balance := GREATEST(old_balance - p_amount, 0);
+  UPDATE organization_billing SET ai_balance = new_balance, updated_at = NOW() WHERE organization_id = p_org;
+  -- The ledger records what was actually taken: never more than was left
   INSERT INTO ai_wallet_transactions (organization_id, kind, amount, feature, model, tokens)
-  VALUES (p_org, 'usage', -p_amount, p_feature, p_model, p_tokens);
+  VALUES (p_org, 'usage', -(old_balance - new_balance), p_feature, p_model, p_tokens);
   RETURN new_balance;
 END;
 $$;
