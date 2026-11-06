@@ -47,6 +47,8 @@ export function toSafeOrganization(organization: Record<string, any>): Record<st
   safe.credentials = getOrganizationCredentials(organization)
   // Read by getCommerceSetup in place of the token columns
   safe.whatsapp_connected = hasValue(organization.whatsapp_api_token) && hasValue(organization.whatsapp_phone_number_id)
+  // Read by isConsularHelpdesk (lib/workspace-modules.ts) in place of the Twilio credentials
+  safe.twilio_connected = hasValue(organization.twilio_account_sid) && hasValue(organization.twilio_auth_token)
   return safe
 }
 

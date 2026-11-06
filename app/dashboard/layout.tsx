@@ -10,7 +10,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
-import { MAGNETORA_ORG_ID, isFlowBetaAllowed } from '@/lib/flows/flow-types'
+import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modules'
 
 export default function DashboardLayout({
   children,
@@ -24,6 +24,8 @@ export default function DashboardLayout({
   const [orgId, setOrgId] = useState<string | null>(null)
   const [orgName, setOrgName] = useState<string>('')
   const [orgSlug, setOrgSlug] = useState<string>('')
+  // Which modules the workspace has; Flow Builder, Commerce, Team and Billing wait until this is known
+  const [workspaceModules, setWorkspaceModules] = useState<{ loaded: boolean; consular: boolean }>({ loaded: false, consular: false })
   const [userRole, setUserRole] = useState<string>('')
   const [features, setFeatures] = useState({
     enable_ai: true,
@@ -377,6 +379,7 @@ export default function DashboardLayout({
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         })
         const org = res.ok ? (await res.json()).organization : null
+        setWorkspaceModules({ loaded: true, consular: isConsularHelpdesk(org) })
         if (org) {
           setOrgName(org.name || '')
           setOrgSlug(org.slug || '')
@@ -404,6 +407,7 @@ export default function DashboardLayout({
         }
       } catch (err) {
         console.error('Failed to load organization features:', err)
+        setWorkspaceModules((current) => ({ ...current, loaded: true }))
       }
     }
 
@@ -662,7 +666,6 @@ export default function DashboardLayout({
   const seeAll = canSeeAll(currentUser)
   const isPlatformAdmin = isSuperAdmin(currentUser)
   const canManageBilling = can(currentUser, 'billing.manage')
-  const flowsEnabled = isFlowBetaAllowed(orgId, orgSlug, orgName)
 
   // Badges are small pills: cap the label so a busy inbox cannot overflow them
   const formatCount = (count: number) => (count > 99 ? '99+' : String(count))
@@ -683,11 +686,15 @@ export default function DashboardLayout({
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
   ]
 
+  // Flow Builder, Commerce, Team and Billing: every client workspace has them, except Consular
+  // Helpdesk, which keeps its original setup (lib/workspace-modules.ts)
+  const isModulePage = (path: string) => CONSULAR_HIDDEN_PAGES.some((base) => path === base || path.startsWith(`${base}/`))
+
   // Whether the organization has the feature behind a page switched on (independent of role)
   const isFeatureEnabled = (path: string) => {
+    if (isModulePage(path) && (!workspaceModules.loaded || workspaceModules.consular)) return false
     if (path === '/dashboard' || path.startsWith('/dashboard/tickets')) return features.enable_messages
-    // WhatsApp Flows are limited to the beta organization for now
-    if (path.startsWith('/dashboard/flows')) return features.enable_messages && flowsEnabled
+    if (path.startsWith('/dashboard/flows')) return features.enable_messages
     if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {
       return features.enable_messages || features.enable_email
     }
@@ -696,20 +703,10 @@ export default function DashboardLayout({
     return true
   }
 
-  // Commerce and the Flow Builder are still being tested, so the menu lists them only on a
-  // developer's machine (`next dev`), or where NEXT_PUBLIC_SHOW_PREVIEW_MODULES is "true".
-  // Both are also listed for the Magnetora AI Solutions workspace, which tests them on the live site.
-  // Only the menu entry is hidden: the pages keep their usual role and feature rules.
-  const previewPages = ['/dashboard/commerce', '/dashboard/flows']
-  const showPreviewPages = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PREVIEW_MODULES === 'true'
-  const isListedInMenu = (href: string) =>
-    showPreviewPages || !previewPages.includes(href) || orgId === MAGNETORA_ORG_ID
-
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
   const filteredNavItems = profileLoaded
     ? navItems.filter(
         (item) =>
-          isListedInMenu(item.href) &&
           canAccessPage(currentUser, item.href) &&
           // Billing is for workspace admins, and only where there is a plan to manage
           (item.href !== '/dashboard/billing' || (canManageBilling && !isPlatformAdmin && billing !== null && !billing.exempt)) &&
@@ -728,7 +725,7 @@ export default function DashboardLayout({
   // Once a trial or plan has ended, only Billing and the profile stay open
   const billingLocked = Boolean(billing && !billing.exempt && !billing.hasAccess && !isPlatformAdmin)
     && !pathname.startsWith('/dashboard/billing') && !pathname.startsWith('/dashboard/profile')
-  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' = !profileLoaded
+  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' = !profileLoaded || (isModulePage(pathname) && !workspaceModules.loaded && !isPlatformAdmin)
     ? 'loading'
     : !canAccessPage(currentUser, pathname)
       ? 'role'
@@ -1346,6 +1343,21 @@ export default function DashboardLayout({
                         className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                       >
                         Go back
+                      </Link>
+                    </>
+                  ) : workspaceModules.consular && isModulePage(pathname) ? (
+                    <>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">Not part of your workspace</h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
+                        {pathname.startsWith('/dashboard/team') && canAccessPage(currentUser, '/dashboard/settings')
+                          ? 'Your teammates are managed in Settings, under Teammates.'
+                          : 'This page is not included in your workspace setup.'}
+                      </p>
+                      <Link
+                        href={pathname.startsWith('/dashboard/team') && canAccessPage(currentUser, '/dashboard/settings') ? '/dashboard/settings?tab=teammates' : filteredNavItems[0]?.href || '/dashboard/profile'}
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                      >
+                        {pathname.startsWith('/dashboard/team') && canAccessPage(currentUser, '/dashboard/settings') ? 'Go to Teammates' : 'Go back'}
                       </Link>
                     </>
                   ) : (

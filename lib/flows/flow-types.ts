@@ -291,15 +291,3 @@ export interface FlowSession {
 }
 
 export const MAGNETORA_ORG_ID = 'b2acf062-c379-49f2-8905-267413c9c394'
-
-export function isFlowBetaAllowed(
-  orgId?: string | null,
-  orgSlug?: string | null,
-  orgName?: string | null
-): boolean {
-  if (!orgId && !orgSlug && !orgName) return false
-  if (orgId === MAGNETORA_ORG_ID) return true
-  if (orgSlug?.toLowerCase().includes('magnetora')) return true
-  if (orgName?.toLowerCase().includes('magnetora')) return true
-  return false
-}

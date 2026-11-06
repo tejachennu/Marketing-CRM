@@ -1,6 +1,8 @@
 'use client'
 
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
+import { TeamManager } from '@/components/team/team-manager'
+import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 
 import { useEffect, useState, useRef } from 'react'
@@ -14,7 +16,7 @@ import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff
 import type { LucideIcon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-type SettingsTab = 'general' | 'knowledge' | 'appearance'
+type SettingsTab = 'general' | 'knowledge' | 'teammates' | 'appearance'
 
 // ── Shared styles: defined once so every section looks and focuses the same ──
 const cardClass =
@@ -586,6 +588,14 @@ export default function SettingsPage() {
     loadData()
   }, [])
 
+  // ?tab=teammates opens that tab (linked from the Team page for workspaces that manage people here)
+  useEffect(() => {
+    if (!organization) return
+    const wanted = new URLSearchParams(window.location.search).get('tab')
+    if (wanted === 'teammates' && isConsularHelpdesk(organization)) setActiveTab('teammates')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization?.id])
+
   async function loadData() {
     try {
       // Restore the Supabase session from localStorage first
@@ -881,6 +891,8 @@ export default function SettingsPage() {
     ...(organization?.enable_ai !== false && canManageKnowledge
       ? [{ id: 'knowledge' as const, label: 'Knowledge Base', icon: BookOpen }]
       : []),
+    // Consular Helpdesk has no Team page, so its people are managed here, as they always were
+    ...(isConsularHelpdesk(organization) ? [{ id: 'teammates' as const, label: 'Teammates', icon: Users }] : []),
     { id: 'appearance', label: 'Appearance', icon: Palette },
   ]
 
@@ -2148,6 +2160,8 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      {activeTab === 'teammates' && isConsularHelpdesk(organization) && <TeamManager embedded />}
+
       {activeTab === 'appearance' && (
         <div className="space-y-5 w-full max-w-6xl mx-auto">
           <div className={cardClass}>

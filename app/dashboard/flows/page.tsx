@@ -3,11 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
-import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
 import { validateWorkflow } from '@/lib/flows/flow-graph'
 import { createFormWorkflow, getTriggerSummary } from '@/lib/flows/flow-templates'
 import {
@@ -94,14 +92,7 @@ export default function FlowsHubPage() {
           .eq('id', user.id)
           .maybeSingle()
 
-        const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
-
-        if (!isAllowed) {
-          router.replace('/dashboard')
-          return
-        }
-
+        // Who may open the Flow Builder is decided by the dashboard layout (role and workspace modules)
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
         } else {

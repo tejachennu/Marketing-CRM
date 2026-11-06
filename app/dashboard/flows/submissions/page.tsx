@@ -1,12 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { isSuperAdmin } from '@/lib/rbac'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
-import { isFlowBetaAllowed } from '@/lib/flows/flow-types'
 import { formAnswerText, formSubmissionsCsv } from '@/lib/flows/meta-flows-spec'
 import { useAlert } from '@/lib/dialog-context'
 import {
@@ -121,7 +119,6 @@ const OPERATORS_BY_TYPE: Record<string, { value: string; label: string }[]> = {
 }
 
 export default function SubmittedResponsesPage() {
-  const router = useRouter()
   const alert = useAlert()
   const searchParams = useSearchParams()
   const workflowId = searchParams.get('workflowId')
@@ -162,14 +159,7 @@ export default function SubmittedResponsesPage() {
           .eq('id', user.id)
           .maybeSingle()
 
-        const org = profile?.organizations as any
-        const isAllowed = isFlowBetaAllowed(profile?.organization_id, org?.slug, org?.name) || isSuperAdmin(profile)
-
-        if (!isAllowed) {
-          router.replace('/dashboard')
-          return
-        }
-
+        // Who may open the Flow Builder is decided by the dashboard layout (role and workspace modules)
         if (profile?.organization_id) {
           setOrgId(profile.organization_id)
         }
