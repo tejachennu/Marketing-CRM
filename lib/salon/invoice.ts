@@ -186,6 +186,9 @@ export function isInterState(businessGstin: unknown, customerGstin: unknown): bo
   return business.slice(0, 2) !== customer.slice(0, 2)
 }
 
+/** "₹1,500" for whole rupees, "₹1,911.60" when there are paise. */
 export function formatRupees(amount: number): string {
-  return `₹${(Number(amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+  const value = Math.round((Number(amount) || 0) * 100) / 100
+  const paise = !Number.isInteger(value)
+  return `₹${value.toLocaleString('en-IN', { minimumFractionDigits: paise ? 2 : 0, maximumFractionDigits: 2 })}`
 }

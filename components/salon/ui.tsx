@@ -65,14 +65,12 @@ export function Chip({ selected, onClick, children, disabled }: { selected?: boo
   )
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">{label}</span>
-      {children}
-      {hint && <span className="block text-[12.5px] text-[#6B7894] mt-1">{hint}</span>}
-    </label>
-  )
+/** A labelled field. `group` is for a set of buttons (chips): a label element would name only the first one. */
+export function Field({ label, hint, children, group }: { label: string; hint?: string; children: React.ReactNode; group?: boolean }) {
+  const caption = <span className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">{label}</span>
+  const help = hint && <span className="block text-[12.5px] text-[#6B7894] mt-1">{hint}</span>
+  if (group) return <div role="group" aria-label={label} className="block">{caption}{children}{help}</div>
+  return <label className="block">{caption}{children}{help}</label>
 }
 
 export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {

@@ -189,3 +189,179 @@ test('Sample salon: every staff category has services', () => {
   for (const member of SAMPLE_STAFF) for (const category of member.categories) assert.ok(categories.has(category), category)
   assert.ok(SAMPLE_SERVICES.length >= 10)
 })
+
+// ── Counter actions ─────────────────────────────────────────────────────────
+
+const A = require('../lib/salon/actions.ts')
+
+/** An in-memory Supabase stand-in with the filters the counter uses, and unique invoice numbers. */
+function salonDb(seed = {}) {
+  const tables = { contacts: [], conversations: [], messages: [], salon_services: [], salon_staff: [], salon_appointments: [], salon_invoices: [], ...structuredClone(seed) }
+  let seq = 0
+  let failNextInvoiceInsert = 0
+  const from = (table) => {
+    if (!tables[table]) tables[table] = []
+    let filters = [], op = 'select', values, singular = false, order = null, limit = Infinity
+    const q = {
+      select() { return this },
+      eq(k, v) { filters.push((r) => r[k] === v); return this },
+      in(k, list) { filters.push((r) => list.includes(r[k])); return this },
+      ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
+      lt(k, v) { filters.push((r) => r[k] < v); return this },
+      gt(k, v) { filters.push((r) => r[k] > v); return this },
+      gte(k, v) { filters.push((r) => r[k] >= v); return this },
+      order(k, opts = {}) { order = [k, opts.ascending === false ? -1 : 1]; return this },
+      limit(n) { limit = n; return this },
+      maybeSingle() { singular = true; return this },
+      single() { singular = true; return this },
+      insert(data) { op = 'insert'; values = data; return this },
+      update(data) { op = 'update'; values = data; return this },
+      then(resolve, reject) {
+        let rows = tables[table].filter((r) => filters.every((f) => f(r)))
+        if (op === 'insert') {
+          const items = (Array.isArray(values) ? values : [values]).map((v) => ({ id: `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, created_at: new Date(Date.now() + seq).toISOString(), ...structuredClone(v) }))
+          if (table === 'salon_invoices') {
+            if (failNextInvoiceInsert > 0) { failNextInvoiceInsert--; return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }).then(resolve, reject) }
+            if (items.some((item) => tables.salon_invoices.some((r) => r.organization_id === item.organization_id && r.seq === item.seq))) return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } }).then(resolve, reject)
+          }
+          tables[table].push(...items)
+          rows = items
+        } else if (op === 'update') rows.forEach((r) => Object.assign(r, structuredClone(values)))
+        if (order) rows = [...rows].sort((a, b) => (a[order[0]] > b[order[0]] ? 1 : a[order[0]] < b[order[0]] ? -1 : 0) * order[1])
+        rows = rows.slice(0, limit)
+        return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null }).then(resolve, reject)
+      },
+    }
+    return q
+  }
+  return { from, tables, failInvoiceInserts: (n) => { failNextInvoiceInsert = n } }
+}
+
+const ORG = 'org-salon'
+const S1 = '00000000-0000-4000-8000-0000000000a1'
+const S2 = '00000000-0000-4000-8000-0000000000a2'
+const ST = '00000000-0000-4000-8000-0000000000b1'
+const seedSalon = () => salonDb({
+  salon_services: [
+    { id: S1, organization_id: ORG, name: 'Haircut (Women)', category: 'Hair', price: 600, duration_minutes: 45, tax_rate: 18, active: true },
+    { id: S2, organization_id: ORG, name: 'Facial', category: 'Skin', price: 1200, duration_minutes: 60, tax_rate: 18, active: true },
+  ],
+  salon_staff: [{ id: ST, organization_id: ORG, name: 'Anitha', service_ids: [], active: true }],
+  contacts: [{ id: '00000000-0000-4000-8000-0000000000c1', organization_id: ORG, first_name: 'Priya', last_name: 'Sharma', phone_number: '919876543210' }],
+})
+const settings = { business_name: 'Glow Salon', gstin: '36ABCDE1234F1Z5', invoice_prefix: 'GLOW', prices_include_tax: false, invoice_note: 'Thanks!' }
+const ctxFor = (db, extra = {}) => ({ db, organizationId: ORG, user: { id: 'user-1' }, organization: { id: ORG }, settings: { ...settings, ...extra } })
+const later = (hours) => new Date(Date.now() + hours * 3600_000).toISOString()
+
+test('Counter: actions are checked before anything happens', () => {
+  assert.match(A.parseCounterAction({ type: 'create_appointment', customer: { name: 'Priya' }, service_ids: [], starts_at: later(2) }).error, /at least one service/)
+  assert.match(A.parseCounterAction({ type: 'create_appointment', customer: { name: 'Priya', phone: '123' }, service_ids: [S1], starts_at: later(2) }).error, /phone number/)
+  assert.match(A.parseCounterAction({ type: 'create_appointment', customer: {}, service_ids: [S1], starts_at: later(2) }).error, /name or a phone/)
+  assert.match(A.parseCounterAction({ type: 'create_appointment', customer: { name: 'P' }, service_ids: [S1], starts_at: 'later' }).error, /date and time/)
+  assert.match(A.parseCounterAction({ type: 'pay_invoice', invoice_id: S1, payment_method: 'cheque' }).error, /cash, UPI or card/)
+  assert.match(A.parseCounterAction({ type: 'drop_tables' }).error, /Unknown/)
+  const ok = A.parseCounterAction({ type: 'walk_in_bill', service_ids: [S1, S1, 'bad'], discount: { type: 'percent', value: 150 }, payment_method: 'upi' })
+  assert.deepEqual([ok.action.service_ids, ok.action.discount, ok.action.customer.name], [[S1], { type: 'percent', value: 100 }, 'Walk-in customer'])
+})
+
+test('Counter: book → arrived → complete & bill makes a numbered GST invoice and finds the customer by phone', async () => {
+  const db = seedSalon()
+  const ctx = ctxFor(db)
+  const booked = await A.executeCounterAction(ctx, A.parseCounterAction({ type: 'create_appointment', customer: { name: 'Priya', phone: 'nine eight seven six five four three two one zero' }, service_ids: [S1, S2], staff_id: ST, starts_at: later(3) }).action)
+  assert.equal(booked.appointment.contact_id, '00000000-0000-4000-8000-0000000000c1')
+  assert.equal(booked.appointment.status, 'booked')
+  assert.equal(Date.parse(booked.appointment.ends_at) - Date.parse(booked.appointment.starts_at), 105 * 60_000)
+  assert.equal(db.tables.contacts.length, 1)
+
+  const arrived = await A.executeCounterAction(ctx, { type: 'set_status', appointment_id: booked.appointment.id, status: 'arrived' })
+  assert.equal(arrived.appointment.status, 'arrived')
+
+  const billed = await A.executeCounterAction(ctx, { type: 'complete_and_bill', appointment_id: booked.appointment.id, discount: { type: 'percent', value: 10 }, payment_method: 'upi', send_whatsapp: false })
+  const invoice = billed.invoice
+  assert.equal(invoice.number, 'GLOW-0001')
+  assert.deepEqual([invoice.subtotal, invoice.discount, invoice.taxable, invoice.cgst, invoice.sgst, invoice.total], [1800, 180, 1620, 145.8, 145.8, 1911.6])
+  assert.deepEqual([invoice.status, invoice.payment_method, invoice.staff_name], ['paid', 'upi', 'Anitha'])
+  assert.equal(invoice.business.gstin, '36ABCDE1234F1Z5')
+  assert.match(invoice.public_token, /^[A-Za-z0-9_-]{20,}$/)
+  assert.equal(db.tables.salon_appointments[0].status, 'completed')
+  // Billing again returns the same invoice instead of a second one
+  const again = await A.executeCounterAction(ctx, { type: 'complete_and_bill', appointment_id: booked.appointment.id })
+  assert.equal(again.invoice.id, invoice.id)
+  assert.equal(db.tables.salon_invoices.length, 1)
+  // A billed appointment cannot be moved back
+  await assert.rejects(A.executeCounterAction(ctx, { type: 'set_status', appointment_id: booked.appointment.id, status: 'booked' }), /already billed/)
+})
+
+test('Counter: a new customer is saved to Contacts so they appear in the WhatsApp inbox', async () => {
+  const db = seedSalon()
+  const result = await A.executeCounterAction(ctxFor(db), A.parseCounterAction({ type: 'walk_in_bill', customer: { name: 'Ravi Kumar', phone: '91234 56789' }, service_ids: [S1], payment_method: 'cash', send_whatsapp: false }).action)
+  const contact = db.tables.contacts.find((c) => c.phone_number === '+919123456789')
+  assert.deepEqual([contact.first_name, contact.last_name, contact.tags], ['Ravi', 'Kumar', ['Salon']])
+  assert.equal(result.invoice.contact_id, contact.id)
+  assert.equal(result.appointment.status, 'completed')
+  assert.equal(result.invoice.total, 708)
+})
+
+test('Counter: invoice numbers stay in order when two counters bill at the same moment', async () => {
+  const db = seedSalon()
+  const ctx = ctxFor(db)
+  await A.executeCounterAction(ctx, { type: 'walk_in_bill', customer: { name: 'A' }, service_ids: [S1], payment_method: 'cash' })
+  db.failInvoiceInserts(2) // someone else took the next number twice
+  const second = await A.executeCounterAction(ctx, { type: 'walk_in_bill', customer: { name: 'B' }, service_ids: [S2], payment_method: 'cash' })
+  assert.equal(second.invoice.number, 'GLOW-0002')
+  assert.deepEqual(db.tables.salon_invoices.map((i) => i.seq), [1, 2])
+})
+
+test('Counter: without a GSTIN the bill carries no GST', async () => {
+  const db = seedSalon()
+  const result = await A.executeCounterAction(ctxFor(db, { gstin: null, invoice_prefix: 'INV' }), { type: 'walk_in_bill', customer: { name: 'A' }, service_ids: [S1, S2], payment_method: 'card' })
+  assert.deepEqual([result.invoice.number, result.invoice.cgst, result.invoice.sgst, result.invoice.total], ['INV-0001', 0, 0, 1800])
+})
+
+test('Counter: take payment later, void, and send the bill on WhatsApp', async () => {
+  const db = seedSalon()
+  const ctx = ctxFor(db)
+  const sent = []
+  const send = { invoice: async (invoice) => { sent.push(invoice.number); return { sent: true } }, booking: async () => ({ sent: true }) }
+  const unpaid = await A.executeCounterAction(ctx, { type: 'walk_in_bill', customer: { name: 'Priya', phone: '+919876543210' }, service_ids: [S1], payment_method: null, send_whatsapp: true }, send)
+  assert.equal(unpaid.invoice.status, 'unpaid')
+  assert.deepEqual(sent, ['GLOW-0001'])
+  assert.equal(unpaid.whatsapp.sent, true)
+  const paid = await A.executeCounterAction(ctx, { type: 'pay_invoice', invoice_id: unpaid.invoice.id, payment_method: 'cash' }, send)
+  assert.deepEqual([paid.invoice.status, paid.invoice.payment_method], ['paid', 'cash'])
+  const voided = await A.executeCounterAction(ctx, { type: 'void_invoice', invoice_id: unpaid.invoice.id }, send)
+  assert.equal(voided.invoice.status, 'void')
+  await assert.rejects(A.executeCounterAction(ctx, { type: 'pay_invoice', invoice_id: unpaid.invoice.id, payment_method: 'upi' }), /cancelled/)
+  // A void invoice is kept, never deleted
+  assert.equal(db.tables.salon_invoices.length, 1)
+})
+
+test('Counter: a double booking is warned about, not blocked', async () => {
+  const db = seedSalon()
+  const ctx = ctxFor(db)
+  const at = later(4)
+  await A.executeCounterAction(ctx, { type: 'create_appointment', customer: { name: 'Priya' }, service_ids: [S2], staff_id: ST, starts_at: at })
+  const second = await A.executeCounterAction(ctx, { type: 'create_appointment', customer: { name: 'Meena' }, service_ids: [S1], staff_id: ST, starts_at: new Date(Date.parse(at) + 30 * 60_000).toISOString() })
+  assert.match(second.warning, /Anitha already has Priya/)
+  assert.equal(db.tables.salon_appointments.length, 2)
+})
+
+test('Booking times: every 30 minutes, only from now on today', () => {
+  const now = Date.parse('2026-11-06T10:10:00Z') // 3:40 pm in India
+  const slots = SP.bookingSlots('2026-11-06', now)
+  assert.equal(slots[0], '15:30')
+  assert.equal(slots.at(-1), '21:00')
+  assert.equal(SP.bookingSlots('2026-11-07', now)[0], '10:00')
+  assert.deepEqual(SP.bookingSlots('2026-11-05', now), [])
+})
+
+test('WhatsApp messages read naturally', () => {
+  const W = require('../lib/salon/whatsapp.ts')
+  const message = W.invoiceMessage({ customer_name: 'Priya Sharma', number: 'GLOW-0001', total: 1911.6, status: 'paid', business: { name: 'Glow Salon' } }, 'https://app.test/i/abc')
+  assert.match(message, /^Hi Priya, thank you for visiting Glow Salon!/)
+  assert.match(message, /GLOW-0001: ₹1,911\.60 \(paid, thank you!\)/)
+  assert.match(message, /https:\/\/app\.test\/i\/abc$/)
+  const booking = W.bookingMessage({ customer_name: 'Priya', starts_at: '2026-11-06T11:30:00Z', services: [{ name: 'Facial' }] }, 'Glow Salon', 'Anitha')
+  assert.match(booking, /Hi Priya, your appointment at Glow Salon is booked for .*5:00 pm \(Facial with Anitha\)/)
+  assert.equal(W.invoiceLink('https://app.test/', 'tok'), 'https://app.test/i/tok')
+})

@@ -5,6 +5,8 @@ import { Loader2, Mic, ReceiptText, Settings2 } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { api, card, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab } from './salon-setup'
+import { SalonCounter } from './salon-counter'
+import { SalonInvoices } from './salon-invoices'
 import type { SalonSetup } from './types'
 
 type Tab = 'counter' | 'invoices' | 'setup'
@@ -63,9 +65,10 @@ export function SalonApp() {
         </div>
 
         {tab === 'setup' && canManage && <SalonSetupTab orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} />}
-        {tab !== 'setup' && (
-          <div className={`${card} p-8 text-center text-[15px] text-[#6B7894]`}>The counter is being set up.</div>
-        )}
+        {tab === 'counter' && (setup.services.length === 0
+          ? <div className={`${card} p-8 text-center text-[15px] text-[#4a5672] dark:text-slate-400`}>{canManage ? 'Add your services in Setup first. "Add sample salon" does it in one tap.' : 'Your manager needs to add services in Setup before the counter can be used.'}</div>
+          : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />)}
+        {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} />}
       </div>
       <Toast toast={toast} />
     </div>

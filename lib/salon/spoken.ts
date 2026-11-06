@@ -49,12 +49,14 @@ const IST_OFFSET_MS = 330 * 60 * 1000
 
 /** "2026-11-06" for a moment, in India. */
 export function istDate(at: Date | string | number = Date.now()): string {
-  return new Date(new Date(at).getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
+  const time = new Date(at).getTime()
+  return Number.isFinite(time) ? new Date(time + IST_OFFSET_MS).toISOString().slice(0, 10) : ''
 }
 
 /** "17:30" for a moment, in India. */
 export function istTime(at: Date | string | number): string {
-  return new Date(new Date(at).getTime() + IST_OFFSET_MS).toISOString().slice(11, 16)
+  const time = new Date(at).getTime()
+  return Number.isFinite(time) ? new Date(time + IST_OFFSET_MS).toISOString().slice(11, 16) : ''
 }
 
 /** A date and time in India ("2026-11-06", "17:30") as a moment. Null when either is not valid. */
@@ -79,7 +81,9 @@ export function addDays(date: string, days: number): string {
 
 /** "5:30 pm" */
 export function formatIstTime(at: Date | string | number): string {
-  const [hours, minutes] = istTime(at).split(':').map(Number)
+  const clock = istTime(at)
+  if (!clock) return ''
+  const [hours, minutes] = clock.split(':').map(Number)
   const suffix = hours >= 12 ? 'pm' : 'am'
   return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
@@ -91,6 +95,19 @@ export function formatIstDay(date: string, today = istDate()): string {
   if (date === addDays(today, -1)) return 'Yesterday'
   const moment = fromIst(date, '12:00')
   return moment ? moment.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : date
+}
+
+/** Times to offer for a booking: every 30 minutes from now (or 10 am on a later day) until 9 pm. */
+export function bookingSlots(date: string, now = Date.now(), openHour = 10, closeHour = 21): string[] {
+  const slots: string[] = []
+  const today = istDate(now)
+  for (let minutes = openHour * 60; minutes <= closeHour * 60; minutes += 30) {
+    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+    // Today: only times from about now on
+    if (date === today && Date.parse(`${date}T${time}:00+05:30`) < now - 15 * 60 * 1000) continue
+    slots.push(time)
+  }
+  return date < today ? [] : slots
 }
 
 // ── Matching spoken names ────────────────────────────────────────────────────

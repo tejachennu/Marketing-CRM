@@ -186,16 +186,16 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
           </>}>
           <div className="space-y-4">
             <Field label="Service name"><input className={input} value={serviceForm.name || ''} onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })} placeholder="Haircut (Women)" autoFocus /></Field>
-            <Field label="Category">
+            <Field group label="Category">
               <div className="flex flex-wrap gap-2 mb-2">{[...new Set([...categories.map(([c]) => c), ...CATEGORY_SUGGESTIONS])].map((category) => <Chip key={category} selected={serviceForm.category === category} onClick={() => setServiceForm({ ...serviceForm, category })}>{category}</Chip>)}</div>
-              <input className={input} value={serviceForm.category || ''} onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })} placeholder="Or type a new one" />
+              <input className={input} value={serviceForm.category || ''} onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })} placeholder="Or type a new one" aria-label="Category" />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Price (₹)"><input className={input} type="number" min={0} inputMode="decimal" value={serviceForm.price ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value as any })} placeholder="600" /></Field>
               <Field label="Minutes"><input className={input} type="number" min={5} inputMode="numeric" value={serviceForm.duration_minutes ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value as any })} /></Field>
             </div>
             <div className="flex flex-wrap gap-2">{DURATIONS.map((m) => <Chip key={m} selected={Number(serviceForm.duration_minutes) === m} onClick={() => setServiceForm({ ...serviceForm, duration_minutes: m })}>{m} min</Chip>)}</div>
-            <Field label="GST"><div className="flex flex-wrap gap-2">{GST_RATES.map((rate) => <Chip key={rate} selected={Number(serviceForm.tax_rate) === rate} onClick={() => setServiceForm({ ...serviceForm, tax_rate: rate })}>{rate}%</Chip>)}</div></Field>
+            <Field group label="GST"><div className="flex flex-wrap gap-2">{GST_RATES.map((rate) => <Chip key={rate} selected={Number(serviceForm.tax_rate) === rate} onClick={() => setServiceForm({ ...serviceForm, tax_rate: rate })}>{rate}%</Chip>)}</div></Field>
             <Field label="SAC code (optional)" hint="The GST service code printed on invoices, if your accountant gives you one."><input className={input} value={serviceForm.sac_code || ''} onChange={(e) => setServiceForm({ ...serviceForm, sac_code: e.target.value })} inputMode="numeric" placeholder="999721" /></Field>
           </div>
         </Modal>
@@ -213,7 +213,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
               <Field label="Name"><input className={input} value={staffForm.name || ''} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Anitha" autoFocus /></Field>
               <Field label="Mobile (optional)"><input className={input} value={staffForm.phone || ''} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
             </div>
-            <Field label="Services they do" hint="Leave all unselected if they do everything.">
+            <Field group label="Services they do" hint="Leave all unselected if they do everything.">
               <div className="space-y-3 mt-1">
                 {categories.map(([category, services]) => (
                   <div key={category}>
