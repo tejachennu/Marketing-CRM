@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { billingSummary } from '@/lib/billing-service'
+import { ensureBillingSwitchedOn } from '@/lib/billing-auto-setup'
 import { razorpayKeys } from '@/lib/razorpay'
 import { can } from '@/lib/rbac'
 import { AI_TOPUP_OPTIONS, MAX_AI_TOPUP, MIN_AI_TOPUP } from '@/lib/billing'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 // GET: the workspace's plan, access and AI credit (as a percentage). Every member may see it.
 export async function GET(request: NextRequest) {
@@ -12,7 +16,11 @@ export async function GET(request: NextRequest) {
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   try {
     // Payment history is for the people who pay; everyone else sees the plan and AI credit only
-    const summary = await billingSummary(getSupabaseAdminClient(), organizationId!, { payments: can(access.user, 'billing.manage') })
+    const db = getSupabaseAdminClient()
+    const options = { payments: can(access.user, 'billing.manage') }
+    let summary = await billingSummary(db, organizationId!, options)
+    // Billing tables missing: switch billing on now (once), then read again
+    if (!summary.configured && await ensureBillingSwitchedOn()) summary = await billingSummary(db, organizationId!, options)
     return NextResponse.json({
       ...summary,
       topupOptions: AI_TOPUP_OPTIONS,

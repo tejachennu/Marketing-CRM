@@ -142,6 +142,9 @@ UPDATE organization_billing SET billing_exempt = TRUE
        -- Workspaces that send WhatsApp through Twilio (Consular Helpdesk)
        OR (COALESCE(whatsapp_provider, 'twilio') = 'twilio' AND COALESCE(twilio_account_sid, '') <> '')
  );
+
+-- Supabase's API caches the list of tables: reload it so billing works straight away
+NOTIFY pgrst, 'reload schema';
 `
 
 /** The connection the app uses for direct database work, or null when none is set. */
@@ -158,6 +161,8 @@ export function migrationConnectionString(env: Record<string, string | undefined
   }
 }
 
+const MIGRATION_LOCK = 724519001
+
 /** Run the migration in one transaction: all of it applies, or none of it. */
 export async function runBillingMigration(connectionString: string, ClientClass: typeof Client = Client): Promise<void> {
   // Supabase signs its database certificate with its own root, which the server does not carry
@@ -165,6 +170,8 @@ export async function runBillingMigration(connectionString: string, ClientClass:
   await client.connect()
   try {
     await client.query('BEGIN')
+    // One run at a time: dashboards opening together all try to switch billing on
+    await client.query(`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK})`)
     await client.query(BILLING_MIGRATION_SQL)
     await client.query('COMMIT')
   } catch (error) {

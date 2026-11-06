@@ -483,8 +483,35 @@ test('Switch on: all of the migration applies, or none of it', async () => {
     async end() { runs.push(['end']) }
   }
   await M.runBillingMigration('postgres://x', fakeClient(null))
-  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'MIGRATION', 'COMMIT', 'end'])
+  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'SELECT pg_advisory_xact_lock(724519001)', 'MIGRATION', 'COMMIT', 'end'])
   runs.length = 0
   await assert.rejects(M.runBillingMigration('postgres://x', fakeClient('MIGRATION')), /boom/)
-  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'MIGRATION', 'ROLLBACK', 'end'])
+  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'SELECT pg_advisory_xact_lock(724519001)', 'MIGRATION', 'ROLLBACK', 'end'])
+})
+
+test('Switch on: billing switches itself on once, and can be turned off', async () => {
+  const A = require('../lib/billing-auto-setup.ts')
+  const runs = []
+  const run = async (url) => { runs.push(url) }
+  await withEnv({ POSTGRES_URL_NON_POOLING: 'postgres://u:p@db.example.com:5432/postgres?sslmode=require', BILLING_AUTO_SETUP: '' }, async () => {
+    A.resetAutoSetup()
+    assert.equal(await A.ensureBillingSwitchedOn(run, 1_000_000), true)
+    assert.deepEqual(runs, ['postgres://u:p@db.example.com:5432/postgres'])
+    // Not again straight away (a failing connection is not hammered on every page view)
+    assert.equal(await A.ensureBillingSwitchedOn(run, 1_000_000 + 60_000), false)
+    assert.equal(await A.ensureBillingSwitchedOn(run, 1_000_000 + 11 * 60_000), true)
+    // A failed run reports false and the page still loads
+    A.resetAutoSetup()
+    assert.equal(await A.ensureBillingSwitchedOn(async () => { throw new Error('refused') }, 5_000_000), false)
+  })
+  await withEnv({ POSTGRES_URL_NON_POOLING: 'postgres://u:p@db.example.com/postgres', BILLING_AUTO_SETUP: 'off' }, async () => {
+    A.resetAutoSetup()
+    assert.equal(await A.ensureBillingSwitchedOn(run, 9_000_000), false)
+  })
+  // No database connection: nothing to do
+  await withEnv({ POSTGRES_URL_NON_POOLING: '', POSTGRES_URL: '', DATABASE_URL: '' }, async () => {
+    A.resetAutoSetup()
+    assert.equal(await A.ensureBillingSwitchedOn(run, 9_000_000), false)
+  })
+  assert.equal(runs.length, 2)
 })

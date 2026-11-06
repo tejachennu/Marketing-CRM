@@ -133,3 +133,6 @@ UPDATE organization_billing SET billing_exempt = TRUE
        -- Workspaces that send WhatsApp through Twilio (Consular Helpdesk)
        OR (COALESCE(whatsapp_provider, 'twilio') = 'twilio' AND COALESCE(twilio_account_sid, '') <> '')
  );
+
+-- Supabase's API caches the list of tables: reload it so billing works straight away
+NOTIFY pgrst, 'reload schema';
