@@ -20,6 +20,9 @@ interface Billing {
   status: 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired'
   hasAccess: boolean
   hasSubscription: boolean
+  /** Auto-pay is set up but nothing has been charged yet (subscribed during the trial) */
+  autoPayPending: boolean
+  trialEndsAt: string | null
   onTrial: boolean
   trialDays: number
   trialDaysLeft: number | null
@@ -77,6 +80,8 @@ interface StatusView {
   body: string
   action?: { label: string; kind: 'subscribe' | 'cancel'; caption?: string }
   progress?: number
+  /** Key facts shown along the bottom of the panel */
+  facts?: { label: string; value: string }[]
 }
 
 function statusView(billing: Billing): StatusView {
@@ -93,14 +98,23 @@ function statusView(billing: Billing): StatusView {
         body: `Your trial ends on ${until}. Subscribe now so your inbox, campaigns and AI keep running without a break.`,
         action: { label: `Subscribe · ₹3,000 / month`, kind: 'subscribe', caption: `First charge on ${until}, when the trial ends.` },
         progress: Math.min(100, Math.max(4, ((billing.trialDays - left) / billing.trialDays) * 100)),
+        facts: [{ label: 'Plan', value: 'WAMA CRM Pro' }, { label: 'Trial ends', value: until }, { label: 'After the trial', value: '₹3,000 / month' }],
       }
     }
     case 'active':
-      return billing.cancelAtPeriodEnd
-        ? { tone: 'amber', icon: CalendarClock, eyebrow: 'Auto-renew is off', title: `Your plan ends on ${until}`, body: 'You keep every feature until then. Turn auto-renew back on and nothing changes for your team.', action: { label: 'Turn auto-renew on', kind: 'subscribe', caption: `Next charge on ${until}.` } }
-        : { tone: 'green', icon: BadgeCheck, eyebrow: 'Active', title: 'WAMA CRM Pro is active', body: until ? `Next charge: ₹3,000 on ${until}, through Razorpay auto-pay.` : 'Renews every month through Razorpay auto-pay.', action: { label: 'Stop auto-renew', kind: 'cancel' } }
+      if (billing.cancelAtPeriodEnd) {
+        return { tone: 'amber', icon: CalendarClock, eyebrow: 'Auto-renew is off', title: `Your plan ends on ${until}`, body: 'You keep every feature until then. Turn auto-renew back on and nothing changes for your team.', action: { label: 'Turn auto-renew on', kind: 'subscribe', caption: `Next charge on ${until}.` },
+          facts: [{ label: 'Access until', value: until }, { label: 'Next charge', value: 'None' }, { label: 'Plan', value: 'WAMA CRM Pro' }] }
+      }
+      if (billing.autoPayPending) {
+        return { tone: 'green', icon: BadgeCheck, eyebrow: 'Auto-pay is set up', title: "You're all set", body: `Your free trial carries on until ${until}. The first ₹3,000 is charged on that day, then every month. Nothing has been charged yet.`, action: { label: 'Cancel auto-pay', kind: 'cancel' },
+          facts: [{ label: 'Trial ends', value: until }, { label: 'First charge', value: `₹3,000 · ${until}` }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
+      }
+      return { tone: 'green', icon: BadgeCheck, eyebrow: 'Active', title: 'WAMA CRM Pro is active', body: 'Your plan renews automatically every month. Every feature is on for your whole team.', action: { label: 'Stop auto-renew', kind: 'cancel' },
+        facts: [{ label: 'Plan', value: 'WAMA CRM Pro' }, { label: 'Next charge', value: until ? `₹3,000 · ${until}` : '₹3,000 monthly' }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
     case 'past_due':
-      return { tone: 'red', icon: AlertTriangle, eyebrow: 'Payment failed', title: 'Your last payment did not go through', body: `Razorpay will try again. To avoid any interruption, pay now with another card or UPI${until ? `. Your access continues until ${until}` : ''}.`, action: { label: 'Pay ₹3,000 now', kind: 'subscribe', caption: 'Then monthly through auto-pay.' } }
+      return { tone: 'red', icon: AlertTriangle, eyebrow: 'Payment failed', title: 'Your last payment did not go through', body: 'Razorpay will try again. To avoid any interruption, pay now with another card or UPI.', action: { label: 'Pay ₹3,000 now', kind: 'subscribe', caption: 'Then monthly through auto-pay.' },
+        facts: [{ label: 'Amount due', value: '₹3,000' }, ...(until ? [{ label: 'Access until', value: until }] : []), { label: 'Plan', value: 'WAMA CRM Pro' }] }
     case 'cancelled':
       if (billing.hasAccess) return { tone: 'amber', icon: CalendarClock, eyebrow: 'Plan cancelled', title: `Your plan ends on ${until}`, body: 'You keep every feature until then.', action: { label: 'Subscribe again', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
       return { tone: 'brand', icon: Lock, eyebrow: 'Plan ended', title: 'Subscribe to unlock your workspace', body: 'Your chats, contacts and settings are safe and waiting for you.', action: { label: 'Subscribe · ₹3,000 / month', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
@@ -131,7 +145,7 @@ function CreditRing({ percent, paused }: { percent: number; paused: boolean }) {
           strokeDasharray={circumference} strokeDashoffset={circumference * (1 - percent / 100)} style={{ transition: 'stroke-dashoffset .7s ease' }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[30px] font-extrabold text-[#0E1B3D] dark:text-white leading-none">{percent}%</span>
+        <span className={`${percent >= 100 ? 'text-[25px]' : 'text-[29px]'} font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-none`}>{percent}%</span>
         <span className="text-[12.5px] font-semibold text-[#6B7894] mt-1">left</span>
       </div>
     </div>
@@ -208,13 +222,20 @@ export default function BillingPage() {
   }
 
   async function cancel() {
-    if (!(await confirmDialog({ title: 'Stop auto-renew?', message: `You keep every feature until ${formatDate(billing?.accessUntil)}. You can turn auto-renew back on before then and nothing changes.`, confirmLabel: 'Stop auto-renew', destructive: true }))) return
+    const pending = Boolean(billing?.autoPayPending)
+    const ok = await confirmDialog(pending
+      ? { title: 'Cancel auto-pay?', message: `Nothing has been charged. Your free trial carries on until ${formatDate(billing?.accessUntil)}, and you can set up auto-pay again any time before then.`, confirmLabel: 'Cancel auto-pay', destructive: true }
+      : { title: 'Stop auto-renew?', message: `You keep every feature until ${formatDate(billing?.accessUntil)}. You can turn auto-renew back on before then and nothing changes.`, confirmLabel: 'Stop auto-renew', destructive: true })
+    if (!ok) return
     setBusy('cancel'); setError(''); setNotice('')
     try {
       const res = await fetch('/api/billing/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The plan could not be cancelled.')
-      setNotice(`Auto-renew is off. You keep access until ${formatDate(data.accessUntil)}.`)
+      setNotice(data.trial
+        ? `Auto-pay cancelled. Nothing was charged, and your free trial carries on until ${formatDate(data.accessUntil)}.`
+        : `Auto-renew is off. You keep access until ${formatDate(data.accessUntil)}.`)
+      window.dispatchEvent(new Event('billing:changed'))
       await load(orgId)
     } catch (err: any) {
       setError(err.message)
@@ -327,6 +348,16 @@ export default function BillingPage() {
               </div>
             )}
           </div>
+          {view.facts && view.facts.length > 0 && (
+            <dl className={`relative grid grid-cols-1 sm:grid-cols-3 border-t ${view.tone === 'brand' ? 'border-white/10' : 'border-black/5 dark:border-white/10'}`}>
+              {view.facts.map((fact, index) => (
+                <div key={fact.label} className={`px-5 sm:px-7 py-3.5 ${index > 0 ? `border-t sm:border-t-0 sm:border-l ${view.tone === 'brand' ? 'border-white/10' : 'border-black/5 dark:border-white/10'}` : ''}`}>
+                  <dt className={`text-[12.5px] font-semibold ${view.tone === 'brand' ? 'text-white/60' : 'text-[#6B7894]'}`}>{fact.label}</dt>
+                  <dd className={`text-[15.5px] font-bold mt-0.5 ${view.tone === 'brand' ? 'text-white' : 'text-[#0E1B3D] dark:text-white'}`}>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">

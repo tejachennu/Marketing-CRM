@@ -180,6 +180,8 @@ export default function SuperAdminConsole() {
   const [newPersonOpen, setNewPersonOpen] = useState(false)
   // Whether this console can switch billing on itself (the server has a database connection)
   const [canSwitchOnBilling, setCanSwitchOnBilling] = useState(false)
+  const [razorpaySetup, setRazorpaySetup] = useState<{ mode: 'live' | 'test' | 'off'; webhook: boolean } | null>(null)
+  const [resetting, setResetting] = useState(false)
   const [switchingOn, setSwitchingOn] = useState(false)
 
   const flash = (tone: 'success' | 'error', text: string) => {
@@ -192,10 +194,30 @@ export default function SuperAdminConsole() {
     setWorkspaces(data.workspaces || [])
     setTotals(data.totals || null)
     setBillingReady(data.billingReady !== false)
-    if (data.billingReady === false) {
-      api('/api/superadmin/billing-setup').then((setup) => setCanSwitchOnBilling(Boolean(setup.canSwitchOn))).catch(() => setCanSwitchOnBilling(false))
-    }
+    api('/api/superadmin/billing-setup')
+      .then((setup) => { setCanSwitchOnBilling(Boolean(setup.canSwitchOn)); setRazorpaySetup(setup.razorpay || null) })
+      .catch(() => setCanSwitchOnBilling(false))
   }, [])
+
+  async function resetBillingData() {
+    const ok = await confirm({
+      title: 'Clear all billing test data?',
+      message: 'Every workspace goes back to a fresh start: a 14-day free trial from today and ₹300 of AI credit. Test subscriptions, test payments and the AI credit history are removed. Exempt workspaces stay exempt. Any workspace with a real (live) Razorpay subscription is left exactly as it is.',
+      confirmLabel: 'Clear billing data',
+      destructive: true,
+    })
+    if (!ok) return
+    setResetting(true)
+    try {
+      const result = await api('/api/superadmin/billing-setup', { method: 'POST', body: JSON.stringify({ action: 'reset' }) })
+      flash('success', `Billing data cleared: ${result.reset} workspaces start fresh${result.kept ? `, ${result.kept} with live subscriptions kept` : ''}.`)
+      await reload()
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setResetting(false)
+    }
+  }
 
   async function switchOnBilling() {
     const ok = await confirm({
@@ -392,6 +414,28 @@ export default function SuperAdminConsole() {
               <Stat label="AI paused (no credit)" value={String(totals?.aiPaused || 0)} tone={totals?.aiPaused ? 'amber' : undefined} />
               <Stat label="Paying" value={String(totals?.paying || 0)} tone="green" />
             </div>
+
+            {billingReady && (
+              <div className={`${card} px-5 py-4 flex flex-col md:flex-row md:items-center gap-4`}>
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="h-10 w-10 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] flex items-center justify-center"><CreditCard size={19} /></span>
+                  <div className="min-w-0">
+                    <h2 className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">Billing setup</h2>
+                    <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
+                      <span>Razorpay keys: {!razorpaySetup ? '…' : razorpaySetup.mode === 'live'
+                        ? <strong className="text-[#047857]">Live ✓</strong>
+                        : razorpaySetup.mode === 'test'
+                          ? <strong className="text-[#92400e]">Test (no real money)</strong>
+                          : <strong className="text-[#b91c1c]">Not set</strong>}</span>
+                      <span>Webhook secret: {!razorpaySetup ? '…' : razorpaySetup.webhook ? <strong className="text-[#047857]">Set ✓</strong> : <strong className="text-[#b91c1c]">Not set</strong>}</span>
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={resetBillingData} disabled={resetting} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#f3c7c7] text-[#b91c1c] text-[14px] font-semibold hover:bg-[#fdf0f0] dark:border-red-900 dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-50 shrink-0">
+                  {resetting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Clear billing test data
+                </button>
+              </div>
+            )}
 
             <div className="grid lg:grid-cols-2 gap-6">
               <div className={card}>

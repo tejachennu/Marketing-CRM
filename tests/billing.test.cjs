@@ -36,7 +36,7 @@ function database(seed = {}) {
           rows = [{ ...defaults, ...structuredClone(values) }]
           tables[table].push(...rows)
         } else if (op === 'update') rows.forEach((r) => Object.assign(r, structuredClone(values)))
-        return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null }).then(resolve, reject)
+        return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null, count: rows.length }).then(resolve, reject)
       },
     }
     return query
@@ -514,4 +514,88 @@ test('Switch on: billing switches itself on once, and can be turned off', async 
     assert.equal(await A.ensureBillingSwitchedOn(run, 9_000_000), false)
   })
   assert.equal(runs.length, 2)
+})
+
+// ── Cancelling auto-pay, and clearing test data ─────────────────────────────
+
+test('Cancel before the first charge: auto-pay stops at once and the trial carries on', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ status: 'active', trial_ends_at: iso(14), current_period_end: iso(14), razorpay_subscription_id: 'sub_a' })] })
+    const fetcher = fakeFetch({
+      'GET /subscriptions/sub_a': { id: 'sub_a', status: 'authenticated', paid_count: 0 },
+      'POST /subscriptions/sub_a/cancel': (init) => [200, { id: 'sub_a', status: 'cancelled', sent: JSON.parse(init.body) }],
+    })
+    const result = await S.stopAutoPay(db, 'org-1', fetcher)
+    assert.deepEqual(result, { accessUntil: iso(14), trial: true })
+    // Cancelled straight away: there is no billing cycle to finish (Razorpay refuses "at cycle end" here)
+    assert.equal(JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/cancel')).init.body).cancel_at_cycle_end, 0)
+    const billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.status, billing.razorpay_subscription_id, billing.cancel_at_period_end], ['trialing', null, false])
+    assert.equal(B.billingState(billing, NOW).hasAccess, true)
+    // Razorpay's "cancelled" event for that subscription arrives later and changes nothing
+    const { POST } = loadWebhook(db)
+    await POST(webhookRequest({ event: 'subscription.cancelled', payload: { subscription: { entity: { id: 'sub_a', status: 'cancelled', notes: { app: 'wamacrm', organization_id: 'org-1' } } } } }))
+    assert.equal(db.tables.organization_billing[0].status, 'trialing')
+  })
+})
+
+test('Cancel after paying: renewal stops and access lasts to the end of the paid month', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ status: 'active', current_period_end: iso(20), razorpay_subscription_id: 'sub_p' })] })
+    const fetcher = fakeFetch({
+      'GET /subscriptions/sub_p': { id: 'sub_p', status: 'active', paid_count: 2 },
+      'POST /subscriptions/sub_p/cancel': { id: 'sub_p', status: 'active' },
+    })
+    assert.deepEqual(await S.stopAutoPay(db, 'org-1', fetcher), { accessUntil: iso(20), trial: false })
+    assert.equal(JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/cancel')).init.body).cancel_at_cycle_end, 1)
+    assert.equal(db.tables.organization_billing[0].cancel_at_period_end, true)
+  })
+})
+
+test('Webhook: events for a subscription the workspace does not hold are ignored, even with none saved', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ status: 'trialing', razorpay_subscription_id: null })] })
+    const { POST } = loadWebhook(db)
+    const stray = { event: 'subscription.charged', payload: { subscription: { entity: { id: 'sub_test_old', status: 'active', current_end: Math.floor((NOW + 30 * DAY) / 1000), notes: { app: 'wamacrm', organization_id: 'org-1' } } } } }
+    assert.equal((await POST(webhookRequest(stray))).status, 200)
+    assert.deepEqual([db.tables.organization_billing[0].status, db.tables.organization_billing[0].razorpay_subscription_id], ['trialing', null])
+  })
+})
+
+test('Billing page: auto-pay set up but not yet charged is told apart from a paid plan', async () => {
+  const pending = database({ organization_billing: [row({ status: 'active', current_period_end: iso(14), razorpay_subscription_id: 'sub_a' })] })
+  assert.equal((await S.billingSummary(pending, 'org-1')).autoPayPending, true)
+  const paid = database({ organization_billing: [row({ status: 'active', current_period_end: iso(14), razorpay_subscription_id: 'sub_a' })], billing_payments: [{ organization_id: 'org-1', purpose: 'subscription', razorpay_payment_id: 'pay_1' }] })
+  assert.equal((await S.billingSummary(paid, 'org-1')).autoPayPending, false)
+})
+
+test('Clearing test data: live subscriptions are always kept', async () => {
+  const Reset = require('../lib/billing-reset.ts')
+  assert.equal(Reset.razorpayMode({}), 'off')
+  assert.equal(Reset.razorpayMode({ RAZORPAY_KEY_ID: 'rzp_test_abc', RAZORPAY_KEY_SECRET: 's' }), 'test')
+  assert.equal(Reset.razorpayMode({ RAZORPAY_KEY_ID: 'rzp_live_abc', RAZORPAY_KEY_SECRET: 's' }), 'live')
+  const rows = [
+    { organization_id: 'org-live', razorpay_subscription_id: 'sub_live' },
+    { organization_id: 'org-test', razorpay_subscription_id: 'sub_test' },
+    { organization_id: 'org-none', razorpay_subscription_id: null },
+    { organization_id: 'org-unsure', razorpay_subscription_id: 'sub_unsure' },
+  ]
+  const fetcher = fakeFetch({
+    'GET /subscriptions/sub_live': { id: 'sub_live', status: 'active' },
+    'GET /subscriptions/sub_test': () => [400, { error: { description: 'The id provided does not exist' } }],
+    'GET /subscriptions/sub_unsure': () => [500, { error: { description: 'Razorpay is down' } }],
+  })
+  // Live keys: the real one, and any we could not check, are kept; test ones are cleared
+  await withEnv({ RAZORPAY_KEY_ID: 'rzp_live_abc', RAZORPAY_KEY_SECRET: 'secret' }, async () => {
+    assert.deepEqual(await Reset.workspacesWithLiveSubscriptions(rows, fetcher), ['org-live', 'org-unsure'])
+  })
+  // Test keys: everything is test data
+  await withEnv({ RAZORPAY_KEY_ID: 'rzp_test_abc', RAZORPAY_KEY_SECRET: 'secret' }, async () => {
+    assert.deepEqual(await Reset.workspacesWithLiveSubscriptions(rows, fetcher), [])
+  })
+  // The reset statements never touch the kept workspaces
+  for (const [sql, params] of Reset.RESET_STATEMENTS) {
+    assert.match(sql, /NOT \(organization_id = ANY\(\$1::uuid\[\]\)\)/)
+    assert.deepEqual(params(['org-live'])[0], ['org-live'])
+  }
 })

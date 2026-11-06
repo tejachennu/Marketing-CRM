@@ -4,7 +4,7 @@
  */
 
 import { billingState, getBilling, MAX_AI_TOPUP, MIN_AI_TOPUP, PLAN, TRIAL_DAYS, type BillingRow } from './billing'
-import { capturePayment, fetchOrder, fetchPayment, fetchSubscription } from './razorpay'
+import { cancelSubscription, capturePayment, fetchOrder, fetchPayment, fetchSubscription } from './razorpay'
 
 async function checked(query: any) {
   const result = await query
@@ -45,11 +45,12 @@ export function subscriptionStartAt(billing: Pick<BillingRow, 'status' | 'trial_
 }
 
 /** Copy a Razorpay subscription's state onto the workspace. */
-export async function applySubscription(db: any, organizationId: string, subscription: any): Promise<void> {
-  // A subscription the workspace has since replaced (a failed one, or one that is running out) must
-  // not overwrite the current one when its last events arrive
+export async function applySubscription(db: any, organizationId: string, subscription: any, options: { adopt?: boolean } = {}): Promise<void> {
+  // Only the workspace's current subscription may change it. Every subscription is saved on the
+  // workspace before Checkout opens, so events for any other one (replaced, cancelled before its
+  // first charge, or left over from test mode) are ignored. `adopt` is for the Checkout result itself.
   const { data: current } = await db.from('organization_billing').select('razorpay_subscription_id').eq('organization_id', organizationId).maybeSingle()
-  if (current?.razorpay_subscription_id && current.razorpay_subscription_id !== subscription?.id) return
+  if (!options.adopt && current?.razorpay_subscription_id !== subscription?.id) return
   const status = mapSubscriptionStatus(String(subscription?.status || ''))
   const update: Record<string, any> = { razorpay_subscription_id: subscription.id, updated_at: new Date().toISOString() }
   if (status) update.status = status
@@ -105,7 +106,7 @@ export async function creditTopup(db: any, organizationId: string, paymentId: st
 export async function activateSubscription(db: any, organizationId: string, subscriptionId: string, paymentId: string, fetcher: typeof fetch = fetch): Promise<void> {
   const subscription = await fetchSubscription(subscriptionId, fetcher)
   if (subscription.notes?.organization_id && subscription.notes.organization_id !== organizationId) throw new Error('This subscription belongs to another workspace.')
-  await applySubscription(db, organizationId, { ...subscription, status: mapSubscriptionStatus(subscription.status) ? subscription.status : 'active' })
+  await applySubscription(db, organizationId, { ...subscription, status: mapSubscriptionStatus(subscription.status) ? subscription.status : 'active' }, { adopt: true })
   // Charged straight away: record it. Auto-pay set up for a later start has only authorised a small
   // verification amount; the real charge is recorded by the webhook when it happens.
   if (subscription.status === 'active' && Number(subscription.paid_count) > 0) {
@@ -113,11 +114,37 @@ export async function activateSubscription(db: any, organizationId: string, subs
   }
 }
 
+/**
+ * Stop auto-pay. Before the first charge (auto-pay set up during the trial) there is no billing
+ * cycle to finish, so the subscription is cancelled at once and the workspace simply carries on
+ * with its free trial. Once paying, renewal stops and access lasts to the end of the paid month.
+ */
+export async function stopAutoPay(db: any, organizationId: string, fetcher: typeof fetch = fetch): Promise<{ accessUntil: string | null; trial: boolean }> {
+  const billing = await getBilling(db, organizationId)
+  if (!billing?.razorpay_subscription_id || billing.status !== 'active') throw new Error('There is no active plan to cancel.')
+  const subscription = await fetchSubscription(billing.razorpay_subscription_id, fetcher)
+  const beforeFirstCharge = ['created', 'authenticated'].includes(String(subscription.status)) || !(Number(subscription.paid_count) > 0)
+  if (beforeFirstCharge) {
+    await cancelSubscription(billing.razorpay_subscription_id, fetcher, false)
+    await checked(db.from('organization_billing').update({ status: 'trialing', razorpay_subscription_id: null, current_period_end: null, cancel_at_period_end: false, updated_at: new Date().toISOString() }).eq('organization_id', organizationId))
+    return { accessUntil: billing.trial_ends_at, trial: true }
+  }
+  await cancelSubscription(billing.razorpay_subscription_id, fetcher, true)
+  await checked(db.from('organization_billing').update({ cancel_at_period_end: true, updated_at: new Date().toISOString() }).eq('organization_id', organizationId))
+  return { accessUntil: billing.current_period_end, trial: false }
+}
+
 /** What the billing page and the app's gate need to know. */
 export async function billingSummary(db: any, organizationId: string, options: { payments?: boolean } = {}) {
   const row = await getBilling(db, organizationId)
   const state = billingState(row)
   let payments: { purpose: string; amount: number; date: string }[] = []
+  // Auto-pay set up but not charged yet (subscribed during the trial): no plan payment recorded so far
+  let autoPayPending = false
+  if (row?.razorpay_subscription_id && row.status === 'active') {
+    const { count } = await db.from('billing_payments').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).eq('purpose', 'subscription')
+    autoPayPending = !count
+  }
   if (options.payments && row) {
     const { data } = await db.from('billing_payments').select('purpose, amount_paise, created_at').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(12)
     payments = (data || []).map((payment: any) => ({ purpose: payment.purpose, amount: Number(payment.amount_paise) / 100, date: payment.created_at }))
@@ -128,6 +155,8 @@ export async function billingSummary(db: any, organizationId: string, options: {
     ...state,
     trialDays: TRIAL_DAYS,
     hasSubscription: Boolean(row?.razorpay_subscription_id) && ['active', 'past_due'].includes(String(row?.status)),
+    autoPayPending,
+    trialEndsAt: row?.trial_ends_at || null,
     payments,
   }
 }
