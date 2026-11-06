@@ -50,7 +50,7 @@ export async function getAiAccess(db: any, organizationId: string, organization?
   return { organizationId, apiKey: platformKey, billed: true, allowed: true }
 }
 
-/** Read the model and token usage from an OpenAI response body (chat completions or embeddings). */
+/** Read the model and token usage from an OpenAI response body (chat completions, embeddings or transcriptions). */
 export function readUsage(responseBody: any, requestModel?: string): { model: string; input: number; output: number } | null {
   const usage = responseBody?.usage
   if (!usage) return null
@@ -82,7 +82,8 @@ export async function aiFetch(db: any, access: AiAccess, feature: string, url: s
   const response = await fetcher(url, { ...init, headers })
   if (access.billed && response.ok) {
     let requestModel: string | undefined
-    try { requestModel = JSON.parse(String(init.body || '{}'))?.model } catch {}
+    if (typeof FormData !== 'undefined' && init.body instanceof FormData) requestModel = String(init.body.get('model') || '') || undefined
+    else try { requestModel = JSON.parse(String(init.body || '{}'))?.model } catch {}
     try {
       const usage = readUsage(await response.clone().json(), requestModel)
       if (usage) await chargeAiUsage(db, access, feature, usage.model, usage.input, usage.output)

@@ -154,6 +154,9 @@ const MODEL_PRICES: Array<[RegExp, number, number]> = [
   [/^text-embedding-3-small/, 0.02, 0],
   [/^text-embedding-3-large/, 0.13, 0],
   [/^text-embedding-ada/, 0.10, 0],
+  // Speech to text: audio input is the larger part, so it is charged at the audio rate
+  [/^gpt-4o-mini-transcribe/, 3.00, 5.00],
+  [/^gpt-4o-transcribe/, 6.00, 10.00],
   [/^gpt-4o-mini/, 0.15, 0.60],
   [/^gpt-4\.1-nano/, 0.10, 0.40],
   [/^gpt-4\.1-mini/, 0.40, 1.60],

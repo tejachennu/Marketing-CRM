@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from 'crypto'
-import { computeInvoice, formatInvoiceNumber, type Discount } from './invoice'
+import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
 import { formatIstDay, formatIstTime, istDate, parseSpokenPhone, phoneKey } from './spoken'
 import { isUuid } from './validate'
 import type { SalonContext } from './server'
@@ -256,7 +256,7 @@ export async function executeCounterAction(
       })
       const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services: [...(appointment.services || []), ...extra], updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ₹${Number(invoice.total).toLocaleString('en-IN')}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}` }
     }
 
     case 'walk_in_bill': {
@@ -276,7 +276,7 @@ export async function executeCounterAction(
       })
       const updated = await checked(db.from('salon_appointments').update({ invoice_id: invoice.id }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ₹${Number(invoice.total).toLocaleString('en-IN')} · ${customer.name}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))} · ${customer.name}` }
     }
 
     case 'pay_invoice': {

@@ -279,6 +279,7 @@ test('Counter: book → arrived → complete & bill makes a numbered GST invoice
   const billed = await A.executeCounterAction(ctx, { type: 'complete_and_bill', appointment_id: booked.appointment.id, discount: { type: 'percent', value: 10 }, payment_method: 'upi', send_whatsapp: false })
   const invoice = billed.invoice
   assert.equal(invoice.number, 'GLOW-0001')
+  assert.equal(billed.message, 'GLOW-0001 · ₹1,911.60 paid by UPI')
   assert.deepEqual([invoice.subtotal, invoice.discount, invoice.taxable, invoice.cgst, invoice.sgst, invoice.total], [1800, 180, 1620, 145.8, 145.8, 1911.6])
   assert.deepEqual([invoice.status, invoice.payment_method, invoice.staff_name], ['paid', 'upi', 'Anitha'])
   assert.equal(invoice.business.gstin, '36ABCDE1234F1Z5')

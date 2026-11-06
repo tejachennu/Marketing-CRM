@@ -36,6 +36,10 @@ export interface CounterHandle {
   openWalkIn: (draft?: BookingDraft) => void
   openBill: (appointment: Appointment, draft?: BillDraft) => void
   reload: () => Promise<void>
+  /** Show today's board */
+  goToday: () => void
+  /** Show the outcome of an action done elsewhere (the voice bar): the bill sheet, or a message */
+  afterAction: (result: any, booked?: boolean) => void
   appointments: Appointment[]
 }
 
@@ -92,6 +96,13 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
     }
   }
 
+  function afterBooking(result: any) {
+    setSheet(null)
+    flash(result.warning ? 'error' : 'success', result.warning ? `Booked, but note: ${result.warning}` : result.whatsapp && !result.whatsapp.sent ? `${result.message}. WhatsApp confirmation not sent: ${result.whatsapp.windowClosed ? 'the 24-hour window is closed' : result.whatsapp.error}` : `${result.message}${result.whatsapp?.sent ? ' · confirmation sent on WhatsApp' : ''}`)
+    setDate(istDate(result.appointment.starts_at))
+    load().catch(() => {})
+  }
+
   function afterBilling(result: any) {
     setSheet({ kind: 'result', result })
     if (result.invoice && date !== istDate(result.appointment?.starts_at || Date.now())) setDate(istDate())
@@ -103,6 +114,16 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
     openWalkIn: (draft) => setSheet({ kind: 'book', mode: 'walkin', draft }),
     openBill: (appointment, draft) => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment }, draft }),
     reload: load,
+    goToday: () => { if (date !== today) setDate(today) },
+    afterAction: (result, booked) => {
+      if (result.invoice) afterBilling(result)
+      else if (booked) afterBooking(result)
+      else {
+        flash('success', result.message || 'Done')
+        if (result.appointment) setAppointments((current) => current.map((a) => (a.id === result.appointment.id ? result.appointment : a)))
+        load().catch(() => {})
+      }
+    },
     appointments,
   }
 
@@ -117,7 +138,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
           <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day" className="h-11 w-11 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={20} /></button>
           <button type="button" onClick={() => setDate(today)} className="h-11 px-4 rounded-xl text-[17px] font-bold text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer min-w-[130px]">{formatIstDay(date, today)}</button>
           <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-11 w-11 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><ChevronRight size={20} /></button>
-          <span className="ml-2 text-[14px] text-[#6B7894]">{appointments.filter((a) => !['cancelled', 'no_show'].includes(a.status)).length} appointments</span>
+          <span className="ml-2 text-[14px] text-[#6B7894]">{(() => { const count = appointments.filter((a) => !['cancelled', 'no_show'].includes(a.status)).length; return `${count} appointment${count === 1 ? '' : 's'}` })()}</span>
         </div>
         {canWrite && (
           <div className="flex gap-2">
@@ -189,7 +210,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
 
       {sheet?.kind === 'book' && (
         <BookingSheet orgId={orgId} setup={setup} mode={sheet.mode} draft={sheet.draft} onClose={() => setSheet(null)}
-          onBooked={(result) => { setSheet(null); flash(result.warning ? 'error' : 'success', result.warning ? `Booked, but note: ${result.warning}` : result.whatsapp && !result.whatsapp.sent ? `${result.message}. WhatsApp confirmation not sent: ${result.whatsapp.windowClosed ? 'the 24-hour window is closed' : result.whatsapp.error}` : `${result.message}${result.whatsapp?.sent ? ' · confirmation sent on WhatsApp' : ''}`); setDate(istDate(result.appointment.starts_at)); load().catch(() => {}) }}
+          onBooked={afterBooking}
           onWalkInReady={(target) => setSheet({ kind: 'bill', target })} />
       )}
       {sheet?.kind === 'bill' && <BillSheet orgId={orgId} setup={setup} target={sheet.target} draft={sheet.draft} onClose={() => setSheet(null)} onBilled={afterBilling} />}
