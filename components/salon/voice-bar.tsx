@@ -14,7 +14,7 @@ import { applyEdit, draftToAction, isReady, REPLIES, type DraftEdit, type VoiceC
 import { authSessionManager } from '@/lib/auth-context'
 import { api, card, Chip, input, primaryButton, secondaryButton } from './ui'
 import type { CounterHandle } from './salon-counter'
-import type { SalonSetup } from './types'
+import type { Appointment, SalonSetup } from './types'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'acting'
 
@@ -63,6 +63,8 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
   const [typed, setTyped] = useState('')
   const [canRecord, setCanRecord] = useState(true)
   const [muted, setMuted] = useState(false)
+  /** Today's appointments as the server saw them with the last draft (the board may show another day) */
+  const [todays, setTodays] = useState<Appointment[] | null>(null)
 
   const recorder = useRef<MediaRecorder | null>(null)
   const stopTimers = useRef<() => void>(() => {})
@@ -83,9 +85,9 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
     now: Date.now(),
     services: setup.services,
     staff: setup.staff,
-    appointments: handle.appointments,
+    appointments: todays || handle.appointments,
     settings: { gstin: setup.settings.gstin, prices_include_tax: setup.settings.prices_include_tax },
-  }), [setup, handle.appointments])
+  }), [setup, todays, handle.appointments])
 
   function show(next: VoiceDraft | null, say = true) {
     setDraft(next)
@@ -126,7 +128,7 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
     if (current.intent === 'book') handle.openBooking(booking)
     else if (current.intent === 'walk_in') handle.openWalkIn(booking)
     else if (current.intent === 'bill') {
-      const appointment = handle.appointments.find((a) => a.id === current.appointment_id)
+      const appointment = (todays || handle.appointments).find((a) => a.id === current.appointment_id)
       if (!appointment) return
       handle.openBill(appointment, { extra_service_ids: current.service_ids, discount: current.discount, payment_method: current.payment_method })
     }
@@ -162,6 +164,7 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
       if (result.kind === 'confirm') { await confirm(); return }
       if (result.kind === 'reject') { dismiss(true); return }
       const next: VoiceDraft = result.draft
+      if (Array.isArray(result.appointments)) setTodays(result.appointments)
       if (next.intent === 'summary' || next.intent === 'unknown') { setDraft(null); tell(next.speech, 'info'); return }
       // Commands about appointments are about today: show today's board alongside
       if (next.intent !== 'book' && next.intent !== 'walk_in') handle.goToday()
@@ -221,6 +224,7 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
       audioContext = new AudioCtx()
+      audioContext.resume().catch(() => {})
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = 512
       audioContext.createMediaStreamSource(stream).connect(analyser)
@@ -344,7 +348,7 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
         </div>
       )}
 
-      {draft && <DraftCard draft={draft} setup={setup} handle={handle} busy={phase === 'acting'} answer={answer}
+      {draft && <DraftCard draft={draft} setup={setup} appointments={todays || handle.appointments} busy={phase === 'acting'} answer={answer}
         onEdit={edit} onConfirm={() => confirm()} onChange={change} onCancel={() => dismiss(false)} />}
     </section>
   )
@@ -364,10 +368,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 const Missing = ({ children }: { children: React.ReactNode }) => <span className="inline-flex items-center min-h-10 px-3 rounded-xl border border-dashed border-[#f0b4b4] text-[#b91c1c] dark:text-red-300 text-[14.5px] font-semibold">{children}</span>
 const Value = ({ children }: { children: React.ReactNode }) => <span className="inline-flex items-center min-h-10 px-3.5 rounded-xl bg-[#f4f6fa] dark:bg-slate-800 text-[#0E1B3D] dark:text-white text-[15px] font-semibold">{children}</span>
 
-function DraftCard({ draft, setup, handle, busy, answer, onEdit, onConfirm, onChange, onCancel }: {
+function DraftCard({ draft, setup, appointments, busy, answer, onEdit, onConfirm, onChange, onCancel }: {
   draft: VoiceDraft
   setup: SalonSetup
-  handle: CounterHandle
+  appointments: Appointment[]
   busy: boolean
   answer: { text: string; tone: 'info' | 'error' } | null
   onEdit: (edit: DraftEdit) => void
@@ -377,11 +381,11 @@ function DraftCard({ draft, setup, handle, busy, answer, onEdit, onConfirm, onCh
 }) {
   const ready = isReady(draft)
   const today = istDate()
-  const appointment = handle.appointments.find((a) => a.id === draft.appointment_id)
+  const appointment = appointments.find((a) => a.id === draft.appointment_id)
   const services = setup.services.filter((s) => draft.service_ids.includes(s.id))
   const staff = setup.staff.find((s) => s.id === draft.staff_id)
   const openFor: Record<string, string[]> = { arrived: ['booked'], start: ['booked', 'arrived'], bill: ['booked', 'arrived', 'in_service'], cancel: ['booked', 'arrived'], no_show: ['booked'] }
-  const pickable = openFor[draft.intent] ? handle.appointments.filter((a) => openFor[draft.intent].includes(a.status)) : []
+  const pickable = openFor[draft.intent] ? appointments.filter((a) => openFor[draft.intent].includes(a.status)) : []
   const slots = useMemo(() => (draft.missing.includes('time') ? bookingSlots(draft.date || today, Date.now()) : []), [draft.missing, draft.date, today])
   const showsCustomer = draft.intent === 'book' || draft.intent === 'walk_in'
   const showsServices = draft.intent === 'book' || draft.intent === 'walk_in' || (draft.intent === 'bill' && services.length > 0)

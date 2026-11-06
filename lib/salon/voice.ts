@@ -203,6 +203,17 @@ export function yesOrNo(transcript: string): 'yes' | 'no' | null {
 
 // ── Resolution ───────────────────────────────────────────────────────────────
 
+/** Salons are not open from 1 to 7 in the morning: "5" heard as 05:00 means 5 pm. */
+export function salonTime(time: string | null): string | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time || '')
+  if (!match) return null
+  let hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours > 23 || minutes > 59) return null
+  if (hours >= 1 && hours <= 7) hours += 12
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
 const OPEN_STATUSES: Record<string, string[]> = {
   arrived: ['booked'],
   start: ['booked', 'arrived'],
@@ -253,15 +264,17 @@ export function resolveCommand(parsed: ParsedCommand, transcript: string, contex
     if (parsed.intent === 'walk_in' && !draft.customer) draft.customer = { contact_id: null, name: 'Walk-in customer', phone: null }
     if (parsed.intent === 'book') {
       draft.date = parsed.date && parsed.date >= today ? parsed.date : today
-      draft.time = parsed.time && fromIst(draft.date, parsed.time) ? parsed.time.padStart(5, '0') : null
+      const time = salonTime(parsed.time)
+      draft.time = time && fromIst(draft.date, time) ? time : null
     }
   }
 
   if (OPEN_STATUSES[parsed.intent]) {
     const open = context.appointments.filter((a) => OPEN_STATUSES[parsed.intent].includes(a.status))
     let candidates = parsed.customer_name ? open.filter((a) => matchByName(parsed.customer_name, [a], (x) => x.customer_name).match || matchByName(parsed.customer_name, [a], (x) => x.customer_name).choices.length) : open
-    if (parsed.appointment_time && candidates.length > 1) {
-      const atTime = candidates.filter((a) => istTime(a.starts_at) === parsed.appointment_time!.padStart(5, '0'))
+    const appointmentTime = salonTime(parsed.appointment_time)
+    if (appointmentTime && candidates.length > 1) {
+      const atTime = candidates.filter((a) => istTime(a.starts_at) === appointmentTime)
       if (atTime.length) candidates = atTime
     }
     // "Priya" when there is "Priya Sharma" and "Priya Reddy": prefer exact name matches

@@ -73,6 +73,18 @@ test('Voice: a time that has already gone today is asked again; no day in the pa
   assert.equal(yesterday.date, '2026-11-06')
 })
 
+test('Voice: "5" heard as five in the morning means 5 pm at a salon', () => {
+  assert.equal(V.salonTime('5:00'), '17:00')
+  assert.equal(V.salonTime('07:30'), '19:30')
+  assert.equal(V.salonTime('9:00'), '09:00')
+  assert.equal(V.salonTime('11:30'), '11:30')
+  assert.equal(V.salonTime('17:00'), '17:00')
+  assert.equal(V.salonTime('25:00'), null)
+  assert.equal(V.salonTime(null), null)
+  assert.equal(resolve({ intent: 'book', customer_name: 'Meena', services: ['facial'], time: '05:00' }).time, '17:00')
+  assert.equal(resolve({ intent: 'arrived', customer_name: 'Priya', appointment_time: '3:00' }).appointment_id, 'a2')
+})
+
 test('Voice: a booking says what is missing, customer and services first', () => {
   const draft = resolve({ intent: 'book', time: '17:00' })
   assert.deepEqual(draft.missing, ['customer', 'services'])

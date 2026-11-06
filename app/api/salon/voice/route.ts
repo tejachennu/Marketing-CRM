@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { aiFetch, getAiAccess } from '@/lib/ai-access'
 import { badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
 import { findContacts, interpret, loadVoiceContext, MAX_AUDIO_BYTES, openAiBase, transcribe, transcriptionPrompt } from '@/lib/salon/voice-server'
@@ -62,10 +62,15 @@ export async function POST(request: NextRequest) {
     if (result.kind === 'draft') {
       // Best effort: a record of what was heard and understood, to improve the wording over time
       const { draft } = result
-      db.from('salon_voice_log').insert({
-        organization_id: organizationId, user_id: user?.id || null, transcript: result.transcript,
-        action: { intent: draft.intent, language: draft.language, missing: draft.missing, service_ids: draft.service_ids, unknown_services: draft.unknown_services, appointment_id: draft.appointment_id },
-      }).then(({ error }: any) => { if (error) console.error('[Salon voice] Log failed:', error.message) }, () => {})
+      after(async () => {
+        const { error } = await db.from('salon_voice_log').insert({
+          organization_id: organizationId, user_id: user?.id || null, transcript: result.transcript,
+          action: { intent: draft.intent, language: draft.language, missing: draft.missing, service_ids: draft.service_ids, unknown_services: draft.unknown_services, appointment_id: draft.appointment_id },
+        })
+        if (error) console.error('[Salon voice] Log failed:', error.message)
+      })
+      // Today's appointments, so the card can show (and bill) the one it means whichever day the board shows
+      return NextResponse.json({ success: true, ...result, appointments: context.appointments })
     }
     return NextResponse.json({ success: true, ...result })
   } catch (error: any) {

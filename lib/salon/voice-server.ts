@@ -38,7 +38,7 @@ export async function loadVoiceContext(db: any, organizationId: string, settings
   const [services, staff, appointments, paid] = await Promise.all([
     db.from('salon_services').select('id, name, category, price, duration_minutes, tax_rate, active').eq('organization_id', organizationId).order('position'),
     db.from('salon_staff').select('id, name, active').eq('organization_id', organizationId).order('name'),
-    db.from('salon_appointments').select('id, customer_name, customer_phone, contact_id, starts_at, status, services').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end).order('starts_at'),
+    db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end).order('starts_at'),
     db.from('salon_invoices').select('total').eq('organization_id', organizationId).eq('status', 'paid').gte('paid_at', start).lt('paid_at', end),
   ])
   for (const result of [services, staff, appointments]) if (result.error) throw new Error(result.error.message)
