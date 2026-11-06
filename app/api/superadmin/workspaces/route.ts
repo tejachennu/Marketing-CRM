@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
 import { summarizeWorkspace, workspaceTotals } from '@/lib/superadmin-workspaces'
+import { ensureBillingSwitchedOn } from '@/lib/billing-auto-setup'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 /** Every workspace with its plan, AI credit and team size, plus totals for the overview. */
 export async function GET(request: NextRequest) {
@@ -16,7 +20,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     // Before the billing migration has run the table is missing: every workspace shows as before
-    const billingRows = await db.from('organization_billing').select('*')
+    let billingRows = await db.from('organization_billing').select('*')
+    // Billing tables missing: switch billing on now (once), as client dashboards do
+    if (billingRows.error && await ensureBillingSwitchedOn()) billingRows = await db.from('organization_billing').select('*')
     const billingByOrg = new Map<string, any>((billingRows.error ? [] : billingRows.data || []).map((row: any) => [row.organization_id, row]))
 
     const workspaces = await Promise.all((organizations || []).map(async (organization: any) => {

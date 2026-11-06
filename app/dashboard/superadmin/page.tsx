@@ -344,7 +344,7 @@ export default function SuperAdminConsole() {
             <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1">Every workspace, its plan, AI credit and team, in one place.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={reload} className={`${secondary} w-10 px-0`} aria-label="Reload"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+            <button type="button" onClick={reload} className={`${secondary} w-10 px-0`} aria-label="Reload"><RefreshCw size={18} className={`shrink-0 ${loading ? 'animate-spin' : ''}`} /></button>
             <button type="button" onClick={() => setNewPersonOpen(true)} className={secondary}><Users size={16} /> Add person</button>
             <button type="button" onClick={() => setNewWorkspaceOpen(true)} className={primary}><Plus size={16} /> New workspace</button>
           </div>
@@ -387,7 +387,7 @@ export default function SuperAdminConsole() {
               <Stat label="On free trial" value={String(totals?.trialing || 0)} tone="blue" />
               <Stat label="Trial or plan ended" value={String(totals?.expired || 0)} tone={totals?.expired ? 'red' : undefined} />
               <Stat label="Payment failed" value={String(totals?.pastDue || 0)} tone={totals?.pastDue ? 'red' : undefined} />
-              <Stat label="Workspaces" value={String(totals?.workspaces || 0)} hint={`${totals?.exempt || 0} exempt`} />
+              <Stat label="Workspaces" value={String(totals?.workspaces || 0)} hint={billingReady ? `${totals?.exempt || 0} exempt` : 'Billing not on yet'} />
               <Stat label="People" value={String(totals?.people || 0)} />
               <Stat label="AI paused (no credit)" value={String(totals?.aiPaused || 0)} tone={totals?.aiPaused ? 'amber' : undefined} />
               <Stat label="Paying" value={String(totals?.paying || 0)} tone="green" />

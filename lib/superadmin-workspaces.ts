@@ -142,7 +142,8 @@ export function workspaceTotals(workspaces: WorkspaceSummary[]) {
     paying: paying.length,
     trialing: billed.filter((w) => w.billing.status === 'trialing').length,
     expired: billed.filter((w) => !w.billing.hasAccess).length,
-    exempt: workspaces.filter((w) => w.billing.exempt).length,
+    // Before billing is switched on nobody is exempt: there is simply no billing yet
+    exempt: workspaces.filter((w) => w.billing.configured && w.billing.exempt).length,
     pastDue: billed.filter((w) => w.billing.status === 'past_due').length,
     aiPaused: billed.filter((w) => w.billing.aiPaused).length,
     monthlyRevenue: paying.length * (PLAN.amountPaise / 100),
