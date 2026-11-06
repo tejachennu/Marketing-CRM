@@ -457,3 +457,34 @@ test('Webhook: events from a replaced subscription do not touch the current one'
     assert.deepEqual([db.tables.organization_billing[0].status, db.tables.organization_billing[0].razorpay_subscription_id], ['active', 'sub_new'])
   })
 })
+
+// ── Switching billing on from the console ───────────────────────────────────
+
+const M = require('../lib/billing-migration.ts')
+
+test('Switch on: the console runs the migration file word for word', () => {
+  const file = require('fs').readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261105_billing_and_ai_wallet.sql'), 'utf8')
+  assert.equal(M.BILLING_MIGRATION_SQL, file)
+})
+
+test('Switch on: uses the direct database connection, with TLS options set in code', () => {
+  assert.equal(M.migrationConnectionString({}), null)
+  const url = M.migrationConnectionString({ POSTGRES_URL: 'postgres://u:p@pooler.example.com:6543/postgres?sslmode=require&pgbouncer=true', POSTGRES_URL_NON_POOLING: 'postgres://u:p@pooler.example.com:5432/postgres?sslmode=require' })
+  assert.equal(url, 'postgres://u:p@pooler.example.com:5432/postgres')
+  assert.equal(M.migrationConnectionString({ DATABASE_URL: 'not a url' }), null)
+})
+
+test('Switch on: all of the migration applies, or none of it', async () => {
+  const runs = []
+  const fakeClient = (failOn) => class {
+    constructor(options) { runs.push(['options', options.ssl]) }
+    async connect() { runs.push(['connect']) }
+    async query(sql) { runs.push(['query', sql.length > 40 ? 'MIGRATION' : sql]); if (sql === failOn || (failOn === 'MIGRATION' && sql.length > 40)) throw new Error('boom') }
+    async end() { runs.push(['end']) }
+  }
+  await M.runBillingMigration('postgres://x', fakeClient(null))
+  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'MIGRATION', 'COMMIT', 'end'])
+  runs.length = 0
+  await assert.rejects(M.runBillingMigration('postgres://x', fakeClient('MIGRATION')), /boom/)
+  assert.deepEqual(runs.map((r) => r[1] || r[0]).slice(1), ['connect', 'BEGIN', 'MIGRATION', 'ROLLBACK', 'end'])
+})

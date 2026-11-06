@@ -178,6 +178,9 @@ export default function SuperAdminConsole() {
   const [seatLimit, setSeatLimit] = useState('')
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false)
   const [newPersonOpen, setNewPersonOpen] = useState(false)
+  // Whether this console can switch billing on itself (the server has a database connection)
+  const [canSwitchOnBilling, setCanSwitchOnBilling] = useState(false)
+  const [switchingOn, setSwitchingOn] = useState(false)
 
   const flash = (tone: 'success' | 'error', text: string) => {
     setToast({ tone, text })
@@ -189,7 +192,29 @@ export default function SuperAdminConsole() {
     setWorkspaces(data.workspaces || [])
     setTotals(data.totals || null)
     setBillingReady(data.billingReady !== false)
+    if (data.billingReady === false) {
+      api('/api/superadmin/billing-setup').then((setup) => setCanSwitchOnBilling(Boolean(setup.canSwitchOn))).catch(() => setCanSwitchOnBilling(false))
+    }
   }, [])
+
+  async function switchOnBilling() {
+    const ok = await confirm({
+      title: 'Switch on billing for every client?',
+      message: 'Every client workspace starts a 14-day free trial with ₹300 of AI credit, and AI is charged to that credit. Workspaces that have not subscribed lock after 14 days (you can extend any of them here). Consular Helpdesk, Magnetora and your own workspace stay exempt. Add your live Razorpay keys in Vercel so clients can pay.',
+      confirmLabel: 'Switch on billing',
+    })
+    if (!ok) return
+    setSwitchingOn(true)
+    try {
+      const result = await api('/api/superadmin/billing-setup', { method: 'POST', body: '{}' })
+      flash('success', `Billing is on: ${result.workspaces} workspaces, ${result.exempt?.length || 0} exempt${result.exempt?.length ? ` (${result.exempt.join(', ')})` : ''}.`)
+      await reload()
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setSwitchingOn(false)
+    }
+  }
   const loadPeople = useCallback(async () => {
     const data = await api('/api/superadmin/users')
     setPeople(data.users || [])
@@ -333,8 +358,16 @@ export default function SuperAdminConsole() {
         )}
 
         {!billingReady && (
-          <div className="rounded-xl bg-[#fff7e8] text-[#92400e] px-4 py-3 text-[14px]">
-            Billing is not switched on yet: run <code className="font-mono text-[13px]">supabase/migrations/20261105_billing_and_ai_wallet.sql</code> in Supabase. Until then every workspace works as before.
+          <div className="rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-4 py-3.5 text-[14px] flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="flex-1">
+              <strong>Billing is not switched on yet.</strong> Clients do not see Billing, and every workspace works as before.
+              {!canSwitchOnBilling && <> Run <code className="font-mono text-[13px]">supabase/migrations/20261105_billing_and_ai_wallet.sql</code> in the Supabase SQL editor to switch it on.</>}
+            </span>
+            {canSwitchOnBilling && (
+              <button type="button" onClick={switchOnBilling} disabled={switchingOn} className={`${primary} shrink-0`}>
+                {switchingOn ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />} Switch on billing
+              </button>
+            )}
           </div>
         )}
 
