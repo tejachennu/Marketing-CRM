@@ -6,6 +6,7 @@
  */
 
 import { Client } from 'pg'
+import { runMigrationSql } from './schema-setup'
 
 export const BILLING_MIGRATION_SQL = `-- WAMA CRM billing: one plan (₹3,000 a month, every feature) paid through Razorpay Subscriptions,
 -- and an AI wallet: every workspace starts with ₹300 of AI usage and tops up when it runs out.
@@ -147,37 +148,11 @@ UPDATE organization_billing SET billing_exempt = TRUE
 NOTIFY pgrst, 'reload schema';
 `
 
-/** The connection the app uses for direct database work, or null when none is set. */
-export function migrationConnectionString(env: Record<string, string | undefined> = process.env): string | null {
-  const raw = String(env.POSTGRES_URL_NON_POOLING || env.POSTGRES_URL || env.DATABASE_URL || '').trim()
-  if (!raw) return null
-  try {
-    // TLS is set below; connection-string TLS and pooler options would override it
-    const url = new URL(raw)
-    for (const key of ['sslmode', 'supa', 'pgbouncer', 'sslrootcert']) url.searchParams.delete(key)
-    return url.toString()
-  } catch {
-    return null
-  }
-}
+export { migrationConnectionString } from './schema-setup'
 
 const MIGRATION_LOCK = 724519001
 
 /** Run the migration in one transaction: all of it applies, or none of it. */
 export async function runBillingMigration(connectionString: string, ClientClass: typeof Client = Client): Promise<void> {
-  // Supabase signs its database certificate with its own root, which the server does not carry
-  const client = new ClientClass({ connectionString, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000, statement_timeout: 60000 })
-  await client.connect()
-  try {
-    await client.query('BEGIN')
-    // One run at a time: dashboards opening together all try to switch billing on
-    await client.query(`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK})`)
-    await client.query(BILLING_MIGRATION_SQL)
-    await client.query('COMMIT')
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    await client.end().catch(() => {})
-  }
+  await runMigrationSql(connectionString, BILLING_MIGRATION_SQL, MIGRATION_LOCK, ClientClass)
 }
