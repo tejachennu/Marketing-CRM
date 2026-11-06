@@ -136,3 +136,56 @@ test('Spoken names: one clear match, or choices to tap', () => {
   assert.deepEqual(SP.matchByName('Priya', people, (p) => p.name).choices.map((p) => p.name), ['Priya Sharma', 'Priya Reddy'])
   assert.equal(SP.matchByName('priya reddy', people, (p) => p.name).match.name, 'Priya Reddy')
 })
+
+// ── Connectors, access and setup checks ─────────────────────────────────────
+
+test('Connectors: switching Spa & Salon on and off; E-commerce is on unless switched off', () => {
+  const C = require('../lib/connectors.ts')
+  assert.deepEqual(C.withConnector([], 'salon', true), ['salon'])
+  assert.deepEqual(C.withConnector(['salon', 'salon', 'nonsense'], 'salon', true), ['salon'])
+  assert.deepEqual(C.withConnector(['salon'], 'salon', false), [])
+  assert.deepEqual(C.withConnector(null, 'salon', false), [])
+  assert.equal(C.isConnectorOn({ enabled_connectors: ['salon'] }, 'salon'), true)
+  assert.equal(C.isConnectorOn({ enabled_connectors: [] }, 'salon'), false)
+  assert.equal(C.isConnectorOn({}, 'ecommerce'), true)
+  assert.equal(C.isConnectorOn({ enable_commerce: false }, 'ecommerce'), false)
+  assert.equal(C.isConnectorOn(null, 'ecommerce'), false)
+})
+
+test('Access: managers see Connectors, everyone sees the counter, Consular Helpdesk sees neither', () => {
+  const rbac = require('../lib/rbac.ts')
+  const { workspaceHasPage } = require('../lib/workspace-modules.ts')
+  assert.deepEqual(['owner', 'org_admin', 'org_manager', 'sales_employee', 'viewer'].map((role) => rbac.canAccessPage({ role }, '/dashboard/connectors')), [true, true, true, false, false])
+  assert.deepEqual(['org_admin', 'sales_employee', 'viewer'].map((role) => rbac.canAccessPage({ role }, '/dashboard/salon')), [true, true, true])
+  const consular = { name: 'Consular Helpdesk' }
+  assert.equal(workspaceHasPage(consular, '/dashboard/salon'), false)
+  assert.equal(workspaceHasPage(consular, '/dashboard/connectors'), false)
+  assert.equal(workspaceHasPage({ name: 'Glow Salon' }, '/dashboard/salon'), true)
+})
+
+test('Setup checks: services, staff and business details', () => {
+  const V = require('../lib/salon/validate.ts')
+  assert.deepEqual(V.parseService({ name: ' Haircut  (Men) ', price: '300', duration_minutes: 30 }).value, { name: 'Haircut (Men)', category: 'General', price: 300, duration_minutes: 30, tax_rate: 18, sac_code: null, active: true })
+  assert.match(V.parseService({ name: '', price: 100 }).error, /name/)
+  assert.match(V.parseService({ name: 'Spa', price: -1 }).error, /price/)
+  assert.match(V.parseService({ name: 'Spa', price: 100, duration_minutes: 2 }).error, /5 minutes/)
+  assert.match(V.parseService({ name: 'Spa', price: 100, tax_rate: 40 }).error, /28%/)
+  assert.match(V.parseService({ name: 'Spa', price: 100, sac_code: '12' }).error, /SAC/)
+  // A change only touches what was sent
+  assert.deepEqual(V.parseService({ active: false }, true).value, { active: false })
+  assert.deepEqual(V.parseStaff({ name: 'Anitha', phone: '98765 43210', service_ids: ['bad', '00000000-0000-4000-8000-000000000001'] }).value, { name: 'Anitha', phone: '+919876543210', service_ids: ['00000000-0000-4000-8000-000000000001'], active: true })
+  assert.match(V.parseStaff({ name: 'Anitha', phone: '123' }).error, /10-digit/)
+  const settings = V.parseSettings({ business_name: 'Glow', gstin: '36abcde1234f1z5', invoice_prefix: 'glow!', prices_include_tax: true })
+  assert.equal(settings.value.gstin, '36ABCDE1234F1Z5')
+  assert.equal(settings.value.invoice_prefix, 'GLOW')
+  assert.equal(settings.value.prices_include_tax, true)
+  assert.match(V.parseSettings({ gstin: 'ABC' }).error, /GSTIN/)
+  assert.match(V.parseSettings({ email: 'nope' }).error, /email/)
+})
+
+test('Sample salon: every staff category has services', () => {
+  const { SAMPLE_SERVICES, SAMPLE_STAFF } = require('../lib/salon/sample.ts')
+  const categories = new Set(SAMPLE_SERVICES.map((s) => s.category))
+  for (const member of SAMPLE_STAFF) for (const category of member.categories) assert.ok(categories.has(category), category)
+  assert.ok(SAMPLE_SERVICES.length >= 10)
+})

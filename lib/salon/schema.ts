@@ -148,7 +148,7 @@ export function isMissingSalonSchema(error: any): boolean {
  * Run a database step; if it fails because the salon tables are missing, set them up and try once
  * more. `step` returns a Supabase-style { data, error } result.
  */
-export async function withSalonSchema<T extends { error: any }>(step: () => PromiseLike<T>): Promise<T> {
+export async function withSalonSchema(step: () => PromiseLike<any>): Promise<any> {
   const first = await step()
   if (!isMissingSalonSchema(first.error)) return first
   if (!(await salonSchemaSetup.ensure())) return first

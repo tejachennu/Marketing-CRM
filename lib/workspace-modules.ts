@@ -1,10 +1,10 @@
 /**
  * Which dashboard modules a workspace gets. Every client workspace has all of them. Consular
  * Helpdesk (WhatsApp through Twilio) keeps the setup it has always had: no Flow Builder, Commerce,
- * Team page or Billing. Its admins manage their people from Settings → Teammates, as before.
+ * Team page, Billing or use-case connectors. Its admins manage their people from Settings → Teammates, as before.
  */
 
-export const CONSULAR_HIDDEN_PAGES = ['/dashboard/flows', '/dashboard/commerce', '/dashboard/team', '/dashboard/billing'] as const
+export const CONSULAR_HIDDEN_PAGES = ['/dashboard/flows', '/dashboard/commerce', '/dashboard/team', '/dashboard/billing', '/dashboard/connectors', '/dashboard/salon'] as const
 
 function hasValue(value: unknown): boolean {
   return String(value ?? '').trim().length > 0

@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Scissors, Blocks } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -32,6 +32,9 @@ export default function DashboardLayout({
     enable_email: true,
     enable_messages: true,
     enable_phone_calls: true,
+    // Use-case connectors (lib/connectors.ts)
+    enable_commerce: true,
+    enabled_connectors: [] as string[],
   })
   const [credentialsStatus, setCredentialsStatus] = useState({
     twilio: false,
@@ -388,6 +391,8 @@ export default function DashboardLayout({
             enable_email: org.enable_email !== false,
             enable_messages: org.enable_messages !== false,
             enable_phone_calls: org.enable_phone_calls !== false,
+            enable_commerce: org.enable_commerce !== false,
+            enabled_connectors: Array.isArray(org.enabled_connectors) ? org.enabled_connectors : [],
           })
 
           const twilioConfigured = org.credentials?.messaging === true
@@ -672,6 +677,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
+    { href: '/dashboard/salon', label: 'Salon Counter', icon: Scissors },
     { href: '/dashboard/commerce', label: 'Commerce', icon: ShoppingBag },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
@@ -679,6 +685,7 @@ export default function DashboardLayout({
     { href: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
     { href: '/dashboard/leads', label: 'Sales Pipeline', icon: TrendingUp },
     { href: '/dashboard/contacts', label: 'Contacts', icon: Users },
+    { href: '/dashboard/connectors', label: 'Connectors', icon: Blocks },
     { href: '/dashboard/team', label: 'Team', icon: UserCog },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings },
     { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
@@ -694,6 +701,9 @@ export default function DashboardLayout({
   const isFeatureEnabled = (path: string) => {
     if (isModulePage(path) && (!workspaceModules.loaded || workspaceModules.consular)) return false
     if (path === '/dashboard' || path.startsWith('/dashboard/tickets')) return features.enable_messages
+    // Use-case connectors appear once switched on in Connectors
+    if (path.startsWith('/dashboard/salon')) return features.enabled_connectors.includes('salon')
+    if (path.startsWith('/dashboard/commerce')) return features.enable_commerce
     if (path.startsWith('/dashboard/flows')) return features.enable_messages
     if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {
       return features.enable_messages || features.enable_email
