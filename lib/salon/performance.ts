@@ -8,7 +8,8 @@ import { addDays, istDate } from './spoken'
 
 export interface PerformanceStaff { id: string; name: string; commission_percent?: number | string | null; active?: boolean }
 export interface PerformanceInvoice { id: string; status: string; issued_at: string; staff_name?: string | null; items: { name: string; taxable?: number | string; staff_id?: string | null; staff_name?: string | null }[] }
-export interface PerformanceFeedback { rating: number; staff_ids?: string[] | null; staff_names?: string[] | null; created_at: string }
+/** staff_ratings: the form's rating for each person, by staff id (or "name:<name>"). Without it, the visit's rating counts for everyone on it. */
+export interface PerformanceFeedback { rating: number; staff_ids?: string[] | null; staff_names?: string[] | null; staff_ratings?: Record<string, number> | null; created_at: string }
 
 export interface StaffPerformance {
   id: string | null
@@ -79,8 +80,9 @@ export function computePerformance(invoices: PerformanceInvoice[], feedback: Per
     const members = ids.length ? ids.map((id) => byId.get(id)).filter(Boolean) as PerformanceStaff[] : names.map((n) => byName.get(n.trim().toLowerCase())).filter(Boolean) as PerformanceStaff[]
     for (const member of new Set(members)) {
       const row = rowFor(member, member.name)
+      const own = Number(entry.staff_ratings?.[member.id] ?? entry.staff_ratings?.[`name:${member.name}`])
       row.ratings += 1
-      row._ratingSum += Number(entry.rating) || 0
+      row._ratingSum += own >= 1 && own <= 5 ? own : Number(entry.rating) || 0
     }
   }
 

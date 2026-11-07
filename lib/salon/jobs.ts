@@ -8,9 +8,10 @@
  * open at once never send it twice.
  */
 
+import { feedbackLink } from './feedback'
+import { saveFeedback } from './feedback-store'
 import { withSalonSchema } from './schema'
 import { formatIstTime, phoneKey } from './spoken'
-import { FEEDBACK_BUTTONS } from './templates'
 import { sendToCustomer } from './whatsapp'
 
 export interface JobsResult { feedbackSent: number; feedbackSkipped: number; remindersSent: number }
@@ -25,30 +26,31 @@ const staffOf = (lines: any[], fallback?: string | null) => {
   return names.length ? names.join(', ') : fallback || ''
 }
 
-/** Ratings in the chat: tapping one records it ("sf:<invoice>:<1-5>"). */
-export const RATING_ROWS: { rating: number; title: string }[] = [
-  { rating: 5, title: '⭐⭐⭐⭐⭐ Excellent' }, { rating: 4, title: '⭐⭐⭐⭐ Good' }, { rating: 3, title: '⭐⭐⭐ Okay' }, { rating: 2, title: '⭐⭐ Not great' }, { rating: 1, title: '⭐ Bad' },
-]
-
 export function feedbackQuestion(invoice: any): string {
   const name = firstName(invoice.customer_name)
   const staff = staffOf(invoice.items, invoice.staff_name)
   const business = invoice.business?.name || 'us'
-  return `Hi${name ? ` ${name}` : ''}, thank you for visiting ${business}! How was your ${servicesOf(invoice.items) || 'visit'}${staff ? ` with ${staff}` : ''}? Tap to rate.`
+  return `Hi${name ? ` ${name}` : ''}, thank you for visiting ${business}! How was your ${servicesOf(invoice.items) || 'visit'}${staff ? ` with ${staff}` : ''}? Tap below to rate your visit and the team. It takes less than a minute.`
 }
 
-export function feedbackList(phone: string, invoice: any) {
+/** The feedback question with a "Give feedback" button that opens the form. */
+export function feedbackMessage(phone: string, invoice: any, origin: string) {
   return {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     to: String(phone).replace(/[^\d]/g, ''),
     type: 'interactive',
     interactive: {
-      type: 'list',
+      type: 'cta_url',
       body: { text: feedbackQuestion(invoice) },
-      action: { button: 'Rate your visit', sections: [{ title: 'Your rating', rows: RATING_ROWS.map((row) => ({ id: `sf:${invoice.id}:${row.rating}`, title: row.title })) }] },
+      action: { name: 'cta_url', parameters: { display_text: 'Give feedback', url: feedbackLink(origin, invoice.public_token) } },
     },
   }
+}
+
+/** Where links in messages point: the configured app address, else the one given. */
+export function messageOrigin(fallback?: string | null): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '') || String(fallback || '').replace(/\/+$/, '') || 'https://wamacrm.magnetora.in'
 }
 
 export function reminderText(appointment: any, business: string): string {
@@ -63,8 +65,9 @@ async function claim(db: any, table: string, id: string, column: string, value: 
   return Array.isArray(data) ? data.length > 0 : Boolean(data)
 }
 
-export async function runSalonJobs(db: any, organizationId: string, options: { now?: number } = {}): Promise<JobsResult> {
+export async function runSalonJobs(db: any, organizationId: string, options: { now?: number; origin?: string | null } = {}): Promise<JobsResult> {
   const now = options.now ?? Date.now()
+  const origin = messageOrigin(options.origin)
   const result: JobsResult = { feedbackSent: 0, feedbackSkipped: 0, remindersSent: 0 }
   const { data: settingsRow } = await withSalonSchema(() => db.from('salon_settings').select('*').eq('organization_id', organizationId).maybeSingle())
   const settings = settingsRow || {}
@@ -77,10 +80,10 @@ export async function runSalonJobs(db: any, organizationId: string, options: { n
       if (!(await claim(db, 'salon_invoices', invoice.id, 'feedback_status', 'sending'))) continue
       let status = 'skipped'
       if (invoice.status !== 'void' && invoice.customer_phone) {
-        const sent = await sendToCustomer(db, organizationId, invoice.customer_phone, { payload: feedbackList(invoice.customer_phone, invoice), logBody: feedbackQuestion(invoice) }, {
+        const sent = await sendToCustomer(db, organizationId, invoice.customer_phone, { payload: feedbackMessage(invoice.customer_phone, invoice, origin), logBody: `${feedbackQuestion(invoice)}\n${feedbackLink(origin, invoice.public_token)}` }, {
           key: 'feedback',
           params: [firstName(invoice.customer_name) || 'there', invoice.business?.name || business, servicesOf(invoice.items) || 'visit'],
-          extra: { quickReplyPayloads: FEEDBACK_BUTTONS.map((button) => `sf:${invoice.id}:${button.rating}`) },
+          extra: { urlSuffix: invoice.public_token },
         })
         status = sent.sent ? 'sent' : sent.windowClosed ? 'skipped' : 'failed'
       }
@@ -127,14 +130,7 @@ export async function handleFeedbackReply(input: { supabase: any; organization: 
   const organizationId = input.organization.id
   const { data: invoice } = await withSalonSchema(() => db.from('salon_invoices').select('*').eq('id', parsed.invoiceId).eq('organization_id', organizationId).maybeSingle())
   if (!invoice || phoneKey(invoice.customer_phone) !== phoneKey(input.customerPhone)) return { handled: false }
-  const staffIds = [...new Set((invoice.items || []).map((line: any) => line?.staff_id).filter(Boolean))]
-  const staffNames = staffOf(invoice.items, invoice.staff_name).split(', ').filter(Boolean)
-  const row = { organization_id: organizationId, invoice_id: invoice.id, contact_id: input.contact.id || invoice.contact_id || null, customer_name: invoice.customer_name, customer_phone: invoice.customer_phone, rating: parsed.rating, staff_ids: staffIds, staff_names: staffNames }
-  const { data: existing } = await withSalonSchema(() => db.from('salon_feedback').select('id').eq('invoice_id', invoice.id).eq('organization_id', organizationId).maybeSingle())
-  const saved = existing
-    ? await db.from('salon_feedback').update({ rating: parsed.rating }).eq('id', existing.id).eq('organization_id', organizationId)
-    : await withSalonSchema(() => db.from('salon_feedback').insert(row).select('id').single())
-  if (saved?.error) throw new Error(saved.error.message)
+  await saveFeedback(db, invoice, { rating: parsed.rating, staff_ratings: {}, tags: [], comment: null }, 'chat')
   const { data: settings } = await db.from('salon_settings').select('*').eq('organization_id', organizationId).maybeSingle()
   const text = thanksText(parsed.rating, settings?.review_link)
   await sendToCustomer(db, organizationId, input.customerPhone, { text, logBody: text })

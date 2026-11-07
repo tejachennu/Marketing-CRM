@@ -87,6 +87,7 @@ export function SalonTeam({ orgId, flash }: { orgId: string; flash: Flash }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">{f.customer_name || 'Customer'} {f.customer_phone && <a href={`tel:${f.customer_phone}`} className="ml-1 text-[14px] font-semibold text-[#1D5BEA] hover:underline">{f.customer_phone}</a>}</p>
                   <p className="text-[13.5px] text-[#6B7894] flex items-center gap-2"><Stars rating={f.rating} /> {formatIstDay(istDate(f.created_at), today)}{f.staff_names?.length ? ` · served by ${f.staff_names.join(', ')}` : ''}</p>
+                  {(f.tags?.length > 0 || f.comment) && <p className="mt-1 text-[14px] text-[#0E1B3D] dark:text-slate-200">{f.tags?.length > 0 && <span className="font-semibold text-[#b91c1c] dark:text-red-300">{f.tags.join(', ')}{f.comment ? ' · ' : ''}</span>}{f.comment && `“${f.comment}”`}</p>}
                 </div>
                 <button type="button" disabled={busyId === f.id} onClick={() => called(f.id)} className="self-start sm:self-auto inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50">{busyId === f.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Called</button>
               </li>
@@ -134,10 +135,15 @@ export function SalonTeam({ orgId, flash }: { orgId: string; flash: Flash }) {
           <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Star size={19} className="text-[#f59e0b]" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Latest feedback</h2></div>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {data.recentFeedback.map((f: any) => (
-              <li key={f.id} className="px-4 sm:px-5 py-3 flex items-center gap-3">
-                <Stars rating={f.rating} />
-                <p className="min-w-0 flex-1 text-[14.5px] text-[#0E1B3D] dark:text-white truncate">{f.customer_name || 'Customer'}<span className="text-[#6B7894]">{f.staff_names?.length ? ` · ${f.staff_names.join(', ')}` : ''}</span></p>
-                <span className="text-[13px] text-[#8a94a8] shrink-0">{formatIstDay(istDate(f.created_at), today)}</span>
+              <li key={f.id} className="px-4 sm:px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <Stars rating={f.rating} />
+                  <p className="min-w-0 flex-1 text-[14.5px] text-[#0E1B3D] dark:text-white truncate">{f.customer_name || 'Customer'}<span className="text-[#6B7894]">{f.staff_names?.length ? ` · ${f.staff_names.join(', ')}` : ''}</span></p>
+                  <span className="text-[13px] text-[#8a94a8] shrink-0">{formatIstDay(istDate(f.created_at), today)}</span>
+                </div>
+                {(f.tags?.length > 0 || f.comment) && (
+                  <p className="mt-1 text-[13.5px] text-[#4a5672] dark:text-slate-300">{f.tags?.length > 0 && <span className="font-semibold">{f.tags.join(', ')}</span>}{f.tags?.length > 0 && f.comment ? ' · ' : ''}{f.comment && <span className="italic">“{f.comment}”</span>}</p>
+                )}
               </li>
             ))}
           </ul>

@@ -47,6 +47,12 @@ test('Salon schema: the WhatsApp migration (chat, bookings, feedback, commission
   for (const piece of ['auto_approve_bookings', 'commission_percent', 'CREATE TABLE IF NOT EXISTS salon_feedback', 'CREATE TABLE IF NOT EXISTS salon_chat_offers', 'feedback_due_at']) assert.ok(SALON_WHATSAPP_SQL.includes(piece), piece)
 })
 
+test('Salon schema: the feedback form migration is copied word for word', () => {
+  const { SALON_FEEDBACK_FORM_SQL } = require('../lib/salon/schema.ts')
+  const file = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261109_salon_feedback_form.sql'), 'utf8')
+  assert.equal(SALON_FEEDBACK_FORM_SQL, file)
+})
+
 test('Salon schema: a missing table is recognised so it can be set up', () => {
   const { isMissingSalonSchema } = require('../lib/salon/schema.ts')
   assert.equal(isMissingSalonSchema({ code: 'PGRST205', message: "Could not find the table 'public.salon_services' in the schema cache" }), true)

@@ -213,9 +213,20 @@ ALTER TABLE salon_chat_offers ENABLE ROW LEVEL SECURITY;
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261109_salon_feedback_form.sql word for word: per-person ratings, tags, source. */
+export const SALON_FEEDBACK_FORM_SQL = `-- Spa & Salon: the feedback form. A rating for each person who served, what stood out, and
+-- where the feedback came from (the form, or a rating tapped in the chat).
+-- Safe to run more than once. The app runs it on its own when feedback is first saved.
+ALTER TABLE salon_feedback ADD COLUMN IF NOT EXISTS staff_ratings JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE salon_feedback ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE salon_feedback ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'chat';
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

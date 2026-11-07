@@ -16,7 +16,7 @@ const iso = (ms) => new Date(ms).toISOString()
 const seed = (extra = {}) => salonDb({
   organizations: [{ id: ORG, name: 'Glow', whatsapp_provider: 'facebook', whatsapp_api_token: 't', whatsapp_phone_number_id: '111' }],
   salon_settings: [{ organization_id: ORG, business_name: 'Glow Salon', feedback_enabled: true, reminders_enabled: true, review_link: 'https://g.page/r/glow/review', ...(extra.settings || {}) }],
-  salon_invoices: [{ id: INV, organization_id: ORG, number: 'GLOW-0007', customer_name: 'Priya Sharma', customer_phone: '+919876543210', status: 'paid', issued_at: iso(NOW - 3 * 3600_000), feedback_due_at: iso(NOW - 60_000), feedback_status: null, business: { name: 'Glow Salon' }, staff_name: 'Anitha, Lakshmi', items: [{ name: 'Facial', staff_id: 's1', staff_name: 'Anitha' }, { name: 'Manicure', staff_id: 's2', staff_name: 'Lakshmi' }], ...(extra.invoice || {}) }],
+  salon_invoices: [{ id: INV, organization_id: ORG, number: 'GLOW-0007', customer_name: 'Priya Sharma', customer_phone: '+919876543210', status: 'paid', issued_at: iso(NOW - 3 * 3600_000), feedback_due_at: iso(NOW - 60_000), feedback_status: null, public_token: 'TokFeedback1234567890', business: { name: 'Glow Salon' }, staff_name: 'Anitha, Lakshmi', items: [{ name: 'Facial', staff_id: 's1', staff_name: 'Anitha' }, { name: 'Manicure', staff_id: 's2', staff_name: 'Lakshmi' }], ...(extra.invoice || {}) }],
   salon_appointments: extra.appointments || [],
   salon_feedback: [], contacts: [], conversations: [], messages: [],
 })
@@ -35,30 +35,31 @@ function whatsapp({ windowClosed = false, templatesMissing = false } = {}) {
   return { sent, restore: () => { globalThis.fetch = real } }
 }
 
-test('Feedback: asked once it is due, as a list of ratings; never twice', async () => {
+test('Feedback: asked once it is due, with a Give feedback button to the form; never twice', async () => {
   const db = seed()
   const wa = whatsapp()
   try {
-    const result = await J.runSalonJobs(db, ORG, { now: NOW })
+    const result = await J.runSalonJobs(db, ORG, { now: NOW, origin: 'https://wamacrm.magnetora.in' })
     assert.deepEqual(result, { feedbackSent: 1, feedbackSkipped: 0, remindersSent: 0 })
-    const list = wa.sent[0].interactive
-    assert.equal(list.body.text, 'Hi Priya, thank you for visiting Glow Salon! How was your Facial, Manicure with Anitha, Lakshmi? Tap to rate.')
-    assert.deepEqual(list.action.sections[0].rows.map((r) => r.id), [5, 4, 3, 2, 1].map((n) => `sf:${INV}:${n}`))
+    const message = wa.sent[0].interactive
+    assert.equal(message.type, 'cta_url')
+    assert.equal(message.body.text, 'Hi Priya, thank you for visiting Glow Salon! How was your Facial, Manicure with Anitha, Lakshmi? Tap below to rate your visit and the team. It takes less than a minute.')
+    assert.deepEqual(message.action, { name: 'cta_url', parameters: { display_text: 'Give feedback', url: 'https://wamacrm.magnetora.in/f/TokFeedback1234567890' } })
     assert.equal(db.tables.salon_invoices[0].feedback_status, 'sent')
     assert.deepEqual(await J.runSalonJobs(db, ORG, { now: NOW + 60_000 }), { feedbackSent: 0, feedbackSkipped: 0, remindersSent: 0 })
     assert.equal(wa.sent.length, 1)
   } finally { wa.restore() }
 })
 
-test('Feedback: after 24 hours the approved template goes, its buttons carrying the rating; without it, skipped', async () => {
+test('Feedback: after 24 hours the approved template goes, its button opening this bill\'s form; without it, skipped', async () => {
   const db = seed()
   const wa = whatsapp({ windowClosed: true })
   try {
     await J.runSalonJobs(db, ORG, { now: NOW })
     const template = wa.sent[1].template
-    assert.equal(template.name, 'wama_salon_feedback')
+    assert.equal(template.name, 'wama_salon_feedback_form')
     assert.deepEqual(template.components[0].parameters.map((p) => p.text), ['Priya', 'Glow Salon', 'Facial, Manicure'])
-    assert.deepEqual(template.components.slice(1).map((c) => c.parameters[0].payload), [`sf:${INV}:5`, `sf:${INV}:3`, `sf:${INV}:1`])
+    assert.deepEqual(template.components[1], { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'TokFeedback1234567890' }] })
     assert.equal(db.tables.salon_invoices[0].feedback_status, 'sent')
   } finally { wa.restore() }
   const db2 = seed()
@@ -125,7 +126,7 @@ test('Bills: feedback is due after the delay set in Setup, only when there is a 
 })
 
 test('Templates: every salon template is a valid draft for Meta; the bill button opens this app\'s invoice page', () => {
-  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.name), ['wama_salon_bill', 'wama_salon_booking', 'wama_salon_reminder', 'wama_salon_feedback', 'wama_salon_offer', 'wama_salon_we_miss_you', 'wama_salon_festival'])
+  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.name), ['wama_salon_bill', 'wama_salon_booking', 'wama_salon_reminder', 'wama_salon_feedback_form', 'wama_salon_offer', 'wama_salon_we_miss_you', 'wama_salon_festival'])
   for (const template of T.SALON_TEMPLATES) {
     const draft = T.templateDraft(template, 'https://wamacrm.magnetora.in/')
     assert.deepEqual(validateDraft(draft), [], template.name)
@@ -187,7 +188,7 @@ test('Team: periods are India dates — today, last 7 days, this month, last mon
 test('Templates: where each one stands on Meta (English only); unknown when Meta could not be asked', () => {
   const pack = T.packStatus([
     { name: 'wama_salon_bill', language: 'en', status: 'APPROVED' },
-    { name: 'wama_salon_feedback', language: 'en', status: 'REJECTED', rejected_reason: 'INVALID_FORMAT' },
+    { name: 'wama_salon_feedback_form', language: 'en', status: 'REJECTED', rejected_reason: 'INVALID_FORMAT' },
     { name: 'wama_salon_booking', language: 'te', status: 'APPROVED' },
     { name: 'wama_salon_offer', language: 'en_US', status: 'pending' },
   ])
@@ -196,6 +197,53 @@ test('Templates: where each one stands on Meta (English only); unknown when Meta
   assert.deepEqual([by.feedback.status, by.feedback.rejectedReason], ['REJECTED', 'INVALID_FORMAT'])
   assert.equal(by.booking.status, 'NOT_SUBMITTED')
   assert.equal(by.offer.status, 'PENDING')
-  assert.deepEqual(by.feedback.buttons, ['Loved it 😍', 'It was okay', 'Not happy'])
+  assert.deepEqual(by.feedback.buttons, ['Give feedback'])
   assert.ok(T.packStatus(null).every((p) => p.status === 'UNKNOWN'))
+})
+
+// ── The feedback form ───────────────────────────────────────────────────────
+
+const F = require('../lib/salon/feedback.ts')
+const FS = require('../lib/salon/feedback-store.ts')
+
+test('Feedback form: the people on a bill, from each service (or the one name on older bills)', () => {
+  assert.deepEqual(F.staffOnInvoice({ items: [{ name: 'Facial', staff_id: 's1', staff_name: 'Anitha' }, { name: 'Threading', staff_id: 's1', staff_name: 'Anitha' }, { name: 'Manicure', staff_id: 's2', staff_name: 'Lakshmi' }, { name: 'Beard trim' }] }), [
+    { key: 's1', id: 's1', name: 'Anitha', services: ['Facial', 'Threading'] },
+    { key: 's2', id: 's2', name: 'Lakshmi', services: ['Manicure'] },
+  ])
+  assert.deepEqual(F.staffOnInvoice({ items: [{ name: 'Facial' }], staff_name: 'Ravi' }), [{ key: 'name:Ravi', id: null, name: 'Ravi', services: [] }])
+  assert.deepEqual(F.staffOnInvoice({ items: [] }), [])
+})
+
+test('Feedback form: a rating is required; staff ratings only for people on the bill; known tags only; comment trimmed', () => {
+  const invoice = { items: [{ name: 'Facial', staff_id: 's1', staff_name: 'Anitha' }] }
+  assert.match(F.parseFeedbackForm({}, invoice).error, /Tap the stars/)
+  assert.match(F.parseFeedbackForm({ rating: 6 }, invoice).error, /Tap the stars/)
+  const ok = F.parseFeedbackForm({ rating: 4, staff_ratings: { s1: 5, s9: 1, x: 'a' }, tags: ['Friendly staff', 'Friendly staff', 'Hacked'], comment: '  Loved it  ' }, invoice).value
+  assert.deepEqual(ok, { rating: 4, staff_ratings: { s1: 5 }, tags: ['Friendly staff'], comment: 'Loved it' })
+  assert.equal(F.parseFeedbackForm({ rating: 2, comment: '   ' }, invoice).value.comment, null)
+  assert.equal(F.feedbackLink('https://app.test/', 'tok'), 'https://app.test/f/tok')
+})
+
+test('Feedback form: one answer per bill, saved with who served; sending again updates it and asks for a call again if low', async () => {
+  const db = salonDb({ salon_feedback: [] })
+  const invoice = { id: INV, organization_id: ORG, contact_id: 'c1', customer_name: 'Priya', customer_phone: '+919876543210', items: [{ name: 'Facial', staff_id: 's1', staff_name: 'Anitha' }, { name: 'Manicure', staff_id: 's2', staff_name: 'Lakshmi' }] }
+  await FS.saveFeedback(db, invoice, { rating: 5, staff_ratings: { s1: 5, s2: 4 }, tags: ['Cleanliness'], comment: 'Great' }, 'form')
+  const row = db.tables.salon_feedback[0]
+  assert.deepEqual([row.rating, row.staff_ratings, row.tags, row.comment, row.source, row.staff_ids, row.staff_names], [5, { s1: 5, s2: 4 }, ['Cleanliness'], 'Great', 'form', ['s1', 's2'], ['Anitha', 'Lakshmi']])
+  db.tables.salon_feedback[0].followed_up_at = '2026-11-07T10:00:00Z'
+  await FS.saveFeedback(db, invoice, { rating: 2, staff_ratings: { s2: 1 }, tags: ['Long wait'], comment: null }, 'form')
+  assert.equal(db.tables.salon_feedback.length, 1)
+  assert.deepEqual([db.tables.salon_feedback[0].rating, db.tables.salon_feedback[0].followed_up_at], [2, null])
+})
+
+test('Team: each person\'s own rating from the form counts for them', () => {
+  const staff = [{ id: 's1', name: 'Anitha', active: true }, { id: 's2', name: 'Lakshmi', active: true }]
+  const report = P.computePerformance([], [
+    { rating: 4, staff_ids: ['s1', 's2'], staff_ratings: { s1: 5, s2: 2 }, created_at: '2026-11-07T09:00:00Z' },
+    { rating: 4, staff_ids: ['s1'], created_at: '2026-11-07T10:00:00Z' },
+  ], staff)
+  const by = Object.fromEntries(report.staff.map((r) => [r.name, r]))
+  assert.equal(by.Anitha.averageRating, 4.5)
+  assert.equal(by.Lakshmi.averageRating, 2)
 })

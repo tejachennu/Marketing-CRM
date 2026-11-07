@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const [invoices, feedback, staff, toCall, recent] = await Promise.all([
       withSalonSchema(() => db.from('salon_invoices').select('id, status, issued_at, staff_name, items').eq('organization_id', organizationId).gte('issued_at', start).lt('issued_at', end).limit(5000)),
-      withSalonSchema(() => db.from('salon_feedback').select('rating, staff_ids, staff_names, created_at').eq('organization_id', organizationId).gte('created_at', start).lt('created_at', end).limit(5000)),
+      withSalonSchema(() => db.from('salon_feedback').select('rating, staff_ids, staff_names, staff_ratings, created_at').eq('organization_id', organizationId).gte('created_at', start).lt('created_at', end).limit(5000)),
       withSalonSchema(() => db.from('salon_staff').select('*').eq('organization_id', organizationId).order('name')),
       // Unhappy customers nobody has called yet (last 60 days)
       withSalonSchema(() => db.from('salon_feedback').select('*').eq('organization_id', organizationId).lte('rating', 2).is('followed_up_at', null)

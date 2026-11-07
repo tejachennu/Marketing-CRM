@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const results: Record<string, unknown> = {}
   for (const organization of (organizations || []).filter(salonChatReady)) {
     try {
-      results[organization.id] = await runSalonJobs(db, organization.id)
+      results[organization.id] = await runSalonJobs(db, organization.id, { origin: new URL(request.url).origin })
     } catch (err: any) {
       results[organization.id] = { error: err?.message || 'failed' }
     }

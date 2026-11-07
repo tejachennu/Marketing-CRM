@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runSalonJobs } from '@/lib/salon/jobs'
-import { salonAccess, serverError } from '@/lib/salon/server'
+import { appOrigin, salonAccess, serverError } from '@/lib/salon/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   const access = await salonAccess(request, body?.organizationId)
   if (!access.ok) return access.response
   try {
-    const result = await runSalonJobs(access.ctx.db, access.ctx.organizationId)
+    const result = await runSalonJobs(access.ctx.db, access.ctx.organizationId, { origin: appOrigin(request) })
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
     return serverError('tick', error)

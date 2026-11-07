@@ -23,7 +23,7 @@ export interface SalonTemplate {
   buttons: ({ type: 'QUICK_REPLY'; text: string } | { type: 'URL'; text: string; path: string })[]
 }
 
-/** Feedback buttons: the rating each one gives. */
+/** Rating buttons of the first feedback template (taps on older messages are still recorded). */
 export const FEEDBACK_BUTTONS: { text: string; rating: number }[] = [{ text: 'Loved it 😍', rating: 5 }, { text: 'It was okay', rating: 3 }, { text: 'Not happy', rating: 1 }]
 
 export const SALON_TEMPLATES: SalonTemplate[] = [
@@ -49,11 +49,11 @@ export const SALON_TEMPLATES: SalonTemplate[] = [
     buttons: [],
   },
   {
-    key: 'feedback', name: 'wama_salon_feedback', category: 'UTILITY', title: 'Feedback',
-    use: 'Asks how the visit was, a while after the bill',
-    body: 'Hi {{1}}, thank you for visiting {{2}}. How was your {{3}} with us? Tap a button below to rate it.',
+    key: 'feedback', name: 'wama_salon_feedback_form', category: 'UTILITY', title: 'Feedback',
+    use: 'Asks how the visit was, a while after the bill, with a short feedback form',
+    body: 'Hi {{1}}, thank you for visiting {{2}}. How was your {{3}} with us? Tap below to rate your visit and the team. It takes less than a minute.',
     samples: { 1: 'Priya', 2: 'Glow Salon', 3: 'Facial' },
-    buttons: FEEDBACK_BUTTONS.map((b) => ({ type: 'QUICK_REPLY' as const, text: b.text })),
+    buttons: [{ type: 'URL', text: 'Give feedback', path: '/f/' }],
   },
   {
     key: 'offer', name: 'wama_salon_offer', category: 'MARKETING', title: 'Special offer',
