@@ -73,6 +73,12 @@ export async function loadSalonSetup(db: any, organizationId: string) {
   return { settings, services: services.data || [], staff: staff.data || [] }
 }
 
+/** Where this app is served, for links in messages (the configured URL, else the request's own). */
+export function appOrigin(request: NextRequest): string {
+  const configured = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+  return configured || request.headers.get('origin') || new URL(request.url).origin
+}
+
 export function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
 }

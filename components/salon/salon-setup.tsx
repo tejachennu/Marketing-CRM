@@ -8,6 +8,7 @@ import { formatRupees } from '@/lib/salon/invoice'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup, Service, StaffMember } from './types'
 import { WhatsAppSettings } from './salon-whatsapp-settings'
+import { SalonTemplates } from './salon-templates'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
@@ -311,6 +312,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       </section>
 
       <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />
+      <SalonTemplates orgId={orgId} flash={flash} />
 
       {serviceForm && (
         <Modal title={serviceForm.id ? 'Edit service' : 'Add a service'} onClose={() => setServiceForm(null)}

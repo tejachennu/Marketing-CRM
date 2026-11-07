@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { can } from '@/lib/rbac'
 import { executeCounterAction, parseCounterAction } from '@/lib/salon/actions'
-import { badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
+import { appOrigin, badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
 import { billTemplate, bookingMessage, bookingTemplate, invoiceLink, invoiceMessage, sendCustomerText } from '@/lib/salon/whatsapp'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
-
-function appOrigin(request: NextRequest): string {
-  const configured = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-  return configured || request.headers.get('origin') || new URL(request.url).origin
-}
 
 // POST { organizationId, action }: do something at the counter (see lib/salon/actions.ts)
 export async function POST(request: NextRequest) {

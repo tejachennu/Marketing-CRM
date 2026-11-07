@@ -80,6 +80,21 @@ export const SALON_TEMPLATES: SalonTemplate[] = [
 
 export const templateFor = (key: SalonTemplateKey) => SALON_TEMPLATES.find((t) => t.key === key)!
 
+export interface PackEntry { key: SalonTemplateKey; name: string; category: string; title: string; use: string; body: string; samples: Record<string, string>; buttons: string[]; status: string; rejectedReason: string | null }
+
+/** Where each salon template stands, from Meta's list (English versions). `onMeta` null: Meta could not be asked. */
+export function packStatus(onMeta: { name: string; language?: string; status?: string; rejected_reason?: string | null }[] | null): PackEntry[] {
+  return SALON_TEMPLATES.map((template) => {
+    const found = onMeta?.find((t) => t.name === template.name && (!t.language || t.language === 'en' || t.language.startsWith('en_')))
+    return {
+      key: template.key, name: template.name, category: template.category, title: template.title, use: template.use, body: template.body, samples: template.samples,
+      buttons: template.buttons.map((b) => b.text),
+      status: onMeta === null ? 'UNKNOWN' : found ? String(found.status || 'PENDING').toUpperCase() : 'NOT_SUBMITTED',
+      rejectedReason: found?.rejected_reason || null,
+    }
+  })
+}
+
 /** The template as a draft for Meta (the bill button links to this app's invoice page). */
 export function templateDraft(template: SalonTemplate, origin: string): TemplateDraft {
   const base = origin.replace(/\/+$/, '')

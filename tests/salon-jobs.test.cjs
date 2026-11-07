@@ -183,3 +183,19 @@ test('Team: periods are India dates — today, last 7 days, this month, last mon
   assert.deepEqual(P.periodRange('last_month', now), { from: '2026-10-01', to: '2026-10-31' })
   assert.deepEqual(P.periodRange('last_month', Date.parse('2027-01-15T10:00:00+05:30')), { from: '2026-12-01', to: '2026-12-31' })
 })
+
+test('Templates: where each one stands on Meta (English only); unknown when Meta could not be asked', () => {
+  const pack = T.packStatus([
+    { name: 'wama_salon_bill', language: 'en', status: 'APPROVED' },
+    { name: 'wama_salon_feedback', language: 'en', status: 'REJECTED', rejected_reason: 'INVALID_FORMAT' },
+    { name: 'wama_salon_booking', language: 'te', status: 'APPROVED' },
+    { name: 'wama_salon_offer', language: 'en_US', status: 'pending' },
+  ])
+  const by = Object.fromEntries(pack.map((p) => [p.key, p]))
+  assert.equal(by.bill.status, 'APPROVED')
+  assert.deepEqual([by.feedback.status, by.feedback.rejectedReason], ['REJECTED', 'INVALID_FORMAT'])
+  assert.equal(by.booking.status, 'NOT_SUBMITTED')
+  assert.equal(by.offer.status, 'PENDING')
+  assert.deepEqual(by.feedback.buttons, ['Loved it 😍', 'It was okay', 'Not happy'])
+  assert.ok(T.packStatus(null).every((p) => p.status === 'UNKNOWN'))
+})
