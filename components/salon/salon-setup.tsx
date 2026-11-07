@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Clock3, Loader2, Plus, Scissors, Sparkles, Store, Trash2, Users } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Clock3, ImagePlus, Loader2, Plus, Scissors, Sparkles, Store, Trash2, Upload, Users } from 'lucide-react'
+import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
@@ -12,6 +13,91 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const CATEGORY_SUGGESTIONS = ['Hair', 'Skin', 'Nails', 'Spa', 'Makeup', 'Bridal']
 
 type Flash = (tone: 'success' | 'error', text: string) => void
+
+/** Shrink a picture to at most `max` pixels on its longest side, keeping transparency for PNGs. */
+async function shrinkImage(file: File, max = 512): Promise<Blob> {
+  const url = URL.createObjectURL(file)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image()
+      element.onload = () => resolve(element)
+      element.onerror = () => reject(new Error('That image could not be opened. Try a PNG or JPG.'))
+      element.src = url
+    })
+    const scale = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight))
+    if (scale === 1 && file.size <= 600_000) return file
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height)
+    const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('That image could not be read.'))), type, 0.9))
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function LogoPicker({ orgId, logo, onSaved, flash }: { orgId: string; logo: string | null | undefined; onSaved: (settings: any) => void; flash: Flash }) {
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState<'upload' | 'remove' | null>(null)
+  const shown = isSafeLogoUrl(logo) ? logo : null
+
+  async function upload(file: File) {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { flash('error', 'Use a PNG, JPG or WebP image for the logo.'); return }
+    setBusy('upload')
+    try {
+      const form = new FormData()
+      form.append('organizationId', orgId)
+      form.append('file', await shrinkImage(file), 'logo')
+      const data = await api('/api/salon/logo', { method: 'POST', body: form })
+      onSaved(data.settings)
+      flash('success', 'Logo saved. New invoices will show it.')
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setBusy(null)
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
+
+  async function remove() {
+    setBusy('remove')
+    try {
+      const data = await api(`/api/salon/logo?organizationId=${orgId}`, { method: 'DELETE' })
+      onSaved(data.settings)
+      flash('success', 'Logo removed from new invoices.')
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mb-5 flex items-center gap-4 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-4">
+      <button type="button" onClick={() => fileInput.current?.click()} disabled={busy !== null} aria-label={shown ? 'Change logo' : 'Upload logo'}
+        className="h-20 w-20 shrink-0 rounded-2xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 bg-[#f8fafc] dark:bg-slate-900 flex items-center justify-center overflow-hidden hover:border-[#9db5ef] cursor-pointer disabled:cursor-wait">
+        {busy === 'upload' ? <Loader2 size={22} className="animate-spin text-[#1D5BEA]" />
+          // eslint-disable-next-line @next/next/no-img-element
+          : shown ? <img src={shown} alt="Your logo" className="max-h-full max-w-full object-contain p-1.5" />
+          : <ImagePlus size={24} className="text-[#a3adc2]" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white">Logo</p>
+        <p className="text-[13px] text-[#6B7894] dark:text-slate-400">Printed at the top of every invoice. PNG, JPG or WebP; a square logo looks best.</p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button type="button" onClick={() => fileInput.current?.click()} disabled={busy !== null} className={`${secondaryButton} h-10`}>
+            {busy === 'upload' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} {shown ? 'Change logo' : 'Upload logo'}
+          </button>
+          {shown && <button type="button" onClick={remove} disabled={busy !== null} className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-[14.5px] font-semibold text-[#b91c1c] dark:text-red-300 hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-50">
+            {busy === 'remove' ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Remove
+          </button>}
+        </div>
+      </div>
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Logo file" onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(file) }} />
+    </div>
+  )
+}
 
 function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.ReactNode; tone: string; title: string; subtitle: string; action?: React.ReactNode }) {
   return (
@@ -172,6 +258,8 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
         <SectionHead icon={<Store size={21} />} tone="bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
         <div className="p-4 sm:p-5 grid lg:grid-cols-5 gap-6">
           <div className="lg:col-span-3">
+            <LogoPicker orgId={orgId} logo={settings.logo_url} flash={flash}
+              onSaved={(saved) => { onChange({ ...setup, settings: { ...setup.settings, logo_url: saved?.logo_url ?? null } }); setSettings((current) => ({ ...current, logo_url: saved?.logo_url ?? null })) }} />
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Glow Salon & Spa" /></Field>
               <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
@@ -194,7 +282,9 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
                 <div className="h-1.5 bg-[#1D5BEA]" />
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {isSafeLogoUrl(settings.logo_url) && <img src={settings.logo_url} alt="" className="h-12 w-auto max-w-[96px] object-contain shrink-0" />}
+                    <div className="min-w-0 flex-1">
                       <p className="text-[17px] font-extrabold text-[#0E1B3D] dark:text-white break-words">{settings.business_name || 'Your business name'}</p>
                       {settings.address && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400 mt-1 whitespace-pre-line">{settings.address}</p>}
                       {(settings.phone || settings.email) && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400">{[settings.phone, settings.email].filter(Boolean).join(' · ')}</p>}

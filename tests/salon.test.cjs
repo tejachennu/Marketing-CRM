@@ -15,6 +15,31 @@ test('Salon schema: the app runs the migration file word for word', () => {
   assert.equal(SALON_SCHEMA_SQL, file)
 })
 
+test('Salon schema: the logo column is added by its own migration, also word for word', () => {
+  const { SALON_LOGO_SQL } = require('../lib/salon/schema.ts')
+  const file = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261107_salon_logo.sql'), 'utf8')
+  assert.equal(SALON_LOGO_SQL, file)
+  assert.match(SALON_LOGO_SQL, /ADD COLUMN IF NOT EXISTS logo_url TEXT/)
+})
+
+test('Salon schema: after setting up, a step is retried until Supabase sees the new column', async () => {
+  const { withSalonSchema } = require('../lib/salon/schema.ts')
+  const missing = { data: null, error: { code: 'PGRST204', message: "Could not find the 'logo_url' column of 'salon_settings' in the schema cache" } }
+  let calls = 0
+  let setups = 0
+  const setup = { ensure: async () => { setups++; return true } }
+  const result = await withSalonSchema(async () => (++calls <= 3 ? missing : { data: { ok: true }, error: null }), { setup, waitMs: 1 })
+  assert.deepEqual([result.data, calls, setups], [{ ok: true }, 4, 1])
+  // When setup cannot run, the first answer comes back as it was
+  calls = 0
+  const refused = await withSalonSchema(async () => { calls++; return missing }, { setup: { ensure: async () => false }, waitMs: 1 })
+  assert.deepEqual([refused.error.code, calls], ['PGRST204', 1])
+  // Other errors are not retried
+  calls = 0
+  await withSalonSchema(async () => { calls++; return { data: null, error: { code: '23505', message: 'duplicate' } } }, { setup, waitMs: 1 })
+  assert.equal(calls, 1)
+})
+
 test('Salon schema: a missing table is recognised so it can be set up', () => {
   const { isMissingSalonSchema } = require('../lib/salon/schema.ts')
   assert.equal(isMissingSalonSchema({ code: 'PGRST205', message: "Could not find the table 'public.salon_services' in the schema cache" }), true)
@@ -317,6 +342,33 @@ test('Counter: without a GSTIN the bill carries no GST', async () => {
   const db = seedSalon()
   const result = await A.executeCounterAction(ctxFor(db, { gstin: null, invoice_prefix: 'INV' }), { type: 'walk_in_bill', customer: { name: 'A' }, service_ids: [S1, S2], payment_method: 'card' })
   assert.deepEqual([result.invoice.number, result.invoice.cgst, result.invoice.sgst, result.invoice.total], ['INV-0001', 0, 0, 1800])
+})
+
+test('Counter: the logo is kept with each invoice, so changing it later leaves sent invoices alone', async () => {
+  const db = seedSalon()
+  const logo = 'https://example.supabase.co/storage/v1/object/public/media-attachments/salon-logos/org/1.png'
+  const withLogo = await A.executeCounterAction(ctxFor(db, { logo_url: logo }), { type: 'walk_in_bill', customer: { name: 'A' }, service_ids: [S1], payment_method: 'cash' })
+  assert.equal(withLogo.invoice.business.logo_url, logo)
+  const without = await A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'B' }, service_ids: [S1], payment_method: 'cash' })
+  assert.equal(without.invoice.business.logo_url, null)
+})
+
+test('Logo: only real PNG, JPG or WebP images, and only http(s) links are shown', () => {
+  const L = require('../lib/salon/logo.ts')
+  const bytes = (...values) => new Uint8Array([...values, ...new Array(16).fill(0)])
+  assert.equal(L.sniffImageType(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)), 'image/png')
+  assert.equal(L.sniffImageType(bytes(0xff, 0xd8, 0xff, 0xe0)), 'image/jpeg')
+  assert.equal(L.sniffImageType(bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50)), 'image/webp')
+  assert.equal(L.sniffImageType(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')), null)
+  assert.equal(L.sniffImageType(new TextEncoder().encode('GIF89a......')), null)
+  assert.equal(L.sniffImageType(new Uint8Array([0x89, 0x50])), null)
+
+  assert.equal(L.isSafeLogoUrl('https://x.supabase.co/storage/v1/object/public/media-attachments/salon-logos/o/1.png'), true)
+  assert.equal(L.isSafeLogoUrl('http://localhost:54329/storage/v1/object/public/a.png'), true)
+  for (const bad of ['javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'http://evil.example/logo.png', 'not a url', '', null, 42]) assert.equal(L.isSafeLogoUrl(bad), false, String(bad))
+
+  assert.match(L.logoStoragePath('c0ffee00-0000-4000-8000-000000000001', 'image/png', 1700000000000), /^salon-logos\/c0ffee00-0000-4000-8000-000000000001\/1700000000000\.png$/)
+  assert.equal(L.logoStoragePath('../../etc', 'image/jpeg', 1), 'salon-logos/etc/1.jpg')
 })
 
 test('Counter: take payment later, void, and send the bill on WhatsApp', async () => {

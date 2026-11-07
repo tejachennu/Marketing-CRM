@@ -10,6 +10,7 @@ export interface SalonSettings {
   prices_include_tax: boolean
   invoice_note: string | null
   voice_replies: boolean
+  logo_url?: string | null
 }
 
 export interface Service {

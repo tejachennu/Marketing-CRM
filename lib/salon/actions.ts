@@ -173,7 +173,7 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   // Without a GSTIN a business cannot charge GST: the bill carries no tax
   const registered = Boolean(settings.gstin)
   const totals = computeInvoice(input.lines.map((line) => ({ ...line, tax_rate: registered ? line.tax_rate : 0 })), { pricesIncludeTax: Boolean(settings.prices_include_tax), discount: input.discount })
-  const business = { name: settings.business_name, address: settings.address, phone: settings.phone, email: settings.email, gstin: settings.gstin, note: settings.invoice_note }
+  const business = { name: settings.business_name, address: settings.address, phone: settings.phone, email: settings.email, gstin: settings.gstin, note: settings.invoice_note, logo_url: settings.logo_url || null }
   const now = new Date().toISOString()
   for (let attempt = 0; attempt < 6; attempt++) {
     const last = await checked(db.from('salon_invoices').select('seq').eq('organization_id', ctx.organizationId).order('seq', { ascending: false }).limit(1))

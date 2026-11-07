@@ -45,6 +45,7 @@ export const DEFAULT_SALON_SETTINGS = {
   prices_include_tax: false,
   invoice_note: null as string | null,
   voice_replies: true,
+  logo_url: null as string | null,
 }
 
 export async function loadSalonSettings(db: any, organizationId: string) {

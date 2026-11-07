@@ -1,6 +1,6 @@
 /**
  * The Spa & Salon tables. SALON_SCHEMA_SQL is supabase/migrations/20261106_spa_salon_connector.sql
- * word for word (tests/salon.test.cjs checks). It sets itself up the first time the connector is
+ * and SALON_LOGO_SQL is 20261107_salon_logo.sql, word for word (tests/salon.test.cjs checks). It sets itself up the first time the connector is
  * used, through the app's own database connection, so no one has to run SQL by hand.
  */
 
@@ -135,9 +135,17 @@ ALTER TABLE salon_voice_log ENABLE ROW LEVEL SECURITY;
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261107_salon_logo.sql word for word: the logo on invoices. */
+export const SALON_LOGO_SQL = `-- Spa & Salon: the business logo printed on invoices (a link to the uploaded image).
+-- Safe to run more than once. The app runs it on its own when the logo is first saved.
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, SALON_SCHEMA_SQL, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {
@@ -148,9 +156,16 @@ export function isMissingSalonSchema(error: any): boolean {
  * Run a database step; if it fails because the salon tables are missing, set them up and try once
  * more. `step` returns a Supabase-style { data, error } result.
  */
-export async function withSalonSchema(step: () => PromiseLike<any>): Promise<any> {
+export async function withSalonSchema(step: () => PromiseLike<any>, options: { setup?: { ensure: () => Promise<boolean> }; waitMs?: number; attempts?: number } = {}): Promise<any> {
+  const { setup = salonSchemaSetup, waitMs = 600, attempts = 4 } = options
   const first = await step()
   if (!isMissingSalonSchema(first.error)) return first
-  if (!(await salonSchemaSetup.ensure())) return first
-  return step()
+  if (!(await setup.ensure())) return first
+  // Supabase's API notices new tables and columns a moment after they are added: give it a few tries
+  let result = await step()
+  for (let attempt = 1; attempt < attempts && isMissingSalonSchema(result.error); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs * attempt))
+    result = await step()
+  }
+  return result
 }

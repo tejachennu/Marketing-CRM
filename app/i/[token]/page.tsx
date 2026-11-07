@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { amountInWords, formatRupees } from '@/lib/salon/invoice'
+import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { formatIstTime } from '@/lib/salon/spoken'
 import { PrintButton } from './print-button'
 
@@ -16,6 +17,14 @@ async function loadInvoice(token: string) {
   return data
 }
 
+/** The logo the invoice was issued with; invoices from before logos existed show the current one. */
+async function invoiceLogo(invoice: any): Promise<string | null> {
+  const business = invoice.business || {}
+  if ('logo_url' in business) return isSafeLogoUrl(business.logo_url) ? business.logo_url : null
+  const { data } = await getSupabaseAdminClient().from('salon_settings').select('*').eq('organization_id', invoice.organization_id).maybeSingle()
+  return isSafeLogoUrl(data?.logo_url) ? data.logo_url : null
+}
+
 function formatDate(iso: string) {
   const date = new Date(iso)
   return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : ''
@@ -27,6 +36,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   if (!invoice) notFound()
 
   const business = invoice.business || {}
+  const logo = await invoiceLogo(invoice)
   const registered = Boolean(business.gstin)
   const items: any[] = Array.isArray(invoice.items) ? invoice.items : []
   const rates = new Map<number, { taxable: number; tax: number }>()
@@ -50,11 +60,15 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
       <article className="relative max-w-[820px] mx-auto bg-white text-[#0E1B3D] rounded-2xl shadow-sm print:shadow-none print:rounded-none p-6 sm:p-10 overflow-hidden">
 
         <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-5 border-b border-[#e3e8f2] pb-6">
-          <div>
-            <h1 className="text-[24px] font-extrabold leading-tight">{business.name || 'Invoice'}</h1>
-            {business.address && <p className="text-[13.5px] text-[#4a5672] mt-1 whitespace-pre-line max-w-sm">{business.address}</p>}
-            <p className="text-[13.5px] text-[#4a5672] mt-1">{[business.phone, business.email].filter(Boolean).join(' · ')}</p>
-            {registered && <p className="text-[13.5px] mt-1"><span className="text-[#6B7894]">GSTIN</span> <strong>{business.gstin}</strong></p>}
+          <div className="flex items-start gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {logo && <img src={logo} alt={business.name ? `${business.name} logo` : 'Logo'} className="h-16 w-auto max-w-[140px] object-contain shrink-0" />}
+            <div>
+              <h1 className="text-[24px] font-extrabold leading-tight">{business.name || 'Invoice'}</h1>
+              {business.address && <p className="text-[13.5px] text-[#4a5672] mt-1 whitespace-pre-line max-w-sm">{business.address}</p>}
+              <p className="text-[13.5px] text-[#4a5672] mt-1">{[business.phone, business.email].filter(Boolean).join(' · ')}</p>
+              {registered && <p className="text-[13.5px] mt-1"><span className="text-[#6B7894]">GSTIN</span> <strong>{business.gstin}</strong></p>}
+            </div>
           </div>
           <div className="sm:text-right">
             <p className="text-[13px] font-bold tracking-[0.15em] text-[#1D5BEA]">{registered ? 'TAX INVOICE' : 'BILL'}</p>

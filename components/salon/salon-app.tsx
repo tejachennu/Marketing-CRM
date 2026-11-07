@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles } from 'lucide-react'
 import { can } from '@/lib/rbac'
+import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { api, card, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab } from './salon-setup'
 import { SalonCounter } from './salon-counter'
@@ -54,7 +55,10 @@ export function SalonApp() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-5">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
-            <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>
+            {isSafeLogoUrl(setup.settings.logo_url)
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
+              : <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>}
             <div className="min-w-0">
               <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
               <p className="text-[14px] sm:text-[15px] text-[#4a5672] dark:text-slate-400 truncate">Spa & Salon counter <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> {todayLabel}</p>
