@@ -2,15 +2,15 @@
 
 /** Team: how each person is doing — services, value, commission, ratings — and unhappy customers to call. */
 
-import { useCallback, useEffect, useState } from 'react'
-import { BadgePercent, Check, IndianRupee, Loader2, Phone, Scissors, Star, Users } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { BadgePercent, Check, ChevronRight, IndianRupee, Loader2, Phone, Scissors, Star, Users } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
+import { rangeQuery, type DateRange } from '@/lib/salon/ranges'
 import { formatIstDay, istDate } from '@/lib/salon/spoken'
+import { DateRangeFilter } from './date-range'
 import { api, Avatar, card, StatTile } from './ui'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-type Period = 'today' | 'week' | 'month' | 'last_month'
-const PERIODS: { id: Period; label: string }[] = [{ id: 'today', label: 'Today' }, { id: 'week', label: 'Last 7 days' }, { id: 'month', label: 'This month' }, { id: 'last_month', label: 'Last month' }]
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -20,23 +20,26 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   )
 }
 
-export function SalonTeam({ orgId, flash }: { orgId: string; flash: Flash }) {
-  const [period, setPeriod] = useState<Period>('month')
+export function SalonTeam({ orgId, flash, range, onRangeChange, onOpenReviews }: { orgId: string; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void; onOpenReviews?: () => void }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const latest = useRef(0)
 
   const load = useCallback(async () => {
+    // Only the newest request counts when the dates change quickly
+    const request = ++latest.current
     setLoading(true)
     try {
-      setData(await api(`/api/salon/performance?organizationId=${orgId}&period=${period}`))
+      const result = await api(`/api/salon/performance?organizationId=${orgId}&${rangeQuery(range)}`)
+      if (request === latest.current) setData(result)
     } catch (err: any) {
-      flash('error', err.message)
+      if (request === latest.current) flash('error', err.message)
     } finally {
-      setLoading(false)
+      if (request === latest.current) setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, period])
+  }, [orgId, range])
 
   useEffect(() => { load() }, [load])
 
@@ -59,15 +62,7 @@ export function SalonTeam({ orgId, flash }: { orgId: string; flash: Flash }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div role="tablist" aria-label="Period" className="grid grid-cols-4 gap-1 rounded-2xl bg-[#e8ecf3] dark:bg-slate-900 p-1 w-full sm:w-auto">
-          {PERIODS.map((p) => (
-            <button key={p.id} type="button" role="tab" aria-selected={period === p.id} onClick={() => setPeriod(p.id)}
-              className={`h-10 px-1 sm:px-3 rounded-xl text-[12.5px] sm:text-[14px] font-bold whitespace-nowrap cursor-pointer transition-colors ${period === p.id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400'}`}>{p.label}</button>
-          ))}
-        </div>
-        {data && <p className="text-[13.5px] text-[#6B7894]">{data.from === data.to ? formatIstDay(data.from, today) : `${formatIstDay(data.from, today)} – ${formatIstDay(data.to, today)}`}</p>}
-      </div>
+      <DateRangeFilter value={range} onChange={onRangeChange} loading={loading} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         <StatTile label="Services value" value={totals ? formatRupees(totals.revenue) : '…'} icon={<IndianRupee size={20} />} tone="green" hint="Before GST, after discounts" />
@@ -132,7 +127,9 @@ export function SalonTeam({ orgId, flash }: { orgId: string; flash: Flash }) {
 
       {data?.recentFeedback?.length > 0 && (
         <section className={card}>
-          <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Star size={19} className="text-[#f59e0b]" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Latest feedback</h2></div>
+          <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Star size={19} className="text-[#f59e0b]" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Latest feedback</h2>
+            {onOpenReviews && <button type="button" onClick={onOpenReviews} className="ml-auto inline-flex items-center gap-1 h-9 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">All reviews <ChevronRight size={16} /></button>}
+          </div>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {data.recentFeedback.map((f: any) => (
               <li key={f.id} className="px-4 sm:px-5 py-3">

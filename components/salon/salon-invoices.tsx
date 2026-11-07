@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, CalendarDays, CircleCheck, Clock, Copy, ExternalLink, Loader2, MessageCircle, MoreHorizontal, ReceiptText, Search, Wallet } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Ban, CircleCheck, Clock, Copy, ExternalLink, Loader2, MessageCircle, MoreHorizontal, ReceiptText, Search, Wallet } from 'lucide-react'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
+import { rangeQuery, type DateRange } from '@/lib/salon/ranges'
 import { formatIstDay, formatIstTime, istDate } from '@/lib/salon/spoken'
+import { DateRangeFilter } from './date-range'
 import { api, Avatar, card, StatTile } from './ui'
 import type { Invoice } from './types'
 
@@ -14,24 +16,39 @@ type Filter = 'all' | 'paid' | 'unpaid' | 'void'
 const FILTERS: { id: Filter; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'paid', label: 'Paid' }, { id: 'unpaid', label: 'Not paid' }, { id: 'void', label: 'Void' }]
 const menuItem = 'w-full flex items-center gap-2.5 text-left px-3 py-2.5 rounded-xl text-[15px] font-medium text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer'
 
-export function SalonInvoices({ orgId, canWrite, canVoid, flash }: { orgId: string; canWrite: boolean; canVoid: boolean; flash: Flash }) {
+interface Summary { collected: number; billed: number; bills: number; paidCount: number; unpaidCount: number; unpaidAmount: number; voidCount: number }
+
+export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeChange }: { orgId: string; canWrite: boolean; canVoid: boolean; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void }) {
   const confirm = useConfirm()
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [summary, setSummary] = useState<{ today: number; month: number; unpaidCount: number; unpaidAmount: number } | null>(null)
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [more, setMore] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const latest = useRef(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
   const load = useCallback(async () => {
-    const data = await api(`/api/salon/invoices?organizationId=${orgId}`)
-    setInvoices(data.invoices || [])
-    setSummary(data.summary || null)
-  }, [orgId])
+    // Only the newest request counts when the dates change quickly
+    const request = ++latest.current
+    setLoading(true)
+    try {
+      const data = await api(`/api/salon/invoices?organizationId=${orgId}&${rangeQuery(range)}`)
+      if (request !== latest.current) return
+      setInvoices(data.invoices || [])
+      setSummary(data.summary || null)
+      setMore(data.more || 0)
+      setLoaded(true)
+    } finally {
+      if (request === latest.current) setLoading(false)
+    }
+  }, [orgId, range])
 
   useEffect(() => {
-    load().catch((err) => flash('error', err.message)).finally(() => setLoading(false))
+    load().catch((err) => flash('error', err.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load])
 
@@ -60,12 +77,13 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash }: { orgId: stri
   const link = (invoice: Invoice) => `${window.location.origin}/i/${invoice.public_token}`
   const today = istDate()
 
-  const counts = useMemo(() => ({
-    all: invoices.length,
-    paid: invoices.filter((i) => i.status === 'paid').length,
-    unpaid: invoices.filter((i) => i.status === 'unpaid').length,
-    void: invoices.filter((i) => i.status === 'void').length,
-  }), [invoices])
+  // From the totals, so they cover the whole range even when the list is cut short
+  const counts = useMemo(() => summary ? {
+    all: summary.paidCount + summary.unpaidCount + summary.voidCount,
+    paid: summary.paidCount,
+    unpaid: summary.unpaidCount,
+    void: summary.voidCount,
+  } : { all: invoices.length, paid: 0, unpaid: 0, void: 0 }, [summary, invoices])
 
   // Filtered, then grouped by day (newest first, as the server sends them)
   const days = useMemo(() => {
@@ -87,9 +105,11 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash }: { orgId: stri
 
   return (
     <div className="space-y-5">
+      <DateRangeFilter value={range} onChange={onRangeChange} loading={loading} />
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
-        <StatTile label="Collected today" value={summary ? formatRupees(summary.today) : '…'} icon={<Wallet size={20} />} tone="green" />
-        <StatTile label="This month" value={summary ? formatRupees(summary.month) : '…'} icon={<CalendarDays size={20} />} tone="blue" />
+        <StatTile label="Collected" value={summary ? formatRupees(summary.collected) : '…'} icon={<Wallet size={20} />} tone="green" hint={summary ? `${summary.paidCount} paid bill${summary.paidCount === 1 ? '' : 's'}` : undefined} />
+        <StatTile label="Billed" value={summary ? formatRupees(summary.billed) : '…'} icon={<ReceiptText size={20} />} tone="blue" hint={summary ? `${summary.bills} bill${summary.bills === 1 ? '' : 's'}${summary.voidCount ? `, ${summary.voidCount} void` : ''}` : undefined} />
         <StatTile label="Not paid yet" value={summary ? formatRupees(summary.unpaidAmount) : '…'} icon={<Clock size={20} />} tone="amber" hint={summary ? (summary.unpaidCount ? `${summary.unpaidCount} bill${summary.unpaidCount === 1 ? '' : 's'} to collect` : 'Nothing to collect') : undefined} />
       </div>
 
@@ -112,16 +132,16 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash }: { orgId: stri
             </label>
           </div>
         </div>
-        {loading ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+        {!loaded ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
           : invoices.length === 0 ? (
             <div className="px-5 py-14 text-center">
               <ReceiptText size={30} className="mx-auto text-[#a3adc2]" />
-              <p className="mt-2 text-[15.5px] font-semibold text-[#4a5672] dark:text-slate-300">No invoices yet</p>
-              <p className="text-[14px] text-[#8a94a8]">Bill a customer from the Counter and it appears here.</p>
+              <p className="mt-2 text-[15.5px] font-semibold text-[#4a5672] dark:text-slate-300">No bills in these dates</p>
+              <p className="text-[14px] text-[#8a94a8]">Choose other dates above, or bill a customer from the Counter.</p>
             </div>
           )
           : days.length === 0 ? <p className="px-5 py-12 text-center text-[15px] text-[#6B7894]">Nothing matches. Try another name, or show all.</p>
-          : days.map((group) => (
+          : <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>{days.map((group) => (
             <div key={group.day}>
               <div className="px-4 sm:px-5 py-2 bg-[#f8fafc] dark:bg-slate-900/50 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between text-[13px] font-bold text-[#6B7894] dark:text-slate-400">
                 <span>{formatIstDay(group.day, today)}</span>
@@ -163,7 +183,8 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash }: { orgId: stri
                 ))}
               </ul>
             </div>
-          ))}
+          ))}</div>}
+        {loaded && more > 0 && <p className="px-5 py-3.5 border-t border-[#eef1f6] dark:border-slate-800 text-center text-[13.5px] text-[#6B7894]">Showing the latest {invoices.length.toLocaleString('en-IN')} bills. {more.toLocaleString('en-IN')} more in these dates: choose fewer days to see them.</p>}
       </section>
     </div>
   )

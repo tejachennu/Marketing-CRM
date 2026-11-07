@@ -1,35 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { rangeBounds, resolveRange } from '@/lib/salon/ranges'
+import { allRows } from '@/lib/salon/rows'
 import { salonAccess, serverError } from '@/lib/salon/server'
-import { istDate, istDayRange } from '@/lib/salon/spoken'
 
 export const runtime = 'nodejs'
 
-// GET ?organizationId: recent invoices with today's and this month's takings
+/** How many bills the list shows at most; the totals always cover the whole range. */
+const LIST_LIMIT = 1000
+
+// GET ?organizationId&preset=today|yesterday|week|month|last_month|custom&from&to: the bills in the range and their totals
 export async function GET(request: NextRequest) {
-  const access = await salonAccess(request, new URL(request.url).searchParams.get('organizationId'))
+  const params = new URL(request.url).searchParams
+  const access = await salonAccess(request, params.get('organizationId'))
   if (!access.ok) return access.response
   const { db, organizationId } = access.ctx
+  const range = resolveRange(params.get('preset'), params.get('from'), params.get('to'))
+  const { start, end } = rangeBounds(range)
   try {
-    const today = istDate()
-    const monthStart = istDayRange(`${today.slice(0, 7)}-01`).start
-    const todayStart = istDayRange(today).start
-    const [recent, month] = await Promise.all([
-      db.from('salon_invoices').select('*').eq('organization_id', organizationId).order('issued_at', { ascending: false }).limit(100),
-      db.from('salon_invoices').select('total, status, issued_at, paid_at').eq('organization_id', organizationId).gte('issued_at', monthStart).limit(5000),
+    const inRange = (columns: string) => db.from('salon_invoices').select(columns).eq('organization_id', organizationId).gte('issued_at', start).lt('issued_at', end)
+    const [list, all] = await Promise.all([
+      inRange('*').order('issued_at', { ascending: false }).limit(LIST_LIMIT),
+      allRows((from, to) => inRange('id, total, status').order('issued_at', { ascending: false }).order('id').range(from, to)),
     ])
-    if (recent.error) throw recent.error
-    const rows = month.data || []
-    const sum = (list: any[]) => Math.round(list.reduce((total, row) => total + (Number(row.total) || 0), 0) * 100) / 100
-    const paid = rows.filter((row: any) => row.status === 'paid')
-    const unpaid = rows.filter((row: any) => row.status === 'unpaid')
+    if (list.error) throw list.error
+    const rows = all.rows as { total: number | string; status: string }[]
+    const sum = (status: (s: string) => boolean) => Math.round(rows.filter((row) => status(row.status)).reduce((total, row) => total + (Number(row.total) || 0), 0) * 100) / 100
+    const count = (status: string) => rows.filter((row) => row.status === status).length
+    const invoices = list.data || []
     return NextResponse.json({
       success: true,
-      invoices: recent.data || [],
+      range,
+      invoices,
+      // Fewer bills listed than in the range: a long range, choose a shorter one to see them all
+      more: Math.max(0, rows.length - invoices.length),
       summary: {
-        today: sum(paid.filter((row: any) => (row.paid_at || row.issued_at) >= todayStart)),
-        month: sum(paid),
-        unpaidCount: unpaid.length,
-        unpaidAmount: sum(unpaid),
+        collected: sum((s) => s === 'paid'),
+        billed: sum((s) => s !== 'void'),
+        bills: rows.length - count('void'),
+        paidCount: count('paid'),
+        unpaidCount: count('unpaid'),
+        unpaidAmount: sum((s) => s === 'unpaid'),
+        voidCount: count('void'),
       },
     })
   } catch (error) {

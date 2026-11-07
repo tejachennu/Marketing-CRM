@@ -1,26 +1,30 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles, Users } from 'lucide-react'
+import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
+import { resolveRange, type DateRange } from '@/lib/salon/ranges'
 import { api, card, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab } from './salon-setup'
 import { SalonCounter } from './salon-counter'
 import { SalonInvoices } from './salon-invoices'
+import { SalonReviews } from './salon-reviews'
 import { SalonTeam } from './salon-team'
 import { VoiceBar } from './voice-bar'
 import type { SalonSetup } from './types'
 
-type Tab = 'counter' | 'invoices' | 'team' | 'setup'
+type Tab = 'counter' | 'invoices' | 'reviews' | 'team' | 'setup'
 
-/** The Spa & Salon connector: the counter, invoices and setup. */
+/** The Spa & Salon connector: the counter, invoices, reviews, team and setup. */
 export function SalonApp() {
   const { workspace, error: workspaceError } = useWorkspace()
   const { toast, flash } = useToast()
   const [setup, setSetup] = useState<SalonSetup | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('counter')
+  // One date range for Invoices, Reviews and Team, so switching tabs keeps the dates
+  const [range, setRange] = useState<DateRange>(() => resolveRange('month'))
 
   const loadSetup = useCallback(async (orgId: string) => {
     const data = await api(`/api/salon/setup?organizationId=${orgId}`)
@@ -39,7 +43,7 @@ export function SalonApp() {
   const tabs: { id: Tab; label: string; icon: typeof Mic }[] = [
     { id: 'counter', label: 'Counter', icon: Mic },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
-    ...(canManage ? [{ id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
+    ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
   ]
 
   if (workspaceError || error) {
@@ -87,8 +91,9 @@ export function SalonApp() {
           )
           : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash}
               voice={(handle) => <VoiceBar orgId={workspace.orgId} setup={setup} handle={handle} />} />)}
-        {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} />}
-        {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} />}
+        {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} onOpenReviews={() => setTab('reviews')} />}
+        {tab === 'reviews' && canManage && <SalonReviews orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} />}
+        {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} range={range} onRangeChange={setRange} />}
       </div>
       <Toast toast={toast} />
     </div>

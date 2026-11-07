@@ -5,7 +5,7 @@ function salonDb(seed = {}) {
   let failNextInvoiceInsert = 0
   const from = (table) => {
     if (!tables[table]) tables[table] = []
-    let filters = [], op = 'select', values, singular = false, order = null, limit = Infinity
+    let filters = [], op = 'select', values, singular = false, order = [], limit = Infinity, offset = 0
     const q = {
       select() { return this },
       eq(k, v) { filters.push((r) => r[k] === v); return this },
@@ -16,8 +16,9 @@ function salonDb(seed = {}) {
       gte(k, v) { filters.push((r) => r[k] >= v); return this },
       lte(k, v) { filters.push((r) => r[k] <= v); return this },
       is(k, v) { filters.push((r) => (v === null ? r[k] === null || r[k] === undefined : r[k] === v)); return this },
-      order(k, opts = {}) { order = [k, opts.ascending === false ? -1 : 1]; return this },
+      order(k, opts = {}) { order.push([k, opts.ascending === false ? -1 : 1]); return this },
       limit(n) { limit = n; return this },
+      range(a, b) { offset = a; limit = b - a + 1; return this },
       maybeSingle() { singular = true; return this },
       single() { singular = true; return this },
       insert(data) { op = 'insert'; values = data; return this },
@@ -35,8 +36,8 @@ function salonDb(seed = {}) {
           rows = items
         } else if (op === 'update') rows.forEach((r) => Object.assign(r, structuredClone(values)))
         else if (op === 'delete') tables[table] = tables[table].filter((r) => !rows.includes(r))
-        if (order) rows = [...rows].sort((a, b) => (a[order[0]] > b[order[0]] ? 1 : a[order[0]] < b[order[0]] ? -1 : 0) * order[1])
-        rows = rows.slice(0, limit)
+        if (order.length) rows = [...rows].sort((a, b) => { for (const [k, dir] of order) { if (a[k] > b[k]) return dir; if (a[k] < b[k]) return -dir } return 0 })
+        rows = rows.slice(offset, offset + limit)
         return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null }).then(resolve, reject)
       },
     }

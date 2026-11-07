@@ -4,8 +4,6 @@
  * tab and the tests agree.
  */
 
-import { addDays, istDate } from './spoken'
-
 export interface PerformanceStaff { id: string; name: string; commission_percent?: number | string | null; active?: boolean }
 export interface PerformanceInvoice { id: string; status: string; issued_at: string; staff_name?: string | null; items: { name: string; taxable?: number | string; staff_id?: string | null; staff_name?: string | null }[] }
 /** staff_ratings: the form's rating for each person, by staff id (or "name:<name>"). Without it, the visit's rating counts for everyone on it. */
@@ -31,23 +29,26 @@ export interface PerformanceReport {
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
-/** A period as India dates (inclusive): today, the last 7 days, this month or last month. */
-export function periodRange(period: string, now = Date.now()): { from: string; to: string } {
-  const today = istDate(now)
-  if (period === 'today') return { from: today, to: today }
-  if (period === 'week') return { from: addDays(today, -6), to: today }
-  const [year, month] = today.split('-').map(Number)
-  if (period === 'last_month') {
-    const first = new Date(Date.UTC(month === 1 ? year - 1 : year, (month + 10) % 12, 1)).toISOString().slice(0, 10)
-    const last = addDays(`${today.slice(0, 8)}01`, -1)
-    return { from: first, to: last }
-  }
-  return { from: `${today.slice(0, 8)}01`, to: today }
+export { periodRange } from './ranges'
+
+/** Each team member's stars on one review: their own from the form, else the visit's rating. */
+export function staffRatingsOn(entry: PerformanceFeedback, byId: Map<string, PerformanceStaff>, byName: Map<string, PerformanceStaff>): { member: PerformanceStaff; rating: number }[] {
+  const ids = entry.staff_ids || []
+  const names = entry.staff_names || []
+  const members = ids.length ? ids.map((id) => byId.get(id)).filter(Boolean) as PerformanceStaff[] : names.map((n) => byName.get(n.trim().toLowerCase())).filter(Boolean) as PerformanceStaff[]
+  return [...new Set(members)].map((member) => {
+    const own = Number(entry.staff_ratings?.[member.id] ?? entry.staff_ratings?.[`name:${member.name}`])
+    return { member, rating: own >= 1 && own <= 5 ? own : Number(entry.rating) || 0 }
+  })
+}
+
+/** Team members by id, and by name (lower case), to match bills and reviews. */
+export function staffIndex(staff: PerformanceStaff[]) {
+  return { byId: new Map(staff.map((member) => [member.id, member])), byName: new Map(staff.map((member) => [member.name.trim().toLowerCase(), member])) }
 }
 
 export function computePerformance(invoices: PerformanceInvoice[], feedback: PerformanceFeedback[], staff: PerformanceStaff[]): PerformanceReport {
-  const byId = new Map(staff.map((member) => [member.id, member]))
-  const byName = new Map(staff.map((member) => [member.name.trim().toLowerCase(), member]))
+  const { byId, byName } = staffIndex(staff)
   const rows = new Map<string, StaffPerformance & { _visits: Set<string>; _services: Map<string, number>; _ratingSum: number }>()
   const rowFor = (member: PerformanceStaff | null, fallbackName: string) => {
     const key = member?.id || `name:${fallbackName || 'Not assigned'}`
@@ -75,14 +76,10 @@ export function computePerformance(invoices: PerformanceInvoice[], feedback: Per
     }
   }
   for (const entry of feedback) {
-    const ids = entry.staff_ids || []
-    const names = entry.staff_names || []
-    const members = ids.length ? ids.map((id) => byId.get(id)).filter(Boolean) as PerformanceStaff[] : names.map((n) => byName.get(n.trim().toLowerCase())).filter(Boolean) as PerformanceStaff[]
-    for (const member of new Set(members)) {
+    for (const { member, rating } of staffRatingsOn(entry, byId, byName)) {
       const row = rowFor(member, member.name)
-      const own = Number(entry.staff_ratings?.[member.id] ?? entry.staff_ratings?.[`name:${member.name}`])
       row.ratings += 1
-      row._ratingSum += own >= 1 && own <= 5 ? own : Number(entry.rating) || 0
+      row._ratingSum += rating
     }
   }
 
