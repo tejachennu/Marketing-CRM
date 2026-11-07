@@ -94,6 +94,14 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
     return () => window.clearInterval(timer)
   }, [load])
 
+  // While the counter is open, feedback questions and reminders go out when they are due
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') api('/api/salon/tick', { method: 'POST', body: JSON.stringify({ organizationId: orgId }) }).catch(() => {}) }
+    tick()
+    const timer = window.setInterval(tick, 120_000)
+    return () => window.clearInterval(timer)
+  }, [orgId])
+
   useEffect(() => {
     setLoading(true)
     load().catch((err) => flash('error', err.message)).finally(() => setLoading(false))

@@ -8,6 +8,7 @@ import { randomBytes } from 'crypto'
 import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
 import { formatIstDay, formatIstTime, istDate, parseSpokenPhone, phoneKey } from './spoken'
 import { isUuid } from './validate'
+import { withSalonSchema } from './schema'
 import type { SalonContext } from './server'
 
 export type PaymentMethod = 'cash' | 'upi' | 'card'
@@ -221,10 +222,12 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   const totals = computeInvoice(input.lines.map((line) => ({ ...line, tax_rate: registered ? line.tax_rate : 0 })), { pricesIncludeTax: Boolean(settings.prices_include_tax), discount: input.discount })
   const business = { name: settings.business_name, address: settings.address, phone: settings.phone, email: settings.email, gstin: settings.gstin, note: settings.invoice_note, logo_url: settings.logo_url || null }
   const now = new Date().toISOString()
+  const askFeedback = settings.feedback_enabled !== false && Boolean(input.customer.phone)
+  const feedbackDueAt = askFeedback ? new Date(Date.now() + (Number(settings.feedback_delay_minutes) || 120) * 60_000).toISOString() : null
   for (let attempt = 0; attempt < 6; attempt++) {
     const last = await checked(db.from('salon_invoices').select('seq').eq('organization_id', ctx.organizationId).order('seq', { ascending: false }).limit(1))
     const seq = (Number(last?.[0]?.seq) || 0) + 1
-    const { data, error } = await db.from('salon_invoices').insert({
+    const { data, error } = await withSalonSchema(() => db.from('salon_invoices').insert({
       organization_id: ctx.organizationId, seq, number: formatInvoiceNumber(settings.invoice_prefix, seq),
       appointment_id: input.appointment_id || null, contact_id: input.customer.contact_id, customer_name: input.customer.name,
       customer_phone: input.customer.phone, staff_name: input.staff_name || null, items: totals.lines,
@@ -232,7 +235,8 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
       cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, total: totals.total,
       status: input.payment_method ? 'paid' : 'unpaid', payment_method: input.payment_method || null, paid_at: input.payment_method ? now : null,
       public_token: makeToken(), business, created_by: ctx.userId || null, issued_at: now,
-    }).select('*').single()
+      ...(feedbackDueAt ? { feedback_due_at: feedbackDueAt } : {}),
+    }).select('*').single())
     if (!error) return data
     if (!(error.code === '23505' || /duplicate key/i.test(error.message || ''))) throw new Error(error.message)
   }

@@ -15,6 +15,7 @@ import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
 import { handleSlotPick, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
+import { handleFeedbackReply, parseFeedbackButton } from '@/lib/salon/jobs'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
   handleCheckoutButton,
@@ -714,6 +715,19 @@ async function processEvent(
         }
       } catch (salonErr: any) {
         console.error('[Facebook Webhook] Salon booking failed:', salonErr?.message || salonErr)
+      }
+    }
+
+    // ── Spa & Salon: a rating tapped after a visit (from the list or the feedback template)
+    if (interactiveButtonId && parseFeedbackButton(interactiveButtonId) && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const feedback = await handleFeedbackReply({ supabase, organization: orgData, contact, customerPhone: phoneNumber, buttonId: interactiveButtonId })
+        if (feedback.handled) {
+          await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+          return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_feedback', rating: feedback.rating })
+        }
+      } catch (feedbackErr: any) {
+        console.error('[Facebook Webhook] Salon feedback failed:', feedbackErr?.message || feedbackErr)
       }
     }
 

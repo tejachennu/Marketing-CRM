@@ -14,6 +14,8 @@ function salonDb(seed = {}) {
       lt(k, v) { filters.push((r) => r[k] < v); return this },
       gt(k, v) { filters.push((r) => r[k] > v); return this },
       gte(k, v) { filters.push((r) => r[k] >= v); return this },
+      lte(k, v) { filters.push((r) => r[k] <= v); return this },
+      is(k, v) { filters.push((r) => (v === null ? r[k] === null || r[k] === undefined : r[k] === v)); return this },
       order(k, opts = {}) { order = [k, opts.ascending === false ? -1 : 1]; return this },
       limit(n) { limit = n; return this },
       maybeSingle() { singular = true; return this },

@@ -46,6 +46,15 @@ export const DEFAULT_SALON_SETTINGS = {
   invoice_note: null as string | null,
   voice_replies: true,
   logo_url: null as string | null,
+  opens_at: '10:00',
+  closes_at: '21:00',
+  closed_weekdays: [] as number[],
+  chat_assistant: true,
+  auto_approve_bookings: false,
+  reminders_enabled: true,
+  feedback_enabled: true,
+  feedback_delay_minutes: 120,
+  review_link: null as string | null,
 }
 
 export async function loadSalonSettings(db: any, organizationId: string) {
