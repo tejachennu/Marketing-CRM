@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Mic, ReceiptText, Settings2 } from 'lucide-react'
+import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { api, card, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab } from './salon-setup'
@@ -47,27 +47,39 @@ export function SalonApp() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={30} /></div>
   }
 
+  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
+
   return (
     <div className="flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-          <div>
-            <h1 className="text-[26px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
-            <p className="text-[15px] text-[#4a5672] dark:text-slate-400">Spa & Salon counter</p>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>
+            <div className="min-w-0">
+              <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
+              <p className="text-[14px] sm:text-[15px] text-[#4a5672] dark:text-slate-400 truncate">Spa & Salon counter <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> {todayLabel}</p>
+            </div>
           </div>
-          <div role="tablist" className="inline-flex rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 self-start sm:self-auto">
+          <div role="tablist" aria-label="Salon" className="flex w-full md:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`inline-flex items-center gap-2 h-10 px-4 rounded-lg text-[15px] font-semibold cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] dark:hover:text-white'}`}>
+                className={`flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-[15px] font-semibold cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
                 <Icon size={17} /> {label}
               </button>
             ))}
           </div>
-        </div>
+        </header>
 
         {tab === 'setup' && canManage && <SalonSetupTab orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} />}
         {tab === 'counter' && (setup.services.length === 0
-          ? <div className={`${card} p-8 text-center text-[15px] text-[#4a5672] dark:text-slate-400`}>{canManage ? 'Add your services in Setup first. "Add sample salon" does it in one tap.' : 'Your manager needs to add services in Setup before the counter can be used.'}</div>
+          ? (
+            <div className={`${card} px-6 py-12 text-center`}>
+              <span className="mx-auto h-14 w-14 rounded-2xl bg-[#fdeef6] dark:bg-pink-950/40 text-[#be185d] dark:text-pink-300 flex items-center justify-center"><Sparkles size={26} /></span>
+              <h2 className="mt-4 text-[19px] font-extrabold text-[#0E1B3D] dark:text-white">Add your services to open the counter</h2>
+              <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, "Add sample salon" adds a full list of services and staff in one tap. Change prices any time.' : 'Your manager needs to add services in Setup before the counter can be used.'}</p>
+              {canManage && <button type="button" onClick={() => setTab('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
+            </div>
+          )
           : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash}
               voice={(handle) => <VoiceBar orgId={workspace.orgId} setup={setup} handle={handle} />} />)}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} />}

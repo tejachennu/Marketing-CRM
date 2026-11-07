@@ -7,12 +7,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Keyboard, Loader2, Mic, Pencil, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Check, Keyboard, Loader2, Mic, Pencil, Sparkles, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
 import { bookingSlots, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { applyEdit, draftToAction, isReady, REPLIES, type DraftEdit, type VoiceContext, type VoiceDraft } from '@/lib/salon/voice'
 import { authSessionManager } from '@/lib/auth-context'
-import { api, card, Chip, input, primaryButton, secondaryButton } from './ui'
+import { api, Chip, secondaryButton } from './ui'
 import type { CounterHandle } from './salon-counter'
 import type { Appointment, SalonSetup } from './types'
 
@@ -299,58 +299,90 @@ export function VoiceBar({ orgId, setup, handle }: { orgId: string; setup: Salon
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const status = phase === 'listening' ? `Listening… ${seconds ? `${seconds}s · ` : ''}tap to stop`
-    : phase === 'thinking' ? 'Understanding…'
-    : phase === 'acting' ? 'Doing it…'
-    : draft ? 'Say "yes" or "no"'
-    : 'Tap and speak'
+  const listening = phase === 'listening'
+  const working = phase === 'thinking' || phase === 'acting'
+  const status = listening ? 'Listening…' : phase === 'thinking' ? 'Understanding…' : phase === 'acting' ? 'Doing it…' : draft ? 'Say “yes” or “no”' : 'Tap and speak'
+  const subline = listening ? `${seconds ? `${seconds}s · ` : ''}Pause when you are done, or tap to stop`
+    : heard && (draft || working) ? `You said: “${heard}”`
+    : null
+  const example = EXAMPLES[new Date().getMinutes() % EXAMPLES.length]
 
   return (
-    <section aria-label="Voice" className={`${card} p-4 sm:p-5`}>
-      <div className="flex items-center gap-4">
-        {canRecord ? (
-          <button type="button" onClick={phase === 'listening' ? stopListening : startListening} disabled={phase === 'thinking' || phase === 'acting'}
-            aria-label={phase === 'listening' ? 'Stop listening' : 'Speak a command'}
-            className={`relative shrink-0 h-16 w-16 sm:h-[68px] sm:w-[68px] rounded-full flex items-center justify-center text-white shadow-lg transition-colors cursor-pointer disabled:cursor-wait ${phase === 'listening' ? 'bg-[#e11d48]' : 'bg-[#1D5BEA] hover:bg-[#174bc4]'} disabled:opacity-70`}>
-            {phase === 'listening' && <span aria-hidden className="absolute inset-0 rounded-full bg-[#e11d48]/30" style={{ transform: `scale(${1.08 + level * 0.45})`, transition: 'transform 80ms linear' }} />}
-            {phase === 'thinking' || phase === 'acting' ? <Loader2 size={28} className="animate-spin relative" /> : phase === 'listening' ? <Square size={24} className="relative" fill="currentColor" /> : <Mic size={30} className="relative" />}
-          </button>
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <p className="text-[17px] sm:text-[18px] font-extrabold text-[#0E1B3D] dark:text-white" aria-live="polite">{canRecord ? status : 'Type what to do'}</p>
-          <p className="text-[13.5px] text-[#6B7894] mt-0.5 line-clamp-2">
-            {phase === 'idle' && !draft ? <>English, Hindi or Telugu · e.g. “{EXAMPLES[new Date().getMinutes() % EXAMPLES.length]}”</> : heard ? <>You said: “{heard}”</> : draft ? 'or a new command' : 'Book, arrived, start, bill, walk-in, cancel'}
-          </p>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {setup.settings.voice_replies !== false && (
-            <button type="button" onClick={toggleMute} aria-label={muted ? 'Read replies aloud' : 'Stop reading replies aloud'} title={muted ? 'Replies are silent' : 'Replies are read aloud'}
-              className="h-10 w-10 rounded-lg flex items-center justify-center text-[#6B7894] hover:bg-[#f1f4f9] dark:hover:bg-slate-800 cursor-pointer">{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
-          )}
+    <section aria-label="Voice" className="relative overflow-hidden rounded-3xl bg-[#0E1B3D] text-white shadow-xl shadow-[#0E1B3D]/15 dark:ring-1 dark:ring-white/10">
+      <div className="relative p-4 sm:p-6">
+        <div className="flex items-center gap-4 sm:gap-5">
           {canRecord && (
-            <button type="button" onClick={() => setTyping(!typing)} aria-label="Type a command" aria-pressed={typing}
-              className={`h-10 w-10 rounded-lg flex items-center justify-center cursor-pointer ${typing ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40' : 'text-[#6B7894] hover:bg-[#f1f4f9] dark:hover:bg-slate-800'}`}><Keyboard size={19} /></button>
+            <button type="button" onClick={listening ? stopListening : startListening} disabled={working}
+              aria-label={listening ? 'Stop listening' : 'Speak a command'}
+              className="group relative shrink-0 h-16 w-16 sm:h-20 sm:w-20 rounded-full cursor-pointer disabled:cursor-wait focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/40">
+              {listening ? <>
+                <span aria-hidden className="absolute inset-0 rounded-full bg-[#fb7185]/25 animate-ping" />
+                <span aria-hidden className="absolute -inset-2 rounded-full bg-[#fb7185]/25" style={{ transform: `scale(${1 + level * 0.4})`, transition: 'transform 90ms linear' }} />
+              </> : null}
+              <span className={`relative h-full w-full rounded-full flex items-center justify-center ring-4 ring-white/10 shadow-lg transition-colors ${listening ? 'bg-[#e11d48]' : 'bg-[#1D5BEA] group-hover:bg-[#2f6bf0]'} ${working ? 'opacity-80' : ''}`}>
+                {working ? <Loader2 size={30} className="animate-spin" /> : listening ? <Square size={24} fill="currentColor" /> : <Mic size={32} />}
+              </span>
+            </button>
           )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3 pr-20 sm:pr-0">
+              <p className="text-[19px] sm:text-[23px] font-extrabold tracking-tight" aria-live="polite">{canRecord ? status : 'Type what to do'}</p>
+              {listening && <Waveform level={level} />}
+            </div>
+            {subline ? <p className="text-[13.5px] sm:text-[14.5px] text-white/70 mt-0.5 line-clamp-2">{subline}</p> : (
+              <>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {['English', 'हिन्दी', 'తెలుగు', 'Mix'].map((language) => <span key={language} className="inline-flex items-center h-6 px-2 rounded-md bg-white/10 text-[12px] font-semibold text-white/85">{language}</span>)}
+                </div>
+                <p className="mt-1.5 text-[13.5px] text-white/60 truncate">Try: “{example}”</p>
+              </>
+            )}
+          </div>
+          <div className="absolute top-3 right-3 sm:static flex items-center gap-1 shrink-0 sm:self-center">
+            {setup.settings.voice_replies !== false && (
+              <button type="button" onClick={toggleMute} aria-label={muted ? 'Read replies aloud' : 'Stop reading replies aloud'} title={muted ? 'Replies are silent' : 'Replies are read aloud'}
+                className="h-10 w-10 rounded-xl flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 cursor-pointer">{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
+            )}
+            {canRecord && (
+              <button type="button" onClick={() => setTyping(!typing)} aria-label="Type a command" aria-pressed={typing} title="Type instead"
+                className={`h-10 w-10 rounded-xl flex items-center justify-center cursor-pointer ${typing ? 'bg-white/15 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'}`}><Keyboard size={19} /></button>
+            )}
+          </div>
         </div>
+
+        {(typing || !canRecord) && (
+          <form className="flex gap-2 mt-4 sm:mt-5" onSubmit={(event) => { event.preventDefault(); sendTyped() }}>
+            <input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder="e.g. book Priya 9876543210 facial tomorrow 11" aria-label="Command" maxLength={300}
+              className="w-full h-11 px-3.5 rounded-xl bg-white/10 border border-white/15 text-[15px] text-white placeholder:text-white/45 focus:outline-none focus:border-white/40 focus:ring-2 focus:ring-white/15" />
+            <button type="submit" disabled={!typed.trim() || phase !== 'idle'} className="shrink-0 h-11 px-5 rounded-xl bg-white text-[#0E1B3D] text-[15px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">Go</button>
+          </form>
+        )}
+
+        {answer && !draft && (
+          <div role={answer.tone === 'error' ? 'alert' : 'status'} className={`mt-4 flex items-start justify-between gap-3 rounded-2xl px-4 py-3 text-[15px] font-medium border ${answer.tone === 'error' ? 'bg-[#e11d48]/15 border-[#fb7185]/30 text-[#ffe4e6]' : 'bg-white/10 border-white/10 text-white'}`}>
+            <span>{answer.text}</span>
+            <button type="button" onClick={() => setAnswer(null)} aria-label="Dismiss" className="shrink-0 -mr-1 h-7 w-7 rounded-md flex items-center justify-center opacity-70 hover:opacity-100 cursor-pointer"><X size={16} /></button>
+          </div>
+        )}
+
+        {draft && <DraftCard draft={draft} setup={setup} appointments={todays || handle.appointments} busy={phase === 'acting'} answer={answer}
+          onEdit={edit} onConfirm={() => confirm()} onChange={change} onCancel={() => dismiss(false)} />}
       </div>
-
-      {(typing || !canRecord) && (
-        <form className="flex gap-2 mt-4" onSubmit={(event) => { event.preventDefault(); sendTyped() }}>
-          <input value={typed} onChange={(event) => setTyped(event.target.value)} placeholder="e.g. book Priya 9876543210 facial tomorrow 11" aria-label="Command" className={input} maxLength={300} />
-          <button type="submit" disabled={!typed.trim() || phase !== 'idle'} className={`${primaryButton} shrink-0`}>Go</button>
-        </form>
-      )}
-
-      {answer && !draft && (
-        <div role={answer.tone === 'error' ? 'alert' : 'status'} className={`mt-4 flex items-start justify-between gap-3 rounded-xl px-4 py-3 text-[15px] font-medium ${answer.tone === 'error' ? 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/30 dark:text-red-300' : 'bg-[#eef3fe] text-[#0E1B3D] dark:bg-blue-950/30 dark:text-blue-100'}`}>
-          <span>{answer.text}</span>
-          <button type="button" onClick={() => setAnswer(null)} aria-label="Dismiss" className="shrink-0 -mr-1 h-7 w-7 rounded-md flex items-center justify-center opacity-70 hover:opacity-100 cursor-pointer"><X size={16} /></button>
-        </div>
-      )}
-
-      {draft && <DraftCard draft={draft} setup={setup} appointments={todays || handle.appointments} busy={phase === 'acting'} answer={answer}
-        onEdit={edit} onConfirm={() => confirm()} onChange={change} onCancel={() => dismiss(false)} />}
     </section>
+  )
+}
+
+/** Bars that move with the voice while listening. */
+function Waveform({ level }: { level: number }) {
+  const shape = [0.45, 0.75, 1, 0.7, 0.5, 0.85, 0.4]
+  const now = Date.now()
+  return (
+    <span aria-hidden className="inline-flex items-center gap-[3px] h-7">
+      {shape.map((weight, index) => (
+        <span key={index} className="w-[3px] rounded-full bg-[#fda4af]"
+          style={{ height: `${Math.round(4 + Math.min(1, level * 1.4) * 22 * weight * (0.65 + 0.35 * Math.abs(Math.sin(now / 140 + index))))}px`, transition: 'height 90ms linear' }} />
+      ))}
+    </span>
   )
 }
 
@@ -393,9 +425,12 @@ function DraftCard({ draft, setup, appointments, busy, answer, onEdit, onConfirm
   const canChange = draft.intent === 'book' || draft.intent === 'walk_in' || (draft.intent === 'bill' && Boolean(appointment))
 
   return (
-    <div className="mt-4 rounded-2xl border-2 border-[#1D5BEA]/25 bg-[#fbfcff] dark:bg-[#0b141a] p-4 sm:p-5">
-      <div className="text-[12.5px] font-bold uppercase tracking-wide text-[#1D5BEA]">What I understood · {TITLES[draft.intent]}</div>
-      <p className="text-[20px] sm:text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-1 leading-snug">{draft.speech}</p>
+    <div className="mt-4 sm:mt-5 rounded-2xl bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white p-4 sm:p-5 shadow-2xl shadow-black/20">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-[#eef3fe] dark:bg-blue-950/50 text-[#1D5BEA] dark:text-blue-300 text-[12.5px] font-bold"><Sparkles size={14} /> What I understood</span>
+        <span className="text-[13px] font-semibold text-[#6B7894]">{TITLES[draft.intent]}</span>
+      </div>
+      <p className="text-[21px] sm:text-[24px] font-extrabold tracking-tight mt-2 leading-snug">{draft.speech}</p>
 
       <div className="mt-3 divide-y divide-[#eef1f6] dark:divide-slate-800">
         {(appointment || draft.choices.appointments?.length || draft.missing.includes('appointment')) && (

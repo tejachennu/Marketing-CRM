@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarPlus, ChevronLeft, ChevronRight, Clock, Loader2, MoreHorizontal, Receipt, UserCheck, Wand2, Play } from 'lucide-react'
+import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Hourglass, Loader2, MoreHorizontal, Play, Receipt, ReceiptText, UserCheck, UserX, Wallet, Wand2, XCircle } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
-import { addDays, formatIstDay, formatIstTime, istDate } from '@/lib/salon/spoken'
+import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { useConfirm } from '@/lib/dialog-context'
-import { api, card, primaryButton, secondaryButton } from './ui'
+import { api, Avatar, card, primaryButton, secondaryButton, StatTile } from './ui'
 import { BillSheet, BookingSheet, ResultSheet, type BillDraft, type BillTarget, type BookingDraft } from './counter-sheets'
 import type { Appointment, SalonSetup } from './types'
 
@@ -30,6 +30,14 @@ const STATUS_PILL: Record<Appointment['status'], [string, string]> = {
   cancelled: ['Cancelled', 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400'],
   no_show: ['No-show', 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400'],
 }
+
+const LANE_DOT: Record<string, string> = { upcoming: 'bg-[#1D5BEA]', service: 'bg-[#db2777]', done: 'bg-[#00A884]' }
+const STRIPE: Record<Appointment['status'], string> = {
+  booked: 'bg-[#1D5BEA]', arrived: 'bg-[#f59e0b]', in_service: 'bg-[#db2777]', completed: 'bg-[#00A884]', cancelled: 'bg-[#c0c8d8]', no_show: 'bg-[#c0c8d8]',
+}
+const PAID_BY: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
+const stepButton = 'flex-1 inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50'
+const menuItem = 'w-full flex items-center gap-2.5 text-left px-3 py-2.5 rounded-xl text-[15px] font-medium text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer'
 
 export interface CounterHandle {
   openBooking: (draft?: BookingDraft) => void
@@ -60,6 +68,14 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
   const [sheet, setSheet] = useState<Sheet>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [laneTab, setLaneTab] = useState<'upcoming' | 'service' | 'done' | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  // "In 20 min" and "15 min late" stay current
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const load = useCallback(async () => {
     const data = await api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
@@ -129,23 +145,55 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
 
   const total = (appointment: Appointment) => appointment.services.reduce((sum, s) => sum + Number(s.price || 0), 0)
 
+  // The day at a glance
+  const live = appointments.filter((a) => !['cancelled', 'no_show'].includes(a.status))
+  const waiting = live.filter((a) => a.status === 'booked' || a.status === 'arrived')
+  const inChair = live.filter((a) => a.status === 'in_service')
+  const dayInvoices = Object.values(invoices).filter((invoice: any) => invoice.status !== 'void')
+  const billed = dayInvoices.filter((invoice: any) => invoice.status === 'paid').reduce((sum: number, invoice: any) => sum + Number(invoice.total || 0), 0)
+  const unpaid = dayInvoices.filter((invoice: any) => invoice.status === 'unpaid').length
+  const next = live.filter((a) => a.status === 'booked').sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0]
+  const isToday = date === today
+  const laneCount = (id: string) => appointments.filter((a) => LANES.find((lane) => lane.id === id)!.statuses.includes(a.status)).length
+  const activeLane = laneTab ?? (laneCount('service') ? 'service' : 'upcoming')
+  const dayDate = (fromIst(date, '12:00') || new Date()).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+
   return (
     <div className="space-y-5">
       {canWrite && voice?.(handle)}
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <StatTile label={isToday ? 'Appointments today' : 'Appointments'} value={live.length} icon={<CalendarDays size={20} />} tone="blue" hint={`${live.filter((a) => a.status === 'completed').length} done`} />
+        <StatTile label="Waiting" value={waiting.length} icon={<Hourglass size={20} />} tone="amber" hint={next ? `Next ${formatIstTime(next.starts_at)}` : 'No one booked'} />
+        <StatTile label="In the chair" value={inChair.length} icon={<Armchair size={20} />} tone="pink" hint={inChair.length ? inChair.map((a) => a.customer_name.split(' ')[0]).join(', ') : 'Free'} />
+        <StatTile label={isToday ? 'Billed today' : 'Billed'} value={formatRupees(billed)} icon={<Wallet size={20} />} tone="green" hint={unpaid ? `${unpaid} not paid yet` : 'All paid'} />
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-1 self-start">
-          <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day" className="h-11 w-11 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={20} /></button>
-          <button type="button" onClick={() => setDate(today)} className="h-11 px-4 rounded-xl text-[17px] font-bold text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer min-w-[130px]">{formatIstDay(date, today)}</button>
-          <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-11 w-11 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><ChevronRight size={20} /></button>
-          <span className="ml-2 text-[14px] text-[#6B7894]">{(() => { const count = appointments.filter((a) => !['cancelled', 'no_show'].includes(a.status)).length; return `${count} appointment${count === 1 ? '' : 's'}` })()}</span>
+        <div className="inline-flex items-center self-start rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
+          <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day" className="h-10 w-10 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={20} /></button>
+          <button type="button" onClick={() => setDate(today)} title="Back to today" className="h-10 px-3 rounded-xl min-w-[150px] text-center hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">
+            <span className="block text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white leading-tight">{formatIstDay(date, today)}</span>
+            <span className="block text-[12px] font-semibold text-[#8a94a8] leading-tight">{dayDate}</span>
+          </button>
+          <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-10 w-10 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronRight size={20} /></button>
         </div>
         {canWrite && (
           <div className="flex gap-2">
-            <button type="button" onClick={() => setSheet({ kind: 'book', mode: 'walkin' })} className={`${secondaryButton} flex-1 sm:flex-none`}><Wand2 size={18} /> Walk-in bill</button>
+            <button type="button" onClick={() => setSheet({ kind: 'book', mode: 'walkin' })} className={`${secondaryButton} flex-1 sm:flex-none bg-white dark:bg-[#111b21]`}><Wand2 size={18} /> Walk-in bill</button>
             <button type="button" onClick={() => setSheet({ kind: 'book', mode: 'booking', draft: { date } })} className={`${primaryButton} flex-1 sm:flex-none`}><CalendarPlus size={18} /> New booking</button>
           </div>
         )}
+      </div>
+
+      {/* Phones: one lane at a time */}
+      <div role="tablist" aria-label="Lanes" className="lg:hidden grid grid-cols-3 gap-1 rounded-2xl bg-[#e8ecf3] dark:bg-slate-900 p-1">
+        {LANES.map((lane) => (
+          <button key={lane.id} type="button" role="tab" aria-selected={activeLane === lane.id} onClick={() => setLaneTab(lane.id)}
+            className={`h-10 rounded-xl text-[14px] font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${activeLane === lane.id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400'}`}>
+            <span aria-hidden className={`h-2 w-2 rounded-full ${LANE_DOT[lane.id]}`} /> {lane.title} <span className="text-[12.5px] font-semibold text-[#8a94a8]">{laneCount(lane.id)}</span>
+          </button>
+        ))}
       </div>
 
       {loading ? (
@@ -154,53 +202,95 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           {LANES.map((lane) => {
             const list = appointments.filter((a) => lane.statuses.includes(a.status))
+            const open = list.filter((a) => !['cancelled', 'no_show'].includes(a.status))
+            const dropped = list.filter((a) => ['cancelled', 'no_show'].includes(a.status))
+            const EmptyIcon = lane.id === 'upcoming' ? CalendarClock : lane.id === 'service' ? Armchair : ReceiptText
             return (
-              <section key={lane.id} className="rounded-2xl bg-[#eef1f6]/70 dark:bg-slate-900/50 p-3">
-                <h2 className="px-1.5 pb-2.5 text-[15px] font-bold text-[#4a5672] dark:text-slate-300 flex items-center justify-between">{lane.title}<span className="text-[13px] font-semibold text-[#8a94a8]">{list.length}</span></h2>
-                {list.length === 0 && <p className="px-2 py-6 text-center text-[14px] text-[#8a94a8]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in the chair' : 'Nothing billed yet'}</p>}
+              <section key={lane.id} aria-label={lane.title} className={`${activeLane === lane.id ? 'block' : 'hidden'} lg:block rounded-3xl bg-[#eef1f6]/80 dark:bg-slate-900/50 p-2.5 sm:p-3`}>
+                <h2 className="hidden lg:flex px-2 pt-1 pb-3 items-center gap-2 text-[15px] font-extrabold text-[#0E1B3D] dark:text-slate-200">
+                  <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${LANE_DOT[lane.id]}`} /> {lane.title}
+                  <span className="ml-auto inline-flex items-center justify-center min-w-7 h-6 px-2 rounded-full bg-white dark:bg-slate-800 text-[12.5px] font-bold text-[#4a5672] dark:text-slate-300">{list.length}</span>
+                </h2>
+                {list.length === 0 && (
+                  <div className="rounded-2xl border-2 border-dashed border-[#d9e0ec] dark:border-slate-800 px-4 py-9 text-center">
+                    <EmptyIcon size={26} className="mx-auto text-[#a3adc2]" />
+                    <p className="mt-2 text-[14.5px] font-semibold text-[#6B7894]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in the chair' : 'Nothing billed yet'}</p>
+                    {lane.id === 'upcoming' && canWrite && <p className="text-[13px] text-[#8a94a8] mt-0.5">Tap the mic and say “book …”</p>}
+                  </div>
+                )}
                 <ul className="space-y-2.5">
-                  {list.map((appointment) => {
+                  {open.map((appointment) => {
                     const [pill, pillTone] = STATUS_PILL[appointment.status]
                     const invoice = appointment.invoice_id ? invoices[appointment.invoice_id] : null
                     const busy = busyId === appointment.id
+                    const staff = appointment.staff_id ? staffName[appointment.staff_id] : null
+                    const minutes = Math.round((Date.parse(appointment.starts_at) - now) / 60_000)
+                    const timing = isToday && appointment.status === 'booked'
+                      ? minutes > 0 && minutes <= 90 ? ['In ' + (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`), 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
+                        : minutes < -5 ? [`${Math.min(-minutes, 999)} min late`, 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300']
+                        : minutes <= 0 ? ['Now', 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300'] : null
+                      : null
                     return (
-                      <li key={appointment.id} className={`${card} p-4 ${['cancelled', 'no_show'].includes(appointment.status) ? 'opacity-60' : ''}`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[13.5px] font-semibold text-[#6B7894] flex items-center gap-1.5"><Clock size={14} /> {formatIstTime(appointment.starts_at)} – {formatIstTime(appointment.ends_at)}</p>
-                            <p className="text-[18px] font-bold text-[#0E1B3D] dark:text-white mt-0.5 truncate">{appointment.customer_name}</p>
-                          </div>
-                          <span className={`shrink-0 inline-flex items-center h-6 px-2 rounded-md text-[12.5px] font-bold ${pillTone}`}>{pill}</span>
+                      <li key={appointment.id} className={`relative ${card} p-4 pl-5 overflow-visible`}>
+                        <span aria-hidden className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${STRIPE[appointment.status]}`} />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[14px] text-[#6B7894] flex items-baseline gap-1.5"><span className="text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white">{formatIstTime(appointment.starts_at)}</span> – {formatIstTime(appointment.ends_at)}</p>
+                          <span className={`shrink-0 inline-flex items-center h-6 px-2 rounded-md text-[12.5px] font-bold ${timing ? timing[1] : pillTone}`}>{timing ? timing[0] : pill}</span>
                         </div>
-                        <p className="text-[14.5px] text-[#4a5672] dark:text-slate-300 mt-1">{appointment.services.map((s) => s.name).join(', ')}</p>
-                        <p className="text-[13.5px] text-[#6B7894] mt-0.5">{appointment.staff_id && staffName[appointment.staff_id] ? `With ${staffName[appointment.staff_id]} · ` : ''}{formatRupees(invoice ? Number(invoice.total) : total(appointment))}{invoice ? ` · ${invoice.number}` : ''}</p>
+                        <p className="text-[18px] font-bold tracking-tight text-[#0E1B3D] dark:text-white mt-1 truncate">{appointment.customer_name}</p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}</span>)}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold text-[#4a5672] dark:text-slate-300">
+                            {staff ? <><Avatar name={staff} size={26} /><span className="truncate">{staff}</span></> : appointment.status !== 'completed' && <span className="text-[#8a94a8] font-normal">Anyone free</span>}
+                          </span>
+                          <span className="text-right">
+                            <span className="block text-[16.5px] font-extrabold text-[#0E1B3D] dark:text-white">{formatRupees(invoice ? Number(invoice.total) : total(appointment))}</span>
+                            {invoice && <span className="block text-[12px] font-semibold text-[#8a94a8]">{invoice.number}</span>}
+                          </span>
+                        </div>
 
-                        {canWrite && (
+                        {canWrite && appointment.status !== 'completed' && (
                           <div className="mt-3 flex items-center gap-2">
-                            {appointment.status === 'booked' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'arrived')} className={`${primaryButton} flex-1 h-12`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />} Arrived</button>}
-                            {appointment.status === 'arrived' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'in_service')} className={`${primaryButton} flex-1 h-12`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />} Start</button>}
-                            {appointment.status === 'in_service' && <button type="button" onClick={() => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } })} className={`${primaryButton} flex-1 h-12`}><Receipt size={18} /> Complete & bill</button>}
-                            {appointment.status === 'completed' && invoice && (
-                              <a href={`/i/${invoice.public_token}`} target="_blank" rel="noopener noreferrer" className={`${secondaryButton} flex-1 h-11`}><Receipt size={17} /> {invoice.status === 'paid' ? 'Paid · view bill' : invoice.status === 'void' ? 'Void · view' : 'Unpaid · view bill'}</a>
-                            )}
+                            {appointment.status === 'booked' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'arrived')} className={`${stepButton} bg-[#eef3fe] text-[#1D5BEA] hover:bg-[#dfe8fd] dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-900/50`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />} Arrived</button>}
+                            {appointment.status === 'arrived' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'in_service')} className={`${stepButton} bg-[#fdeef6] text-[#be185d] hover:bg-[#fbdcec] dark:bg-pink-950/50 dark:text-pink-200 dark:hover:bg-pink-900/50`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />} Start service</button>}
+                            {appointment.status === 'in_service' && <button type="button" onClick={() => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } })} className={`${stepButton} bg-[#00A884] text-white hover:bg-[#008f70] shadow-sm shadow-[#00A884]/30`}><Receipt size={18} /> Complete & bill</button>}
                             {['booked', 'arrived'].includes(appointment.status) && (
                               <div className="relative">
-                                <button type="button" aria-label={`More for ${appointment.customer_name}`} onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === appointment.id ? null : appointment.id) }} className="h-12 w-12 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#4a5672] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={20} /></button>
+                                <button type="button" aria-label={`More for ${appointment.customer_name}`} onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === appointment.id ? null : appointment.id) }} className="h-11 w-11 rounded-xl border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={20} /></button>
                                 {menuFor === appointment.id && (
-                                  <div className="absolute right-0 bottom-14 z-20 w-56 rounded-xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] shadow-lg py-1" onClick={(e) => e.stopPropagation()}>
-                                    <button type="button" onClick={() => { setMenuFor(null); setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } }) }} className="w-full text-left px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white hover:bg-[#f6f8fc] dark:hover:bg-slate-800 cursor-pointer">Bill now</button>
-                                    {appointment.status === 'booked' && <button type="button" onClick={() => { setMenuFor(null); setStatus(appointment, 'no_show') }} className="w-full text-left px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white hover:bg-[#f6f8fc] dark:hover:bg-slate-800 cursor-pointer">Did not come</button>}
-                                    <button type="button" onClick={() => { setMenuFor(null); setStatus(appointment, 'cancelled') }} className="w-full text-left px-4 py-3 text-[15px] text-[#b91c1c] hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 cursor-pointer">Cancel appointment</button>
+                                  <div className="absolute right-0 bottom-13 z-20 w-56 rounded-2xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] shadow-xl p-1.5" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" onClick={() => { setMenuFor(null); setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } }) }} className={menuItem}><Receipt size={16} /> Bill now</button>
+                                    {appointment.status === 'booked' && <button type="button" onClick={() => { setMenuFor(null); setStatus(appointment, 'no_show') }} className={menuItem}><UserX size={16} /> Did not come</button>}
+                                    <button type="button" onClick={() => { setMenuFor(null); setStatus(appointment, 'cancelled') }} className={`${menuItem} text-[#b91c1c] dark:text-red-300 hover:bg-[#fdf0f0] dark:hover:bg-red-950/30`}><XCircle size={16} /> Cancel appointment</button>
                                   </div>
                                 )}
                               </div>
                             )}
-                            {['cancelled', 'no_show'].includes(appointment.status) && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'booked')} className={`${secondaryButton} flex-1 h-11`}>Book again</button>}
+                          </div>
+                        )}
+                        {appointment.status === 'completed' && invoice && (
+                          <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-[#f8fafc] dark:bg-slate-900/60 px-3 py-2">
+                            <span className={`inline-flex items-center gap-1.5 text-[13.5px] font-bold ${invoice.status === 'paid' ? 'text-[#047857] dark:text-emerald-300' : invoice.status === 'void' ? 'text-[#6B7894]' : 'text-[#b45309] dark:text-amber-300'}`}>
+                              {invoice.status === 'paid' ? <CircleCheck size={16} /> : <Clock size={16} />}
+                              {invoice.status === 'paid' ? `Paid${PAID_BY[invoice.payment_method] ? ` · ${PAID_BY[invoice.payment_method]}` : ''}` : invoice.status === 'void' ? 'Void' : 'Not paid yet'}
+                            </span>
+                            <a href={`/i/${invoice.public_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13.5px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:underline">View bill <ArrowUpRight size={15} /></a>
                           </div>
                         )}
                       </li>
                     )
                   })}
+                  {dropped.map((appointment) => (
+                    <li key={appointment.id} className="rounded-2xl border border-dashed border-[#d5ddeb] dark:border-slate-700 px-4 py-3 flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14.5px] font-semibold text-[#6B7894] dark:text-slate-400 truncate">{formatIstTime(appointment.starts_at)} · {appointment.customer_name}</p>
+                        <p className="text-[12.5px] text-[#8a94a8] truncate">{appointment.status === 'no_show' ? 'Did not come' : 'Cancelled'} · {appointment.services.map((s) => s.name).join(', ')}</p>
+                      </div>
+                      {canWrite && <button type="button" disabled={busyId === appointment.id} onClick={() => setStatus(appointment, 'booked')} className="shrink-0 h-9 px-3 rounded-lg text-[13.5px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer disabled:opacity-50">Book again</button>}
+                    </li>
+                  ))}
                 </ul>
               </section>
             )

@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Loader2, Plus, Sparkles, Trash2, Users } from 'lucide-react'
+import { Clock3, Loader2, Plus, Scissors, Sparkles, Store, Trash2, Users } from 'lucide-react'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
-import { api, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
+import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup, Service, StaffMember } from './types'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
@@ -12,6 +12,21 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const CATEGORY_SUGGESTIONS = ['Hair', 'Skin', 'Nails', 'Spa', 'Makeup', 'Bridal']
 
 type Flash = (tone: 'success' | 'error', text: string) => void
+
+function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.ReactNode; tone: string; title: string; subtitle: string; action?: React.ReactNode }) {
+  return (
+    <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${tone}`}>{icon}</span>
+        <div className="min-w-0">
+          <h2 className="text-[18px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{title}</h2>
+          <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400 truncate">{subtitle}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  )
+}
 
 export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash }) {
   const confirm = useConfirm()
@@ -85,7 +100,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
     <div className="space-y-6">
       {setup.services.length === 0 && (
         <div className={`${card} p-6 sm:p-8 text-center`}>
-          <div className="mx-auto h-14 w-14 rounded-2xl bg-gradient-to-br from-[#f472b6] to-[#7c3aed] text-white flex items-center justify-center"><Sparkles size={26} /></div>
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center"><Sparkles size={26} /></div>
           <h2 className="text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">Set up your salon in one tap</h2>
           <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1 max-w-md mx-auto">Add a ready-made menu of services with typical prices and a small team. You can change everything afterwards.</p>
           <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
@@ -98,25 +113,25 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       {/* Services */}
       {setup.services.length > 0 && (
         <section className={card}>
-          <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[18px] font-bold text-[#0E1B3D] dark:text-white">Services</h2>
-              <p className="text-[14px] text-[#6B7894]">{setup.services.length} services · prices {settings.prices_include_tax ? 'include' : 'exclude'} GST</p>
-            </div>
-            <button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={primaryButton}><Plus size={18} /> Add service</button>
-          </div>
+          <SectionHead icon={<Scissors size={21} />} tone="bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300" title="Services"
+            subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
+            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden sm:inline">Add service</span><span className="sm:hidden">Add</span></button>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {categories.map(([category, services]) => (
-              <div key={category} className="px-5 py-4">
-                <h3 className="text-[13.5px] font-bold text-[#6B7894] mb-2">{category}</h3>
-                <ul className="space-y-1">
+              <div key={category} className="px-2 sm:px-3 py-3">
+                <h3 className="px-2 pb-1.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8]">{category} <span className="font-semibold normal-case tracking-normal">· {services.length}</span></h3>
+                <ul>
                   {services.map((service) => (
-                    <li key={service.id} className="flex items-center gap-3 py-1.5">
+                    <li key={service.id} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-[#f8fafc] dark:hover:bg-slate-900/60">
                       <button type="button" onClick={() => setServiceForm(service)} className="flex-1 min-w-0 text-left cursor-pointer group">
-                        <span className={`block text-[15.5px] font-semibold group-hover:text-[#1D5BEA] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
-                        <span className="block text-[13.5px] text-[#6B7894]">{service.duration_minutes} min · GST {Number(service.tax_rate)}%</span>
+                        <span className={`block text-[15.5px] font-semibold truncate group-hover:text-[#1D5BEA] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
+                        <span className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>
+                          <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">GST {Number(service.tax_rate)}%</span>
+                          {service.sac_code && <span className="hidden sm:inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">SAC {service.sac_code}</span>}
+                        </span>
                       </button>
-                      <span className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">{formatRupees(Number(service.price))}</span>
+                      <span className={`text-[16.5px] font-extrabold ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8]'}`}>{formatRupees(Number(service.price))}</span>
                       <Toggle checked={service.active} disabled={busy !== null} onChange={(value) => toggleService(service, value)} label={`${service.name} available`} />
                     </li>
                   ))}
@@ -129,22 +144,17 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
 
       {/* Staff */}
       <section className={card}>
-        <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[18px] font-bold text-[#0E1B3D] dark:text-white">Staff</h2>
-            <p className="text-[14px] text-[#6B7894]">Who serves customers, and which services they do</p>
-          </div>
-          <button type="button" onClick={() => setStaffForm({ active: true, service_ids: [] })} className={secondaryButton}><Plus size={18} /> Add person</button>
-        </div>
+        <SectionHead icon={<Users size={21} />} tone="bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300" title="Staff" subtitle="Who serves customers, and which services they do"
+          action={<button type="button" onClick={() => setStaffForm({ active: true, service_ids: [] })} className={secondaryButton}><Plus size={18} /> <span className="hidden sm:inline">Add person</span><span className="sm:hidden">Add</span></button>} />
         {setup.staff.length === 0 ? (
           <p className="px-5 py-8 text-center text-[15px] text-[#6B7894]"><Users size={22} className="inline mr-1.5 -mt-0.5" /> No staff yet. Add the people who serve customers.</p>
         ) : (
-          <ul className="grid sm:grid-cols-2 gap-3 p-4">
+          <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
             {setup.staff.map((member) => (
               <li key={member.id}>
-                <button type="button" onClick={() => setStaffForm(member)} className={`w-full text-left rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-4 hover:border-[#9db5ef] cursor-pointer ${member.active ? '' : 'opacity-60'}`}>
+                <button type="button" onClick={() => setStaffForm(member)} className={`w-full text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-4 hover:border-[#9db5ef] hover:shadow-sm transition cursor-pointer ${member.active ? '' : 'opacity-60'}`}>
                   <span className="flex items-center gap-3">
-                    <span className="h-11 w-11 shrink-0 rounded-full bg-[#fdeef6] dark:bg-pink-950/40 text-[#be185d] dark:text-pink-300 flex items-center justify-center text-[16px] font-bold">{member.name.slice(0, 1).toUpperCase()}</span>
+                    <Avatar name={member.name} size={46} />
                     <span className="min-w-0">
                       <span className="block text-[16px] font-bold text-[#0E1B3D] dark:text-white truncate">{member.name}{member.active ? '' : ' (away)'}</span>
                       <span className="block text-[13.5px] text-[#6B7894]">{member.service_ids.length ? `${member.service_ids.length} services` : 'All services'}{member.phone ? ` · ${member.phone}` : ''}</span>
@@ -158,23 +168,55 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       </section>
 
       {/* Business details */}
-      <section className={`${card} p-5 sm:p-6`}>
-        <h2 className="text-[18px] font-bold text-[#0E1B3D] dark:text-white">Business details on invoices</h2>
-        <p className="text-[14px] text-[#6B7894] mb-4">Printed on every GST invoice. Changing them never changes invoices already sent.</p>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Glow Salon & Spa" /></Field>
-          <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
-          <div className="sm:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
-          <Field label="GSTIN" hint="Leave empty if you are not registered for GST."><input className={`${input} uppercase`} value={settings.gstin || ''} onChange={(e) => setSettings({ ...settings, gstin: e.target.value })} placeholder="36ABCDE1234F1Z5" /></Field>
-          <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@glowsalon.in" inputMode="email" /></Field>
-          <Field label="Invoice number starts with" hint={`Next invoices look like ${(settings.invoice_prefix || 'INV').toUpperCase()}-0001`}><input className={`${input} uppercase`} value={settings.invoice_prefix || ''} onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })} placeholder="GLOW" maxLength={12} /></Field>
-          <Field label="Note at the bottom of invoices"><input className={input} value={settings.invoice_note || ''} onChange={(e) => setSettings({ ...settings, invoice_note: e.target.value })} placeholder="Thank you! See you again soon." /></Field>
+      <section className={card}>
+        <SectionHead icon={<Store size={21} />} tone="bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
+        <div className="p-4 sm:p-5 grid lg:grid-cols-5 gap-6">
+          <div className="lg:col-span-3">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Glow Salon & Spa" /></Field>
+              <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
+              <div className="sm:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
+              <Field label="GSTIN" hint="Leave empty if you are not registered for GST."><input className={`${input} uppercase`} value={settings.gstin || ''} onChange={(e) => setSettings({ ...settings, gstin: e.target.value })} placeholder="36ABCDE1234F1Z5" /></Field>
+              <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@glowsalon.in" inputMode="email" /></Field>
+              <Field label="Invoice number starts with" hint={`Next invoices look like ${(settings.invoice_prefix || 'INV').toUpperCase()}-0001`}><input className={`${input} uppercase`} value={settings.invoice_prefix || ''} onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })} placeholder="GLOW" maxLength={12} /></Field>
+              <Field label="Note at the bottom of invoices"><input className={input} value={settings.invoice_note || ''} onChange={(e) => setSettings({ ...settings, invoice_note: e.target.value })} placeholder="Thank you! See you again soon." /></Field>
+            </div>
+            <div className="mt-5 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
+              <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Prices include GST</strong><span className="block text-[13.5px] text-[#6B7894]">On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.</span></span><Toggle checked={settings.prices_include_tax} onChange={(value) => setSettings({ ...settings, prices_include_tax: value })} label="Prices include GST" /></label>
+              <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Speak replies at the counter</strong><span className="block text-[13.5px] text-[#6B7894]">The counter reads out what it understood.</span></span><Toggle checked={settings.voice_replies} onChange={(value) => setSettings({ ...settings, voice_replies: value })} label="Speak replies" /></label>
+            </div>
+            <div className="mt-5 flex justify-end"><button type="button" onClick={saveSettings} disabled={busy !== null} className={primaryButton}>{busy === 'settings' && <Loader2 size={18} className="animate-spin" />} Save details</button></div>
+          </div>
+          <div className="lg:col-span-2">
+            <div className="lg:sticky lg:top-4">
+              <p className="text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8] mb-2">How the top of your invoice looks</p>
+              <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#0b141a] shadow-sm overflow-hidden">
+                <div className="h-1.5 bg-[#1D5BEA]" />
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[17px] font-extrabold text-[#0E1B3D] dark:text-white break-words">{settings.business_name || 'Your business name'}</p>
+                      {settings.address && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400 mt-1 whitespace-pre-line">{settings.address}</p>}
+                      {(settings.phone || settings.email) && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400">{[settings.phone, settings.email].filter(Boolean).join(' · ')}</p>}
+                      {settings.gstin && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400 mt-1">GSTIN <strong className="text-[#0E1B3D] dark:text-white">{settings.gstin.toUpperCase()}</strong></p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10.5px] font-bold tracking-[0.14em] text-[#1D5BEA]">{settings.gstin ? 'TAX INVOICE' : 'BILL'}</p>
+                      <p className="text-[15px] font-extrabold text-[#0E1B3D] dark:text-white">{(settings.invoice_prefix || 'INV').toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 12) || 'INV'}-0001</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2" aria-hidden>
+                    <div className="h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 w-full" />
+                    <div className="h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 w-4/5" />
+                    <div className="h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 w-3/5" />
+                  </div>
+                  {settings.invoice_note && <p className="mt-4 pt-3 border-t border-[#eef1f6] dark:border-slate-800 text-[12.5px] text-[#4a5672] dark:text-slate-400">{settings.invoice_note}</p>}
+                </div>
+              </div>
+              {!settings.gstin && <p className="mt-2 text-[12.5px] text-[#8a94a8]">Without a GSTIN, bills carry no GST and are titled “Bill”.</p>}
+            </div>
+          </div>
         </div>
-        <div className="mt-5 space-y-3">
-          <label className="flex items-center justify-between gap-4 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Prices include GST</strong><span className="block text-[13.5px] text-[#6B7894]">On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.</span></span><Toggle checked={settings.prices_include_tax} onChange={(value) => setSettings({ ...settings, prices_include_tax: value })} label="Prices include GST" /></label>
-          <label className="flex items-center justify-between gap-4 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Speak replies at the counter</strong><span className="block text-[13.5px] text-[#6B7894]">The counter reads out what it understood.</span></span><Toggle checked={settings.voice_replies} onChange={(value) => setSettings({ ...settings, voice_replies: value })} label="Speak replies" /></label>
-        </div>
-        <div className="mt-5 flex justify-end"><button type="button" onClick={saveSettings} disabled={busy !== null} className={primaryButton}>{busy === 'settings' && <Loader2 size={18} className="animate-spin" />} Save details</button></div>
       </section>
 
       {serviceForm && (
