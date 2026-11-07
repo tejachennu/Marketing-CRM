@@ -40,6 +40,13 @@ test('Salon schema: after setting up, a step is retried until Supabase sees the 
   assert.equal(calls, 1)
 })
 
+test('Salon schema: the WhatsApp migration (chat, bookings, feedback, commission) is copied word for word', () => {
+  const { SALON_WHATSAPP_SQL } = require('../lib/salon/schema.ts')
+  const file = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261108_salon_whatsapp.sql'), 'utf8')
+  assert.equal(SALON_WHATSAPP_SQL, file)
+  for (const piece of ['auto_approve_bookings', 'commission_percent', 'CREATE TABLE IF NOT EXISTS salon_feedback', 'CREATE TABLE IF NOT EXISTS salon_chat_offers', 'feedback_due_at']) assert.ok(SALON_WHATSAPP_SQL.includes(piece), piece)
+})
+
 test('Salon schema: a missing table is recognised so it can be set up', () => {
   const { isMissingSalonSchema } = require('../lib/salon/schema.ts')
   assert.equal(isMissingSalonSchema({ code: 'PGRST205', message: "Could not find the table 'public.salon_services' in the schema cache" }), true)
@@ -220,47 +227,7 @@ test('Sample salon: every staff category has services', () => {
 const A = require('../lib/salon/actions.ts')
 
 /** An in-memory Supabase stand-in with the filters the counter uses, and unique invoice numbers. */
-function salonDb(seed = {}) {
-  const tables = { contacts: [], conversations: [], messages: [], salon_services: [], salon_staff: [], salon_appointments: [], salon_invoices: [], ...structuredClone(seed) }
-  let seq = 0
-  let failNextInvoiceInsert = 0
-  const from = (table) => {
-    if (!tables[table]) tables[table] = []
-    let filters = [], op = 'select', values, singular = false, order = null, limit = Infinity
-    const q = {
-      select() { return this },
-      eq(k, v) { filters.push((r) => r[k] === v); return this },
-      in(k, list) { filters.push((r) => list.includes(r[k])); return this },
-      ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
-      lt(k, v) { filters.push((r) => r[k] < v); return this },
-      gt(k, v) { filters.push((r) => r[k] > v); return this },
-      gte(k, v) { filters.push((r) => r[k] >= v); return this },
-      order(k, opts = {}) { order = [k, opts.ascending === false ? -1 : 1]; return this },
-      limit(n) { limit = n; return this },
-      maybeSingle() { singular = true; return this },
-      single() { singular = true; return this },
-      insert(data) { op = 'insert'; values = data; return this },
-      update(data) { op = 'update'; values = data; return this },
-      then(resolve, reject) {
-        let rows = tables[table].filter((r) => filters.every((f) => f(r)))
-        if (op === 'insert') {
-          const items = (Array.isArray(values) ? values : [values]).map((v) => ({ id: `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, created_at: new Date(Date.now() + seq).toISOString(), ...structuredClone(v) }))
-          if (table === 'salon_invoices') {
-            if (failNextInvoiceInsert > 0) { failNextInvoiceInsert--; return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }).then(resolve, reject) }
-            if (items.some((item) => tables.salon_invoices.some((r) => r.organization_id === item.organization_id && r.seq === item.seq))) return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } }).then(resolve, reject)
-          }
-          tables[table].push(...items)
-          rows = items
-        } else if (op === 'update') rows.forEach((r) => Object.assign(r, structuredClone(values)))
-        if (order) rows = [...rows].sort((a, b) => (a[order[0]] > b[order[0]] ? 1 : a[order[0]] < b[order[0]] ? -1 : 0) * order[1])
-        rows = rows.slice(0, limit)
-        return Promise.resolve({ data: structuredClone(singular ? rows[0] || null : rows), error: null }).then(resolve, reject)
-      },
-    }
-    return q
-  }
-  return { from, tables, failInvoiceInserts: (n) => { failNextInvoiceInsert = n } }
-}
+const { salonDb } = require('./salon-fake-db.cjs')
 
 const ORG = 'org-salon'
 const S1 = '00000000-0000-4000-8000-0000000000a1'

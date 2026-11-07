@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { badRequest, salonAccess, serverError } from '@/lib/salon/server'
 import { isUuid, parseStaff } from '@/lib/salon/validate'
+import { withSalonSchema } from '@/lib/salon/schema'
 
 export const runtime = 'nodejs'
 
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
   const parsed = parseStaff(body)
   if ('error' in parsed) return badRequest(parsed.error)
   const { db, organizationId } = access.ctx
-  const { data, error } = await db.from('salon_staff').insert({ ...parsed.value, organization_id: organizationId }).select('*').single()
+  const { data, error } = await withSalonSchema(() => db.from('salon_staff').insert({ ...parsed.value, organization_id: organizationId }).select('*').single())
   if (error) return serverError('staff', error)
   return NextResponse.json({ success: true, member: data })
 }
@@ -26,7 +27,7 @@ export async function PATCH(request: NextRequest) {
   const parsed = parseStaff(body, true)
   if ('error' in parsed) return badRequest(parsed.error)
   const { db, organizationId } = access.ctx
-  const { data, error } = await db.from('salon_staff').update({ ...parsed.value, updated_at: new Date().toISOString() }).eq('id', body.id).eq('organization_id', organizationId).select('*').single()
+  const { data, error } = await withSalonSchema(() => db.from('salon_staff').update({ ...parsed.value, updated_at: new Date().toISOString() }).eq('id', body.id).eq('organization_id', organizationId).select('*').single())
   if (error) return serverError('staff', error)
   return NextResponse.json({ success: true, member: data })
 }

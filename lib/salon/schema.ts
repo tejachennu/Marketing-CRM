@@ -1,6 +1,7 @@
 /**
  * The Spa & Salon tables. SALON_SCHEMA_SQL is supabase/migrations/20261106_spa_salon_connector.sql
- * and SALON_LOGO_SQL is 20261107_salon_logo.sql, word for word (tests/salon.test.cjs checks). It sets itself up the first time the connector is
+ * SALON_LOGO_SQL is 20261107_salon_logo.sql and SALON_WHATSAPP_SQL is 20261108_salon_whatsapp.sql,
+ * word for word (tests/salon.test.cjs checks). It sets itself up the first time the connector is
  * used, through the app's own database connection, so no one has to run SQL by hand.
  */
 
@@ -143,9 +144,78 @@ ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS logo_url TEXT;
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261108_salon_whatsapp.sql word for word: chat, bookings, feedback, commission. */
+export const SALON_WHATSAPP_SQL = `-- Spa & Salon on WhatsApp: the chat assistant, bookings by chat (with approval), feedback after
+-- visits, appointment reminders and staff commission. Safe to run more than once. The app runs it
+-- on its own the first time one of these is used.
+
+-- Opening hours, and what the salon does on WhatsApp
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS opens_at TEXT NOT NULL DEFAULT '10:00';
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS closes_at TEXT NOT NULL DEFAULT '21:00';
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS closed_weekdays INTEGER[] NOT NULL DEFAULT '{}';
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS chat_assistant BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS auto_approve_bookings BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS feedback_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS feedback_delay_minutes INTEGER NOT NULL DEFAULT 120;
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS review_link TEXT;
+
+-- Commission: the share of each service's value (before GST, after discount) the person who did it earns
+ALTER TABLE salon_staff ADD COLUMN IF NOT EXISTS commission_percent NUMERIC(5,2) NOT NULL DEFAULT 0;
+
+-- Where a booking came from (counter, voice, chat). Chat bookings wait as status 'requested'
+-- until the counter approves them, unless the salon approves free slots automatically.
+ALTER TABLE salon_appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'counter';
+ALTER TABLE salon_appointments ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_salon_appointments_status ON salon_appointments(organization_id, status, starts_at);
+
+-- Feedback is asked a while after the bill: due time, then sent / skipped / failed
+ALTER TABLE salon_invoices ADD COLUMN IF NOT EXISTS feedback_due_at TIMESTAMPTZ;
+ALTER TABLE salon_invoices ADD COLUMN IF NOT EXISTS feedback_status TEXT;
+CREATE INDEX IF NOT EXISTS idx_salon_invoices_feedback ON salon_invoices(organization_id, feedback_due_at) WHERE feedback_status IS NULL;
+
+-- Ratings from customers, with who served them
+CREATE TABLE IF NOT EXISTS salon_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  invoice_id UUID REFERENCES salon_invoices(id) ON DELETE CASCADE,
+  contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
+  customer_name TEXT,
+  customer_phone TEXT,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment TEXT,
+  staff_ids UUID[] NOT NULL DEFAULT '{}',
+  staff_names TEXT[] NOT NULL DEFAULT '{}',
+  followed_up_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (invoice_id)
+);
+CREATE INDEX IF NOT EXISTS idx_salon_feedback_org ON salon_feedback(organization_id, created_at DESC);
+
+-- Times offered to a customer in the chat: tapping one books it (the button carries the offer id)
+CREATE TABLE IF NOT EXISTS salon_chat_offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+  customer_name TEXT,
+  customer_phone TEXT NOT NULL,
+  service_ids UUID[] NOT NULL DEFAULT '{}',
+  staff_id UUID REFERENCES salon_staff(id) ON DELETE SET NULL,
+  date TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT 'en',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_salon_chat_offers_org ON salon_chat_offers(organization_id, created_at DESC);
+
+ALTER TABLE salon_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salon_chat_offers ENABLE ROW LEVEL SECURITY;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

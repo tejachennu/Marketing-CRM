@@ -7,6 +7,7 @@ import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/sa
 import { useConfirm } from '@/lib/dialog-context'
 import { api, Avatar, card, primaryButton, secondaryButton, StatTile } from './ui'
 import { BillSheet, BookingSheet, ResultSheet, type BillDraft, type BillTarget, type BookingDraft } from './counter-sheets'
+import { BookingRequests } from './booking-requests'
 import type { Appointment, SalonSetup } from './types'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
@@ -23,6 +24,7 @@ const LANES: { id: 'upcoming' | 'service' | 'done'; title: string; statuses: App
 ]
 
 const STATUS_PILL: Record<Appointment['status'], [string, string]> = {
+  requested: ['Requested', 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'],
   booked: ['Booked', 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300'],
   arrived: ['Arrived', 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'],
   in_service: ['In service', 'bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300'],
@@ -33,6 +35,7 @@ const STATUS_PILL: Record<Appointment['status'], [string, string]> = {
 
 const LANE_DOT: Record<string, string> = { upcoming: 'bg-[#1D5BEA]', service: 'bg-[#db2777]', done: 'bg-[#00A884]' }
 const STRIPE: Record<Appointment['status'], string> = {
+  requested: 'bg-[#f59e0b]',
   booked: 'bg-[#1D5BEA]', arrived: 'bg-[#f59e0b]', in_service: 'bg-[#db2777]', completed: 'bg-[#00A884]', cancelled: 'bg-[#c0c8d8]', no_show: 'bg-[#c0c8d8]',
 }
 const PAID_BY: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
@@ -63,6 +66,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
   const today = istDate()
   const [date, setDate] = useState(today)
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [requests, setRequests] = useState<Appointment[]>([])
   const [invoices, setInvoices] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -80,8 +84,15 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
   const load = useCallback(async () => {
     const data = await api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
     setAppointments(data.appointments || [])
+    setRequests(data.requests || [])
     setInvoices(Object.fromEntries((data.invoices || []).map((invoice: any) => [invoice.id, invoice])))
   }, [orgId, date])
+
+  // New WhatsApp requests and changes from other counters show up without a refresh
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') load().catch(() => {}) }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [load])
 
   useEffect(() => {
     setLoading(true)
@@ -161,6 +172,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
   return (
     <div className="space-y-5">
       {canWrite && voice?.(handle)}
+
+      <BookingRequests orgId={orgId} requests={requests} canWrite={canWrite} flash={flash} onDone={() => load().catch(() => {})} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         <StatTile label={isToday ? 'Appointments today' : 'Appointments'} value={live.length} icon={<CalendarDays size={20} />} tone="blue" hint={`${live.filter((a) => a.status === 'completed').length} done`} />

@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     const result = await executeCounterAction({ ...access.ctx, settings }, parsed.action, {
       invoice: (invoice) => sendCustomerText(db, organizationId, invoice.customer_phone, invoiceMessage(invoice, invoiceLink(origin, invoice.public_token))),
       booking: (appointment, staffName) => sendCustomerText(db, organizationId, appointment.customer_phone, bookingMessage(appointment, settings.business_name, staffName)),
+      text: (phone, body) => sendCustomerText(db, organizationId, phone, body),
     })
     return NextResponse.json({ success: true, ...result, link: result.invoice ? invoiceLink(origin, result.invoice.public_token) : undefined })
   } catch (error: any) {

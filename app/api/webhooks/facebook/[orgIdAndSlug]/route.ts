@@ -14,6 +14,7 @@ import { classifyGreeting } from '@/lib/greeting-classifier'
 import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
+import { handleSlotPick, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
   handleCheckoutButton,
@@ -702,6 +703,20 @@ async function processEvent(
 
     // Step 4.5: Execute and deliver every automatic step in order.
     // With automation off (an agent has the chat) a submitted form is still saved, just not acted on
+    // ── Spa & Salon: a time tapped in the list of free times. The customer chose it, so it is booked
+    //    even when auto-reply is off for this chat. A redelivered message was handled the first time.
+    if (interactiveButtonId && parseSlotButton(interactiveButtonId) && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const salon = await handleSlotPick({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], buttonId: interactiveButtonId })
+        if (salon.handled) {
+          await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+          return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking', action: salon.action })
+        }
+      } catch (salonErr: any) {
+        console.error('[Facebook Webhook] Salon booking failed:', salonErr?.message || salonErr)
+      }
+    }
+
     if (conversation.auto_reply_enabled === false && flowSubmissionData) {
       try {
         await saveUnownedSubmission({ organizationId: orgId, contactPhone: phoneNumber, conversationId: conversation.id, flowSubmissionData, messageId: messageSid })
@@ -823,6 +838,33 @@ async function processEvent(
       // Product and order questions: the shopping assistant answers with the store's own products and
       // the customer's own orders. Everything else falls through to the FAQ chatbot below.
       // A redelivered message (Meta retries webhooks) was already answered the first time
+      // Spa & Salon: questions about services, prices and timings, and bookings, answered from the
+      // salon's own menu. Anything else passes to the shopping assistant and the FAQ chatbot.
+      if (salonChatReady(orgData) && !previousMessage) {
+        try {
+          const { data: recentForSalon } = await supabase
+            .from('messages')
+            .select('sender_type, body, media_url')
+            .eq('conversation_id', conversation.id)
+            .order('created_at', { ascending: false })
+            .limit(9)
+          const salonHistory = (recentForSalon || [])
+            .slice(1)
+            .reverse()
+            .map((m: any) => ({ role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const, content: getMessagePreview(m) }))
+            .filter((m: any) => m.content)
+          const salon = await runSalonAssistant({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: salonHistory })
+          if (salon.handled) {
+            await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            console.log(`[Facebook Webhook Chatbot] Salon assistant answered (${salon.action}) in ${Date.now() - chatbotStartTime}ms`)
+            return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_assistant', action: salon.action })
+          }
+          console.log(`[Facebook Webhook Chatbot] Salon assistant passed it on: ${salon.reason}`)
+        } catch (salonErr: any) {
+          console.error('[Facebook Webhook Chatbot] Salon assistant failed:', salonErr?.message || salonErr)
+        }
+      }
+
       if (shoppingAssistantEnabled(orgData) && !previousMessage) {
         try {
           const { data: recentForAssistant } = await supabase

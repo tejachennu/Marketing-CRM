@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { salonAccess, serverError } from '@/lib/salon/server'
 import { istDate, istDayRange } from '@/lib/salon/spoken'
+import { withSalonSchema } from '@/lib/salon/schema'
 
 export const runtime = 'nodejs'
 
@@ -19,7 +20,10 @@ export async function GET(request: NextRequest) {
     const { data: invoices } = invoiceIds.length
       ? await db.from('salon_invoices').select('id, number, total, status, payment_method, public_token').eq('organization_id', organizationId).in('id', invoiceIds)
       : { data: [] as any[] }
-    return NextResponse.json({ success: true, date, appointments: appointments || [], invoices: invoices || [] })
+    // Booking requests from WhatsApp waiting for the counter, from today on (whichever day is shown)
+    const { data: requests } = await withSalonSchema(() => db.from('salon_appointments').select('*').eq('organization_id', organizationId).eq('status', 'requested')
+      .gte('starts_at', istDayRange(istDate()).start).order('starts_at').limit(50))
+    return NextResponse.json({ success: true, date, appointments: (appointments || []).filter((a: any) => a.status !== 'requested'), invoices: invoices || [], requests: requests || [] })
   } catch (error) {
     return serverError('appointments', error)
   }

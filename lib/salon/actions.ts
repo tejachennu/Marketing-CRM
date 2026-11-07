@@ -25,6 +25,8 @@ export type CounterAction =
   | { type: 'set_status'; appointment_id: string; status: 'booked' | 'arrived' | 'in_service' | 'cancelled' | 'no_show' }
   | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
   | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
+  | { type: 'approve_request'; appointment_id: string; starts_at?: string | null; send_whatsapp?: boolean }
+  | { type: 'decline_request'; appointment_id: string; send_whatsapp?: boolean }
   | { type: 'pay_invoice'; invoice_id: string; payment_method: PaymentMethod }
   | { type: 'void_invoice'; invoice_id: string }
   | { type: 'send_invoice'; invoice_id: string }
@@ -90,6 +92,20 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       if (!ids.length) return { error: 'Choose at least one service.' }
       return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
     }
+    case 'approve_request': {
+      if (!isUuid(body.appointment_id)) return { error: 'Choose a booking request.' }
+      let startsAt: string | null = null
+      if (body.starts_at) {
+        const at = Date.parse(String(body.starts_at))
+        if (!Number.isFinite(at)) return { error: 'Choose a date and time.' }
+        if (at < Date.now() - 15 * 60 * 1000) return { error: 'That time has already passed.' }
+        startsAt = new Date(at).toISOString()
+      }
+      return { action: { type: 'approve_request', appointment_id: body.appointment_id, starts_at: startsAt, send_whatsapp: body.send_whatsapp !== false } }
+    }
+    case 'decline_request':
+      if (!isUuid(body.appointment_id)) return { error: 'Choose a booking request.' }
+      return { action: { type: 'decline_request', appointment_id: body.appointment_id, send_whatsapp: body.send_whatsapp !== false } }
     case 'pay_invoice': {
       if (!isUuid(body.invoice_id)) return { error: 'Choose an invoice.' }
       const method = parsePayment(body.payment_method)
@@ -231,7 +247,7 @@ function servicesText(services: { name: string }[]): string {
 export async function executeCounterAction(
   ctx: SalonContext & { settings: any },
   action: CounterAction,
-  send?: { invoice: (invoice: any) => Promise<ActionResult['whatsapp']>; booking: (appointment: any, staffName: string | null) => Promise<ActionResult['whatsapp']> }
+  send?: { invoice: (invoice: any) => Promise<ActionResult['whatsapp']>; booking: (appointment: any, staffName: string | null) => Promise<ActionResult['whatsapp']>; text?: (phone: string, body: string) => Promise<ActionResult['whatsapp']> }
 ): Promise<ActionResult> {
   const { db, organizationId } = ctx
   const userId = ctx.user?.id || null
@@ -321,6 +337,29 @@ export async function executeCounterAction(
       const updated = await checked(db.from('salon_appointments').update({ invoice_id: invoice.id }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
       return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))} · ${customer.name}` }
+    }
+
+    case 'approve_request':
+    case 'decline_request': {
+      const appointment = await checked(db.from('salon_appointments').select('*').eq('id', action.appointment_id).eq('organization_id', organizationId).maybeSingle())
+      if (!appointment) throw new Error('That booking request was not found.')
+      if (appointment.status !== 'requested') throw new Error(appointment.status === 'cancelled' ? 'This request was already declined.' : 'This request was already handled.')
+      if (action.type === 'decline_request') {
+        const updated = await checked(db.from('salon_appointments').update({ status: 'cancelled', notes: [appointment.notes, 'Declined at the counter'].filter(Boolean).join(' · '), updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
+        const when = `${formatIstDay(istDate(appointment.starts_at))} ${formatIstTime(appointment.starts_at)}`
+        const whatsapp = action.send_whatsapp && appointment.customer_phone && send?.text
+          ? await send.text(appointment.customer_phone, `Sorry, we cannot take ${when} for ${servicesText(appointment.services || [])}. Reply here with another day or time and we will find you a slot. 🙏`)
+          : null
+        return { appointment: updated, whatsapp, message: `Declined ${appointment.customer_name}'s request` }
+      }
+      const length = Date.parse(appointment.ends_at) - Date.parse(appointment.starts_at)
+      const startsAt = action.starts_at || appointment.starts_at
+      const updated = await checked(db.from('salon_appointments').update({
+        status: 'booked', starts_at: startsAt, ends_at: new Date(Date.parse(startsAt) + Math.max(length, 15 * 60_000)).toISOString(), updated_at: now,
+      }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
+      const team = staffSummary(updated.services || [])
+      const whatsapp = action.send_whatsapp && updated.customer_phone && send ? await send.booking(updated, team.staff_name) : null
+      return { appointment: updated, whatsapp, message: `Booked ${updated.customer_name} · ${formatIstDay(istDate(startsAt))} ${formatIstTime(startsAt)}` }
     }
 
     case 'pay_invoice': {

@@ -7,6 +7,7 @@ import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup, Service, StaffMember } from './types'
+import { WhatsAppSettings } from './salon-whatsapp-settings'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
@@ -243,7 +244,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
                     <Avatar name={member.name} size={46} />
                     <span className="min-w-0">
                       <span className="block text-[16px] font-bold text-[#0E1B3D] dark:text-white truncate">{member.name}{member.active ? '' : ' (away)'}</span>
-                      <span className="block text-[13.5px] text-[#6B7894]">{member.service_ids.length ? `${member.service_ids.length} services` : 'All services'}{member.phone ? ` · ${member.phone}` : ''}</span>
+                      <span className="block text-[13.5px] text-[#6B7894]">{member.service_ids.length ? `${member.service_ids.length} services` : 'All services'}{Number(member.commission_percent) > 0 ? ` · ${Number(member.commission_percent)}% commission` : ''}{member.phone ? ` · ${member.phone}` : ''}</span>
                     </span>
                   </span>
                 </button>
@@ -309,6 +310,8 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
         </div>
       </section>
 
+      <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />
+
       {serviceForm && (
         <Modal title={serviceForm.id ? 'Edit service' : 'Add a service'} onClose={() => setServiceForm(null)}
           footer={<>
@@ -345,6 +348,12 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
               <Field label="Name"><input className={input} value={staffForm.name || ''} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Anitha" autoFocus /></Field>
               <Field label="Mobile (optional)"><input className={input} value={staffForm.phone || ''} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
             </div>
+            <Field group label="Commission" hint="Their share of the services they do (before GST, after discounts). Team shows what they have earned.">
+              <div className="flex flex-wrap items-center gap-2">
+                {[0, 10, 20, 30, 40].map((percent) => <Chip key={percent} selected={Number(staffForm.commission_percent || 0) === percent} onClick={() => setStaffForm({ ...staffForm, commission_percent: percent })}>{percent ? `${percent}%` : 'None'}</Chip>)}
+                <label className="inline-flex items-center gap-1.5 text-[14px] text-[#4a5672] dark:text-slate-300">Other <input type="number" min={0} max={100} step={0.5} inputMode="decimal" aria-label="Commission percent" value={staffForm.commission_percent ?? ''} onChange={(e) => setStaffForm({ ...staffForm, commission_percent: e.target.value as any })} className={`${input} w-24 h-10`} /> %</label>
+              </div>
+            </Field>
             <Field group label="Services they do" hint="Leave all unselected if they do everything.">
               <div className="space-y-3 mt-1">
                 {categories.map(([category, services]) => (

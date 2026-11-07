@@ -11,6 +11,15 @@ export interface SalonSettings {
   invoice_note: string | null
   voice_replies: boolean
   logo_url?: string | null
+  opens_at?: string
+  closes_at?: string
+  closed_weekdays?: number[]
+  chat_assistant?: boolean
+  auto_approve_bookings?: boolean
+  reminders_enabled?: boolean
+  feedback_enabled?: boolean
+  feedback_delay_minutes?: number
+  review_link?: string | null
 }
 
 export interface Service {
@@ -30,6 +39,7 @@ export interface StaffMember {
   phone: string | null
   service_ids: string[]
   active: boolean
+  commission_percent?: number | string
 }
 
 export interface SalonSetup {
@@ -50,7 +60,7 @@ export interface BookedService {
   staff_name?: string | null
 }
 
-export type AppointmentStatus = 'booked' | 'arrived' | 'in_service' | 'completed' | 'cancelled' | 'no_show'
+export type AppointmentStatus = 'requested' | 'booked' | 'arrived' | 'in_service' | 'completed' | 'cancelled' | 'no_show'
 
 export interface Appointment {
   id: string
