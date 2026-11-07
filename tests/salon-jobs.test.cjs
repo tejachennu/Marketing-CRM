@@ -140,3 +140,46 @@ test('Templates: every salon template is a valid draft for Meta; the bill button
     { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'tok123' }] },
   ])
 })
+
+// ── Staff performance ───────────────────────────────────────────────────────
+
+const P = require('../lib/salon/performance.ts')
+
+test('Team: services, value, commission and ratings per person; old bills, void bills and unassigned work handled', () => {
+  const staff = [
+    { id: 's1', name: 'Anitha', commission_percent: 20, active: true },
+    { id: 's2', name: 'Lakshmi', commission_percent: '10', active: true },
+    { id: 's3', name: 'Ravi', commission_percent: 0, active: true },
+  ]
+  const invoices = [
+    { id: 'i1', status: 'paid', issued_at: '2026-11-07T05:00:00Z', staff_name: 'Anitha, Lakshmi', items: [{ name: 'Facial', taxable: 1080, staff_id: 's1', staff_name: 'Anitha' }, { name: 'Manicure', taxable: 450, staff_id: 's2', staff_name: 'Lakshmi' }] },
+    { id: 'i2', status: 'unpaid', issued_at: '2026-11-07T06:00:00Z', staff_name: 'Anitha', items: [{ name: 'Facial', taxable: 1200 }] },
+    { id: 'i3', status: 'void', issued_at: '2026-11-07T07:00:00Z', staff_name: 'Ravi', items: [{ name: 'Haircut (Men)', taxable: 300, staff_id: 's3' }] },
+    { id: 'i4', status: 'paid', issued_at: '2026-11-07T08:00:00Z', staff_name: null, items: [{ name: 'Beard trim', taxable: 150 }] },
+  ]
+  const feedback = [
+    { rating: 5, staff_ids: ['s1', 's2'], created_at: '2026-11-07T09:00:00Z' },
+    { rating: 4, staff_ids: [], staff_names: ['Anitha'], created_at: '2026-11-07T10:00:00Z' },
+  ]
+  const report = P.computePerformance(invoices, feedback, staff)
+  const anitha = report.staff.find((r) => r.name === 'Anitha')
+  assert.deepEqual([anitha.services, anitha.visits, anitha.revenue, anitha.commission, anitha.ratings, anitha.averageRating], [2, 2, 2280, 456, 2, 4.5])
+  assert.deepEqual(anitha.topServices, [{ name: 'Facial', count: 2 }])
+  const lakshmi = report.staff.find((r) => r.name === 'Lakshmi')
+  assert.deepEqual([lakshmi.revenue, lakshmi.commission, lakshmi.averageRating], [450, 45, 5])
+  const ravi = report.staff.find((r) => r.name === 'Ravi')
+  assert.deepEqual([ravi.services, ravi.revenue, ravi.averageRating], [0, 0, null])
+  assert.equal(report.staff.at(-1).name, 'Not assigned')
+  assert.equal(report.staff.at(-1).revenue, 150)
+  assert.deepEqual(report.staff.map((r) => r.name), ['Anitha', 'Lakshmi', 'Ravi', 'Not assigned'])
+  assert.deepEqual(report.totals, { revenue: 2880, services: 4, visits: 3, commission: 501, ratings: 2, averageRating: 4.5 })
+})
+
+test('Team: periods are India dates — today, last 7 days, this month, last month (also across the new year)', () => {
+  const now = Date.parse('2026-11-07T10:00:00+05:30')
+  assert.deepEqual(P.periodRange('today', now), { from: '2026-11-07', to: '2026-11-07' })
+  assert.deepEqual(P.periodRange('week', now), { from: '2026-11-01', to: '2026-11-07' })
+  assert.deepEqual(P.periodRange('month', now), { from: '2026-11-01', to: '2026-11-07' })
+  assert.deepEqual(P.periodRange('last_month', now), { from: '2026-10-01', to: '2026-10-31' })
+  assert.deepEqual(P.periodRange('last_month', Date.parse('2027-01-15T10:00:00+05:30')), { from: '2026-12-01', to: '2026-12-31' })
+})

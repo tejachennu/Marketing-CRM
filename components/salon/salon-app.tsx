@@ -1,17 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles } from 'lucide-react'
+import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles, Users } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { api, card, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab } from './salon-setup'
 import { SalonCounter } from './salon-counter'
 import { SalonInvoices } from './salon-invoices'
+import { SalonTeam } from './salon-team'
 import { VoiceBar } from './voice-bar'
 import type { SalonSetup } from './types'
 
-type Tab = 'counter' | 'invoices' | 'setup'
+type Tab = 'counter' | 'invoices' | 'team' | 'setup'
 
 /** The Spa & Salon connector: the counter, invoices and setup. */
 export function SalonApp() {
@@ -38,7 +39,7 @@ export function SalonApp() {
   const tabs: { id: Tab; label: string; icon: typeof Mic }[] = [
     { id: 'counter', label: 'Counter', icon: Mic },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
-    ...(canManage ? [{ id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
+    ...(canManage ? [{ id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
   ]
 
   if (workspaceError || error) {
@@ -67,8 +68,8 @@ export function SalonApp() {
           <div role="tablist" aria-label="Salon" className="flex w-full md:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-[15px] font-semibold cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
-                <Icon size={17} /> {label}
+                className={`flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-2 sm:px-4 rounded-xl text-[14px] sm:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
+                <Icon size={17} className="hidden sm:block" /> {label}
               </button>
             ))}
           </div>
@@ -86,6 +87,7 @@ export function SalonApp() {
           )
           : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash}
               voice={(handle) => <VoiceBar orgId={workspace.orgId} setup={setup} handle={handle} />} />)}
+        {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} />}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} />}
       </div>
       <Toast toast={toast} />
