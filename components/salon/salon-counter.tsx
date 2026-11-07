@@ -223,7 +223,11 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
                     const [pill, pillTone] = STATUS_PILL[appointment.status]
                     const invoice = appointment.invoice_id ? invoices[appointment.invoice_id] : null
                     const busy = busyId === appointment.id
-                    const staff = appointment.staff_id ? staffName[appointment.staff_id] : null
+                    // Everyone on this visit: who does each service, else who it was booked with
+                    const serviceStaff = appointment.services.map((s) => s.staff_name || (s.staff_id ? staffName[s.staff_id] : null) || null)
+                    const people = [...new Set(serviceStaff.filter(Boolean))] as string[]
+                    if (!people.length && appointment.staff_id && staffName[appointment.staff_id]) people.push(staffName[appointment.staff_id])
+                    const mixed = people.length > 1
                     const minutes = Math.round((Date.parse(appointment.starts_at) - now) / 60_000)
                     const timing = isToday && appointment.status === 'booked'
                       ? minutes > 0 && minutes <= 90 ? ['In ' + (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`), 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
@@ -239,11 +243,11 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
                         </div>
                         <p className="text-[18px] font-bold tracking-tight text-[#0E1B3D] dark:text-white mt-1 truncate">{appointment.customer_name}</p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}</span>)}
+                          {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}{mixed && serviceStaff[index] && <span className="font-normal text-[#8a94a8]">&nbsp;· {serviceStaff[index]}</span>}</span>)}
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <span className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold text-[#4a5672] dark:text-slate-300">
-                            {staff ? <><Avatar name={staff} size={26} /><span className="truncate">{staff}</span></> : appointment.status !== 'completed' && <span className="text-[#8a94a8] font-normal">Anyone free</span>}
+                            {people.length ? <><span className="flex -space-x-1.5 shrink-0">{people.slice(0, 3).map((person) => <Avatar key={person} name={person} size={26} className="ring-2 ring-white dark:ring-[#111b21]" />)}</span><span className="truncate">{people.join(', ')}</span></> : appointment.status !== 'completed' && <span className="text-[#8a94a8] font-normal">Anyone free</span>}
                           </span>
                           <span className="text-right">
                             <span className="block text-[16.5px] font-extrabold text-[#0E1B3D] dark:text-white">{formatRupees(invoice ? Number(invoice.total) : total(appointment))}</span>

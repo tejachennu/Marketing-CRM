@@ -371,6 +371,41 @@ test('Logo: only real PNG, JPG or WebP images, and only http(s) links are shown'
   assert.equal(L.logoStoragePath('../../etc', 'image/jpeg', 1), 'salon-logos/etc/1.jpg')
 })
 
+test('Counter: who did each service is kept per service, on the visit and on the bill', async () => {
+  const ST2 = '00000000-0000-4000-8000-0000000000b2'
+  const db = seedSalon()
+  db.tables.salon_staff.push({ id: ST2, organization_id: ORG, name: 'Lakshmi', service_ids: [], active: true })
+
+  // Walk-in: Haircut by Anitha, Facial by Lakshmi; no name or number needed
+  const parsed = A.parseCounterAction({ type: 'walk_in_bill', service_ids: [S1, S2], staff_ids: [ST, ST2, 'x'], payment_method: 'cash' })
+  assert.deepEqual(parsed.action.staff_ids, [ST, ST2, null])
+  assert.equal(parsed.action.customer.name, 'Walk-in customer')
+  const walkIn = await A.executeCounterAction(ctxFor(db), parsed.action)
+  assert.deepEqual(walkIn.invoice.items.map((item) => [item.name, item.staff_name]), [['Haircut (Women)', 'Anitha'], ['Facial', 'Lakshmi']])
+  assert.equal(walkIn.invoice.staff_name, 'Anitha, Lakshmi')
+  assert.deepEqual(walkIn.appointment.services.map((s) => s.staff_id), [ST, ST2])
+  assert.equal(walkIn.appointment.staff_id, ST)
+
+  // One person for the whole visit (as voice sends it) covers every service
+  const one = await A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'B' }, service_ids: [S1, S2], staff_id: ST2, payment_method: 'upi' })
+  assert.deepEqual(one.invoice.items.map((item) => item.staff_name), ['Lakshmi', 'Lakshmi'])
+  assert.equal(one.invoice.staff_name, 'Lakshmi')
+
+  // Booked per service; billing keeps it unless the counter changes a row (null: nobody in particular)
+  const booked = await A.executeCounterAction(ctxFor(db), { type: 'create_appointment', customer: { name: 'Priya', phone: '9876543210' }, service_ids: [S1, S2], staff_ids: [ST, ST2], starts_at: later(2) })
+  assert.deepEqual(booked.appointment.services.map((s) => s.staff_name), ['Anitha', 'Lakshmi'])
+  const kept = await A.executeCounterAction(ctxFor(db), { type: 'complete_and_bill', appointment_id: booked.appointment.id, payment_method: 'cash' })
+  assert.deepEqual(kept.invoice.items.map((item) => item.staff_name), ['Anitha', 'Lakshmi'])
+
+  const second = await A.executeCounterAction(ctxFor(db), { type: 'create_appointment', customer: { name: 'Meena' }, service_ids: [S1], staff_id: ST, starts_at: later(5) })
+  const changed = await A.executeCounterAction(ctxFor(db), { type: 'complete_and_bill', appointment_id: second.appointment.id, extra_service_ids: [S2], staff_ids: [null, ST2], payment_method: 'card' })
+  assert.deepEqual(changed.invoice.items.map((item) => item.staff_name || null), [null, 'Lakshmi'])
+  assert.equal(changed.invoice.staff_name, 'Lakshmi')
+
+  // Someone not on this salon's team is refused
+  await assert.rejects(A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'C' }, service_ids: [S1], staff_ids: ['00000000-0000-4000-8000-0000000000ff'], payment_method: 'cash' }), /no longer on your list/)
+})
+
 test('Counter: take payment later, void, and send the bill on WhatsApp', async () => {
   const db = seedSalon()
   const ctx = ctxFor(db)

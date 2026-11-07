@@ -21,10 +21,10 @@ export interface CustomerRef {
 }
 
 export type CounterAction =
-  | { type: 'create_appointment'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; starts_at: string; notes?: string | null; send_whatsapp?: boolean }
+  | { type: 'create_appointment'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; starts_at: string; notes?: string | null; send_whatsapp?: boolean }
   | { type: 'set_status'; appointment_id: string; status: 'booked' | 'arrived' | 'in_service' | 'cancelled' | 'no_show' }
-  | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
-  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
+  | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
+  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
   | { type: 'pay_invoice'; invoice_id: string; payment_method: PaymentMethod }
   | { type: 'void_invoice'; invoice_id: string }
   | { type: 'send_invoice'; invoice_id: string }
@@ -53,6 +53,12 @@ function parsePayment(value: any): PaymentMethod | null {
   return PAYMENT_METHODS.includes(value) ? value : null
 }
 
+/** Who did each service, in the same order as the services (null: nobody in particular). */
+function staffIds(value: any): (string | null)[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.slice(0, 40).map((id) => (isUuid(id) ? String(id) : null))
+}
+
 function serviceIds(value: any): string[] {
   return [...new Set((Array.isArray(value) ? value : []).map(String).filter(isUuid))].slice(0, 20)
 }
@@ -68,7 +74,7 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       const startsAt = Date.parse(String(body.starts_at || ''))
       if (!Number.isFinite(startsAt)) return { error: 'Choose a date and time.' }
       if (startsAt < Date.now() - 12 * 60 * 60 * 1000) return { error: 'That time has already passed.' }
-      return { action: { type: 'create_appointment', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, starts_at: new Date(startsAt).toISOString(), notes: String(body.notes ?? '').trim().slice(0, 300) || null, send_whatsapp: body.send_whatsapp !== false } }
+      return { action: { type: 'create_appointment', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), starts_at: new Date(startsAt).toISOString(), notes: String(body.notes ?? '').trim().slice(0, 300) || null, send_whatsapp: body.send_whatsapp !== false } }
     }
     case 'set_status':
       if (!isUuid(body.appointment_id)) return { error: 'Choose an appointment.' }
@@ -76,13 +82,13 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       return { action: { type: 'set_status', appointment_id: body.appointment_id, status: body.status } }
     case 'complete_and_bill':
       if (!isUuid(body.appointment_id)) return { error: 'Choose an appointment.' }
-      return { action: { type: 'complete_and_bill', appointment_id: body.appointment_id, extra_service_ids: serviceIds(body.extra_service_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
+      return { action: { type: 'complete_and_bill', appointment_id: body.appointment_id, extra_service_ids: serviceIds(body.extra_service_ids), staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
     case 'walk_in_bill': {
       const customer = parseCustomer(body.customer ?? { name: 'Walk-in customer' })
       if ('error' in customer) return customer
       const ids = serviceIds(body.service_ids)
       if (!ids.length) return { error: 'Choose at least one service.' }
-      return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
+      return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
     }
     case 'pay_invoice': {
       if (!isUuid(body.invoice_id)) return { error: 'Choose an invoice.' }
@@ -149,11 +155,35 @@ async function loadServices(db: any, organizationId: string, ids: string[]) {
   })
 }
 
-async function loadStaff(db: any, organizationId: string, staffId: string | null | undefined) {
-  if (!staffId) return null
-  const member = await checked(db.from('salon_staff').select('id, name').eq('id', staffId).eq('organization_id', organizationId).maybeSingle())
-  if (!member) throw new Error('That team member is no longer on your list.')
-  return member
+type StaffMember = { id: string; name: string }
+
+/** The team members named, by id. Any that are not on this salon's list are refused. */
+async function loadStaffMembers(db: any, organizationId: string, ids: (string | null | undefined)[]): Promise<Map<string, StaffMember>> {
+  const unique = [...new Set(ids.filter(Boolean))] as string[]
+  if (!unique.length) return new Map()
+  const rows: StaffMember[] = await checked(db.from('salon_staff').select('id, name').eq('organization_id', organizationId).in('id', unique))
+  const members = new Map((rows || []).map((row) => [row.id, row]))
+  if (unique.some((id) => !members.has(id))) throw new Error('That team member is no longer on your list.')
+  return members
+}
+
+/**
+ * Who did each service. With a list from the counter, each service gets the person chosen for it;
+ * otherwise the person it was booked with, or the one chosen for the whole visit.
+ */
+export function assignStaff<T extends object>(services: T[], chosen: (string | null)[] | undefined, fallback: string | null | undefined, members: Map<string, StaffMember>): (T & { staff_id: string | null; staff_name: string | null })[] {
+  return services.map((service, index) => {
+    const id = chosen && index < chosen.length ? chosen[index] : (service as { staff_id?: string | null }).staff_id || fallback || null
+    const member = id ? members.get(id) : undefined
+    return { ...service, staff_id: member?.id || null, staff_name: member?.name || null }
+  })
+}
+
+/** The people on a visit: the first one's id (for the board) and everyone's names. */
+export function staffSummary(services: { staff_id?: string | null; staff_name?: string | null }[]): { staff_id: string | null; staff_name: string | null } {
+  const ids = [...new Set(services.map((s) => s.staff_id).filter(Boolean))] as string[]
+  const names = [...new Set(services.map((s) => s.staff_name).filter(Boolean))] as string[]
+  return { staff_id: ids[0] || null, staff_name: names.join(', ') || null }
 }
 
 function makeToken(): string {
@@ -209,24 +239,27 @@ export async function executeCounterAction(
 
   switch (action.type) {
     case 'create_appointment': {
-      const [services, staff, customer] = await Promise.all([
+      const [loaded, members, customer] = await Promise.all([
         loadServices(db, organizationId, action.service_ids),
-        loadStaff(db, organizationId, action.staff_id),
+        loadStaffMembers(db, organizationId, [action.staff_id, ...(action.staff_ids || [])]),
         resolveCustomer(db, organizationId, action.customer),
       ])
+      const services = assignStaff(loaded, action.staff_ids, action.staff_id, members)
+      const team = staffSummary(services)
       const minutes = services.reduce((sum, service) => sum + service.duration_minutes, 0)
       const endsAt = new Date(Date.parse(action.starts_at) + minutes * 60 * 1000).toISOString()
       let warning: string | undefined
-      if (staff) {
-        const overlapping = await checked(db.from('salon_appointments').select('id, customer_name, starts_at').eq('organization_id', organizationId).eq('staff_id', staff.id)
+      const busyIds = [...new Set(services.map((s) => s.staff_id).filter(Boolean))] as string[]
+      if (busyIds.length) {
+        const overlapping = await checked(db.from('salon_appointments').select('id, customer_name, starts_at, staff_id').eq('organization_id', organizationId).in('staff_id', busyIds)
           .lt('starts_at', endsAt).gt('ends_at', action.starts_at).in('status', ['booked', 'arrived', 'in_service']))
-        if (overlapping?.length) warning = `${staff.name} already has ${overlapping[0].customer_name} at ${formatIstTime(overlapping[0].starts_at)}.`
+        if (overlapping?.length) warning = `${members.get(overlapping[0].staff_id)?.name || 'They'} already has ${overlapping[0].customer_name} at ${formatIstTime(overlapping[0].starts_at)}.`
       }
       const appointment = await checked(db.from('salon_appointments').insert({
         organization_id: organizationId, contact_id: customer.contact_id, customer_name: customer.name, customer_phone: customer.phone,
-        staff_id: staff?.id || null, starts_at: action.starts_at, ends_at: endsAt, status: 'booked', services, notes: action.notes || null, created_by: userId,
+        staff_id: team.staff_id, starts_at: action.starts_at, ends_at: endsAt, status: 'booked', services, notes: action.notes || null, created_by: userId,
       }).select('*').single())
-      const whatsapp = action.send_whatsapp && customer.phone && send ? await send.booking(appointment, staff?.name || null) : null
+      const whatsapp = action.send_whatsapp && customer.phone && send ? await send.booking(appointment, team.staff_name) : null
       return { appointment, whatsapp, warning, message: `Booked ${customer.name} · ${formatIstDay(istDate(action.starts_at))} ${formatIstTime(action.starts_at)}` }
     }
 
@@ -248,31 +281,42 @@ export async function executeCounterAction(
         if (existing) return { appointment, invoice: existing, message: `${appointment.customer_name} is already billed (${existing.number})` }
       }
       const extra = await loadServices(db, organizationId, action.extra_service_ids || [])
-      const staff = appointment.staff_id ? await db.from('salon_staff').select('name').eq('id', appointment.staff_id).maybeSingle().then((r: any) => r.data) : null
+      const all: any[] = [...(appointment.services || []), ...extra]
+      // Staff chosen now must be on the list; anyone booked earlier who has since left is simply left off
+      const members = await loadStaffMembers(db, organizationId, action.staff_ids || [])
+      const bookedIds = [...new Set([appointment.staff_id, ...all.map((s) => s.staff_id)].filter((id) => id && !members.has(id)))]
+      if (bookedIds.length) {
+        const booked: StaffMember[] = await checked(db.from('salon_staff').select('id, name').eq('organization_id', organizationId).in('id', bookedIds))
+        for (const member of booked || []) members.set(member.id, member)
+      }
+      const services = assignStaff(all, action.staff_ids, appointment.staff_id, members)
+      const team = staffSummary(services)
       const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
         customer: { contact_id: appointment.contact_id, name: appointment.customer_name, phone: appointment.customer_phone },
-        lines: [...(appointment.services || []), ...extra], discount: action.discount, payment_method: action.payment_method,
-        appointment_id: appointment.id, staff_name: staff?.name || null,
+        lines: services, discount: action.discount, payment_method: action.payment_method,
+        appointment_id: appointment.id, staff_name: team.staff_name,
       })
-      const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services: [...(appointment.services || []), ...extra], updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
+      const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services, staff_id: team.staff_id || appointment.staff_id || null, updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
       return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}` }
     }
 
     case 'walk_in_bill': {
-      const [services, staff, customer] = await Promise.all([
+      const [loaded, members, customer] = await Promise.all([
         loadServices(db, organizationId, action.service_ids),
-        loadStaff(db, organizationId, action.staff_id),
+        loadStaffMembers(db, organizationId, [action.staff_id, ...(action.staff_ids || [])]),
         resolveCustomer(db, organizationId, action.customer),
       ])
+      const services = assignStaff(loaded, action.staff_ids, action.staff_id, members)
+      const team = staffSummary(services)
       const minutes = services.reduce((sum, service) => sum + service.duration_minutes, 0)
       const startsAt = new Date(Date.now() - minutes * 60 * 1000).toISOString()
       const appointment = await checked(db.from('salon_appointments').insert({
         organization_id: organizationId, contact_id: customer.contact_id, customer_name: customer.name, customer_phone: customer.phone,
-        staff_id: staff?.id || null, starts_at: startsAt, ends_at: now, status: 'completed', services, notes: 'Walk-in', created_by: userId,
+        staff_id: team.staff_id, starts_at: startsAt, ends_at: now, status: 'completed', services, notes: 'Walk-in', created_by: userId,
       }).select('*').single())
       const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
-        customer, lines: services, discount: action.discount, payment_method: action.payment_method, appointment_id: appointment.id, staff_name: staff?.name || null,
+        customer, lines: services, discount: action.discount, payment_method: action.payment_method, appointment_id: appointment.id, staff_name: team.staff_name,
       })
       const updated = await checked(db.from('salon_appointments').update({ invoice_id: invoice.id }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null

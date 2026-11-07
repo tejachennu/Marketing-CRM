@@ -76,14 +76,45 @@ function ServicePicker({ services, selected, onChange }: { services: Service[]; 
   )
 }
 
-function StaffPicker({ setup, serviceIds, selected, onChange }: { setup: SalonSetup; serviceIds: string[]; selected: string | null; onChange: (id: string | null) => void }) {
-  const staff = setup.staff.filter((member) => member.active && (!member.service_ids.length || !serviceIds.length || serviceIds.some((id) => member.service_ids.includes(id))))
-  if (!setup.staff.length) return null
+export interface StaffLine { key: string; service_id: string | null; name: string }
+
+/**
+ * Who does (or did) each service. One tap on a name also fills the other services that person
+ * does and nobody is down for yet, so a single person doing everything is one tap.
+ */
+export function WhoDidIt({ setup, lines, value, onChange, planned }: { setup: SalonSetup; lines: StaffLine[]; value: Record<string, string | null>; onChange: (next: Record<string, string | null>) => void; planned?: boolean }) {
+  const team = setup.staff.filter((member) => member.active)
+  if (!team.length || !lines.length) return null
+  const canDo = (serviceId: string | null) => team.filter((member) => !member.service_ids.length || !serviceId || member.service_ids.includes(serviceId))
+  function pick(key: string, staffId: string | null) {
+    const next = { ...value, [key]: staffId }
+    if (staffId) for (const line of lines) if (line.key !== key && !next[line.key] && canDo(line.service_id).some((member) => member.id === staffId)) next[line.key] = staffId
+    onChange(next)
+  }
+  const many = lines.length > 1
+  const chip = (on: boolean) => `shrink-0 inline-flex items-center gap-1.5 h-10 pl-1.5 pr-3 rounded-xl border text-[14px] font-semibold cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-200' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`
   return (
-    <div className="flex flex-wrap gap-2">
-      <Chip selected={!selected} onClick={() => onChange(null)}>Anyone</Chip>
-      {staff.map((member) => <Chip key={member.id} selected={selected === member.id} onClick={() => onChange(member.id)}><Avatar name={member.name} size={22} /> {member.name}</Chip>)}
-    </div>
+    <Field group label={many ? (planned ? 'Who will do each service?' : 'Who did each service?') : (planned ? 'Who will do it?' : 'Who did it?')}
+      hint={many ? 'Tap a name once and it fills their other services too. Change any row with one tap.' : undefined}>
+      <div className={many ? 'rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800' : ''}>
+        {lines.map((line) => {
+          const chosen = value[line.key] || null
+          return (
+            <div key={line.key} className={many ? 'px-3 py-2.5 sm:flex sm:items-center sm:gap-3' : ''}>
+              {many && <div className="text-[14.5px] font-bold text-[#0E1B3D] dark:text-white sm:w-40 shrink-0 truncate mb-1.5 sm:mb-0">{line.name}</div>}
+              <div className="flex gap-1.5 overflow-x-auto sm:flex-wrap -mx-1 px-1 pb-0.5" role="radiogroup" aria-label={`Who for ${line.name}`}>
+                {canDo(line.service_id).map((member) => (
+                  <button key={member.id} type="button" role="radio" aria-checked={chosen === member.id} onClick={() => pick(line.key, member.id)} className={chip(chosen === member.id)}>
+                    <Avatar name={member.name} size={26} /> {member.name}
+                  </button>
+                ))}
+                <button type="button" role="radio" aria-checked={!chosen} onClick={() => pick(line.key, null)} className={`${chip(!chosen)} pl-3`}>Anyone</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Field>
   )
 }
 
@@ -102,7 +133,7 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
   const [name, setName] = useState(draft?.name || '')
   const [phone, setPhone] = useState(draft?.phone || '')
   const [serviceIds, setServiceIds] = useState<string[]>(draft?.service_ids || [])
-  const [staffId, setStaffId] = useState<string | null>(draft?.staff_id || null)
+  const [lineStaff, setLineStaff] = useState<Record<string, string | null>>(() => Object.fromEntries((draft?.service_ids || []).map((id) => [id, draft?.staff_id || null])))
   const [date, setDate] = useState(draft?.date || today)
   const [time, setTime] = useState(draft?.time || '')
   const [sendWhatsApp, setSendWhatsApp] = useState(true)
@@ -110,6 +141,7 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
   const [saving, setSaving] = useState(false)
 
   const chosen = setup.services.filter((service) => serviceIds.includes(service.id))
+  const chosenInOrder = serviceIds.map((id) => setup.services.find((service) => service.id === id)).filter(Boolean) as Service[]
   const minutes = chosen.reduce((sum, service) => sum + Number(service.duration_minutes || 0), 0)
   const price = chosen.reduce((sum, service) => sum + Number(service.price || 0), 0)
   const slots = bookingSlots(date)
@@ -118,7 +150,8 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
     setError('')
     if (!serviceIds.length) { setError('Choose at least one service.'); return }
     if (mode === 'walkin') {
-      onWalkInReady({ kind: 'walkin', customer: { contact_id: draft?.contact_id || null, name: name.trim() || 'Walk-in customer', phone: phone.trim() || null }, service_ids: serviceIds, staff_id: staffId })
+      // Who did each service is asked on the bill
+      onWalkInReady({ kind: 'walkin', customer: { contact_id: draft?.contact_id || null, name: name.trim() || 'Walk-in customer', phone: phone.trim() || null }, service_ids: serviceIds, staff_id: draft?.staff_id || null })
       return
     }
     if (!name.trim() && !phone.trim()) { setError('Add the customer\'s name or phone number.'); return }
@@ -128,7 +161,7 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
     try {
       const result = await api('/api/salon/act', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action: {
         type: 'create_appointment', customer: { contact_id: draft?.contact_id || null, name: name.trim(), phone: phone.trim() || null },
-        service_ids: serviceIds, staff_id: staffId, starts_at: startsAt.toISOString(), send_whatsapp: sendWhatsApp,
+        service_ids: serviceIds, staff_ids: serviceIds.map((id) => lineStaff[id] || null), starts_at: startsAt.toISOString(), send_whatsapp: sendWhatsApp,
       } }) })
       onBooked(result)
     } catch (err: any) {
@@ -139,7 +172,7 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
   }
 
   return (
-    <Modal wide title={mode === 'walkin' ? 'Walk-in bill' : 'New booking'} subtitle={mode === 'walkin' ? 'Pick the services, then bill' : 'Pick services and a time. Nothing to type but the name.'}
+    <Modal wide title={mode === 'walkin' ? 'Walk-in bill' : 'New booking'} subtitle={mode === 'walkin' ? 'Pick the services, then bill. Name and number are optional.' : 'Pick services and a time. Nothing to type but the name.'}
       icon={mode === 'walkin' ? <Wand2 size={21} /> : <CalendarPlus size={21} />} onClose={onClose}
       footer={<>
         <span className="hidden sm:block mr-auto text-[14px] text-[#6B7894]">{chosen.length ? <><strong className="text-[#0E1B3D] dark:text-white">{chosen.length} service{chosen.length === 1 ? '' : 's'}</strong> · {minutes} min · <strong className="text-[#0E1B3D] dark:text-white">{formatRupees(price)}</strong></> : 'No services chosen yet'}</span>
@@ -152,11 +185,11 @@ export function BookingSheet({ orgId, setup, mode, draft, onClose, onBooked, onW
       <div className="space-y-5">
         {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark:text-red-300 px-4 py-3 text-[14.5px] font-medium">{error}</div>}
         <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="Customer name"><input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === 'walkin' ? 'Optional' : 'Priya'} /></Field>
-          <Field label="Mobile number" hint="Bills and reminders go to this WhatsApp number."><input className={input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98765 43210" inputMode="tel" /></Field>
+          <Field label={mode === 'walkin' ? 'Customer name (optional)' : 'Customer name'}><input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === 'walkin' ? 'Leave empty for a walk-in' : 'Priya'} /></Field>
+          <Field label="Mobile number (optional)" hint={mode === 'walkin' ? 'Only if they want the bill on WhatsApp.' : 'Confirmations and bills go to this WhatsApp number.'}><input className={input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98765 43210" inputMode="tel" /></Field>
         </div>
         <Field group label="Services"><ServicePicker services={setup.services} selected={serviceIds} onChange={setServiceIds} /></Field>
-        {setup.staff.length > 0 && <Field group label="With"><StaffPicker setup={setup} serviceIds={serviceIds} selected={staffId} onChange={setStaffId} /></Field>}
+        {mode === 'booking' && <WhoDidIt planned setup={setup} lines={chosenInOrder.map((service) => ({ key: service.id, service_id: service.id, name: service.name }))} value={lineStaff} onChange={setLineStaff} />}
         {mode === 'booking' && (
           <>
             <Field group label="Day">
@@ -203,20 +236,29 @@ export function BillSheet({ orgId, setup, target, draft, onClose, onBilled }: {
   const [saving, setSaving] = useState(false)
 
   const customer = target.kind === 'appointment' ? { name: target.appointment.customer_name, phone: target.appointment.customer_phone } : target.customer
-  const baseLines = target.kind === 'appointment'
-    ? target.appointment.services
-    : setup.services.filter((s) => target.service_ids.includes(s.id)).map((s) => ({ service_id: s.id, name: s.name, price: Number(s.price), tax_rate: Number(s.tax_rate), duration_minutes: s.duration_minutes, sac_code: s.sac_code }))
-  const extraLines = setup.services.filter((s) => extra.includes(s.id)).map((s) => ({ service_id: s.id, name: s.name, price: Number(s.price), tax_rate: Number(s.tax_rate), sac_code: s.sac_code }))
+  const fromList = (id: string, key: string) => {
+    const s = setup.services.find((service) => service.id === id)
+    return s ? { key, service_id: s.id, name: s.name, price: Number(s.price), tax_rate: Number(s.tax_rate), sac_code: s.sac_code } : null
+  }
+  type Line = { key: string; service_id: string | null; name: string; price: number; tax_rate: number; sac_code: string | null; staff_id?: string | null }
+  // The lines in the order the server bills them, each with a key for "who did it"
+  const walkInIds = target.kind === 'walkin' ? [...new Set([...target.service_ids, ...extra])] : []
+  const lines: Line[] = target.kind === 'appointment'
+    ? [...target.appointment.services.map((s, index) => ({ ...s, key: `b${index}`, price: Number(s.price), tax_rate: Number(s.tax_rate), staff_id: s.staff_id || target.appointment.staff_id })), ...extra.map((id) => fromList(id, `e:${id}`)).filter(Boolean) as Line[]]
+    : walkInIds.map((id) => fromList(id, `s:${id}`)).filter(Boolean) as Line[]
+  const [lineStaff, setLineStaff] = useState<Record<string, string | null>>(() => Object.fromEntries(lines.map((line) => [line.key, line.staff_id || (target.kind === 'walkin' ? target.staff_id : null) || null])))
+  const staffName = (id: string | null | undefined) => (id ? setup.staff.find((member) => member.id === id)?.name : undefined)
   const registered = Boolean(setup.settings.gstin)
-  const bill = computeInvoice([...baseLines, ...extraLines].map((line) => ({ ...line, tax_rate: registered ? Number(line.tax_rate) : 0 })), { pricesIncludeTax: setup.settings.prices_include_tax, discount })
+  const bill = computeInvoice(lines.map((line) => ({ ...line, tax_rate: registered ? Number(line.tax_rate) : 0 })), { pricesIncludeTax: setup.settings.prices_include_tax, discount })
 
   async function submit() {
     setError('')
     setSaving(true)
     try {
+      const staff_ids = lines.map((line) => lineStaff[line.key] || null)
       const action = target.kind === 'appointment'
-        ? { type: 'complete_and_bill', appointment_id: target.appointment.id, extra_service_ids: extra, discount, payment_method: payment, send_whatsapp: sendWhatsApp }
-        : { type: 'walk_in_bill', customer: target.customer, service_ids: [...target.service_ids, ...extra], staff_id: target.staff_id, discount, payment_method: payment, send_whatsapp: sendWhatsApp }
+        ? { type: 'complete_and_bill', appointment_id: target.appointment.id, extra_service_ids: extra, staff_ids, discount, payment_method: payment, send_whatsapp: sendWhatsApp }
+        : { type: 'walk_in_bill', customer: target.customer, service_ids: walkInIds, staff_ids, discount, payment_method: payment, send_whatsapp: sendWhatsApp }
       onBilled(await api('/api/salon/act', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action }) }))
     } catch (err: any) {
       setError(err.message)
@@ -240,7 +282,7 @@ export function BillSheet({ orgId, setup, target, draft, onClose, onBilled }: {
           <ul className="space-y-2.5">
             {bill.lines.map((line, index) => (
               <li key={index} className="flex items-baseline justify-between gap-3 text-[15.5px]">
-                <span className="text-[#0E1B3D] dark:text-white font-semibold">{line.name}</span>
+                <span className="text-[#0E1B3D] dark:text-white font-semibold">{line.name}{staffName(lineStaff[lines[index]?.key]) && <span className="font-normal text-[13px] text-[#6B7894]"> · {staffName(lineStaff[lines[index]?.key])}</span>}</span>
                 <span aria-hidden className="flex-1 border-b border-dotted border-[#c0c8d8] dark:border-slate-700 translate-y-[-4px]" />
                 <span className="font-bold text-[#0E1B3D] dark:text-white">{formatRupees(line.price * line.quantity)}</span>
               </li>
@@ -258,6 +300,7 @@ export function BillSheet({ orgId, setup, target, draft, onClose, onBilled }: {
         {!addMore
           ? <button type="button" onClick={() => setAddMore(true)} className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef] hover:text-[#1D5BEA] cursor-pointer"><Plus size={18} /> Add another service</button>
           : <Field group label="Add services"><ServicePicker services={setup.services} selected={extra} onChange={setExtra} /></Field>}
+        <WhoDidIt setup={setup} lines={lines} value={lineStaff} onChange={setLineStaff} />
         <Field group label="Discount"><div className="flex flex-wrap gap-2">{DISCOUNTS.map((option) => <Chip key={option.label} selected={Boolean(sameDiscount(discount, option.value))} onClick={() => setDiscount(option.value)}>{option.label}</Chip>)}</div></Field>
         <Field group label="Paid by">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

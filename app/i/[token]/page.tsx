@@ -111,7 +111,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               {items.map((item, index) => (
                 <tr key={index} className="border-b border-[#eef1f6]">
                   <td className="py-2.5 px-3 text-[#6B7894]">{index + 1}</td>
-                  <td className="py-2.5 px-3"><span className="font-semibold">{item.name}</span>{item.sac_code && <span className="block text-[12px] text-[#6B7894]">SAC {item.sac_code}</span>}</td>
+                  <td className="py-2.5 px-3"><span className="font-semibold">{item.name}</span>{item.staff_name && <span className="block text-[12px] text-[#6B7894]">by {item.staff_name}</span>}{item.sac_code && <span className="block text-[12px] text-[#6B7894]">SAC {item.sac_code}</span>}</td>
                   <td className="py-2.5 px-3 text-right">{item.quantity}</td>
                   <td className="py-2.5 px-3 text-right">{money(item.price)}</td>
                   <td className="py-2.5 px-3 text-right">{money(item.taxable)}</td>

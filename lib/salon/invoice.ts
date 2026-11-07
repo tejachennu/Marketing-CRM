@@ -14,6 +14,9 @@ export interface InvoiceLineInput {
   price: number
   tax_rate: number
   sac_code?: string | null
+  /** Who did this service, when known */
+  staff_id?: string | null
+  staff_name?: string | null
 }
 
 export interface InvoiceLine {
@@ -27,6 +30,8 @@ export interface InvoiceLine {
   taxable: number
   tax: number
   total: number
+  staff_id?: string | null
+  staff_name?: string | null
 }
 
 export interface Discount {
@@ -94,6 +99,7 @@ export function computeInvoice(
       taxable,
       tax,
       total: round2(taxable + tax),
+      ...(line.staff_name ? { staff_id: line.staff_id || null, staff_name: String(line.staff_name) } : {}),
     }
   })
 

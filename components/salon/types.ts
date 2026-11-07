@@ -45,6 +45,9 @@ export interface BookedService {
   duration_minutes: number
   tax_rate: number
   sac_code: string | null
+  /** Who does (or did) this service */
+  staff_id?: string | null
+  staff_name?: string | null
 }
 
 export type AppointmentStatus = 'booked' | 'arrived' | 'in_service' | 'completed' | 'cancelled' | 'no_show'
