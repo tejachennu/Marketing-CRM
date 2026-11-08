@@ -250,7 +250,9 @@ test('Counter: a chat request is approved (or moved) with a WhatsApp confirmatio
   const declined = await A.executeCounterAction(ctx, A.parseCounterAction({ type: 'decline_request', appointment_id: '00000000-0000-4000-8000-00000000aa02' }).action, send)
   assert.equal(declined.appointment.status, 'cancelled')
   assert.equal(calls[1][0], 'text')
-  assert.match(calls[1][2], /Sorry, we cannot take Mon, 9 Nov 11:00 am for Haircut \(Women\)\. Reply here with another day or time/)
+  // "Mon, 9 Nov", or "Today" / "Tomorrow" when the tests run close to that day
+  const day = require('../lib/salon/spoken.ts').formatIstDay('2026-11-09')
+  assert.ok(calls[1][2].startsWith(`Sorry, we cannot take ${day} 11:00 am for Haircut (Women). Reply here with another day or time`), calls[1][2])
 
   await assert.rejects(A.executeCounterAction(ctx, { type: 'approve_request', appointment_id: '00000000-0000-4000-8000-00000000aa01' }, send), /already handled/)
   assert.match(A.parseCounterAction({ type: 'approve_request', appointment_id: 'x' }).error, /booking request/)

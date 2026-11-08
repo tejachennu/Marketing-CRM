@@ -11,7 +11,7 @@ import { api, card, primaryButton, secondaryButton, Toast, Toggle, useToast, use
 const ICONS: Record<ConnectorKey, LucideIcon> = { salon: Scissors, ecommerce: ShoppingBag }
 
 const LOOKS: Record<ConnectorKey, { band: string; icon: string; tags: string[]; tick: string }> = {
-  salon: { band: 'bg-[#eef3fe] dark:bg-blue-950/30', icon: 'bg-[#1D5BEA]', tags: ['Voice', 'GST invoices', 'WhatsApp'], tick: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' },
+  salon: { band: 'bg-[#eef3fe] dark:bg-blue-950/30', icon: 'bg-[#1D5BEA]', tags: ['Bookings', 'GST invoices', 'WhatsApp'], tick: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' },
   ecommerce: { band: 'bg-[#e8f7f1] dark:bg-emerald-950/30', icon: 'bg-[#00A884]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' },
 }
 

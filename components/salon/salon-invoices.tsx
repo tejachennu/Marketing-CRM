@@ -107,28 +107,28 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
     <div className="space-y-5">
       <DateRangeFilter value={range} onChange={onRangeChange} loading={loading} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
+      <div className="grid grid-cols-2 @xl:grid-cols-3 gap-2.5 @xl:gap-3 [&>*:last-child]:col-span-2 @xl:[&>*:last-child]:col-span-1">
         <StatTile label="Collected" value={summary ? formatRupees(summary.collected) : '…'} icon={<Wallet size={20} />} tone="green" hint={summary ? `${summary.paidCount} paid bill${summary.paidCount === 1 ? '' : 's'}` : undefined} />
         <StatTile label="Billed" value={summary ? formatRupees(summary.billed) : '…'} icon={<ReceiptText size={20} />} tone="blue" hint={summary ? `${summary.bills} bill${summary.bills === 1 ? '' : 's'}${summary.voidCount ? `, ${summary.voidCount} void` : ''}` : undefined} />
         <StatTile label="Not paid yet" value={summary ? formatRupees(summary.unpaidAmount) : '…'} icon={<Clock size={20} />} tone="amber" hint={summary ? (summary.unpaidCount ? `${summary.unpaidCount} bill${summary.unpaidCount === 1 ? '' : 's'} to collect` : 'Nothing to collect') : undefined} />
       </div>
 
       <section className={card}>
-        <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex flex-col @4xl:flex-row @4xl:items-center gap-3">
           <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><ReceiptText size={19} className="text-[#1D5BEA]" /> Invoices</h2>
-          <div className="lg:ml-auto flex flex-col sm:flex-row gap-2">
+          <div className="@4xl:ml-auto flex flex-col @xl:flex-row gap-2">
             <div role="tablist" aria-label="Show" className="grid grid-cols-4 gap-1 rounded-xl bg-[#eef1f6] dark:bg-slate-900 p-1">
               {FILTERS.map(({ id, label }) => (
                 <button key={id} type="button" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}
-                  className={`h-9 px-2.5 rounded-lg text-[13.5px] font-bold whitespace-nowrap cursor-pointer transition-colors ${filter === id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400 hover:text-[#0E1B3D] dark:hover:text-white'}`}>
-                  {label} <span className="font-semibold text-[#8a94a8]">{counts[id]}</span>
+                  className={`h-11 @xl:h-9 min-w-0 px-1 @xl:px-2.5 rounded-lg flex flex-col @xl:flex-row items-center justify-center @xl:gap-1 leading-tight text-[12.5px] @xl:text-[13.5px] font-bold whitespace-nowrap cursor-pointer transition-colors ${filter === id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400 hover:text-[#0E1B3D] dark:hover:text-white'}`}>
+                  {label} <span className="text-[11.5px] @xl:text-[13.5px] font-semibold text-[#8a94a8]">{counts[id]}</span>
                 </button>
               ))}
             </div>
-            <label className="relative block sm:w-60">
+            <label className="relative block @xl:w-60">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, number or phone" aria-label="Search invoices"
-                className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
+                className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
             </label>
           </div>
         </div>
@@ -143,14 +143,14 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
           : days.length === 0 ? <p className="px-5 py-12 text-center text-[15px] text-[#6B7894]">Nothing matches. Try another name, or show all.</p>
           : <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>{days.map((group) => (
             <div key={group.day}>
-              <div className="px-4 sm:px-5 py-2 bg-[#f8fafc] dark:bg-slate-900/50 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between text-[13px] font-bold text-[#6B7894] dark:text-slate-400">
+              <div className="px-4 @xl:px-5 py-2 bg-[#f8fafc] dark:bg-slate-900/50 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between text-[13px] font-bold text-[#6B7894] dark:text-slate-400">
                 <span>{formatIstDay(group.day, today)}</span>
                 <span>{group.invoices.length} bill{group.invoices.length === 1 ? '' : 's'} · {formatRupees(group.total)}</span>
               </div>
               <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
                 {group.invoices.map((invoice) => (
-                  <li key={invoice.id} className={`px-4 sm:px-5 py-3.5 flex items-center gap-3 ${invoice.status === 'void' ? 'opacity-60' : ''}`}>
-                    <Avatar name={invoice.customer_name} size={40} className="hidden sm:inline-flex" />
+                  <li key={invoice.id} className={`px-4 @xl:px-5 py-3.5 flex items-center gap-3 ${invoice.status === 'void' ? 'opacity-60' : ''}`}>
+                    <Avatar name={invoice.customer_name} size={40} className="hidden @xl:inline-flex" />
                     <div className="flex-1 min-w-0">
                       <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white truncate">{invoice.customer_name}</p>
                       <p className="text-[13.5px] text-[#6B7894] truncate">{invoice.number} · {formatIstTime(invoice.issued_at)}{invoice.staff_name ? ` · ${invoice.staff_name}` : ''}</p>
@@ -159,11 +159,11 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
                       <p className={`text-[16.5px] font-extrabold text-[#0E1B3D] dark:text-white ${invoice.status === 'void' ? 'line-through' : ''}`}>{formatRupees(Number(invoice.total))}</p>
                       <span className={`mt-0.5 inline-flex items-center gap-1 h-6 px-2 rounded-md text-[12.5px] font-bold ${invoice.status === 'paid' ? 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'void' ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400' : 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'}`}>
                         {invoice.status === 'paid' ? <CircleCheck size={13} /> : invoice.status === 'void' ? <Ban size={13} /> : <Clock size={13} />}
-                        {invoice.status === 'paid' ? <>Paid{PAYMENT_LABELS[invoice.payment_method || ''] && <span className="hidden sm:inline"> · {PAYMENT_LABELS[invoice.payment_method || '']}</span>}</> : invoice.status === 'void' ? 'Void' : 'Not paid'}
+                        {invoice.status === 'paid' ? <>Paid{PAYMENT_LABELS[invoice.payment_method || ''] && <span className="hidden @xl:inline"> · {PAYMENT_LABELS[invoice.payment_method || '']}</span>}</> : invoice.status === 'void' ? 'Void' : 'Not paid'}
                       </span>
                     </div>
                     <div className="relative shrink-0">
-                      <button type="button" aria-label={`More for ${invoice.number}`} onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === invoice.id ? null : invoice.id) }} className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">
+                      <button type="button" aria-label={`More for ${invoice.number}`} onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === invoice.id ? null : invoice.id) }} className="h-10 w-10 @xl:h-11 @xl:w-11 rounded-xl border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">
                         {busyId === invoice.id ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={20} />}
                       </button>
                       {menuFor === invoice.id && (

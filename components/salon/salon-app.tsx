@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Mic, ReceiptText, Scissors, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { ConciergeBell, Loader2, ReceiptText, Scissors, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
@@ -11,7 +11,6 @@ import { SalonCounter } from './salon-counter'
 import { SalonInvoices } from './salon-invoices'
 import { SalonReviews } from './salon-reviews'
 import { SalonTeam } from './salon-team'
-import { VoiceBar } from './voice-bar'
 import type { SalonSetup } from './types'
 
 type Tab = 'counter' | 'invoices' | 'reviews' | 'team' | 'setup'
@@ -40,8 +39,8 @@ export function SalonApp() {
   }, [workspace, loadSetup])
 
   const canManage = can(workspace?.me, 'automation.manage')
-  const tabs: { id: Tab; label: string; icon: typeof Mic }[] = [
-    { id: 'counter', label: 'Counter', icon: Mic },
+  const tabs: { id: Tab; label: string; icon: typeof ConciergeBell }[] = [
+    { id: 'counter', label: 'Counter', icon: ConciergeBell },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
     ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
   ]
@@ -56,24 +55,24 @@ export function SalonApp() {
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-5">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 min-w-0">
+    <div className="@container flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
+      <div className="max-w-6xl mx-auto px-3 min-[400px]:px-4 @xl:px-6 py-4 @xl:py-7 space-y-4 @xl:space-y-5">
+        <header className="flex flex-col @4xl:flex-row @4xl:items-center justify-between gap-3 @xl:gap-4">
+          <div className="flex items-center gap-3 @xl:gap-3.5 min-w-0">
             {isSafeLogoUrl(setup.settings.logo_url)
               // eslint-disable-next-line @next/next/no-img-element
-              ? <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
-              : <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>}
+              ? <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
+              : <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>}
             <div className="min-w-0">
-              <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
-              <p className="text-[14px] sm:text-[15px] text-[#4a5672] dark:text-slate-400 truncate">Spa & Salon counter <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> {todayLabel}</p>
+              <h1 className="text-[21px] min-[400px]:text-[24px] @xl:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
+              <p className="text-[13.5px] @xl:text-[15px] text-[#4a5672] dark:text-slate-400 truncate"><span className="hidden min-[400px]:inline">Spa & Salon <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> </span>{todayLabel}</p>
             </div>
           </div>
-          <div role="tablist" aria-label="Salon" className="flex w-full md:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
+          <div role="tablist" aria-label="Salon" className="flex w-full @4xl:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-2 sm:px-4 rounded-xl text-[14px] sm:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
-                <Icon size={17} className="hidden sm:block" /> {label}
+                className={`flex-1 @4xl:flex-none min-w-0 inline-flex flex-col @xl:flex-row items-center justify-center gap-0.5 @xl:gap-2 h-[52px] @xl:h-11 px-1 @xl:px-4 rounded-xl text-[11.5px] min-[400px]:text-[12.5px] @xl:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
+                <Icon size={18} className="shrink-0" /> <span className="truncate max-w-full">{label}</span>
               </button>
             ))}
           </div>
@@ -89,8 +88,7 @@ export function SalonApp() {
               {canManage && <button type="button" onClick={() => setTab('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
             </div>
           )
-          : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash}
-              voice={(handle) => <VoiceBar orgId={workspace.orgId} setup={setup} handle={handle} />} />)}
+          : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />)}
         {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} onOpenReviews={() => setTab('reviews')} />}
         {tab === 'reviews' && canManage && <SalonReviews orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} />}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} range={range} onRangeChange={setRange} />}

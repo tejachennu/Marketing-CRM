@@ -126,7 +126,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
     <div className="space-y-5">
       <DateRangeFilter value={range} onChange={onRangeChange} loading={loading} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 @4xl:grid-cols-4 gap-2.5 @xl:gap-3">
         <StatTile label="Average rating" value={summary ? (summary.average ? `${summary.average} ★` : '–') : '…'} icon={<Star size={20} />} tone="amber" hint={summary ? `${summary.count} review${summary.count === 1 ? '' : 's'}` : undefined} />
         <StatTile label="Happy customers" value={summary ? (summary.happyPercent === null ? '–' : `${summary.happyPercent}%`) : '…'} icon={<Smile size={20} />} tone="green" hint="Gave 4 or 5 stars" />
         <StatTile label="Unhappy" value={summary ? summary.unhappy : '…'} icon={<ThumbsDown size={20} />} tone="pink" hint="Gave 1 or 2 stars" />
@@ -134,8 +134,8 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
       </div>
 
       {summary && summary.count > 0 && (
-        <div className="grid lg:grid-cols-2 gap-3">
-          <section className={`${card} p-4 sm:p-5`}>
+        <div className="grid grid-cols-1 @4xl:grid-cols-2 gap-3">
+          <section className={`${card} p-4 @xl:p-5`}>
             <div className="flex items-center gap-4">
               <div className="text-center shrink-0">
                 <p className="text-[40px] font-extrabold leading-none tracking-tight text-[#0E1B3D] dark:text-white">{summary.average}</p>
@@ -170,16 +170,16 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
           </section>
 
           <section className={card}>
-            <div className="px-4 sm:px-5 py-3.5 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={18} className="text-[#1D5BEA]" /><h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Team ratings</h2></div>
+            <div className="px-4 @xl:px-5 py-3.5 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={18} className="text-[#1D5BEA]" /><h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Team ratings</h2></div>
             {summary.staff.length === 0 ? <p className="px-5 py-8 text-center text-[14px] text-[#6B7894]">No team member was named on these bills.</p> : (
               <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 max-h-[264px] overflow-y-auto">
                 {summary.staff.map((member) => (
                   <li key={member.id}>
                     <button type="button" onClick={() => focus({ person: person === member.id ? '' : member.id })} aria-pressed={person === member.id}
-                      className={`w-full px-4 sm:px-5 py-2.5 flex items-center gap-3 text-left cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/50 ${person === member.id ? 'bg-[#eef3fe] dark:bg-blue-950/40' : ''}`}>
+                      className={`w-full px-4 @xl:px-5 py-2.5 flex items-center gap-3 text-left cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/50 ${person === member.id ? 'bg-[#eef3fe] dark:bg-blue-950/40' : ''}`}>
                       <Avatar name={member.name} size={34} />
                       <span className="flex-1 min-w-0 text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate">{member.name}</span>
-                      <Stars rating={member.average} size={13} />
+                      <span className="hidden min-[360px]:inline-flex"><Stars rating={member.average} size={13} /></span>
                       <span className="w-[76px] shrink-0 text-right text-[13.5px] font-bold text-[#0E1B3D] dark:text-white">{member.average} <span className="font-normal text-[#8a94a8]">({member.ratings})</span></span>
                     </button>
                   </li>
@@ -191,21 +191,21 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
       )}
 
       <section ref={listRef} className={`${card} scroll-mt-4`}>
-        <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 space-y-3">
+          <div className="flex flex-col @xl:flex-row @xl:items-center gap-3">
             <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><MessageSquareText size={19} className="text-[#1D5BEA]" /> Customer reviews {loaded && <span className="text-[14px] font-semibold text-[#8a94a8]">{filtered ? `${shown.length} of ${reviews.length}` : reviews.length}</span>}</h2>
-            <div className="sm:ml-auto flex flex-col sm:flex-row gap-2">
+            <div className="@xl:ml-auto flex flex-col @xl:flex-row gap-2">
               {staff.length > 0 && (
                 <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Served by"
-                  className="h-11 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15 cursor-pointer">
+                  className="h-11 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15 cursor-pointer">
                   <option value="">Whole team</option>
                   {staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                 </select>
               )}
-              <label className="relative block sm:w-60">
+              <label className="relative block @xl:w-60">
                 <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, phone or words" aria-label="Search reviews"
-                  className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
+                  className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
               </label>
             </div>
           </div>
@@ -239,14 +239,14 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                 const call = needsCall(review)
                 const good = review.rating >= 4
                 return (
-                  <li key={review.id} className={`px-4 sm:px-5 py-4 ${call ? 'bg-[#fdf6f6] dark:bg-red-950/10' : ''}`}>
+                  <li key={review.id} className={`px-4 @xl:px-5 py-4 ${call ? 'bg-[#fdf6f6] dark:bg-red-950/10' : ''}`}>
                     <div className="flex items-start gap-3">
-                      <Avatar name={review.customer_name || 'Customer'} size={40} className="hidden sm:inline-flex" />
+                      <Avatar name={review.customer_name || 'Customer'} size={40} className="hidden @xl:inline-flex" />
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                           <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">{review.customer_name || 'Customer'}</p>
                           {review.customer_phone && <a href={`tel:${review.customer_phone}`} className="text-[13.5px] font-semibold text-[#1D5BEA] hover:underline">{review.customer_phone}</a>}
-                          <span className="sm:ml-auto text-[12.5px] text-[#8a94a8]">{formatIstDay(istDate(review.created_at), today)}, {formatIstTime(review.created_at)}</span>
+                          <span className="@xl:ml-auto text-[12.5px] text-[#8a94a8]">{formatIstDay(istDate(review.created_at), today)}, {formatIstTime(review.created_at)}</span>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           <Stars rating={review.rating} size={16} />

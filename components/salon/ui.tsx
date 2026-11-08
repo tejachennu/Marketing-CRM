@@ -51,7 +51,7 @@ export function useWorkspace(): { workspace: Workspace | null; error: string } {
 }
 
 export const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800 shadow-[0_1px_2px_rgba(14,27,61,0.04)]'
-export const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+export const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
 export const primaryButton = 'inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
 export const secondaryButton = 'inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-100 text-[15px] font-semibold hover:bg-[#f4f6fa] dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50'
 export const dangerButton = 'inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-[#f3c7c7] dark:border-red-900 text-[#b91c1c] dark:text-red-300 text-[15px] font-semibold hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 transition-colors cursor-pointer disabled:opacity-50'
@@ -73,7 +73,8 @@ export function Field({ label, hint, children, group }: { label: string; hint?: 
   return <label className="block">{caption}{children}{help}</label>
 }
 
-export function Modal({ title, subtitle, icon, onClose, children, footer, wide }: { title: string; subtitle?: React.ReactNode; icon?: React.ReactNode; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, subtitle, icon, onClose, children, footer, wide, size }: { title: string; subtitle?: React.ReactNode; icon?: React.ReactNode; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; size?: 'md' | 'lg' | 'xl' }) {
+  const width = size === 'xl' ? 'sm:max-w-2xl lg:max-w-5xl' : size === 'lg' || wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -82,9 +83,9 @@ export function Modal({ title, subtitle, icon, onClose, children, footer, wide }
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#0E1B3D]/40 sm:p-4" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}
-        className={`w-full ${wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'} bg-white dark:bg-[#111b21] rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-[#0E1B3D]/20 max-h-[92vh] flex flex-col`}>
+        className={`w-full ${width} bg-white dark:bg-[#111b21] rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-[#0E1B3D]/20 max-h-[94dvh] sm:max-h-[90dvh] flex flex-col min-w-0`}>
         <div className="sm:hidden mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-[#d5ddeb] dark:bg-slate-700" aria-hidden />
-        <div className="flex items-start justify-between gap-3 px-5 sm:px-6 pt-4 sm:pt-6 pb-3">
+        <div className="flex items-start justify-between gap-3 px-4 sm:px-6 pt-4 sm:pt-6 pb-3">
           <div className="flex items-center gap-3 min-w-0">
             {icon && <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center">{icon}</span>}
             <div className="min-w-0">
@@ -94,8 +95,8 @@ export function Modal({ title, subtitle, icon, onClose, children, footer, wide }
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="h-10 w-10 shrink-0 -mr-2 rounded-xl flex items-center justify-center text-[#6B7894] hover:bg-[#f1f4f9] dark:hover:bg-slate-800 cursor-pointer"><X size={20} /></button>
         </div>
-        <div className="px-5 sm:px-6 py-3 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-5 sm:px-6 pb-5 sm:pb-6 pt-3 border-t border-[#eef1f6] dark:border-slate-800 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">{footer}</div>}
+        <div className="px-4 sm:px-6 py-3 overflow-y-auto overscroll-contain flex-1 min-w-0">{children}</div>
+        {footer && <div className="px-4 sm:px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-6 border-t border-[#eef1f6] dark:border-slate-800 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">{footer}</div>}
       </div>
     </div>
   )
@@ -140,11 +141,11 @@ export function StatTile({ label, value, icon, tone = 'blue', hint }: { label: s
     pink: 'bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300',
   }
   return (
-    <div className={`${card} p-3.5 sm:px-5 sm:py-4 flex flex-col items-start sm:flex-row sm:items-center gap-2 sm:gap-3`}>
-      <span className={`h-8 w-8 sm:h-11 sm:w-11 shrink-0 rounded-lg sm:rounded-xl flex items-center justify-center [&>svg]:h-[17px] [&>svg]:w-[17px] sm:[&>svg]:h-5 sm:[&>svg]:w-5 ${tones[tone]}`}>{icon}</span>
+    <div className={`${card} p-3.5 @xl:px-5 @xl:py-4 flex flex-col items-start @xl:flex-row @xl:items-center gap-2 @xl:gap-3`}>
+      <span className={`h-8 w-8 @xl:h-11 @xl:w-11 shrink-0 rounded-lg @xl:rounded-xl flex items-center justify-center [&>svg]:h-[17px] [&>svg]:w-[17px] @xl:[&>svg]:h-5 @xl:[&>svg]:w-5 ${tones[tone]}`}>{icon}</span>
       <div className="min-w-0 w-full">
-        <div className="text-[12.5px] sm:text-[13px] font-semibold text-[#6B7894] dark:text-slate-400 truncate">{label}</div>
-        <div className="text-[20px] sm:text-[22px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{value}</div>
+        <div className="text-[12.5px] @xl:text-[13px] font-semibold text-[#6B7894] dark:text-slate-400 truncate">{label}</div>
+        <div className="text-[20px] @xl:text-[22px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{value}</div>
         {hint && <div className="text-[12px] text-[#8a94a8] truncate">{hint}</div>}
       </div>
     </div>

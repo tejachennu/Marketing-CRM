@@ -1,7 +1,7 @@
 /**
  * What the salon counter can do, in one place: book, mark arrived or started, complete and bill,
- * bill a walk-in, take a payment, void, and send a bill. The tap screens and voice both end here,
- * so every action is checked the same way whichever way it was asked for.
+ * bill a walk-in, take a payment, void, and send a bill. The counter screens and the WhatsApp chat
+ * both end here, so every action is checked the same way whichever way it was asked for.
  */
 
 import { randomBytes } from 'crypto'

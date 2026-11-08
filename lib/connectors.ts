@@ -19,12 +19,12 @@ export const CONNECTORS: ConnectorDefinition[] = [
   {
     key: 'salon',
     name: 'Spa & Salon',
-    tagline: 'A voice-first front counter: book, bill and send GST invoices by speaking.',
+    tagline: 'A simple front counter: book, bill and send GST invoices in a few taps.',
     points: [
-      'Say "Book Priya for a haircut at 5" and it is booked',
+      'Bookings and walk-in bills in a few taps',
       'Today\'s board: arrived, in service, done',
       'GST invoices sent on WhatsApp in one tap',
-      'Works in English, Telugu, Hindi and a mix',
+      'Bookings and reviews from WhatsApp',
     ],
     href: '/dashboard/salon',
     menuLabel: 'Salon Counter',

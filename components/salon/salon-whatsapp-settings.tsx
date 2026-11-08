@@ -57,14 +57,14 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
 
   return (
     <section className={card}>
-      <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-3">
+      <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-3">
         <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300 flex items-center justify-center"><MessageCircle size={21} /></span>
         <div className="min-w-0">
           <h2 className="text-[18px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">WhatsApp</h2>
           <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400">Answers, bookings, reminders and feedback on your WhatsApp number</p>
         </div>
       </div>
-      <div className="p-4 sm:p-5 space-y-5">
+      <div className="p-4 @xl:p-5 space-y-5">
         <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
           <Row title="Answer questions and take bookings" help="Customers ask about services, prices and timings, and book a time, in English, Telugu or Hindi. Uses AI credit.">
             <Toggle checked={form.chat_assistant} onChange={(value) => set({ chat_assistant: value })} label="Answer questions and take bookings" />
@@ -80,7 +80,7 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
           </Row>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid @xl:grid-cols-2 gap-4">
           <Field label="Opens at">
             <select className={input} value={form.opens_at} onChange={(e) => set({ opens_at: e.target.value })}>{TIMES.map((t) => <option key={t} value={t}>{timeLabel(t)}</option>)}</select>
           </Field>

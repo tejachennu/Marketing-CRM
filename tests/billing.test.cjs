@@ -599,3 +599,10 @@ test('Clearing test data: live subscriptions are always kept', async () => {
     assert.deepEqual(params(['org-live'])[0], ['org-live'])
   }
 })
+
+test('AI prices: speech-to-text models have their own price (US$ per million tokens × ₹88 × 1.5)', () => {
+  const { aiCostInr } = require('../lib/billing.ts')
+  assert.equal(aiCostInr('gpt-4o-mini-transcribe', 1_000_000, 0), 396)
+  assert.equal(aiCostInr('gpt-4o-transcribe', 1_000_000, 0), 792)
+  assert.equal(aiCostInr('gpt-4o-mini', 1_000_000, 0), 19.8)
+})

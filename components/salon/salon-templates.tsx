@@ -56,7 +56,7 @@ export function SalonTemplates({ orgId, flash }: { orgId: string; flash: Flash }
 
   return (
     <section className={card}>
-      <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex flex-col @xl:flex-row @xl:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300 flex items-center justify-center"><FileCheck2 size={21} /></span>
           <div className="min-w-0">
@@ -70,7 +70,7 @@ export function SalonTemplates({ orgId, flash }: { orgId: string; flash: Flash }
         </div>
       </div>
       {!data ? <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#1D5BEA]" /></div> : (
-        <div className="p-4 sm:p-5 space-y-5">
+        <div className="p-4 @xl:p-5 space-y-5">
           {data.message && <p className="rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-4 py-3 text-[14px]">{data.message}</p>}
           {groups.map((group) => (
             <div key={group.category}>
@@ -78,11 +78,11 @@ export function SalonTemplates({ orgId, flash }: { orgId: string; flash: Flash }
                 <p className="text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8] flex items-center gap-1.5"><group.icon size={14} /> {group.title} <span className="normal-case tracking-normal font-semibold">· {group.hint}</span></p>
                 {group.category === 'MARKETING' && <Link href="/dashboard/campaigns" className="shrink-0 inline-flex items-center gap-1 text-[13.5px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:underline">Campaigns <ArrowRight size={14} /></Link>}
               </div>
-              <ul className="grid md:grid-cols-2 gap-3">
+              <ul className="grid grid-cols-1 @2xl:grid-cols-2 gap-3">
                 {templates.filter((t) => t.category === group.category).map((template) => {
                   const [label, tone] = STATUS[template.status] || STATUS.PENDING
                   return (
-                    <li key={template.key} className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-4 flex flex-col">
+                    <li key={template.key} className="min-w-0 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-4 flex flex-col">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white">{template.title}</p>
@@ -90,7 +90,7 @@ export function SalonTemplates({ orgId, flash }: { orgId: string; flash: Flash }
                         </div>
                         <span className={`shrink-0 inline-flex items-center h-6 px-2 rounded-md text-[12px] font-bold ${tone}`}>{label}</span>
                       </div>
-                      <div className="mt-3 rounded-xl bg-[#e8f7f1]/60 dark:bg-emerald-950/20 px-3 py-2.5 text-[13.5px] text-[#0E1B3D] dark:text-slate-200 flex-1">
+                      <div className="mt-3 rounded-xl bg-[#e8f7f1]/60 dark:bg-emerald-950/20 px-3 py-2.5 text-[13.5px] text-[#0E1B3D] dark:text-slate-200 flex-1 [overflow-wrap:anywhere]">
                         {preview(template.body, template.samples)}
                         {template.buttons.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{template.buttons.map((b: string) => <span key={b} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-white dark:bg-slate-900 text-[12.5px] font-semibold text-[#1D5BEA] dark:text-blue-300 border border-[#d5ddeb] dark:border-slate-700">{b}</span>)}</div>}
                       </div>

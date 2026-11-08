@@ -10,6 +10,12 @@ function salonDb(seed = {}) {
       select() { return this },
       eq(k, v) { filters.push((r) => r[k] === v); return this },
       in(k, list) { filters.push((r) => list.includes(r[k])); return this },
+      or(expr) {
+        // "first_name.ilike.pri*,last_name.ilike.pri*": any of them
+        const parts = String(expr).split(',').map((part) => { const [k, op, ...rest] = part.split('.'); return { k, op, v: rest.join('.') } })
+        filters.push((r) => parts.some(({ k, op, v }) => op === 'ilike' ? new RegExp('^' + v.replace(/[*%]/g, '.*') + '$', 'i').test(String(r[k] ?? '')) : String(r[k]) === v))
+        return this
+      },
       ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
       lt(k, v) { filters.push((r) => r[k] < v); return this },
       gt(k, v) { filters.push((r) => r[k] > v); return this },

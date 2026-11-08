@@ -101,3 +101,75 @@ test('Reviews: who served the customer, with their own stars when given', () => 
   assert.equal(V.needsCall({ rating: 2, followed_up_at: '2026-11-06T10:00:00Z' }), false)
   assert.equal(V.needsCall({ rating: 3, followed_up_at: null }), false)
 })
+
+// ── Finding a returning customer, and the counter's times ───────────────────
+
+const C = require('../lib/salon/customers.ts')
+const AV = require('../lib/salon/availability.ts')
+
+test('Customers: what is typed becomes a safe search — digits of a number, or up to two words of a name', () => {
+  assert.deepEqual(C.customerSearch('98480 120'), { digits: '98480120' })
+  assert.deepEqual(C.customerSearch('+91 98480-12000'), { digits: '9848012000' })
+  assert.deepEqual(C.customerSearch('Priya'), { words: ['Priya'] })
+  assert.deepEqual(C.customerSearch('  priya  sharma reddy '), { words: ['priya', 'sharma'] })
+  // Characters that mean something to the database are dropped
+  assert.deepEqual(C.customerSearch('pri,ya)*.'), { words: ['pri', 'ya'] })
+  assert.equal(C.customerSearch('9'), null)
+  assert.equal(C.customerSearch('a'), null)
+  assert.equal(C.customerSearch('%%'), null)
+  assert.equal(C.customerSearch(null), null)
+})
+
+test('Customers: visits and the last visit come from their bills, newest first, void bills left out', () => {
+  const visits = C.summarizeVisits([
+    { contact_id: 'c1', status: 'paid', issued_at: '2026-11-01T06:00:00Z', total: 500, items: [{ name: 'Haircut', service_id: 's1', staff_id: 't1' }] },
+    { contact_id: 'c1', status: 'paid', issued_at: '2026-11-05T06:00:00Z', total: 1700, items: [{ name: 'Facial', service_id: 's2', staff_id: 't1' }, { name: 'Manicure', service_id: 's3', staff_id: null }] },
+    { contact_id: 'c1', status: 'void', issued_at: '2026-11-06T06:00:00Z', total: 9999, items: [{ name: 'Bridal', service_id: 's9' }] },
+    { contact_id: null, status: 'paid', issued_at: '2026-11-06T06:00:00Z', total: 100, items: [] },
+  ])
+  assert.equal(visits.size, 1)
+  assert.deepEqual(visits.get('c1'), { visits: 2, last_visit: { date: '2026-11-05', services: ['Facial', 'Manicure'], service_ids: ['s2', 's3'], staff_ids: ['t1', null], total: 1700 } })
+})
+
+test('Customers: found by part of the number or by name, regulars first, only in this workspace', async () => {
+  const db = salonDb({
+    contacts: [
+      { id: 'c1', organization_id: 'o', first_name: 'Priya', last_name: 'Sharma', phone_number: '+919848012000' },
+      { id: 'c2', organization_id: 'o', first_name: 'Priyanka', last_name: null, phone_number: '+919848012001' },
+      { id: 'c3', organization_id: 'o', first_name: 'Ravi', last_name: 'Priyadarshi', phone_number: '+919000000000' },
+      { id: 'c4', organization_id: 'other', first_name: 'Priya', last_name: 'Elsewhere', phone_number: '+919848012002' },
+    ],
+    salon_invoices: [{ id: 'i1', organization_id: 'o', contact_id: 'c2', status: 'paid', issued_at: '2026-11-05T06:00:00Z', total: 600, items: [{ name: 'Haircut', service_id: 's1' }] }],
+  })
+  const byPhone = await C.findCustomers(db, 'o', '98480 120')
+  assert.deepEqual(byPhone.map((c) => c.contact_id), ['c2', 'c1'], 'the regular comes first; the other workspace is never searched')
+  assert.equal(byPhone[0].visits, 1)
+  assert.equal(byPhone[0].last_visit.services[0], 'Haircut')
+  assert.equal(byPhone[1].last_visit, null)
+  const byName = await C.findCustomers(db, 'o', 'priy')
+  assert.deepEqual(byName.map((c) => c.name).sort(), ['Priya Sharma', 'Priyanka', 'Ravi Priyadarshi'])
+  const twoWords = await C.findCustomers(db, 'o', 'priya sha')
+  assert.deepEqual(twoWords.map((c) => c.contact_id), ['c1'])
+  assert.deepEqual(await C.findCustomers(db, 'o', 'x'), [])
+})
+
+test('Counter times: every slot of the day, busy ones marked for the people chosen, late ones flagged', () => {
+  const now = Date.parse('2026-11-07T13:10:00+05:30')
+  const busy = [{ starts_at: '2026-11-07T15:00:00+05:30', ends_at: '2026-11-07T16:00:00+05:30', staff_ids: ['anitha'] }]
+  const hours = { opens_at: '10:00', closes_at: '21:00' }
+  const slots = AV.counterSlots({ date: '2026-11-07', now, hours, minutes: 60, eligibleStaff: ['anitha', 'ravi'], staffIds: ['anitha'], busy })
+  assert.equal(slots[0].time, '13:00', 'past times today are left out, up to 15 minutes back')
+  const at = (t) => slots.find((s) => s.time === t)
+  assert.equal(at('14:00').free, true)
+  assert.equal(at('14:30').free, false, 'would overlap Anitha at 3')
+  assert.equal(at('15:30').free, false)
+  assert.equal(at('16:00').free, true)
+  assert.deepEqual([at('20:00').late, at('20:30').late, at('20:30').free], [false, true, true])
+  assert.equal(slots.at(-1).time, '20:30')
+  // Anyone who does it: Ravi is free at 3, so it is free
+  const anyone = AV.counterSlots({ date: '2026-11-07', now, hours, minutes: 60, eligibleStaff: ['anitha', 'ravi'], busy })
+  assert.equal(anyone.find((s) => s.time === '15:00').free, true)
+  // A day gone by has no times; a later day starts at opening
+  assert.deepEqual(AV.counterSlots({ date: '2026-11-06', now, hours, minutes: 30, eligibleStaff: [], busy: [] }), [])
+  assert.equal(AV.counterSlots({ date: '2026-11-08', now, hours, minutes: 30, eligibleStaff: [], busy: [] })[0].time, '10:00')
+})

@@ -88,6 +88,38 @@ export function freeTimes(input: FreeTimesInput): string[] {
   return free.slice(0, limit)
 }
 
+/**
+ * Every start time of a day for the counter, each marked free or not for the people chosen (or for
+ * anyone who can do the services), and `late` when the visit would run past closing. Past times
+ * today are left out; nothing needs notice.
+ */
+export function counterSlots(input: { date: string; now?: number; hours: OpeningHours; minutes: number; eligibleStaff: string[]; staffIds?: string[]; busy: Busy[]; step?: number }): { time: string; free: boolean; late: boolean }[] {
+  const now = input.now ?? Date.now()
+  const step = input.step ?? 30
+  const length = Math.max(15, Math.round(input.minutes) || 30)
+  if (input.date < istDate(now)) return []
+  const opens = minutesOf(clock(input.hours.opens_at, '10:00'))
+  const closes = minutesOf(clock(input.hours.closes_at, '21:00'))
+  const chosen = [...new Set((input.staffIds || []).filter(Boolean))]
+  const slots: { time: string; free: boolean; late: boolean }[] = []
+  for (let start = opens; start < closes; start += step) {
+    const time = timeOf(start)
+    const begins = fromIst(input.date, time)
+    if (!begins || begins.getTime() < now - 15 * 60_000) continue
+    const ends = begins.getTime() + length * 60_000
+    const overlapping = input.busy.filter((b) => Date.parse(b.starts_at) < ends && Date.parse(b.ends_at) > begins.getTime())
+    let free: boolean
+    if (chosen.length) free = !overlapping.some((b) => b.staff_ids.some((id) => chosen.includes(id)))
+    else if (!input.eligibleStaff.length) free = !overlapping.length
+    else {
+      const taken = new Set(overlapping.flatMap((b) => b.staff_ids))
+      free = input.eligibleStaff.filter((id) => !taken.has(id)).length - overlapping.filter((b) => !b.staff_ids.length).length > 0
+    }
+    slots.push({ time, free, late: start + length > closes })
+  }
+  return slots
+}
+
 /** Whether one particular start time is still free (checked again when the customer taps it). */
 export function isTimeFree(input: Omit<FreeTimesInput, 'around' | 'limit'> & { time: string }): boolean {
   const start = fromIst(input.date, input.time)

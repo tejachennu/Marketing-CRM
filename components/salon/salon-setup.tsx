@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Clock3, ImagePlus, Loader2, Plus, Scissors, Sparkles, Store, Trash2, Upload, Users } from 'lucide-react'
+import { Clock3, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Store, Trash2, Upload, Users } from 'lucide-react'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
@@ -15,6 +15,14 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const CATEGORY_SUGGESTIONS = ['Hair', 'Skin', 'Nails', 'Spa', 'Makeup', 'Bridal']
 
 type Flash = (tone: 'success' | 'error', text: string) => void
+type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'templates'
+const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
+  { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
+  { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
+  { id: 'business', label: 'Business', hint: 'Invoice details and logo', icon: Store },
+  { id: 'whatsapp', label: 'WhatsApp', hint: 'Chat, bookings, feedback', icon: MessageCircle },
+  { id: 'templates', label: 'Templates', hint: 'Messages for Meta', icon: FileText },
+]
 
 /** Shrink a picture to at most `max` pixels on its longest side, keeping transparency for PNGs. */
 async function shrinkImage(file: File, max = 512): Promise<Blob> {
@@ -103,7 +111,7 @@ function LogoPicker({ orgId, logo, onSaved, flash }: { orgId: string; logo: stri
 
 function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.ReactNode; tone: string; title: string; subtitle: string; action?: React.ReactNode }) {
   return (
-    <div className="px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
+    <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
         <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${tone}`}>{icon}</span>
         <div className="min-w-0">
@@ -122,6 +130,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
   const [staffForm, setStaffForm] = useState<Partial<StaffMember> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [settings, setSettings] = useState(setup.settings)
+  const [section, setSection] = useState<Section>('services')
 
   const categories = useMemo(() => {
     const groups = new Map<string, Service[]>()
@@ -185,28 +194,42 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 @xl:space-y-5">
       {setup.services.length === 0 && (
-        <div className={`${card} p-6 sm:p-8 text-center`}>
+        <div className={`${card} p-6 @xl:p-8 text-center`}>
           <div className="mx-auto h-14 w-14 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center"><Sparkles size={26} /></div>
           <h2 className="text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">Set up your salon in one tap</h2>
           <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1 max-w-md mx-auto">Add a ready-made menu of services with typical prices and a small team. You can change everything afterwards.</p>
-          <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
+          <div className="mt-5 flex flex-col @xl:flex-row gap-2 justify-center">
             <button type="button" onClick={addSample} disabled={busy !== null} className={primaryButton}>{busy === 'sample' ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />} Add sample salon</button>
             <button type="button" onClick={() => setServiceForm({ category: 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={secondaryButton}><Plus size={18} /> Add my own service</button>
           </div>
         </div>
       )}
 
+      <div className="grid grid-cols-1 @4xl:grid-cols-[220px_minmax(0,1fr)] gap-4 @4xl:gap-6 items-start">
+      <nav aria-label="Setup" className="@4xl:sticky @4xl:top-4 flex @4xl:flex-col gap-1.5 overflow-x-auto @4xl:overflow-visible -mx-3 px-3 min-[400px]:-mx-4 min-[400px]:px-4 @xl:mx-0 @xl:px-0 pb-1 @4xl:pb-0 [scrollbar-width:none]">
+        {SECTIONS.map(({ id, label, hint, icon: Icon }) => (
+          <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
+            className={`shrink-0 @4xl:w-full inline-flex items-center gap-2.5 h-11 @4xl:h-auto px-3.5 @4xl:px-3 @4xl:py-2.5 rounded-xl @4xl:rounded-2xl border text-left text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${section === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-800 bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
+            <Icon size={18} className="shrink-0" />
+            <span className="min-w-0"><span className="block">{label}</span><span className={`hidden @4xl:block text-[12.5px] font-normal truncate ${section === id ? 'opacity-75' : 'text-[#6B7894]'}`}>{hint}</span></span>
+          </button>
+        ))}
+      </nav>
+      <div className="min-w-0 space-y-4 @xl:space-y-5">
       {/* Services */}
-      {setup.services.length > 0 && (
+      {section === 'services' && setup.services.length === 0 && (
+        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Use “Add sample salon” above, or add your own.</div>
+      )}
+      {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
           <SectionHead icon={<Scissors size={21} />} tone="bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300" title="Services"
             subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
-            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden sm:inline">Add service</span><span className="sm:hidden">Add</span></button>} />
+            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {categories.map(([category, services]) => (
-              <div key={category} className="px-2 sm:px-3 py-3">
+              <div key={category} className="px-2 @xl:px-3 py-3">
                 <h3 className="px-2 pb-1.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8]">{category} <span className="font-semibold normal-case tracking-normal">· {services.length}</span></h3>
                 <ul>
                   {services.map((service) => (
@@ -216,7 +239,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
                         <span className="mt-1 flex flex-wrap gap-1.5">
                           <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>
                           <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">GST {Number(service.tax_rate)}%</span>
-                          {service.sac_code && <span className="hidden sm:inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">SAC {service.sac_code}</span>}
+                          {service.sac_code && <span className="hidden @xl:inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">SAC {service.sac_code}</span>}
                         </span>
                       </button>
                       <span className={`text-[16.5px] font-extrabold ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8]'}`}>{formatRupees(Number(service.price))}</span>
@@ -231,13 +254,13 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       )}
 
       {/* Staff */}
-      <section className={card}>
+      {section === 'team' && <section className={card}>
         <SectionHead icon={<Users size={21} />} tone="bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300" title="Staff" subtitle="Who serves customers, and which services they do"
-          action={<button type="button" onClick={() => setStaffForm({ active: true, service_ids: [] })} className={secondaryButton}><Plus size={18} /> <span className="hidden sm:inline">Add person</span><span className="sm:hidden">Add</span></button>} />
+          action={<button type="button" onClick={() => setStaffForm({ active: true, service_ids: [] })} className={secondaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add person</span><span className="@xl:hidden">Add</span></button>} />
         {setup.staff.length === 0 ? (
           <p className="px-5 py-8 text-center text-[15px] text-[#6B7894]"><Users size={22} className="inline mr-1.5 -mt-0.5" /> No staff yet. Add the people who serve customers.</p>
         ) : (
-          <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+          <ul className="grid @xl:grid-cols-2 @4xl:grid-cols-3 gap-3 p-4">
             {setup.staff.map((member) => (
               <li key={member.id}>
                 <button type="button" onClick={() => setStaffForm(member)} className={`w-full text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-4 hover:border-[#9db5ef] hover:shadow-sm transition cursor-pointer ${member.active ? '' : 'opacity-60'}`}>
@@ -253,19 +276,19 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
             ))}
           </ul>
         )}
-      </section>
+      </section>}
 
       {/* Business details */}
-      <section className={card}>
+      {section === 'business' && <section className={card}>
         <SectionHead icon={<Store size={21} />} tone="bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
-        <div className="p-4 sm:p-5 grid lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-3">
+        <div className="p-4 @xl:p-5 grid grid-cols-1 @5xl:grid-cols-5 gap-6">
+          <div className="@5xl:col-span-3 min-w-0">
             <LogoPicker orgId={orgId} logo={settings.logo_url} flash={flash}
               onSaved={(saved) => { onChange({ ...setup, settings: { ...setup.settings, logo_url: saved?.logo_url ?? null } }); setSettings((current) => ({ ...current, logo_url: saved?.logo_url ?? null })) }} />
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid @xl:grid-cols-2 gap-4">
               <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Glow Salon & Spa" /></Field>
               <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
-              <div className="sm:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
+              <div className="@xl:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
               <Field label="GSTIN" hint="Leave empty if you are not registered for GST."><input className={`${input} uppercase`} value={settings.gstin || ''} onChange={(e) => setSettings({ ...settings, gstin: e.target.value })} placeholder="36ABCDE1234F1Z5" /></Field>
               <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@glowsalon.in" inputMode="email" /></Field>
               <Field label="Invoice number starts with" hint={`Next invoices look like ${(settings.invoice_prefix || 'INV').toUpperCase()}-0001`}><input className={`${input} uppercase`} value={settings.invoice_prefix || ''} onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })} placeholder="GLOW" maxLength={12} /></Field>
@@ -273,12 +296,11 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
             </div>
             <div className="mt-5 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
               <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Prices include GST</strong><span className="block text-[13.5px] text-[#6B7894]">On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.</span></span><Toggle checked={settings.prices_include_tax} onChange={(value) => setSettings({ ...settings, prices_include_tax: value })} label="Prices include GST" /></label>
-              <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Speak replies at the counter</strong><span className="block text-[13.5px] text-[#6B7894]">The counter reads out what it understood.</span></span><Toggle checked={settings.voice_replies} onChange={(value) => setSettings({ ...settings, voice_replies: value })} label="Speak replies" /></label>
             </div>
             <div className="mt-5 flex justify-end"><button type="button" onClick={saveSettings} disabled={busy !== null} className={primaryButton}>{busy === 'settings' && <Loader2 size={18} className="animate-spin" />} Save details</button></div>
           </div>
-          <div className="lg:col-span-2">
-            <div className="lg:sticky lg:top-4">
+          <div className="@5xl:col-span-2 min-w-0">
+            <div className="@5xl:sticky @5xl:top-4">
               <p className="text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8] mb-2">How the top of your invoice looks</p>
               <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#0b141a] shadow-sm overflow-hidden">
                 <div className="h-1.5 bg-[#1D5BEA]" />
@@ -309,10 +331,12 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />
-      <SalonTemplates orgId={orgId} flash={flash} />
+      {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
+      {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} />}
+      </div>
+      </div>
 
       {serviceForm && (
         <Modal title={serviceForm.id ? 'Edit service' : 'Add a service'} onClose={() => setServiceForm(null)}

@@ -1,20 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Hourglass, Loader2, MoreHorizontal, Play, Receipt, ReceiptText, UserCheck, UserX, Wallet, Wand2, XCircle } from 'lucide-react'
+import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Hourglass, Loader2, MoreHorizontal, Play, Receipt, ReceiptText, UserCheck, UserX, Wallet, XCircle, Zap } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { useConfirm } from '@/lib/dialog-context'
-import { api, Avatar, card, primaryButton, secondaryButton, StatTile } from './ui'
-import { BillSheet, BookingSheet, ResultSheet, type BillDraft, type BillTarget, type BookingDraft } from './counter-sheets'
+import { api, Avatar, card, primaryButton, StatTile } from './ui'
+import { BillSheet, BookingSheet, ResultSheet, type BillTarget, type BookingDraft } from './counter-sheets'
 import { BookingRequests } from './booking-requests'
 import type { Appointment, SalonSetup } from './types'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
 type Sheet =
-  | { kind: 'book'; mode: 'booking' | 'walkin'; draft?: BookingDraft }
-  | { kind: 'bill'; target: BillTarget; draft?: BillDraft }
-  | { kind: 'result'; result: any }
+  | { kind: 'book'; draft?: BookingDraft }
+  | { kind: 'bill'; target: BillTarget }
+  | { kind: 'result'; result: any; walkIn: boolean }
   | null
 
 const LANES: { id: 'upcoming' | 'service' | 'done'; title: string; statuses: Appointment['status'][] }[] = [
@@ -39,28 +39,15 @@ const STRIPE: Record<Appointment['status'], string> = {
   booked: 'bg-[#1D5BEA]', arrived: 'bg-[#f59e0b]', in_service: 'bg-[#db2777]', completed: 'bg-[#00A884]', cancelled: 'bg-[#c0c8d8]', no_show: 'bg-[#c0c8d8]',
 }
 const PAID_BY: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
-const stepButton = 'flex-1 inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50'
+const stepButton = 'flex-1 min-w-0 inline-flex items-center justify-center gap-2 h-11 px-3 rounded-xl text-[15px] font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50'
 const menuItem = 'w-full flex items-center gap-2.5 text-left px-3 py-2.5 rounded-xl text-[15px] font-medium text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer'
 
-export interface CounterHandle {
-  openBooking: (draft?: BookingDraft) => void
-  openWalkIn: (draft?: BookingDraft) => void
-  openBill: (appointment: Appointment, draft?: BillDraft) => void
-  reload: () => Promise<void>
-  /** Show today's board */
-  goToday: () => void
-  /** Show the outcome of an action done elsewhere (the voice bar): the bill sheet, or a message */
-  afterAction: (result: any, booked?: boolean) => void
-  appointments: Appointment[]
-}
-
-export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
+/** The front counter: WhatsApp requests, the day at a glance, and the board of appointments. */
+export function SalonCounter({ orgId, setup, canWrite, flash }: {
   orgId: string
   setup: SalonSetup
   canWrite: boolean
   flash: Flash
-  /** The voice bar, given the counter's controls (phase 4) */
-  voice?: (handle: CounterHandle) => React.ReactNode
 }) {
   const confirm = useConfirm()
   const today = istDate()
@@ -138,29 +125,14 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
     load().catch(() => {})
   }
 
-  function afterBilling(result: any) {
-    setSheet({ kind: 'result', result })
+  function afterBilling(result: any, walkIn: boolean) {
+    setSheet({ kind: 'result', result, walkIn })
     if (result.invoice && date !== istDate(result.appointment?.starts_at || Date.now())) setDate(istDate())
     load().catch(() => {})
   }
 
-  const handle: CounterHandle = {
-    openBooking: (draft) => setSheet({ kind: 'book', mode: 'booking', draft }),
-    openWalkIn: (draft) => setSheet({ kind: 'book', mode: 'walkin', draft }),
-    openBill: (appointment, draft) => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment }, draft }),
-    reload: load,
-    goToday: () => { if (date !== today) setDate(today) },
-    afterAction: (result, booked) => {
-      if (result.invoice) afterBilling(result)
-      else if (booked) afterBooking(result)
-      else {
-        flash('success', result.message || 'Done')
-        if (result.appointment) setAppointments((current) => current.map((a) => (a.id === result.appointment.id ? result.appointment : a)))
-        load().catch(() => {})
-      }
-    },
-    appointments,
-  }
+  const quickBill = () => setSheet({ kind: 'bill', target: { kind: 'walkin' } })
+  const newBooking = () => setSheet({ kind: 'book', draft: { date: date < today ? today : date } })
 
   const total = (appointment: Appointment) => appointment.services.reduce((sum, s) => sum + Number(s.price || 0), 0)
 
@@ -178,41 +150,39 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
   const dayDate = (fromIst(date, '12:00') || new Date()).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
 
   return (
-    <div className="space-y-5">
-      {canWrite && voice?.(handle)}
+    <div className="space-y-4 @xl:space-y-5">
+      <div className="flex flex-col @2xl:flex-row @2xl:items-center gap-3">
+        <div className="flex items-center rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)] w-full @2xl:w-auto">
+          <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day" className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={20} /></button>
+          <button type="button" onClick={() => setDate(today)} title="Back to today" className="h-11 px-3 flex-1 @2xl:flex-none @2xl:min-w-[170px] rounded-xl text-center hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer min-w-0">
+            <span className="block text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white leading-tight truncate">{formatIstDay(date, today)}</span>
+            <span className="block text-[12px] font-semibold text-[#8a94a8] leading-tight truncate">{isToday ? dayDate : `${dayDate} · tap for today`}</span>
+          </button>
+          <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronRight size={20} /></button>
+        </div>
+        {canWrite && (
+          <div className="grid grid-cols-2 gap-2 @2xl:flex @2xl:ml-auto">
+            <button type="button" onClick={quickBill} className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[15px] font-bold shadow-sm shadow-[#00A884]/25 transition-colors cursor-pointer whitespace-nowrap"><Zap size={18} /> Quick bill</button>
+            <button type="button" onClick={newBooking} className={`${primaryButton} h-12 whitespace-nowrap`}><CalendarPlus size={18} /> New booking</button>
+          </div>
+        )}
+      </div>
 
       <BookingRequests orgId={orgId} requests={requests} canWrite={canWrite} flash={flash} onDone={() => load().catch(() => {})} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 @4xl:grid-cols-4 gap-2.5 @xl:gap-3">
         <StatTile label={isToday ? 'Appointments today' : 'Appointments'} value={live.length} icon={<CalendarDays size={20} />} tone="blue" hint={`${live.filter((a) => a.status === 'completed').length} done`} />
         <StatTile label="Waiting" value={waiting.length} icon={<Hourglass size={20} />} tone="amber" hint={next ? `Next ${formatIstTime(next.starts_at)}` : 'No one booked'} />
         <StatTile label="In the chair" value={inChair.length} icon={<Armchair size={20} />} tone="pink" hint={inChair.length ? inChair.map((a) => a.customer_name.split(' ')[0]).join(', ') : 'Free'} />
         <StatTile label={isToday ? 'Billed today' : 'Billed'} value={formatRupees(billed)} icon={<Wallet size={20} />} tone="green" hint={unpaid ? `${unpaid} not paid yet` : 'All paid'} />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="inline-flex items-center self-start rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
-          <button type="button" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day" className="h-10 w-10 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={20} /></button>
-          <button type="button" onClick={() => setDate(today)} title="Back to today" className="h-10 px-3 rounded-xl min-w-[150px] text-center hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">
-            <span className="block text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white leading-tight">{formatIstDay(date, today)}</span>
-            <span className="block text-[12px] font-semibold text-[#8a94a8] leading-tight">{dayDate}</span>
-          </button>
-          <button type="button" onClick={() => setDate(addDays(date, 1))} aria-label="Next day" className="h-10 w-10 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronRight size={20} /></button>
-        </div>
-        {canWrite && (
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setSheet({ kind: 'book', mode: 'walkin' })} className={`${secondaryButton} flex-1 sm:flex-none bg-white dark:bg-[#111b21]`}><Wand2 size={18} /> Walk-in bill</button>
-            <button type="button" onClick={() => setSheet({ kind: 'book', mode: 'booking', draft: { date } })} className={`${primaryButton} flex-1 sm:flex-none`}><CalendarPlus size={18} /> New booking</button>
-          </div>
-        )}
-      </div>
-
       {/* Phones: one lane at a time */}
-      <div role="tablist" aria-label="Lanes" className="lg:hidden grid grid-cols-3 gap-1 rounded-2xl bg-[#e8ecf3] dark:bg-slate-900 p-1">
+      <div role="tablist" aria-label="Lanes" className="@4xl:hidden grid grid-cols-3 gap-1 rounded-2xl bg-[#e8ecf3] dark:bg-slate-900 p-1">
         {LANES.map((lane) => (
           <button key={lane.id} type="button" role="tab" aria-selected={activeLane === lane.id} onClick={() => setLaneTab(lane.id)}
-            className={`h-10 rounded-xl text-[14px] font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${activeLane === lane.id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400'}`}>
-            <span aria-hidden className={`h-2 w-2 rounded-full ${LANE_DOT[lane.id]}`} /> {lane.title} <span className="text-[12.5px] font-semibold text-[#8a94a8]">{laneCount(lane.id)}</span>
+            className={`h-10 min-w-0 px-1 rounded-xl text-[13px] min-[400px]:text-[14px] font-bold inline-flex items-center justify-center gap-1 min-[400px]:gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${activeLane === lane.id ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894] dark:text-slate-400'}`}>
+            <span aria-hidden className={`hidden min-[360px]:inline-block h-2 w-2 shrink-0 rounded-full ${LANE_DOT[lane.id]}`} /> {lane.title} <span className="text-[12.5px] font-semibold text-[#8a94a8]">{laneCount(lane.id)}</span>
           </button>
         ))}
       </div>
@@ -220,15 +190,15 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 @4xl:grid-cols-3 gap-4 items-start">
           {LANES.map((lane) => {
             const list = appointments.filter((a) => lane.statuses.includes(a.status))
             const open = list.filter((a) => !['cancelled', 'no_show'].includes(a.status))
             const dropped = list.filter((a) => ['cancelled', 'no_show'].includes(a.status))
             const EmptyIcon = lane.id === 'upcoming' ? CalendarClock : lane.id === 'service' ? Armchair : ReceiptText
             return (
-              <section key={lane.id} aria-label={lane.title} className={`${activeLane === lane.id ? 'block' : 'hidden'} lg:block rounded-3xl bg-[#eef1f6]/80 dark:bg-slate-900/50 p-2.5 sm:p-3`}>
-                <h2 className="hidden lg:flex px-2 pt-1 pb-3 items-center gap-2 text-[15px] font-extrabold text-[#0E1B3D] dark:text-slate-200">
+              <section key={lane.id} aria-label={lane.title} className={`${activeLane === lane.id ? 'block' : 'hidden'} @4xl:block rounded-3xl bg-[#eef1f6]/80 dark:bg-slate-900/50 p-2.5 @xl:p-3`}>
+                <h2 className="hidden @4xl:flex px-2 pt-1 pb-3 items-center gap-2 text-[15px] font-extrabold text-[#0E1B3D] dark:text-slate-200">
                   <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${LANE_DOT[lane.id]}`} /> {lane.title}
                   <span className="ml-auto inline-flex items-center justify-center min-w-7 h-6 px-2 rounded-full bg-white dark:bg-slate-800 text-[12.5px] font-bold text-[#4a5672] dark:text-slate-300">{list.length}</span>
                 </h2>
@@ -236,7 +206,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
                   <div className="rounded-2xl border-2 border-dashed border-[#d9e0ec] dark:border-slate-800 px-4 py-9 text-center">
                     <EmptyIcon size={26} className="mx-auto text-[#a3adc2]" />
                     <p className="mt-2 text-[14.5px] font-semibold text-[#6B7894]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in the chair' : 'Nothing billed yet'}</p>
-                    {lane.id === 'upcoming' && canWrite && <p className="text-[13px] text-[#8a94a8] mt-0.5">Tap the mic and say “book …”</p>}
+                    {lane.id === 'upcoming' && canWrite && date >= today && <button type="button" onClick={newBooking} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><CalendarPlus size={16} /> New booking</button>}
+                    {lane.id === 'done' && canWrite && isToday && <button type="button" onClick={quickBill} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#047857] dark:text-emerald-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><Zap size={16} /> Quick bill a walk-in</button>}
                   </div>
                 )}
                 <ul className="space-y-2.5">
@@ -256,13 +227,14 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
                         : minutes <= 0 ? ['Now', 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300'] : null
                       : null
                     return (
-                      <li key={appointment.id} className={`relative ${card} p-4 pl-5 overflow-visible`}>
+                      <li key={appointment.id} className={`relative ${card} p-3.5 pl-[18px] @xl:p-4 @xl:pl-5 overflow-visible`}>
                         <span aria-hidden className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${STRIPE[appointment.status]}`} />
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-[14px] text-[#6B7894] flex items-baseline gap-1.5"><span className="text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white">{formatIstTime(appointment.starts_at)}</span> – {formatIstTime(appointment.ends_at)}</p>
                           <span className={`shrink-0 inline-flex items-center h-6 px-2 rounded-md text-[12.5px] font-bold ${timing ? timing[1] : pillTone}`}>{timing ? timing[0] : pill}</span>
                         </div>
-                        <p className="text-[18px] font-bold tracking-tight text-[#0E1B3D] dark:text-white mt-1 truncate">{appointment.customer_name}</p>
+                        <p className="text-[17px] @xl:text-[18px] font-bold tracking-tight text-[#0E1B3D] dark:text-white mt-1 truncate">{appointment.customer_name}</p>
+                        {appointment.customer_phone && <a href={`tel:${appointment.customer_phone}`} className="text-[13px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:underline">{appointment.customer_phone}</a>}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}{mixed && serviceStaff[index] && <span className="font-normal text-[#8a94a8]">&nbsp;· {serviceStaff[index]}</span>}</span>)}
                         </div>
@@ -323,13 +295,9 @@ export function SalonCounter({ orgId, setup, canWrite, flash, voice }: {
         </div>
       )}
 
-      {sheet?.kind === 'book' && (
-        <BookingSheet orgId={orgId} setup={setup} mode={sheet.mode} draft={sheet.draft} onClose={() => setSheet(null)}
-          onBooked={afterBooking}
-          onWalkInReady={(target) => setSheet({ kind: 'bill', target })} />
-      )}
-      {sheet?.kind === 'bill' && <BillSheet orgId={orgId} setup={setup} target={sheet.target} draft={sheet.draft} onClose={() => setSheet(null)} onBilled={afterBilling} />}
-      {sheet?.kind === 'result' && <ResultSheet result={sheet.result} onClose={() => setSheet(null)} onCopied={() => flash('success', 'Link copied')} />}
+      {sheet?.kind === 'book' && <BookingSheet orgId={orgId} setup={setup} draft={sheet.draft} onClose={() => setSheet(null)} onBooked={afterBooking} />}
+      {sheet?.kind === 'bill' && <BillSheet orgId={orgId} setup={setup} target={sheet.target} onClose={() => setSheet(null)} onBilled={(result) => afterBilling(result, sheet.target.kind === 'walkin')} />}
+      {sheet?.kind === 'result' && <ResultSheet result={sheet.result} onClose={() => setSheet(null)} onCopied={() => flash('success', 'Link copied')} onNext={sheet.walkIn && canWrite ? quickBill : undefined} />}
     </div>
   )
 }
