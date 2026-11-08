@@ -20,6 +20,8 @@ export interface SalonSettings {
   feedback_enabled?: boolean
   feedback_delay_minutes?: number
   review_link?: string | null
+  business_type?: 'salon' | 'clinic' | 'fitness' | 'repair' | 'other'
+  message_templates?: Record<string, { name: string; language: string; fields: string[]; url_field?: string | null } | undefined>
 }
 
 export interface Service {

@@ -21,7 +21,8 @@ async function credentialsFor(organizationId: string): Promise<{ credentials?: M
 
 const metaError = (err: any) => {
   const detail = err?.details?.[0]
-  const message = detail?.error_user_msg || detail?.error_user_title || err?.message || 'Meta did not accept the request.'
+  const network = /fetch failed|ENOTFOUND|ECONNRESET|ETIMEDOUT/i.test(String(err?.message || ''))
+  const message = detail?.error_user_msg || detail?.error_user_title || (network ? 'Meta could not be reached. Check your connection and try again.' : err?.message) || 'Meta did not accept the request.'
   return NextResponse.json({ error: message, code: detail?.code ?? null, subcode: detail?.error_subcode ?? null }, { status: 422 })
 }
 

@@ -153,6 +153,17 @@ test('Customers: found by part of the number or by name, regulars first, only in
   assert.deepEqual(await C.findCustomers(db, 'o', 'x'), [])
 })
 
+test('Customers: a contact known only by the WhatsApp number they messaged from is found too, and the whole number is an exact match', async () => {
+  const db = salonDb({ contacts: [
+    { id: 'w1', organization_id: 'o', first_name: 'Lavanya', last_name: null, phone_number: null, whatsapp_number: 'whatsapp:+919848099999' },
+    { id: 'w2', organization_id: 'o', first_name: 'Latha', last_name: null, phone_number: '+919848099990', whatsapp_number: null },
+  ] })
+  const partial = await C.findCustomers(db, 'o', '9848099')
+  assert.deepEqual(partial.map((c) => [c.contact_id, c.exact]).sort(), [['w1', false], ['w2', false]])
+  const whole = await C.findCustomers(db, 'o', '+91 98480 99999')
+  assert.deepEqual(whole.map((c) => [c.contact_id, c.exact, c.phone]), [['w1', true, '+919848099999']])
+})
+
 test('Counter times: every slot of the day, busy ones marked for the people chosen, late ones flagged', () => {
   const now = Date.parse('2026-11-07T13:10:00+05:30')
   const busy = [{ starts_at: '2026-11-07T15:00:00+05:30', ends_at: '2026-11-07T16:00:00+05:30', staff_ids: ['anitha'] }]

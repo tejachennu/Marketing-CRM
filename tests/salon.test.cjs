@@ -295,10 +295,27 @@ test('Counter: a new customer is saved to Contacts so they appear in the WhatsAp
   const db = seedSalon()
   const result = await A.executeCounterAction(ctxFor(db), A.parseCounterAction({ type: 'walk_in_bill', customer: { name: 'Ravi Kumar', phone: '91234 56789' }, service_ids: [S1], payment_method: 'cash', send_whatsapp: false }).action)
   const contact = db.tables.contacts.find((c) => c.phone_number === '+919123456789')
-  assert.deepEqual([contact.first_name, contact.last_name, contact.tags], ['Ravi', 'Kumar', ['Salon']])
+  assert.deepEqual([contact.first_name, contact.last_name, contact.tags], ['Ravi', 'Kumar', ['Front desk']])
   assert.equal(result.invoice.contact_id, contact.id)
   assert.equal(result.appointment.status, 'completed')
   assert.equal(result.invoice.total, 708)
+})
+
+test('Counter: Contacts stay in sync — found by their WhatsApp number, and a contact saved without a name gets the real one', async () => {
+  const db = seedSalon()
+  // Someone who messaged on WhatsApp first: saved with only their WhatsApp number and no real name
+  db.tables.contacts.push({ id: 'c-wa', organization_id: ORG, first_name: 'Customer', last_name: null, phone_number: null, whatsapp_number: 'whatsapp:+919876500111' })
+  const result = await A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'Meena Rao', phone: '98765 00111' }, service_ids: [S1], payment_method: 'cash' })
+  assert.equal(result.invoice.contact_id, 'c-wa', 'no second contact for the same person')
+  const before = db.tables.contacts.length
+  const saved = () => db.tables.contacts.find((c) => c.id === 'c-wa')
+  assert.deepEqual([saved().first_name, saved().last_name], ['Meena', 'Rao'])
+  // A real name already saved is never overwritten; a nameless walk-in takes the saved name
+  const again = await A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'Walk-in customer', phone: '+91 98765 00111' }, service_ids: [S1], payment_method: 'cash' })
+  assert.equal(again.invoice.customer_name, 'Meena Rao')
+  await A.executeCounterAction(ctxFor(db), { type: 'walk_in_bill', customer: { name: 'M. Rao', phone: '9876500111' }, service_ids: [S1], payment_method: 'cash' })
+  assert.deepEqual([saved().first_name, saved().last_name], ['Meena', 'Rao'])
+  assert.equal(db.tables.contacts.length, before, 'still one contact for this person')
 })
 
 test('Counter: invoice numbers stay in order when two counters bill at the same moment', async () => {

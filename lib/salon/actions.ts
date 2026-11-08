@@ -40,7 +40,7 @@ function parseCustomer(value: any): CustomerRef | { error: string } {
   const name = String(value?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   const rawPhone = String(value?.phone ?? '').trim()
   const phone = rawPhone ? parseSpokenPhone(rawPhone) : null
-  if (rawPhone && !phone) return { error: 'That phone number does not look right. Say or enter the 10-digit mobile number.' }
+  if (rawPhone && !phone) return { error: 'That phone number does not look right. Enter the 10-digit mobile number.' }
   if (!name && !phone) return { error: 'Who is the customer? Give a name or a phone number.' }
   return { contact_id: isUuid(value?.contact_id) ? String(value.contact_id) : null, name: name || 'Walk-in customer', phone }
 }
@@ -150,12 +150,21 @@ export async function resolveCustomer(db: any, organizationId: string, customer:
   }
   if (!customer.phone) return { contact_id: null, name: customer.name, phone: null }
   const key = phoneKey(customer.phone)
-  const matches = await checked(db.from('contacts').select('id, first_name, last_name, phone_number').eq('organization_id', organizationId).ilike('phone_number', `%${key}`).limit(1))
-  if (matches?.[0]) return { contact_id: matches[0].id, name: customer.name, phone: customer.phone }
+  const matches = await checked(db.from('contacts').select('id, first_name, last_name, phone_number').eq('organization_id', organizationId).or(`phone_number.ilike.*${key},whatsapp_number.ilike.*${key}`).limit(1))
+  if (matches?.[0]) {
+    const found = matches[0]
+    const saved = [found.first_name, found.last_name].filter(Boolean).join(' ').trim()
+    // Contacts stay in sync: a contact saved without a real name takes the one given at the counter
+    if (customer.name && customer.name !== 'Walk-in customer' && (!saved || /^(customer|unknown|walk-in)$/i.test(saved) || /^\+?\d[\d\s-]*$/.test(saved))) {
+      const [first, ...rest] = customer.name.trim().split(/\s+/)
+      await db.from('contacts').update({ first_name: first, last_name: rest.join(' ') || null }).eq('id', found.id).eq('organization_id', organizationId)
+    }
+    return { contact_id: found.id, name: customer.name === 'Walk-in customer' && saved ? saved : customer.name, phone: customer.phone }
+  }
   const [first, ...rest] = customer.name === 'Walk-in customer' ? ['Customer'] : customer.name.split(' ')
   const created = await checked(db.from('contacts').insert({
     organization_id: organizationId, first_name: first, last_name: rest.join(' ') || null,
-    phone_number: customer.phone, whatsapp_number: `whatsapp:${customer.phone}`, tags: ['Salon'],
+    phone_number: customer.phone, whatsapp_number: `whatsapp:${customer.phone}`, tags: ['Front desk'],
   }).select('id').single())
   return { contact_id: created?.id || null, name: customer.name, phone: customer.phone }
 }

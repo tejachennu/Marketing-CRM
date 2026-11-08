@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ConciergeBell, Loader2, ReceiptText, Scissors, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { ConciergeBell, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
@@ -15,7 +15,7 @@ import type { SalonSetup } from './types'
 
 type Tab = 'counter' | 'invoices' | 'reviews' | 'team' | 'setup'
 
-/** The Spa & Salon connector: the counter, invoices, reviews, team and setup. */
+/** Front Desk: the counter, invoices, reviews, team and setup, for any business that takes appointments. */
 export function SalonApp() {
   const { workspace, error: workspaceError } = useWorkspace()
   const { toast, flash } = useToast()
@@ -62,13 +62,13 @@ export function SalonApp() {
             {isSafeLogoUrl(setup.settings.logo_url)
               // eslint-disable-next-line @next/next/no-img-element
               ? <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
-              : <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><Scissors size={24} /></span>}
+              : <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><ConciergeBell size={24} /></span>}
             <div className="min-w-0">
-              <h1 className="text-[21px] min-[400px]:text-[24px] @xl:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Salon'}</h1>
-              <p className="text-[13.5px] @xl:text-[15px] text-[#4a5672] dark:text-slate-400 truncate"><span className="hidden min-[400px]:inline">Spa & Salon <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> </span>{todayLabel}</p>
+              <h1 className="text-[21px] min-[400px]:text-[24px] @xl:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Front Desk'}</h1>
+              <p className="text-[13.5px] @xl:text-[15px] text-[#4a5672] dark:text-slate-400 truncate"><span className="hidden min-[400px]:inline">Front Desk <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> </span>{todayLabel}</p>
             </div>
           </div>
-          <div role="tablist" aria-label="Salon" className="flex w-full @4xl:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
+          <div role="tablist" aria-label="Front Desk" className="flex w-full @4xl:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
                 className={`flex-1 @4xl:flex-none min-w-0 inline-flex flex-col @xl:flex-row items-center justify-center gap-0.5 @xl:gap-2 h-[52px] @xl:h-11 px-1 @xl:px-4 rounded-xl text-[11.5px] min-[400px]:text-[12.5px] @xl:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
@@ -84,7 +84,7 @@ export function SalonApp() {
             <div className={`${card} px-6 py-12 text-center`}>
               <span className="mx-auto h-14 w-14 rounded-2xl bg-[#fdeef6] dark:bg-pink-950/40 text-[#be185d] dark:text-pink-300 flex items-center justify-center"><Sparkles size={26} /></span>
               <h2 className="mt-4 text-[19px] font-extrabold text-[#0E1B3D] dark:text-white">Add your services to open the counter</h2>
-              <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, "Add sample salon" adds a full list of services and staff in one tap. Change prices any time.' : 'Your manager needs to add services in Setup before the counter can be used.'}</p>
+              <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, pick your kind of business to add a starter list of services and team in one tap, or add your own. Change anything any time.' : 'Your manager needs to add services in Setup before the counter can be used.'}</p>
               {canManage && <button type="button" onClick={() => setTab('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
             </div>
           )

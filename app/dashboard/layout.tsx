@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Scissors, Blocks } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, ConciergeBell, Blocks } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -677,7 +677,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
-    { href: '/dashboard/salon', label: 'Salon Counter', icon: Scissors },
+    { href: '/dashboard/front-desk', label: 'Front Desk', icon: ConciergeBell },
     { href: '/dashboard/commerce', label: 'Commerce', icon: ShoppingBag },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
@@ -702,7 +702,7 @@ export default function DashboardLayout({
     if (isModulePage(path) && (!workspaceModules.loaded || workspaceModules.consular)) return false
     if (path === '/dashboard' || path.startsWith('/dashboard/tickets')) return features.enable_messages
     // Use-case connectors appear once switched on in Connectors
-    if (path.startsWith('/dashboard/salon')) return features.enabled_connectors.includes('salon')
+    if (path.startsWith('/dashboard/front-desk') || path.startsWith('/dashboard/salon')) return features.enabled_connectors.includes('salon')
     if (path.startsWith('/dashboard/commerce')) return features.enable_commerce
     if (path.startsWith('/dashboard/flows')) return features.enable_messages
     if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {

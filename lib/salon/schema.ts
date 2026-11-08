@@ -224,9 +224,20 @@ ALTER TABLE salon_feedback ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261110_front_desk.sql word for word: business type and the template for each message. */
+export const FRONT_DESK_SQL = `-- Front Desk (formerly Spa & Salon): the kind of business, used for wording and by the WhatsApp
+-- assistant, and which WhatsApp template goes out for each automatic message (bill, booking,
+-- reminder, feedback) with what fills each of its blanks.
+-- Safe to run more than once. The app runs it on its own when these settings are first saved.
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS business_type TEXT NOT NULL DEFAULT 'salon';
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS message_templates JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Spa & Salon', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

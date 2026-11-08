@@ -19,7 +19,7 @@ export interface SalonContext {
 
 export type SalonAccess = { ok: true; ctx: SalonContext } | { ok: false; response: NextResponse }
 
-export const SALON_OFF_MESSAGE = 'Spa & Salon is switched off for this workspace. An admin can switch it on in Connectors.'
+export const SALON_OFF_MESSAGE = 'Front Desk is switched off for this workspace. An admin can switch it on in Connectors.'
 
 export async function salonAccess(request: NextRequest, organizationId: string | null | undefined, permission?: Permission): Promise<SalonAccess> {
   const access = await verifyOrgAccess(request, organizationId || null, permission ? { permission } : {})
@@ -45,6 +45,8 @@ export const DEFAULT_SALON_SETTINGS = {
   prices_include_tax: false,
   invoice_note: null as string | null,
   voice_replies: true,
+  business_type: 'salon',
+  message_templates: {} as Record<string, unknown>,
   logo_url: null as string | null,
   opens_at: '10:00',
   closes_at: '21:00',

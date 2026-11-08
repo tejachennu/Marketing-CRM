@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Clock3, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Store, Trash2, Upload, Users } from 'lucide-react'
+import { Check, Clock3, Dumbbell, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
+import { BUSINESS_TYPE_IDS, BUSINESS_TYPES, businessType, type BusinessType } from '@/lib/salon/business'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup, Service, StaffMember } from './types'
 import { WhatsAppSettings } from './salon-whatsapp-settings'
@@ -12,7 +13,7 @@ import { SalonTemplates } from './salon-templates'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
-const CATEGORY_SUGGESTIONS = ['Hair', 'Skin', 'Nails', 'Spa', 'Makeup', 'Bridal']
+const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
 type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'templates'
@@ -143,10 +144,20 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
     try { await task() } catch (err: any) { flash('error', err.message) } finally { setBusy(null) }
   }
 
-  const addSample = () => run('sample', async () => {
-    const data = await api('/api/salon/sample', { method: 'POST', body: JSON.stringify({ organizationId: orgId }) })
+  const type = businessType(settings.business_type)
+  const addKit = (kind: BusinessType) => run(`kit-${kind}`, async () => {
+    const data = await api('/api/salon/sample', { method: 'POST', body: JSON.stringify({ organizationId: orgId, business_type: kind }) })
     onChange({ settings: data.settings, services: data.services, staff: data.staff })
-    flash('success', `Added ${data.added.services} services and ${data.added.staff} team members. Change any of them below.`)
+    setSettings((current) => ({ ...current, business_type: kind }))
+    if (BUSINESS_TYPES[kind].kit) flash('success', `Added ${data.added.services} services and ${data.added.staff} team members. Change any of them below.`)
+    else { flash('success', 'Saved. Add your services below.'); setServiceForm({ category: BUSINESS_TYPES[kind].categories[0], duration_minutes: 30, tax_rate: 18, active: true }) }
+    setSection('services')
+  })
+  const saveType = (kind: BusinessType) => run('type', async () => {
+    const data = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, business_type: kind }) })
+    onChange({ ...setup, settings: { ...setup.settings, ...data.settings } })
+    setSettings((current) => ({ ...current, business_type: kind }))
+    flash('success', `Business type: ${BUSINESS_TYPES[kind].label}.`)
   })
 
   const saveService = () => run('service', async () => {
@@ -196,13 +207,24 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
   return (
     <div className="space-y-4 @xl:space-y-5">
       {setup.services.length === 0 && (
-        <div className={`${card} p-6 @xl:p-8 text-center`}>
-          <div className="mx-auto h-14 w-14 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center"><Sparkles size={26} /></div>
-          <h2 className="text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">Set up your salon in one tap</h2>
-          <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1 max-w-md mx-auto">Add a ready-made menu of services with typical prices and a small team. You can change everything afterwards.</p>
-          <div className="mt-5 flex flex-col @xl:flex-row gap-2 justify-center">
-            <button type="button" onClick={addSample} disabled={busy !== null} className={primaryButton}>{busy === 'sample' ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />} Add sample salon</button>
-            <button type="button" onClick={() => setServiceForm({ category: 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={secondaryButton}><Plus size={18} /> Add my own service</button>
+        <div className={`${card} p-5 @xl:p-8`}>
+          <div className="text-center">
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center"><Sparkles size={26} /></div>
+            <h2 className="text-[21px] @xl:text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">What kind of business is this?</h2>
+            <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1 max-w-lg mx-auto">Pick one to start with a ready list of services, prices and a small team. You can change everything afterwards.</p>
+          </div>
+          <div className="mt-5 grid grid-cols-1 min-[420px]:grid-cols-2 @3xl:grid-cols-5 gap-2.5">
+            {BUSINESS_TYPE_IDS.map((kind) => {
+              const Icon = TYPE_ICONS[kind]
+              const info = BUSINESS_TYPES[kind]
+              return (
+                <button key={kind} type="button" onClick={() => addKit(kind)} disabled={busy !== null}
+                  className="flex @3xl:flex-col items-center @3xl:items-start gap-3 text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-3.5 hover:border-[#1D5BEA] hover:bg-[#f5f8ff] dark:hover:bg-blue-950/20 cursor-pointer disabled:opacity-60 transition-colors">
+                  <span className="h-11 w-11 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center">{busy === `kit-${kind}` ? <Loader2 size={20} className="animate-spin" /> : <Icon size={21} />}</span>
+                  <span className="min-w-0"><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{info.label}</span><span className="block text-[13px] text-[#6B7894]">{info.kit ? info.hint : 'Start empty and add your own'}</span></span>
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -220,13 +242,13 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       <div className="min-w-0 space-y-4 @xl:space-y-5">
       {/* Services */}
       {section === 'services' && setup.services.length === 0 && (
-        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Use “Add sample salon” above, or add your own.</div>
+        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => setServiceForm({ category: BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: 18, active: true })} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>.</div>
       )}
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
           <SectionHead icon={<Scissors size={21} />} tone="bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300" title="Services"
             subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
-            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || 'Hair', duration_minutes: 30, tax_rate: 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>} />
+            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: BUSINESS_TYPES[type].kit?.taxRate ?? 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {categories.map(([category, services]) => (
               <div key={category} className="px-2 @xl:px-3 py-3">
@@ -283,14 +305,21 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
         <SectionHead icon={<Store size={21} />} tone="bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
         <div className="p-4 @xl:p-5 grid grid-cols-1 @5xl:grid-cols-5 gap-6">
           <div className="@5xl:col-span-3 min-w-0">
+            <div className="mb-5" role="group" aria-label="Kind of business">
+              <p className="text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">Kind of business</p>
+              <div className="flex flex-wrap gap-2">
+                {BUSINESS_TYPE_IDS.map((kind) => <Chip key={kind} selected={type === kind} disabled={busy !== null} onClick={() => type !== kind && saveType(kind)}>{type === kind && <Check size={15} strokeWidth={3} />} {BUSINESS_TYPES[kind].label}</Chip>)}
+              </div>
+              <p className="text-[12.5px] text-[#6B7894] mt-1">The WhatsApp assistant describes you this way, and Setup suggests matching categories.</p>
+            </div>
             <LogoPicker orgId={orgId} logo={settings.logo_url} flash={flash}
               onSaved={(saved) => { onChange({ ...setup, settings: { ...setup.settings, logo_url: saved?.logo_url ?? null } }); setSettings((current) => ({ ...current, logo_url: saved?.logo_url ?? null })) }} />
             <div className="grid @xl:grid-cols-2 gap-4">
-              <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Glow Salon & Spa" /></Field>
+              <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Your business name" /></Field>
               <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
               <div className="@xl:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
               <Field label="GSTIN" hint="Leave empty if you are not registered for GST."><input className={`${input} uppercase`} value={settings.gstin || ''} onChange={(e) => setSettings({ ...settings, gstin: e.target.value })} placeholder="36ABCDE1234F1Z5" /></Field>
-              <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@glowsalon.in" inputMode="email" /></Field>
+              <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@yourbusiness.in" inputMode="email" /></Field>
               <Field label="Invoice number starts with" hint={`Next invoices look like ${(settings.invoice_prefix || 'INV').toUpperCase()}-0001`}><input className={`${input} uppercase`} value={settings.invoice_prefix || ''} onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })} placeholder="GLOW" maxLength={12} /></Field>
               <Field label="Note at the bottom of invoices"><input className={input} value={settings.invoice_note || ''} onChange={(e) => setSettings({ ...settings, invoice_note: e.target.value })} placeholder="Thank you! See you again soon." /></Field>
             </div>
@@ -346,9 +375,9 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
             <button type="button" onClick={saveService} disabled={busy !== null} className={primaryButton}>{busy === 'service' && <Loader2 size={18} className="animate-spin" />} Save</button>
           </>}>
           <div className="space-y-4">
-            <Field label="Service name"><input className={input} value={serviceForm.name || ''} onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })} placeholder="Haircut (Women)" autoFocus /></Field>
+            <Field label="Service name"><input className={input} value={serviceForm.name || ''} onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })} placeholder="Consultation" autoFocus /></Field>
             <Field group label="Category">
-              <div className="flex flex-wrap gap-2 mb-2">{[...new Set([...categories.map(([c]) => c), ...CATEGORY_SUGGESTIONS])].map((category) => <Chip key={category} selected={serviceForm.category === category} onClick={() => setServiceForm({ ...serviceForm, category })}>{category}</Chip>)}</div>
+              <div className="flex flex-wrap gap-2 mb-2">{[...new Set([...categories.map(([c]) => c), ...BUSINESS_TYPES[type].categories])].map((category) => <Chip key={category} selected={serviceForm.category === category} onClick={() => setServiceForm({ ...serviceForm, category })}>{category}</Chip>)}</div>
               <input className={input} value={serviceForm.category || ''} onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })} placeholder="Or type a new one" aria-label="Category" />
             </Field>
             <div className="grid grid-cols-2 gap-4">

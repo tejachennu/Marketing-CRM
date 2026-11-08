@@ -1,7 +1,6 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { SalonApp } from '@/components/salon/salon-app'
-
-export default function SalonPage() {
-  return <SalonApp />
+/** The old address of Front Desk (it was Spa & Salon): bookmarks keep working. */
+export default function OldSalonPage() {
+  redirect('/dashboard/front-desk')
 }

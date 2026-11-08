@@ -11,6 +11,7 @@
  * that is not about the salon is handed back to them.
  */
 
+import { BUSINESS_TYPES, businessType } from './business'
 import { aiFetch, type AiAccess } from '../ai-access'
 import { LANGUAGE_RULES } from '../chat-language'
 import { buildTextMessage } from '../commerce/commerce-messages'
@@ -176,7 +177,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'not_for_salon',
-      description: 'Hand the message to the general assistant: anything that is not about the salon\'s services, prices, timings, address or booking (orders, products, payments, complaints), or when the customer asks for a person.',
+      description: 'Hand the message to the general assistant: anything that is not about the business\'s services, prices, timings, address or booking (orders, products, payments, complaints), or when the customer asks for a person.',
       parameters: { type: 'object', properties: { reason: { type: 'string' } }, required: ['reason'] },
     },
   },
@@ -184,7 +185,7 @@ const TOOLS = [
 
 export function chatSystemPrompt(setup: ChatSetup, organization: any, customerName: string, now = Date.now()): string {
   const s = setup.settings
-  const business = s.business_name || organization?.name || 'our salon'
+  const business = s.business_name || organization?.name || 'our business'
   const today = istDate(now)
   const week = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(today, i)
@@ -194,9 +195,9 @@ export function chatSystemPrompt(setup: ChatSetup, organization: any, customerNa
   for (const service of setup.services) groups.set(service.category || 'Services', [...(groups.get(service.category || 'Services') || []), service])
   const menu = [...groups.entries()].map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
   const gst = s.gstin ? (s.prices_include_tax ? 'Prices include GST.' : 'GST (usually 18%) is added to these prices.') : ''
-  return `You are the WhatsApp assistant of ${business}, a salon and spa in India.${customerName ? ` The customer's name is ${customerName}.` : ''}
+  return `You are the WhatsApp assistant of ${business}, ${BUSINESS_TYPES[businessType(s.business_type)].describe} in India.${customerName ? ` The customer's name is ${customerName}.` : ''}
 
-About the salon:
+About the business:
 ${[s.address && `Address: ${s.address}`, s.phone && `Phone: ${s.phone}`, describeHours(s)].filter(Boolean).join('\n')}
 ${setup.staff.length ? `Team: ${setup.staff.map((m) => m.name).join(', ')}` : ''}
 
@@ -211,7 +212,7 @@ What you do:
 - If they ask for something not on the list, say it is not on the menu and suggest the closest service.
 - Booking: when the customer wants an appointment, find out the services and the day, then call offer_times. It sends the free times as a list to tap; do not list times yourself. "today" / "ivala" / "aaj" = ${today}; "tomorrow" / "repu" / "kal" = ${addDays(today, 1)}. If they did not say a day, ask. If a service is unclear (for example "haircut" when there are two), ask which one.
 - Cancelling or changing an existing booking, complaints, or a request for a person: call not_for_salon.
-- Anything not about the salon (products, orders, payments): call not_for_salon.
+- Anything not about the business (products, orders, payments): call not_for_salon.
 - Always finish by calling reply_to_customer, offer_times or not_for_salon.
 
 ${LANGUAGE_RULES}`
@@ -407,7 +408,7 @@ export async function handleSlotPick(input: SalonChatInput & { buttonId: string 
   // One tap, one booking: the list cannot book a second time
   await db.from('salon_chat_offers').delete().eq('id', offer.id).eq('organization_id', input.organization.id)
 
-  const business = setup.settings.business_name || input.organization.name || 'the salon'
+  const business = setup.settings.business_name || input.organization.name || 'us'
   await sendText(input, autoApprove ? bookedText(language, business, names, day, label, staffName) : requestReceivedText(language, names, day, label))
   return { handled: true, action: autoApprove ? 'booked' : 'requested' }
 }

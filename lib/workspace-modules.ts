@@ -4,7 +4,7 @@
  * Team page, Billing or use-case connectors. Its admins manage their people from Settings → Teammates, as before.
  */
 
-export const CONSULAR_HIDDEN_PAGES = ['/dashboard/flows', '/dashboard/commerce', '/dashboard/team', '/dashboard/billing', '/dashboard/connectors', '/dashboard/salon'] as const
+export const CONSULAR_HIDDEN_PAGES = ['/dashboard/flows', '/dashboard/commerce', '/dashboard/team', '/dashboard/billing', '/dashboard/connectors', '/dashboard/front-desk', '/dashboard/salon'] as const
 
 function hasValue(value: unknown): boolean {
   return String(value ?? '').trim().length > 0

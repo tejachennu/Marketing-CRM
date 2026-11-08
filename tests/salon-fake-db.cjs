@@ -17,6 +17,7 @@ function salonDb(seed = {}) {
         return this
       },
       ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
+      contains(k, list) { filters.push((r) => Array.isArray(r[k]) && list.every((v) => r[k].includes(v))); return this },
       lt(k, v) { filters.push((r) => r[k] < v); return this },
       gt(k, v) { filters.push((r) => r[k] > v); return this },
       gte(k, v) { filters.push((r) => r[k] >= v); return this },

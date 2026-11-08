@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, Bell, CheckCircle2, ChevronRight, Copy, CornerDownRight, ExternalLink, FileText, KeyRound, Languages, Loader2, MoreHorizontal, Pencil,
-  Plus, RefreshCw, Search, ShieldCheck, Trash2, Wrench, X, Megaphone, BookOpen, BarChart3,
+  Plus, RefreshCw, Search, ShieldCheck, Trash2, Wrench, X, Megaphone, BookOpen, BarChart3, Sparkles,
 } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
@@ -15,6 +15,7 @@ import {
 } from '@/lib/whatsapp-templates/template-model'
 import type { MetaTemplate } from '@/lib/whatsapp-templates/meta-templates'
 import { TemplateEditor } from '@/components/templates/template-editor'
+import { AiTemplateForm } from '@/components/templates/ai-template-writer'
 import { TemplatePreview } from '@/components/templates/template-preview'
 import { TemplateLibrary } from '@/components/templates/template-library'
 import { TemplateInsights } from '@/components/templates/template-insights'
@@ -251,8 +252,15 @@ export default function TemplatesPage() {
       <Shell>
         <Header title={lockedName ? `Add language to ${lockedName}` : 'Create template'} subtitle={lockedName ? 'Same name and category; choose the language, then translate the content.' : undefined} onBack={() => setView({ kind: 'list' })} />
         <div className="max-w-4xl space-y-4">
+          {!lockedName && orgId && (
+            <section className="bg-white dark:bg-[#111b21] rounded-xl border border-[#dadde1] dark:border-slate-800 p-4 sm:p-5">
+              <h2 className="text-[17px] font-bold text-[#1c2b33] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#0064e0]" /> Write it with AI</h2>
+              <p className="text-[13.5px] text-[#65676b] dark:text-slate-400 mt-0.5 mb-4">Say what the message is for. AI writes the template, with blanks, examples and buttons that follow Meta&apos;s rules, and opens it in the editor to check.</p>
+              <AiTemplateForm orgId={orgId} onDraft={(result) => { setDraft(result.draft); setSubmitError(''); setShowProblems(false); setView({ kind: 'edit' }) }} />
+            </section>
+          )}
           <section className="bg-white dark:bg-[#111b21] rounded-xl border border-[#dadde1] dark:border-slate-800 p-4 sm:p-5">
-            <h2 className="text-[17px] font-bold text-[#1c2b33] dark:text-white">Set up your template</h2>
+            <h2 className="text-[17px] font-bold text-[#1c2b33] dark:text-white">{lockedName ? 'Set up your template' : 'Or set it up yourself'}</h2>
             <p className="text-[13.5px] text-[#65676b] dark:text-slate-400 mt-0.5 mb-4">Choose the category that best describes your message template. Then select the type of message you want to send.</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
               {(Object.keys(CATEGORY_LABELS) as TemplateCategory[]).map((value) => {

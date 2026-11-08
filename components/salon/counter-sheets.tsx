@@ -66,6 +66,7 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
   const [picked, setPicked] = useState<CustomerMatch | null>(null)
   const [searching, setSearching] = useState(false)
   const [lastEdited, setLastEdited] = useState<'phone' | 'name'>('phone')
+  const [looked, setLooked] = useState('')
   const latest = useRef(0)
   const typed = (lastEdited === 'phone' ? value.phone : value.name).trim()
 
@@ -75,11 +76,20 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
     setSearching(true)
     const timer = window.setTimeout(() => {
       api(`/api/salon/customers?organizationId=${orgId}&q=${encodeURIComponent(typed)}`)
-        .then((data) => { if (request === latest.current) setMatches(data.customers || []) })
+        .then((data) => {
+          if (request !== latest.current) return
+          const found: CustomerMatch[] = data.customers || []
+          const exact = found.filter((c) => c.exact)
+          // The whole number typed belongs to one saved contact: pick them straight away
+          if (lastEdited === 'phone' && exact.length === 1) pick(exact[0])
+          else setMatches(found)
+          setLooked(typed)
+        })
         .catch(() => { if (request === latest.current) setMatches([]) })
         .finally(() => { if (request === latest.current) setSearching(false) })
     }, 250)
     return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typed, value.contact_id, orgId])
 
   function pick(match: CustomerMatch) {
@@ -96,7 +106,7 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
           <Avatar name={value.name || 'Customer'} size={44} />
           <div className="min-w-0 flex-1">
             <p className="text-[16px] font-bold text-[#0E1B3D] dark:text-white truncate">{value.name || 'Customer'}</p>
-            <p className="text-[13.5px] text-[#4a5672] dark:text-slate-300 truncate">{value.phone || 'No mobile number'}{picked?.contact_id === value.contact_id && picked.visits > 0 ? ` · ${picked.visits} visit${picked.visits === 1 ? '' : 's'}` : ''}</p>
+            <p className="text-[13.5px] text-[#4a5672] dark:text-slate-300 truncate">{value.phone || 'No mobile number'}{picked?.contact_id === value.contact_id ? (picked.visits > 0 ? ` · ${picked.visits} visit${picked.visits === 1 ? '' : 's'}` : ' · from Contacts') : ''}</p>
             {last && <p className="text-[12.5px] text-[#6B7894] dark:text-slate-400 truncate">Last: {formatIstDay(last.date)} · {last.services.join(', ') || 'visit'} · {formatRupees(last.total)}</p>}
           </div>
           <button type="button" onClick={() => { setPicked(null); onChange({ contact_id: null, name: '', phone: '' }) }} aria-label="Change customer"
@@ -129,9 +139,12 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
           </span>
         </Field>
       </div>
+      {!matches.length && !searching && lastEdited === 'phone' && value.phone.replace(/\D/g, '').length >= 10 && looked === typed && (
+        <p className="text-[12.5px] text-[#6B7894]">New customer: they are saved to Contacts when you {optional ? 'bill' : 'book'}.</p>
+      )}
       {matches.length > 0 && (
         <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-700 overflow-hidden">
-          <p className="px-3.5 py-2 bg-[#f8fafc] dark:bg-slate-900/60 text-[12.5px] font-bold text-[#6B7894]">Saved customers · tap to pick</p>
+          <p className="px-3.5 py-2 bg-[#f8fafc] dark:bg-slate-900/60 text-[12.5px] font-bold text-[#6B7894]">From your Contacts · tap to pick</p>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 max-h-60 overflow-y-auto">
             {matches.slice(0, 6).map((match) => (
               <li key={match.contact_id}>

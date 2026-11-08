@@ -173,7 +173,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
       <div className="grid grid-cols-2 @4xl:grid-cols-4 gap-2.5 @xl:gap-3">
         <StatTile label={isToday ? 'Appointments today' : 'Appointments'} value={live.length} icon={<CalendarDays size={20} />} tone="blue" hint={`${live.filter((a) => a.status === 'completed').length} done`} />
         <StatTile label="Waiting" value={waiting.length} icon={<Hourglass size={20} />} tone="amber" hint={next ? `Next ${formatIstTime(next.starts_at)}` : 'No one booked'} />
-        <StatTile label="In the chair" value={inChair.length} icon={<Armchair size={20} />} tone="pink" hint={inChair.length ? inChair.map((a) => a.customer_name.split(' ')[0]).join(', ') : 'Free'} />
+        <StatTile label="In service" value={inChair.length} icon={<Armchair size={20} />} tone="pink" hint={inChair.length ? inChair.map((a) => a.customer_name.split(' ')[0]).join(', ') : 'Free'} />
         <StatTile label={isToday ? 'Billed today' : 'Billed'} value={formatRupees(billed)} icon={<Wallet size={20} />} tone="green" hint={unpaid ? `${unpaid} not paid yet` : 'All paid'} />
       </div>
 
@@ -205,7 +205,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                 {list.length === 0 && (
                   <div className="rounded-2xl border-2 border-dashed border-[#d9e0ec] dark:border-slate-800 px-4 py-9 text-center">
                     <EmptyIcon size={26} className="mx-auto text-[#a3adc2]" />
-                    <p className="mt-2 text-[14.5px] font-semibold text-[#6B7894]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in the chair' : 'Nothing billed yet'}</p>
+                    <p className="mt-2 text-[14.5px] font-semibold text-[#6B7894]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in service' : 'Nothing billed yet'}</p>
                     {lane.id === 'upcoming' && canWrite && date >= today && <button type="button" onClick={newBooking} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><CalendarPlus size={16} /> New booking</button>}
                     {lane.id === 'done' && canWrite && isToday && <button type="button" onClick={quickBill} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#047857] dark:text-emerald-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><Zap size={16} /> Quick bill a walk-in</button>}
                   </div>

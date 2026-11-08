@@ -3,6 +3,8 @@
  * the clean values to save, or the first problem in words for the counter.
  */
 
+import { BUSINESS_TYPE_IDS, type BusinessType } from './business'
+import { parseMessageTemplates, type MessageTemplates } from './message-templates'
 import { cleanInvoicePrefix, isValidGstin, normalizeGstin } from './invoice'
 import { parseSpokenPhone } from './spoken'
 
@@ -105,6 +107,8 @@ export interface SalonSettingsInput {
   feedback_enabled?: boolean
   feedback_delay_minutes?: number
   review_link?: string | null
+  business_type?: BusinessType
+  message_templates?: MessageTemplates
 }
 
 export const FEEDBACK_DELAYS = [30, 60, 120, 240, 1440]
@@ -147,7 +151,7 @@ export function parseWhatsAppSettings(body: any): Parsed<Partial<SalonSettingsIn
   }
   if (has('closed_weekdays')) {
     const days = (Array.isArray(body.closed_weekdays) ? body.closed_weekdays : []).map(Number).filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6)
-    if (new Set(days).size === 7) return { error: 'The salon cannot be closed every day.' }
+    if (new Set(days).size === 7) return { error: 'You cannot be closed every day.' }
     value.closed_weekdays = [...new Set<number>(days)].sort()
   }
   for (const key of ['chat_assistant', 'auto_approve_bookings', 'reminders_enabled', 'feedback_enabled'] as const) if (has(key)) value[key] = body[key] === true
@@ -159,6 +163,15 @@ export function parseWhatsAppSettings(body: any): Parsed<Partial<SalonSettingsIn
     const link = String(body.review_link ?? '').trim()
     if (link && !/^https:\/\/[^\s]+$/i.test(link)) return { error: 'The review link must start with https://' }
     value.review_link = link.slice(0, 500) || null
+  }
+  if (has('business_type')) {
+    if (!BUSINESS_TYPE_IDS.includes(body.business_type)) return { error: 'Choose your kind of business.' }
+    value.business_type = body.business_type
+  }
+  if (has('message_templates')) {
+    const parsed = parseMessageTemplates(body.message_templates)
+    if ('error' in parsed) return parsed
+    value.message_templates = parsed.value
   }
   return { value }
 }

@@ -21,15 +21,17 @@ const seed = (extra = {}) => salonDb({
   salon_feedback: [], contacts: [], conversations: [], messages: [],
 })
 
-/** WhatsApp: free-form messages fail with the 24-hour error when `windowClosed`; templates fail when `templatesMissing`. */
-function whatsapp({ windowClosed = false, templatesMissing = false } = {}) {
+/** WhatsApp: free-form messages fail with the 24-hour error when `windowClosed`; templates Meta does not know (all when `templatesMissing`) fail as Meta does. */
+function whatsapp({ windowClosed = false, templatesMissing = false, missingNames = [] } = {}) {
   const sent = []
   const real = globalThis.fetch
   globalThis.fetch = async (url, init) => {
     const body = JSON.parse(init.body)
     sent.push(body)
-    const refuse = body.type === 'template' ? templatesMissing : windowClosed
-    if (refuse) return new Response(JSON.stringify({ error: { code: body.type === 'template' ? 132001 : 131047, message: 'refused' } }), { status: 400 })
+    if (body.type === 'template' && (templatesMissing || missingNames.includes(body.template.name))) {
+      return new Response(JSON.stringify({ error: { code: 132001, message: '(#132001) Template name does not exist in the translation', error_data: { details: `template name (${body.template.name}) does not exist in ${body.template.language.code}` } } }), { status: 400 })
+    }
+    if (body.type !== 'template' && windowClosed) return new Response(JSON.stringify({ error: { code: 131047, message: 'refused' } }), { status: 400 })
     return new Response(JSON.stringify({ messages: [{ id: `wamid.${sent.length}` }] }), { status: 200 })
   }
   return { sent, restore: () => { globalThis.fetch = real } }
@@ -57,7 +59,7 @@ test('Feedback: after 24 hours the approved template goes, its button opening th
   try {
     await J.runSalonJobs(db, ORG, { now: NOW })
     const template = wa.sent[1].template
-    assert.equal(template.name, 'wama_salon_feedback_form')
+    assert.equal(template.name, 'wama_feedback_request')
     assert.deepEqual(template.components[0].parameters.map((p) => p.text), ['Priya', 'Glow Salon', 'Facial, Manicure'])
     assert.deepEqual(template.components[1], { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'TokFeedback1234567890' }] })
     assert.equal(db.tables.salon_invoices[0].feedback_status, 'sent')
@@ -67,6 +69,28 @@ test('Feedback: after 24 hours the approved template goes, its button opening th
   try {
     assert.deepEqual(await J.runSalonJobs(db2, ORG, { now: NOW }), { feedbackSent: 0, feedbackSkipped: 1, remindersSent: 0 })
     assert.equal(db2.tables.salon_invoices[0].feedback_status, 'skipped')
+  } finally { wa2.restore() }
+})
+
+test('Templates: one submitted before the rename is found by its old name; the business\'s own choice wins', async () => {
+  // Meta only knows the old name: the new one is refused, then the old one goes
+  const db = seed()
+  const wa = whatsapp({ windowClosed: true, missingNames: ['wama_feedback_request'] })
+  try {
+    assert.deepEqual(await J.runSalonJobs(db, ORG, { now: NOW }), { feedbackSent: 1, feedbackSkipped: 0, remindersSent: 0 })
+    assert.deepEqual(wa.sent.filter((m) => m.type === 'template').map((m) => m.template.name), ['wama_feedback_request', 'wama_salon_feedback_form'])
+  } finally { wa.restore() }
+  // Their own template, with their blanks: full name and services, and the form link on the button
+  const own = seed({ settings: { message_templates: { feedback: { name: 'clinic_feedback', language: 'en_US', fields: ['customer_name', 'services'], url_field: 'link' } } } })
+  const wa2 = whatsapp({ windowClosed: true })
+  try {
+    assert.deepEqual(await J.runSalonJobs(own, ORG, { now: NOW }), { feedbackSent: 1, feedbackSkipped: 0, remindersSent: 0 })
+    const template = wa2.sent[1].template
+    assert.deepEqual([template.name, template.language.code], ['clinic_feedback', 'en_US'])
+    assert.deepEqual(template.components, [
+      { type: 'body', parameters: [{ type: 'text', text: 'Priya Sharma' }, { type: 'text', text: 'Facial, Manicure' }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'TokFeedback1234567890' }] },
+    ])
   } finally { wa2.restore() }
 })
 
@@ -126,7 +150,9 @@ test('Bills: feedback is due after the delay set in Setup, only when there is a 
 })
 
 test('Templates: every salon template is a valid draft for Meta; the bill button opens this app\'s invoice page', () => {
-  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.name), ['wama_salon_bill', 'wama_salon_booking', 'wama_salon_reminder', 'wama_salon_feedback_form', 'wama_salon_offer', 'wama_salon_we_miss_you', 'wama_salon_festival'])
+  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.name), ['wama_bill', 'wama_booking_confirmed', 'wama_appointment_reminder', 'wama_feedback_request', 'wama_special_offer', 'wama_we_miss_you', 'wama_festival_greeting'])
+  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.legacyNames[0]), ['wama_salon_bill', 'wama_salon_booking', 'wama_salon_reminder', 'wama_salon_feedback_form', 'wama_salon_offer', 'wama_salon_we_miss_you', 'wama_salon_festival'])
+  for (const template of T.SALON_TEMPLATES) assert.doesNotMatch(`${template.name} ${template.title} ${template.body} ${Object.values(template.samples).join(' ')}`, /salon/i, template.key)
   for (const template of T.SALON_TEMPLATES) {
     const draft = T.templateDraft(template, 'https://wamacrm.magnetora.in/')
     assert.deepEqual(validateDraft(draft), [], template.name)
@@ -198,6 +224,8 @@ test('Templates: where each one stands on Meta (English only); unknown when Meta
   assert.equal(by.booking.status, 'NOT_SUBMITTED')
   assert.equal(by.offer.status, 'PENDING')
   assert.deepEqual(by.feedback.buttons, ['Give feedback'])
+  // Submitted before the rename: shown under the name Meta has; not submitted yet: the new name
+  assert.deepEqual([by.bill.name, by.reminder.name], ['wama_salon_bill', 'wama_appointment_reminder'])
   assert.ok(T.packStatus(null).every((p) => p.status === 'UNKNOWN'))
 })
 

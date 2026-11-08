@@ -15,7 +15,7 @@ export default async function FeedbackPage({ params }: { params: Promise<{ token
   const db = getSupabaseAdminClient()
   const { data: invoice } = await db.from('salon_invoices').select('*').eq('public_token', token).maybeSingle()
   if (!invoice) notFound()
-  // The logo the bill was issued with, else the salon's current one
+  // The logo the bill was issued with, else the business's current one
   let logo: string | null = isSafeLogoUrl(invoice.business?.logo_url) ? invoice.business.logo_url : null
   const [{ data: existing }, { data: settings }] = await Promise.all([
     db.from('salon_feedback').select('rating, staff_ratings, tags, comment').eq('invoice_id', invoice.id).maybeSingle(),
@@ -29,7 +29,7 @@ export default async function FeedbackPage({ params }: { params: Promise<{ token
     <main className="min-h-screen bg-[#f6f8fc] text-[#0E1B3D] px-4 py-6 sm:py-10">
       <FeedbackForm
         token={token}
-        business={invoice.business?.name || settings?.business_name || 'the salon'}
+        business={invoice.business?.name || settings?.business_name || 'us'}
         logo={logo}
         customerName={firstName && firstName !== 'Walk-in' ? firstName : ''}
         services={services}

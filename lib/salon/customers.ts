@@ -3,10 +3,11 @@
  * and see their last visit (to book the same again in one tap).
  */
 
-import { istDate } from './spoken'
+import { istDate, phoneKey } from './spoken'
 
 export interface CustomerVisit { date: string; services: string[]; service_ids: string[]; staff_ids: string[]; total: number }
-export interface CustomerMatch { contact_id: string; name: string; phone: string | null; visits: number; last_visit: CustomerVisit | null }
+/** `exact`: the whole mobile number typed is this contact's number (so the counter can pick them straight away). */
+export interface CustomerMatch { contact_id: string; name: string; phone: string | null; visits: number; last_visit: CustomerVisit | null; exact: boolean }
 
 /** What was typed, made safe for a search: the digits of a number (at least 4), or up to two words of a name. */
 export function customerSearch(value: unknown): { digits: string } | { words: string[] } | null {
@@ -48,8 +49,9 @@ const fullName = (contact: { first_name?: string | null; last_name?: string | nu
 export async function findCustomers(db: any, organizationId: string, typed: unknown): Promise<CustomerMatch[]> {
   const search = customerSearch(typed)
   if (!search) return []
-  let query = db.from('contacts').select('id, first_name, last_name, phone_number').eq('organization_id', organizationId)
-  if ('digits' in search) query = query.ilike('phone_number', `%${search.digits}%`)
+  let query = db.from('contacts').select('id, first_name, last_name, phone_number, whatsapp_number').eq('organization_id', organizationId)
+  // Every contact in the workspace, by the number saved or the WhatsApp number they messaged from
+  if ('digits' in search) query = query.or(`phone_number.ilike.*${search.digits}*,whatsapp_number.ilike.*${search.digits}*`)
   else if (search.words.length > 1) query = query.ilike('first_name', `${search.words[0]}%`).ilike('last_name', `${search.words[1]}%`)
   else query = query.or(`first_name.ilike.${search.words[0]}*,last_name.ilike.${search.words[0]}*`)
   const { data: contacts, error } = await query.limit(8)
@@ -59,7 +61,11 @@ export async function findCustomers(db: any, organizationId: string, typed: unkn
     .in('contact_id', contacts.map((c: any) => c.id)).order('issued_at', { ascending: false }).limit(300)
   const visits = summarizeVisits(invoices || [])
   return contacts
-    .map((contact: any) => ({ contact_id: contact.id, name: fullName(contact) || 'Customer', phone: contact.phone_number || null, visits: visits.get(contact.id)?.visits || 0, last_visit: visits.get(contact.id)?.last_visit || null }))
-    // Regulars first, then by name
-    .sort((a: CustomerMatch, b: CustomerMatch) => b.visits - a.visits || a.name.localeCompare(b.name))
+    .map((contact: any) => {
+      const phone = contact.phone_number || String(contact.whatsapp_number || '').replace(/^whatsapp:/, '') || null
+      const exact = 'digits' in search && search.digits.length >= 10 && [contact.phone_number, contact.whatsapp_number].some((n) => n && phoneKey(n) === search.digits.slice(-10))
+      return { contact_id: contact.id, name: fullName(contact) || 'Customer', phone, visits: visits.get(contact.id)?.visits || 0, last_visit: visits.get(contact.id)?.last_visit || null, exact }
+    })
+    // The exact number first, then regulars, then by name
+    .sort((a: CustomerMatch, b: CustomerMatch) => Number(b.exact) - Number(a.exact) || b.visits - a.visits || a.name.localeCompare(b.name))
 }

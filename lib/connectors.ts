@@ -18,16 +18,16 @@ export interface ConnectorDefinition {
 export const CONNECTORS: ConnectorDefinition[] = [
   {
     key: 'salon',
-    name: 'Spa & Salon',
-    tagline: 'A simple front counter: book, bill and send GST invoices in a few taps.',
+    name: 'Front Desk',
+    tagline: 'Bookings, billing and reviews for any business that takes appointments: salons, clinics, studios, service centres.',
     points: [
       'Bookings and walk-in bills in a few taps',
-      'Today\'s board: arrived, in service, done',
+      'Starter kits for salons, clinics, gyms and repair shops',
       'GST invoices sent on WhatsApp in one tap',
       'Bookings and reviews from WhatsApp',
     ],
-    href: '/dashboard/salon',
-    menuLabel: 'Salon Counter',
+    href: '/dashboard/front-desk',
+    menuLabel: 'Front Desk',
   },
   {
     key: 'ecommerce',

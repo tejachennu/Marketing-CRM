@@ -72,6 +72,14 @@ export async function chargeAiUsage(db: any, access: AiAccess, feature: string, 
   }
 }
 
+const OPENAI = 'https://api.openai.com/v1'
+
+/** Where an OpenAI call goes: OpenAI, or (on a development server only) a local stand-in set by OPENAI_API_BASE. */
+export function openAiUrl(url: string, env: Record<string, string | undefined> = process.env): string {
+  const base = env.NODE_ENV !== 'production' ? String(env.OPENAI_API_BASE || '').trim().replace(/\/+$/, '') : ''
+  return base && url.startsWith(OPENAI) ? `${base}${url.slice(OPENAI.length)}` : url
+}
+
 /**
  * fetch() for OpenAI that charges the call to the wallet. Use it in place of fetch for
  * https://api.openai.com/... once getAiAccess has said the call is allowed.
@@ -79,7 +87,7 @@ export async function chargeAiUsage(db: any, access: AiAccess, feature: string, 
 export async function aiFetch(db: any, access: AiAccess, feature: string, url: string, init: RequestInit = {}, fetcher: typeof fetch = fetch): Promise<Response> {
   const headers = new Headers(init.headers || {})
   headers.set('Authorization', `Bearer ${access.apiKey}`)
-  const response = await fetcher(url, { ...init, headers })
+  const response = await fetcher(openAiUrl(url), { ...init, headers })
   if (access.billed && response.ok) {
     let requestModel: string | undefined
     if (typeof FormData !== 'undefined' && init.body instanceof FormData) requestModel = String(init.body.get('model') || '') || undefined

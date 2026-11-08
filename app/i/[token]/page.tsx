@@ -53,7 +53,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     <main className="min-h-screen bg-[#eef1f6] py-6 sm:py-10 px-3 print:bg-white print:p-0">
       <style>{'@page { size: A4; margin: 14mm } @media print { .no-print { display: none !important } }'}</style>
       <div className="no-print max-w-[820px] mx-auto mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[14px] text-[#4a5672]">Invoice from <strong className="text-[#0E1B3D]">{business.name || 'your salon'}</strong></p>
+        <p className="text-[14px] text-[#4a5672]">Invoice from <strong className="text-[#0E1B3D]">{business.name || 'us'}</strong></p>
         <div className="flex flex-wrap gap-2">
           {invoice.status !== 'void' && <a href={`/f/${token}`} className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border border-[#d5ddeb] bg-white text-[#0E1B3D] text-[15px] font-bold hover:bg-[#f4f6fa]">⭐ Rate your visit</a>}
           <PrintButton />

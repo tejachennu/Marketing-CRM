@@ -1,5 +1,5 @@
 /**
- * WhatsApp messages from the salon counter: the bill (with its link) and booking confirmations.
+ * WhatsApp messages from the Front Desk counter: the bill (with its link) and booking confirmations.
  * Sent through the workspace's own WhatsApp number and logged in the customer's conversation.
  * WhatsApp only delivers free-form messages within 24 hours of the customer's last message; when
  * that window is closed the counter is told so, and can share the link another way.
@@ -9,7 +9,8 @@ import { buildTextMessage } from '../commerce/commerce-messages'
 import { sendWhatsAppMessage } from '../commerce/commerce-webhook-handler'
 import { formatRupees } from './invoice'
 import { formatIstDay, formatIstTime, istDate, phoneKey } from './spoken'
-import { sendSalonTemplate, type SalonTemplateKey } from './templates'
+import { chosenTemplatePayload, parseMessageTemplates, PURPOSES, type FieldKey, type MessagePurpose, type MessageTemplateChoice } from './message-templates'
+import { sendSalonTemplate } from './templates'
 
 export type SendOutcome = { sent: boolean; error?: string; windowClosed?: boolean }
 
@@ -32,10 +33,34 @@ export function bookingMessage(appointment: any, businessName: string | null, st
   return `Hi ${firstName}, your appointment${businessName ? ` at ${businessName}` : ''} is booked for ${when}${services ? ` (${services}${staffName ? ` with ${staffName}` : ''})` : ''}. See you soon! ✨`
 }
 
+/** When the 24-hour window has closed: which message this is, and what can fill a template's blanks. */
 export interface TemplateFallback {
-  key: SalonTemplateKey
-  params: string[]
-  extra?: { urlSuffix?: string; quickReplyPayloads?: string[] }
+  purpose: MessagePurpose
+  values: Partial<Record<FieldKey, string>>
+}
+
+/** The template the business picked for this message, if any (else the built-in one is used). */
+async function chosenTemplate(db: any, organizationId: string, purpose: MessagePurpose): Promise<MessageTemplateChoice | null> {
+  try {
+    const { data } = await db.from('salon_settings').select('message_templates').eq('organization_id', organizationId).maybeSingle()
+    const parsed = parseMessageTemplates(data?.message_templates)
+    return 'value' in parsed ? parsed.value[purpose] || null : null
+  } catch {
+    return null
+  }
+}
+
+/** Send the template for this message: the business's own choice, or the built-in one. */
+export async function sendFallbackTemplate(db: any, organization: any, phone: string, template: TemplateFallback) {
+  const choice = await chosenTemplate(db, organization.id, template.purpose)
+  if (choice) {
+    const own = await sendWhatsAppMessage(organization, chosenTemplatePayload(choice, phone, template.values))
+    if (own.ok) return own
+    // Not approved yet, paused or changed on Meta: the built-in template goes instead
+    console.warn(`[Front Desk WhatsApp] The chosen ${template.purpose} template "${choice.name}" was refused, trying the built-in one:`, own.error)
+  }
+  const info = PURPOSES[template.purpose]
+  return sendSalonTemplate(organization, info.defaultKey, phone, info.defaultFields.map((field) => template.values[field] || '-'), { urlSuffix: template.values.link })
 }
 
 async function connectedOrganization(db: any, organizationId: string) {
@@ -57,7 +82,7 @@ async function logInChat(db: any, organizationId: string, phone: string, body: s
     await db.from('messages').insert({ organization_id: organizationId, conversation_id: conversationId, sender_type: 'user', body, twilio_message_sid: messageId ? `FB_${messageId}` : null, status: 'sent' })
     await db.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversationId)
   } catch (error: any) {
-    console.warn('[Salon WhatsApp] Sent, but could not log it in the chat:', error?.message)
+    console.warn('[Front Desk WhatsApp] Sent, but could not log it in the chat:', error?.message)
   }
 }
 
@@ -75,12 +100,12 @@ export async function sendToCustomer(db: any, organizationId: string, phone: str
   }
   const windowClosed = /24 hours/i.test(result.error || '')
   if (windowClosed && template) {
-    const viaTemplate = await sendSalonTemplate(organization, template.key, phone, template.params, template.extra)
+    const viaTemplate = await sendFallbackTemplate(db, organization, phone, template)
     if (viaTemplate.ok) {
       await logInChat(db, organizationId, phone, message.logBody, viaTemplate.messageId)
       return { sent: true, viaTemplate: true }
     }
-    console.warn(`[Salon WhatsApp] The ${template.key} template could not be sent:`, viaTemplate.error)
+    console.warn(`[Front Desk WhatsApp] The ${template.purpose} template could not be sent:`, viaTemplate.error)
   }
   return { sent: false, error: result.error, windowClosed }
 }
@@ -95,13 +120,31 @@ const firstNameOf = (name: unknown) => {
   return first && first !== 'Walk-in' ? first : 'there'
 }
 
-/** The bill template's values: name, business, number, total, and the invoice token for the button. */
+const servicesOf = (lines: any[]) => [...new Set((lines || []).map((line: any) => line?.name).filter(Boolean))].join(', ')
+const staffOf = (lines: any[], fallback?: string | null) => [...new Set((lines || []).map((line: any) => line?.staff_name).filter(Boolean))].join(', ') || fallback || ''
+
+/** What a bill can fill a template with: name, business, number, total, services, and the invoice token for the link button. */
 export function billTemplate(invoice: any): TemplateFallback {
-  return { key: 'bill', params: [firstNameOf(invoice.customer_name), invoice.business?.name || 'us', invoice.number, formatRupees(Number(invoice.total))], extra: { urlSuffix: invoice.public_token } }
+  return {
+    purpose: 'bill',
+    values: {
+      first_name: firstNameOf(invoice.customer_name), customer_name: invoice.customer_name || 'Customer', business: invoice.business?.name || 'us',
+      bill_number: invoice.number, amount: formatRupees(Number(invoice.total)), services: servicesOf(invoice.items) || 'your visit', staff: staffOf(invoice.items, invoice.staff_name),
+      date: formatIstDay(istDate(invoice.issued_at || Date.now())), link: invoice.public_token,
+    },
+  }
 }
 
+/** What a booking can fill a template with. */
 export function bookingTemplate(appointment: any, businessName: string | null, staffName: string | null): TemplateFallback {
   const services = (appointment.services || []).map((service: any) => service.name).join(', ')
-  const when = `${formatIstDay(istDate(appointment.starts_at))} at ${formatIstTime(appointment.starts_at)}`
-  return { key: 'booking', params: [firstNameOf(appointment.customer_name), businessName || 'us', when, `${services || 'your visit'}${staffName ? ` with ${staffName}` : ''}`] }
+  const day = formatIstDay(istDate(appointment.starts_at))
+  const time = formatIstTime(appointment.starts_at)
+  return {
+    purpose: 'booking',
+    values: {
+      first_name: firstNameOf(appointment.customer_name), customer_name: appointment.customer_name || 'Customer', business: businessName || 'us',
+      date_time: `${day} at ${time}`, date: day, time, services: services || 'your visit', staff: staffName || '', visit: `${services || 'your visit'}${staffName ? ` with ${staffName}` : ''}`,
+    },
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * What the salon sends on its own, a while after something happens:
+ * What Front Desk sends on its own, a while after something happens:
  * - feedback: a rating question some time after the bill (the time is set in Setup);
  * - reminders: a message about 2 hours before a booking.
  *
@@ -11,7 +11,7 @@
 import { feedbackLink } from './feedback'
 import { saveFeedback } from './feedback-store'
 import { withSalonSchema } from './schema'
-import { formatIstTime, phoneKey } from './spoken'
+import { formatIstDay, formatIstTime, istDate, phoneKey } from './spoken'
 import { sendToCustomer } from './whatsapp'
 
 export interface JobsResult { feedbackSent: number; feedbackSkipped: number; remindersSent: number }
@@ -81,9 +81,8 @@ export async function runSalonJobs(db: any, organizationId: string, options: { n
       let status = 'skipped'
       if (invoice.status !== 'void' && invoice.customer_phone) {
         const sent = await sendToCustomer(db, organizationId, invoice.customer_phone, { payload: feedbackMessage(invoice.customer_phone, invoice, origin), logBody: `${feedbackQuestion(invoice)}\n${feedbackLink(origin, invoice.public_token)}` }, {
-          key: 'feedback',
-          params: [firstName(invoice.customer_name) || 'there', invoice.business?.name || business, servicesOf(invoice.items) || 'visit'],
-          extra: { urlSuffix: invoice.public_token },
+          purpose: 'feedback',
+          values: { first_name: firstName(invoice.customer_name) || 'there', customer_name: invoice.customer_name || 'Customer', business: invoice.business?.name || business, services: servicesOf(invoice.items) || 'visit', staff: staffOf(invoice.items, invoice.staff_name), link: invoice.public_token },
         })
         status = sent.sent ? 'sent' : sent.windowClosed ? 'skipped' : 'failed'
       }
@@ -101,7 +100,11 @@ export async function runSalonJobs(db: any, organizationId: string, options: { n
       if (!(await claim(db, 'salon_appointments', appointment.id, 'reminder_sent_at', new Date(now).toISOString()))) continue
       const text = reminderText(appointment, business)
       const sent = await sendToCustomer(db, organizationId, appointment.customer_phone, { text, logBody: text }, {
-        key: 'reminder', params: [firstName(appointment.customer_name) || 'there', business, formatIstTime(appointment.starts_at), servicesOf(appointment.services) || 'your visit'],
+        purpose: 'reminder',
+        values: {
+          first_name: firstName(appointment.customer_name) || 'there', customer_name: appointment.customer_name || 'Customer', business, time: formatIstTime(appointment.starts_at), date: formatIstDay(istDate(appointment.starts_at)),
+          services: servicesOf(appointment.services) || 'your visit', staff: staffOf(appointment.services), visit: `${servicesOf(appointment.services) || 'your visit'}${staffOf(appointment.services) ? ` with ${staffOf(appointment.services)}` : ''}`,
+        },
       })
       if (sent.sent) result.remindersSent++
     }
