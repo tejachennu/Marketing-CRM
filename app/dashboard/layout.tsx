@@ -5,11 +5,12 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, ConciergeBell, Blocks } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, ConciergeBell, Blocks, ReceiptText, Star } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
+import { BADGES_EVENT, openFrontDeskTab, TAB_SHOWN_EVENT, tabFromSearch, type FrontDeskBadges, type FrontDeskTab } from '@/lib/front-desk-nav'
 import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modules'
 
 export default function DashboardLayout({
@@ -82,6 +83,20 @@ export default function DashboardLayout({
   const [showSideDrawer, setShowSideDrawer] = useState(false)
   const [hasActiveChat, setHasActiveChat] = useState(false)
   const [isNavigating, setIsNavigating] = useState<string | null>(null)
+  // Front Desk on phones: its tabs take over the bottom bar
+  const onFrontDesk = pathname.startsWith('/dashboard/front-desk')
+  const [frontDeskTab, setFrontDeskTab] = useState<FrontDeskTab>('counter')
+  const [frontDeskBadges, setFrontDeskBadges] = useState<FrontDeskBadges>({})
+
+  useEffect(() => {
+    if (!onFrontDesk) return
+    setFrontDeskTab(tabFromSearch(window.location.search) || 'counter')
+    const shown = (event: Event) => setFrontDeskTab((event as CustomEvent).detail)
+    const badges = (event: Event) => setFrontDeskBadges((current) => ({ ...current, ...(event as CustomEvent).detail }))
+    window.addEventListener(TAB_SHOWN_EVENT, shown)
+    window.addEventListener(BADGES_EVENT, badges)
+    return () => { window.removeEventListener(TAB_SHOWN_EVENT, shown); window.removeEventListener(BADGES_EVENT, badges) }
+  }, [onFrontDesk])
 
   useEffect(() => {
     setIsNavigating(null)
@@ -1095,9 +1110,35 @@ export default function DashboardLayout({
           )}
         </aside>
 
-        {/* MOBILE BOTTOM NAVIGATION BAR — 4 items only */}
+        {/* MOBILE BOTTOM NAVIGATION BAR — 4 items; on Front Desk, its own tabs and More */}
         {!hasActiveChat && (
           <nav aria-label="Primary" className="md:hidden fixed bottom-0 left-0 right-0 h-[68px] bg-white/95 dark:bg-slate-900/95 border-t border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md z-45 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.2)] flex items-center justify-around px-2" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          {onFrontDesk && ([
+            { tab: 'counter' as const, label: 'Counter', icon: ConciergeBell, badge: frontDeskBadges.counter || 0 },
+            { tab: 'invoices' as const, label: 'Invoices', icon: ReceiptText, badge: 0 },
+            ...(can(currentUser, 'automation.manage') ? [
+              { tab: 'reviews' as const, label: 'Reviews', icon: Star, badge: 0 },
+              { tab: 'team' as const, label: 'Team', icon: Users, badge: 0 },
+            ] : []),
+          ]).map(({ tab, label, icon: Icon, badge }) => {
+            const on = frontDeskTab === tab
+            return (
+              <button key={tab} type="button" onClick={() => openFrontDeskTab(tab)} aria-current={on ? 'page' : undefined}
+                className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1.5 group relative border-0 bg-transparent cursor-pointer">
+                <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${on ? 'bg-emerald-500/10 dark:bg-emerald-400/15 text-[#00a884] dark:text-[#00e676] scale-105' : 'text-slate-400 dark:text-slate-500'}`}>
+                  <Icon size={20} />
+                </div>
+                <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase truncate max-w-full ${on ? 'text-[#00a884] dark:text-[#00e676]' : 'text-slate-400 dark:text-slate-500'}`}>{label}</span>
+                {badge > 0 && (
+                  <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
+                    {formatCount(badge)}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+
+          {!onFrontDesk && (<>
           {/* Chats */}
           {isNavVisible('/dashboard') && (
             <Link
@@ -1172,6 +1213,8 @@ export default function DashboardLayout({
             )}
           </Link>
           )}
+
+          </>)}
 
           {/* More (opens side drawer) */}
           <button

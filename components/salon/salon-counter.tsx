@@ -5,6 +5,7 @@ import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, Chev
 import { formatRupees } from '@/lib/salon/invoice'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { useConfirm } from '@/lib/dialog-context'
+import { announceFrontDeskBadges } from '@/lib/front-desk-nav'
 import { api, Avatar, card, primaryButton, StatTile } from './ui'
 import { BillSheet, BookingSheet, ResultSheet, type BillTarget, type BookingDraft } from './counter-sheets'
 import { BookingRequests } from './booking-requests'
@@ -72,6 +73,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
     const data = await api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
     setAppointments(data.appointments || [])
     setRequests(data.requests || [])
+    // The bottom bar shows how many WhatsApp booking requests are waiting
+    announceFrontDeskBadges({ counter: (data.requests || []).length })
     setInvoices(Object.fromEntries((data.invoices || []).map((invoice: any) => [invoice.id, invoice])))
   }, [orgId, date])
 
