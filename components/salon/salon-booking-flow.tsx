@@ -77,6 +77,40 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             <p className="rounded-xl bg-[#fdf0f0] px-4 py-3 text-[14px] font-semibold text-[#b91c1c]">Add your services first (Setup → Services). The flow lists them for customers.</p>
           )}
 
+          <Field group label="Steps" hint="The order customers go through. Add your own questions; answers are saved on the booking.">
+            <StepsEditor orgId={orgId} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
+              onDraft={({ welcome, language }) => set({ ...(welcome ? { welcome } : {}), ...(language ? { language } : {}) })} />
+          </Field>
+
+          <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800">
+            <label className="flex items-center justify-between gap-4 px-4 py-3.5">
+              <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">Accept bookings on their own</span><span className="block text-[13.5px] text-[#6B7894]">On: a free time the customer picks is booked at once and confirmed on WhatsApp. Off: it waits on the Front Desk for you to accept.</span></span>
+              <Toggle checked={autoApprove} onChange={setAutoApprove} label="Accept bookings on their own" />
+            </label>
+          </div>
+
+          <div className="rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/60 p-4">
+            <p className="text-[14px] font-bold text-[#0E1B3D] dark:text-white">Share it with customers</p>
+            {link ? (
+              <>
+                <p className="text-[13px] text-[#4a5672] dark:text-slate-300 mt-0.5">This link opens WhatsApp with “{flow.triggers[0]}” typed for them. Put it on Instagram, Google or a QR code at the counter.</p>
+                <div className="mt-2 flex gap-2">
+                  <input readOnly value={link} className={`${input} flex-1 min-w-0 text-[13.5px]`} aria-label="Booking link" />
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText(link); flash('success', 'Link copied.') }} className={`${secondaryButton} shrink-0`}><Copy size={16} /> Copy</button>
+                </div>
+                <p className="text-[12.5px] text-[#6B7894] mt-1.5">Uses the phone in Business details. Make sure it is your WhatsApp Business number.</p>
+              </>
+            ) : (
+              <p className="text-[13px] text-[#4a5672] dark:text-slate-300 mt-0.5">Customers send “{flow.triggers[0]}” to your WhatsApp number. Add your WhatsApp number as the phone in Business details to get a link to share.</p>
+            )}
+          </div>
+
+          <details className="group rounded-2xl border border-[#e3e8f2] dark:border-slate-800">
+            <summary className="flex items-center justify-between gap-3 px-4 py-3.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">More settings</span><span className="block text-[13px] text-[#6B7894]">Words that start it, language, first message, how far ahead, more than one service</span></span>
+              <span className="text-[#1D5BEA] text-[13px] font-bold shrink-0 group-open:hidden">Show</span><span className="text-[#1D5BEA] text-[13px] font-bold shrink-0 hidden group-open:inline">Hide</span>
+            </summary>
+            <div className="px-4 pb-4 space-y-5">
           <Field group label="Words that start it" hint="When a customer sends a short message with one of these words, the flow starts. Long messages still go to the WhatsApp assistant.">
             <div className="flex flex-wrap gap-2">
               {flow.triggers.map((word) => (
@@ -101,11 +135,6 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             </div>
           </Field>
 
-          <Field group label="Steps" hint="The order customers go through. Add your own questions; answers are saved on the booking.">
-            <StepsEditor orgId={orgId} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
-              onDraft={({ welcome, language }) => set({ ...(welcome ? { welcome } : {}), ...(language ? { language } : {}) })} />
-          </Field>
-
           <Field label="First message" hint="{name} is the customer's first name, {business} your business name. Leave empty for the message shown.">
             <textarea className={`${input} h-24 py-2.5`} value={flow.welcome} maxLength={600} onChange={(e) => set({ welcome: e.target.value })} placeholder={WELCOME[flow.language]} />
           </Field>
@@ -116,32 +145,14 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             </div>
           </Field>
 
-          <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
+              <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800">
             <label className="flex items-center justify-between gap-4 px-4 py-3.5">
               <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">More than one service</span><span className="block text-[13.5px] text-[#6B7894]">After each service, customers can tap “Add another” (up to 5), then pick one time for all of them.</span></span>
               <Toggle checked={flow.multi_select} onChange={(multi_select) => set({ multi_select })} label="More than one service" />
             </label>
-            <label className="flex items-center justify-between gap-4 px-4 py-3.5">
-              <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">Confirm free times on their own</span><span className="block text-[13.5px] text-[#6B7894]">Off: each booking waits for you to approve it on the Front Desk. On: a free time is booked at once.</span></span>
-              <Toggle checked={autoApprove} onChange={setAutoApprove} label="Confirm free times on their own" />
-            </label>
-          </div>
-
-          <div className="rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/60 p-4">
-            <p className="text-[14px] font-bold text-[#0E1B3D] dark:text-white">Share it with customers</p>
-            {link ? (
-              <>
-                <p className="text-[13px] text-[#4a5672] dark:text-slate-300 mt-0.5">This link opens WhatsApp with “{flow.triggers[0]}” typed for them. Put it on Instagram, Google or a QR code at the counter.</p>
-                <div className="mt-2 flex gap-2">
-                  <input readOnly value={link} className={`${input} flex-1 min-w-0 text-[13.5px]`} aria-label="Booking link" />
-                  <button type="button" onClick={() => { navigator.clipboard?.writeText(link); flash('success', 'Link copied.') }} className={`${secondaryButton} shrink-0`}><Copy size={16} /> Copy</button>
-                </div>
-                <p className="text-[12.5px] text-[#6B7894] mt-1.5">Uses the phone in Business details. Make sure it is your WhatsApp Business number.</p>
-              </>
-            ) : (
-              <p className="text-[13px] text-[#4a5672] dark:text-slate-300 mt-0.5">Customers send “{flow.triggers[0]}” to your WhatsApp number. Add your WhatsApp number as the phone in Business details to get a link to share.</p>
-            )}
-          </div>
+              </div>
+            </div>
+          </details>
 
           <div className="flex justify-end"><button type="button" onClick={save} disabled={saving} className={primaryButton}>{saving && <Loader2 size={18} className="animate-spin" />} Save booking flow</button></div>
         </div>

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/front_desk_icon.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'appointment_screen.dart';
@@ -92,7 +93,11 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: _tab == 0 ? _Today(desk: desk) : _Bills(desk: desk),
+              child: app.isLoading(_tab == 0 ? AppState.dayKey(istToday()) : 'invoices') || app.isLoading('setup')
+                  ? const SkeletonCards()
+                  : _tab == 0
+                  ? _Today(desk: desk)
+                  : _Bills(desk: desk),
             ),
           ),
         ],
@@ -156,7 +161,8 @@ class _Today extends StatelessWidget {
             ),
           ],
         ),
-        if (requests.isNotEmpty) ...[SectionLabel('Booking requests · ${requests.length}'), for (final r in requests) _RequestCard(request: r)],
+        if (requests.isNotEmpty || AppScope.of(context).can('manage')) _WhatsAppBookings(desk: desk, requests: requests),
+        for (final r in requests) _RequestCard(request: r),
         SectionLabel('Today · ${appointments.length}'),
         if (appointments.isEmpty)
           const Panel(
@@ -416,6 +422,85 @@ class _BillRow extends StatelessWidget {
         ),
       ),
       trailing: Text('${local ? '≈ ' : ''}${formatRupees(i['total'])}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+    );
+  }
+}
+
+/// Bookings from WhatsApp: accept them on their own (switch), or accept every waiting one at once.
+class _WhatsAppBookings extends StatelessWidget {
+  const _WhatsAppBookings({required this.desk, required this.requests});
+  final FrontDesk desk;
+  final List<Map<String, dynamic>> requests;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final auto = desk.settings['auto_approve_bookings'] == true;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 10),
+      child: Panel(
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (app.can('manage'))
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: auto,
+                activeThumbColor: Colors.white,
+                activeTrackColor: Brand.blue,
+                title: const Text('Accept WhatsApp bookings on their own', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                subtitle: Text(auto ? 'On: a free time a customer picks is booked at once, and they get the confirmation.' : 'Off: each booking waits here for you to accept.'),
+                onChanged: (on) {
+                  app.enqueue(
+                    kind: 'settings',
+                    label: on ? 'Accept bookings on their own' : 'Accept bookings by hand',
+                    method: 'PATCH',
+                    path: '/api/salon/settings',
+                    body: {'organizationId': app.orgId, 'auto_approve_bookings': on},
+                  );
+                  toast(context, on ? 'New WhatsApp bookings are accepted on their own.' : 'New WhatsApp bookings wait for you to accept.');
+                },
+              ),
+            if (requests.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${requests.length} booking request${requests.length == 1 ? '' : 's'} waiting',
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.red),
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('Accept all ${requests.length}?'),
+                            content: const Text('Each customer gets a WhatsApp confirmation.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Accept all')),
+                            ],
+                          ),
+                        );
+                        if (ok != true) return;
+                        for (final r in requests) {
+                          await app.counterAction(kind: 'appointment', label: 'Approve ${r['customer_name']}', action: {'type': 'approve_request', 'appointment_id': r['id']});
+                        }
+                        if (context.mounted) toast(context, app.online ? 'All accepted. Customers get a WhatsApp.' : 'All accepted. It syncs when you are online.');
+                      },
+                      icon: const Icon(Icons.done_all, size: 18),
+                      label: const Text('Accept all'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

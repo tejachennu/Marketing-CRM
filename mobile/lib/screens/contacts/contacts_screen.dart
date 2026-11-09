@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 
 List<Map<String, dynamic>> contactsOf(AppState app) {
@@ -92,7 +94,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: shown.isEmpty
+              child: app.isLoading('contacts')
+                  ? const SkeletonList()
+                  : shown.isEmpty
                   ? ListView(
                       children: const [EmptyState(icon: Icons.people_outline, title: 'No contacts found', text: 'Try another name or number.')],
                     )
@@ -139,6 +143,11 @@ class _NewContactScreenState extends State<NewContactScreen> {
   final _email = TextEditingController();
   String _phone = '';
   final Set<String> _tags = {};
+  bool _tried = false;
+
+  String? get _firstError => _tried ? textError(_first.text, what: 'a first name', max: 40) : null;
+  String? get _phoneErr => _tried ? phoneError(_phone, required: true) : null;
+  String? get _emailErr => _tried ? emailError(_email.text) : null;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +174,8 @@ class _NewContactScreenState extends State<NewContactScreen> {
                       child: TextField(
                         controller: _first,
                         textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(labelText: 'First name'),
+                        onChanged: (_) => _tried ? setState(() {}) : null,
+                        decoration: InputDecoration(labelText: 'First name', errorText: _firstError),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -179,12 +189,13 @@ class _NewContactScreenState extends State<NewContactScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                PhoneField(value: _phone, onChanged: (v) => _phone = v, label: 'WhatsApp number'),
+                PhoneField(value: _phone, onChanged: (v) => setState(() => _phone = v), label: 'WhatsApp number', errorText: _phoneErr),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email (optional)'),
+                  onChanged: (_) => _tried ? setState(() {}) : null,
+                  decoration: InputDecoration(labelText: 'Email (optional)', errorText: _emailErr),
                 ),
                 const SectionLabel('Tags'),
                 Wrap(
@@ -209,7 +220,12 @@ class _NewContactScreenState extends State<NewContactScreen> {
           ),
           child: FilledButton.icon(
             onPressed: () async {
-              if (_first.text.trim().isEmpty || _phone.isEmpty) return toast(context, 'Give a first name and a WhatsApp number.');
+              setState(() => _tried = true);
+              if (_firstError != null || _phoneErr != null || _emailErr != null) return;
+              // The same number twice makes two chats for one customer
+              final digits = _phone.replaceAll(RegExp(r'\D'), '');
+              final already = contactsOf(app).cast<Map<String, dynamic>?>().firstWhere((c) => '${c!['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '') == digits, orElse: () => null);
+              if (already != null) return toast(context, '${contactName(already)} already has this number.');
               final name = '${_first.text.trim()} ${_last.text.trim()}'.trim();
               await app.enqueue(
                 kind: 'contact',

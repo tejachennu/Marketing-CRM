@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 import 'logic.dart';
 import 'pickers.dart';
@@ -23,9 +24,12 @@ class _NewBillScreenState extends State<NewBillScreen> {
   String? _payment = 'upi';
   bool _whatsapp = true;
   bool _saving = false;
+  bool _tried = false;
 
   Future<void> _save(FrontDesk desk) async {
     final app = AppScope.read(context);
+    setState(() => _tried = true);
+    if (phoneError('${_customer['phone'] ?? ''}') != null) return toast(context, 'Check the mobile number.');
     if (_services.isEmpty) return toast(context, 'Choose at least one service.');
     setState(() => _saving = true);
     final name = '${_customer['name'] ?? ''}'.trim();
@@ -80,7 +84,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
                 FormSection(
                   title: 'Customer',
                   hint: 'Leave empty for a walk-in. Numbers from any country work.',
-                  child: CustomerPicker(optional: true, onChanged: (c) => _customer = c),
+                  child: CustomerPicker(optional: true, phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null, onChanged: (c) => setState(() => _customer = c)),
                 ),
                 FormSection(
                   title: 'Services',

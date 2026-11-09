@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../contacts/contacts_screen.dart';
@@ -53,23 +54,25 @@ class CampaignsScreen extends StatelessWidget {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                children: [
-                  Panel(
-                    child: Row(
+              child: app.isLoading('campaigns')
+                  ? const SkeletonCards(cards: 3)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                       children: [
-                        _Stat(label: 'Sent', value: '${sent.toInt()}'),
-                        _Stat(label: 'Delivered', value: sent == 0 ? '—' : '${(delivered * 100 / sent).round()}%'),
-                        _Stat(label: 'Read', value: sent == 0 ? '—' : '${(read * 100 / sent).round()}%'),
+                        Panel(
+                          child: Row(
+                            children: [
+                              _Stat(label: 'Sent', value: '${sent.toInt()}'),
+                              _Stat(label: 'Delivered', value: sent == 0 ? '—' : '${(delivered * 100 / sent).round()}%'),
+                              _Stat(label: 'Read', value: sent == 0 ? '—' : '${(read * 100 / sent).round()}%'),
+                            ],
+                          ),
+                        ),
+                        const SectionLabel('All campaigns'),
+                        if (campaigns.isEmpty) const EmptyState(icon: Icons.campaign_outlined, title: 'No campaigns yet', text: 'Send an approved template to many customers at once.'),
+                        for (final c in campaigns) ...[_CampaignCard(campaign: c), const SizedBox(height: 10)],
                       ],
                     ),
-                  ),
-                  const SectionLabel('All campaigns'),
-                  if (campaigns.isEmpty) const EmptyState(icon: Icons.campaign_outlined, title: 'No campaigns yet', text: 'Send an approved template to many customers at once.'),
-                  for (final c in campaigns) ...[_CampaignCard(campaign: c), const SizedBox(height: 10)],
-                ],
-              ),
             ),
           ),
         ],

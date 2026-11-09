@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../templates/template_widgets.dart';
@@ -408,18 +409,20 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           Expanded(
-            child: ListView.builder(
-              reverse: true,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final m = messages[messages.length - 1 - index];
-                return GestureDetector(
-                  onLongPress: () => _messageActions(m),
-                  child: _Bubble(message: m),
-                );
-              },
-            ),
+            child: app.isLoading(_key) && messages.isEmpty
+                ? const SkeletonList(rows: 6, avatar: false)
+                : ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final m = messages[messages.length - 1 - index];
+                      return GestureDetector(
+                        onLongPress: () => _messageActions(m),
+                        child: _Bubble(message: m),
+                      );
+                    },
+                  ),
           ),
           if (_showSuggestions)
             _SuggestionsPanel(

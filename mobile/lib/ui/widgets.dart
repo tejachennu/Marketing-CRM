@@ -242,10 +242,13 @@ String joinPhone(Country country, String local) {
 }
 
 class PhoneField extends StatefulWidget {
-  const PhoneField({super.key, required this.value, required this.onChanged, this.label = 'Mobile number'});
+  const PhoneField({super.key, required this.value, required this.onChanged, this.label = 'Mobile number', this.errorText});
   final String value;
   final ValueChanged<String> onChanged;
   final String label;
+
+  /// What is wrong with the number (shown under it), or null.
+  final String? errorText;
   @override
   State<PhoneField> createState() => _PhoneFieldState();
 }
@@ -334,7 +337,7 @@ class _PhoneFieldState extends State<PhoneField> {
           child: TextField(
             controller: _number,
             keyboardType: TextInputType.phone,
-            decoration: InputDecoration(labelText: widget.label, hintText: _country.hint),
+            decoration: InputDecoration(labelText: widget.label, hintText: _country.hint, errorText: widget.errorText, errorMaxLines: 2),
             onChanged: (text) {
               if (text.trim().startsWith('+')) {
                 final (country, local) = splitPhone(text);

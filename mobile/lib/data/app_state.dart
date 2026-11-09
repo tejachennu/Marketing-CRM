@@ -168,6 +168,7 @@ class AppState extends ChangeNotifier {
   /// Fetch a list from the server into the phone. Offline: keep the copy already there.
   Future<void> load(String key, String path, {Map<String, String>? query, bool force = false, bool rethrowErrors = false}) async {
     if (!force && !online && store.read(key) != null) return;
+    _loading.add(key);
     try {
       final data = await backend.get(path, {if (orgId.isNotEmpty) 'organizationId': orgId, ...?query});
       await store.write(key, data);
@@ -180,8 +181,15 @@ class AppState extends ChangeNotifier {
       lastError = e.message;
       notifyListeners();
       if (rethrowErrors) rethrow;
+    } finally {
+      if (_loading.remove(key)) notifyListeners();
     }
   }
+
+  final Set<String> _loading = {};
+
+  /// Nothing on the phone yet and it is being fetched: show the loading shapes.
+  bool isLoading(String key) => store.read(key) == null && (_loading.contains(key) || (refreshing && online));
 
   static String dayKey(String date) => 'day:$date';
 

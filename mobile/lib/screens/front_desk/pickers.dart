@@ -9,9 +9,13 @@ import 'logic.dart';
 /// Who the customer is: mobile with country code and a name, with matches from the contacts
 /// saved on the phone (so it works offline too).
 class CustomerPicker extends StatefulWidget {
-  const CustomerPicker({super.key, required this.onChanged, this.optional = false});
+  const CustomerPicker({super.key, required this.onChanged, this.optional = false, this.phoneError, this.nameError});
   final void Function(Map<String, dynamic> customer) onChanged;
   final bool optional;
+
+  /// Problems to show under the fields (after Save was tapped), or null.
+  final String? phoneError;
+  final String? nameError;
   @override
   State<CustomerPicker> createState() => _CustomerPickerState();
 }
@@ -51,6 +55,7 @@ class _CustomerPickerState extends State<CustomerPicker> {
           key: ValueKey(_phoneVersion),
           value: _phone,
           label: widget.optional ? 'Mobile (optional)' : 'Mobile number',
+          errorText: widget.phoneError,
           onChanged: (v) => setState(() {
             _phone = v;
             _contactId = null;
@@ -61,7 +66,7 @@ class _CustomerPickerState extends State<CustomerPicker> {
         TextField(
           controller: _name,
           textCapitalization: TextCapitalization.words,
-          decoration: InputDecoration(labelText: widget.optional ? 'Name (optional)' : 'Name', hintText: widget.optional ? 'Walk-in customer' : 'Priya'),
+          decoration: InputDecoration(labelText: widget.optional ? 'Name (optional)' : 'Name', hintText: widget.optional ? 'Walk-in customer' : 'Priya', errorText: widget.nameError),
           onChanged: (_) => setState(() {
             _contactId = null;
             _emit();

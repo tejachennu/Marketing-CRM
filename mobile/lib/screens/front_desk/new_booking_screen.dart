@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 import 'logic.dart';
 import 'pickers.dart';
@@ -21,6 +22,7 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
   String? _staff;
   int _dayOffset = 0;
   String? _time;
+  bool _tried = false;
   final _notes = TextEditingController();
 
   DateTime get _day => istNow().add(Duration(days: _dayOffset));
@@ -45,7 +47,9 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
   Future<void> _save(FrontDesk desk) async {
     final app = AppScope.read(context);
     final name = '${_customer['name'] ?? ''}'.trim();
+    setState(() => _tried = true);
     if (name.isEmpty && '${_customer['phone'] ?? ''}'.isEmpty) return toast(context, 'Who is the booking for? Give a name or a mobile number.');
+    if (phoneError('${_customer['phone'] ?? ''}') != null) return toast(context, 'Check the mobile number.');
     if (_services.isEmpty) return toast(context, 'Choose at least one service.');
     if (_time == null) return toast(context, 'Choose a time.');
     final parts = _time!.split(':').map(int.parse).toList();
@@ -99,7 +103,11 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
               children: [
                 FormSection(
                   title: 'Customer',
-                  child: CustomerPicker(onChanged: (c) => _customer = c),
+                  child: CustomerPicker(
+                    phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null,
+                    nameError: _tried && '${_customer['name'] ?? ''}'.trim().isEmpty && '${_customer['phone'] ?? ''}'.isEmpty ? 'Give a name or a mobile number.' : null,
+                    onChanged: (c) => setState(() => _customer = c),
+                  ),
                 ),
                 FormSection(
                   title: 'Services',

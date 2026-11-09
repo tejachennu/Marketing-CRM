@@ -10,6 +10,7 @@ import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
 import 'package:wama_mobile/screens/templates/template_widgets.dart';
+import 'package:wama_mobile/ui/validate.dart';
 import 'package:wama_mobile/ui/widgets.dart';
 
 Future<(AppState, DemoBackend)> makeApp() async {
@@ -66,7 +67,12 @@ void main() {
       label: 'Bill for Ravi',
       localId: AppState.newLocalId(),
       resultIdPath: 'invoice.id',
-      action: {'type': 'walk_in_bill', 'customer': {'name': 'Ravi'}, 'service_ids': ['s-menscut'], 'payment_method': 'cash'},
+      action: {
+        'type': 'walk_in_bill',
+        'customer': {'name': 'Ravi'},
+        'service_ids': ['s-menscut'],
+        'payment_method': 'cash',
+      },
       preview: {'customer_name': 'Ravi', 'total': 300, 'status': 'paid', 'payment_method': 'cash', 'issued_at': DateTime.now().toUtc().toIso8601String()},
     );
     await app.flush();
@@ -90,7 +96,18 @@ void main() {
     backend.offline = true;
     final localId = AppState.newLocalId();
     final start = fromIst(istNow().add(const Duration(days: 1)), 15, 0);
-    await app.counterAction(kind: 'booking', label: 'Book Asha', localId: localId, resultIdPath: 'appointment.id', action: {'type': 'create_appointment', 'customer': {'name': 'Asha'}, 'service_ids': ['s-facial'], 'starts_at': start.toIso8601String()});
+    await app.counterAction(
+      kind: 'booking',
+      label: 'Book Asha',
+      localId: localId,
+      resultIdPath: 'appointment.id',
+      action: {
+        'type': 'create_appointment',
+        'customer': {'name': 'Asha'},
+        'service_ids': ['s-facial'],
+        'starts_at': start.toIso8601String(),
+      },
+    );
     await app.counterAction(kind: 'appointment', label: 'Asha arrived', action: {'type': 'set_status', 'appointment_id': localId, 'status': 'arrived'});
     await app.flush();
     expect(app.waitingCount, 2);
@@ -167,14 +184,44 @@ void main() {
   test('Booking flow settings saved offline show on the phone straight away', () async {
     final (app, backend) = await makeApp();
     backend.offline = true;
-    await app.enqueue(kind: 'settings', label: 'Booking flow on', method: 'PATCH', path: '/api/salon/settings', body: {'organizationId': app.orgId, 'booking_flow': {'enabled': true, 'triggers': ['book']}});
+    await app.enqueue(
+      kind: 'settings',
+      label: 'Booking flow on',
+      method: 'PATCH',
+      path: '/api/salon/settings',
+      body: {
+        'organizationId': app.orgId,
+        'booking_flow': {
+          'enabled': true,
+          'triggers': ['book'],
+        },
+      },
+    );
     expect((FrontDesk(app).settings['booking_flow'] as Map)['enabled'], isTrue);
   });
 
   test('Booking flow steps: defaults, and unfinished steps are caught before saving', () async {
     expect(defaultSteps(true).map((s) => s['type']), ['services', 'staff', 'datetime']);
-    expect(unfinishedStep([{'type': 'services'}, {'type': 'choice', 'text': 'First visit?', 'options': ['Yes']}, {'type': 'datetime'}]), 'Step 2 needs at least two answers to tap.');
-    expect(unfinishedStep([{'type': 'text', 'text': ' '}, {'type': 'services'}, {'type': 'datetime'}]), 'Write step 1, or remove it.');
+    expect(
+      unfinishedStep([
+        {'type': 'services'},
+        {
+          'type': 'choice',
+          'text': 'First visit?',
+          'options': ['Yes'],
+        },
+        {'type': 'datetime'},
+      ]),
+      'Step 2 needs at least two answers to tap.',
+    );
+    expect(
+      unfinishedStep([
+        {'type': 'text', 'text': ' '},
+        {'type': 'services'},
+        {'type': 'datetime'},
+      ]),
+      'Write step 1, or remove it.',
+    );
     expect(unfinishedStep(defaultSteps(false)), isNull);
     final (app, _) = await makeApp();
     final draft = await app.ask('/api/salon/booking-flow/draft', {'description': 'First visit question, services, allergies, who, day and time'});
@@ -212,5 +259,27 @@ void main() {
     expect(notices.where((n) => n.chatId != null), isEmpty);
     expect((app.cached('conversations')!['conversations'] as List).first['unread_count'], 0);
     await sub.cancel();
+  });
+
+  test('Form checks say what is wrong in plain words', () {
+    expect(phoneError('+919876543210'), isNull);
+    expect(phoneError('+91987654321'), 'An Indian mobile number has 10 digits (you typed 9).');
+    expect(phoneError('+915876543210'), 'An Indian mobile number starts with 6, 7, 8 or 9.');
+    expect(phoneError('+971501234567'), isNull);
+    expect(phoneError('+97150'), startsWith('That number looks too short'));
+    expect(phoneError('', required: true), 'Enter the mobile number.');
+    expect(phoneError(''), isNull);
+    expect(emailError('priya@gmail.com'), isNull);
+    expect(emailError('priya@gmail'), startsWith('That email does not look right'));
+    expect(emailError('', required: true), 'Enter your email.');
+    expect(textError(' ', what: 'a first name'), 'Enter a first name.');
+    expect(textError('ab', what: 'the answer', min: 10), 'The answer is too short (at least 10 letters).');
+    expect(passwordError('12345'), 'Use at least 6 letters or numbers.');
+  });
+
+  test('Loading shapes show only while nothing is on the phone yet', () async {
+    final (app, _) = await makeApp();
+    expect(app.isLoading('contacts'), isFalse);
+    expect(app.isLoading('never-loaded'), isFalse);
   });
 }

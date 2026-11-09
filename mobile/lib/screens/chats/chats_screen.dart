@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'chat_screen.dart';
@@ -53,7 +54,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: shown.isEmpty
+              child: app.isLoading('conversations')
+                  ? const SkeletonList()
+                  : shown.isEmpty
                   ? ListView(
                       children: const [EmptyState(icon: Icons.chat_bubble_outline, title: 'No chats', text: 'Customer messages on WhatsApp show up here.')],
                     )

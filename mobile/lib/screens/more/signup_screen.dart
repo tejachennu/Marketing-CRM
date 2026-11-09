@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 
 /// Sign up: name, business, email and password, then the 6-digit code we email. The account is
 /// made only once the code is right (it proves the email is theirs). Needs the internet.
@@ -73,7 +74,19 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  Future<void> _sendCode() => _run(() async {
+  bool _tried = false;
+  String? get _nameErr => _tried ? textError(_name.text, what: 'your name', min: 2, max: 80) : null;
+  String? get _businessErr => _tried ? textError(_business.text, what: 'your business name', min: 2, max: 80) : null;
+  String? get _emailErr => _tried ? emailError(_email.text, required: true) : null;
+  String? get _passwordErr => _tried ? passwordError(_password.text) : null;
+
+  Future<void> _sendCode() async {
+    setState(() => _tried = true);
+    if (!_codeSent && (_nameErr ?? _businessErr ?? _emailErr ?? _passwordErr) != null) return;
+    return _sendCodeNow();
+  }
+
+  Future<void> _sendCodeNow() => _run(() async {
     final wait = await AppScope.read(context).sendSignupCode(_form);
     setState(() {
       _codeSent = true;
@@ -102,25 +115,30 @@ class _SignupScreenState extends State<SignupScreen> {
               TextField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Your name', prefixIcon: Icon(Icons.person_outline)),
+                onChanged: (_) => _tried ? setState(() {}) : null,
+                decoration: InputDecoration(labelText: 'Your name', prefixIcon: const Icon(Icons.person_outline), errorText: _nameErr),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _business,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Business name', prefixIcon: Icon(Icons.storefront_outlined)),
+                onChanged: (_) => _tried ? setState(() {}) : null,
+                decoration: InputDecoration(labelText: 'Business name', prefixIcon: const Icon(Icons.storefront_outlined), errorText: _businessErr),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline)),
+                onChanged: (_) => _tried ? setState(() {}) : null,
+                decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.mail_outline), errorText: _emailErr),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _password,
                 obscureText: _hide,
+                onChanged: (_) => _tried ? setState(() {}) : null,
                 decoration: InputDecoration(
+                  errorText: _passwordErr,
                   labelText: 'Password (6 or more letters)',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(onPressed: () => setState(() => _hide = !_hide), icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined)),

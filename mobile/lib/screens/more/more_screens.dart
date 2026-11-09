@@ -5,6 +5,7 @@ import '../../data/format.dart';
 import '../../data/local_store.dart';
 import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 import '../ai/assistant_screen.dart';
 import '../ai/knowledge_screen.dart';
@@ -330,7 +331,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _hide = true;
   String? _error;
 
+  bool _tried = false;
+  String? get _emailErr => _tried ? emailError(_email.text, required: true) : null;
+  String? get _passwordErr => _tried && _password.text.isEmpty ? 'Enter your password.' : null;
+
   Future<void> _go() async {
+    setState(() => _tried = true);
+    if (_emailErr != null || _passwordErr != null) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -379,14 +386,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline)),
+                    onChanged: (_) => _tried ? setState(() {}) : null,
+                    decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.mail_outline), errorText: _emailErr),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _password,
+                    onChanged: (_) => _tried ? setState(() {}) : null,
                     obscureText: _hide,
                     autofillHints: const [AutofillHints.password],
                     decoration: InputDecoration(
+                      errorText: _passwordErr,
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(onPressed: () => setState(() => _hide = !_hide), icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined)),

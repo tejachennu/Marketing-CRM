@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'template_widgets.dart';
@@ -48,48 +49,50 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-                children: [
-                  if (shown.isEmpty) const EmptyState(icon: Icons.description_outlined, title: 'No templates here', text: 'Create templates on the web; they appear here once Meta has them.'),
-                  for (final t in shown) ...[
-                    Panel(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TemplateScreen(template: t))),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text('${t['name']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
-                              ),
-                              Pill(statusWords[t['status']] ?? '${t['status']}', tone: statusTone('${t['status']}')),
-                            ],
+              child: app.isLoading('templates')
+                  ? const SkeletonCards(tiles: false)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                      children: [
+                        if (shown.isEmpty) const EmptyState(icon: Icons.description_outlined, title: 'No templates here', text: 'Create templates on the web; they appear here once Meta has them.'),
+                        for (final t in shown) ...[
+                          Panel(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TemplateScreen(template: t))),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text('${t['name']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
+                                    ),
+                                    Pill(statusWords[t['status']] ?? '${t['status']}', tone: statusTone('${t['status']}')),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  TemplateParts(t).body,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.35),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(spacing: 6, children: [Pill(categoryWords[t['category']] ?? '${t['category']}'), Pill('${t['language']}'.toUpperCase())]),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            TemplateParts(t).body,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.35),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(spacing: 6, children: [Pill(categoryWords[t['category']] ?? '${t['category']}'), Pill('${t['language']}'.toUpperCase())]),
+                          const SizedBox(height: 10),
                         ],
-                      ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Text(
+                            'To create or change a template, use Templates on the web. Meta checks each one before it can be sent.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Brand.muted, fontSize: 12.5),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Text(
-                      'To create or change a template, use Templates on the web. Meta checks each one before it can be sent.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Brand.muted, fontSize: 12.5),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

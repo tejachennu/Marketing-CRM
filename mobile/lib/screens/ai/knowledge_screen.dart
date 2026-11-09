@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
+import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 
 /// The answers the AI chatbot and AI suggestions use: question-style titles with the answer.
@@ -71,51 +73,53 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
-                    child: Text(
-                      'The AI chatbot replies to customers from these answers, and AI suggestions in chats use them too. Write them the way you would answer a customer.',
-                      style: TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.4),
-                    ),
-                  ),
-                  if (shown.isEmpty)
-                    EmptyState(
-                      icon: Icons.menu_book_outlined,
-                      title: q.isEmpty ? 'No answers yet' : 'Nothing found',
-                      text: q.isEmpty ? 'Add your timings, prices, address and common questions.' : 'Try other words.',
-                    ),
-                  for (final a in shown) ...[
-                    Panel(
-                      onTap: canEdit && a['_waiting'] != true ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ArticleScreen(article: a))) : null,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text('${a['title']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
-                              ),
-                              if (a['_waiting'] == true) WaitingPill(failed: a['_failed'] == true),
-                            ],
+              child: app.isLoading('knowledge')
+                  ? const SkeletonCards(tiles: false)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
+                          child: Text(
+                            'The AI chatbot replies to customers from these answers, and AI suggestions in chats use them too. Write them the way you would answer a customer.',
+                            style: TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.4),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '${a['content']}',
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Brand.textSoft, height: 1.35),
+                        ),
+                        if (shown.isEmpty)
+                          EmptyState(
+                            icon: Icons.menu_book_outlined,
+                            title: q.isEmpty ? 'No answers yet' : 'Nothing found',
+                            text: q.isEmpty ? 'Add your timings, prices, address and common questions.' : 'Try other words.',
                           ),
-                          if (a['created_at'] != null) ...[const SizedBox(height: 6), Text('Added ${formatWhen(a['created_at'])}', style: const TextStyle(fontSize: 12, color: Brand.faint))],
+                        for (final a in shown) ...[
+                          Panel(
+                            onTap: canEdit && a['_waiting'] != true ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ArticleScreen(article: a))) : null,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text('${a['title']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
+                                    ),
+                                    if (a['_waiting'] == true) WaitingPill(failed: a['_failed'] == true),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${a['content']}',
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Brand.textSoft, height: 1.35),
+                                ),
+                                if (a['created_at'] != null) ...[const SizedBox(height: 6), Text('Added ${formatWhen(a['created_at'])}', style: const TextStyle(fontSize: 12, color: Brand.faint))],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
                         ],
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-              ),
             ),
           ),
         ],
@@ -134,6 +138,9 @@ class ArticleScreen extends StatefulWidget {
 class _ArticleScreenState extends State<ArticleScreen> {
   late final _title = TextEditingController(text: widget.article?['title'] ?? '');
   late final _content = TextEditingController(text: widget.article?['content'] ?? '');
+  bool _tried = false;
+  String? get _titleErr => _tried ? textError(_title.text, what: 'the question or topic', min: 3, max: 120) : null;
+  String? get _contentErr => _tried ? textError(_content.text, what: 'the answer', min: 10, max: 3000) : null;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +187,8 @@ class _ArticleScreenState extends State<ArticleScreen> {
                 TextField(
                   controller: _title,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Question or topic', hintText: 'Do you have parking?'),
+                  onChanged: (_) => _tried ? setState(() {}) : null,
+                  decoration: InputDecoration(labelText: 'Question or topic', hintText: 'Do you have parking?', errorText: _titleErr),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -188,7 +196,8 @@ class _ArticleScreenState extends State<ArticleScreen> {
                   minLines: 6,
                   maxLines: 14,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Answer', hintText: 'Yes, free two-wheeler parking in front…', alignLabelWithHint: true),
+                  onChanged: (_) => _tried ? setState(() {}) : null,
+                  decoration: InputDecoration(labelText: 'Answer', hintText: 'Yes, free two-wheeler parking in front…', alignLabelWithHint: true, errorText: _contentErr),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -211,7 +220,8 @@ class _ArticleScreenState extends State<ArticleScreen> {
           child: FilledButton.icon(
             onPressed: () async {
               final title = _title.text.trim(), content = _content.text.trim();
-              if (title.isEmpty || content.isEmpty) return toast(context, 'Write the question and the answer.');
+              setState(() => _tried = true);
+              if (_titleErr != null || _contentErr != null) return;
               if (editing) {
                 await app.enqueue(kind: 'knowledge', label: 'Change answer: $title', method: 'PATCH', path: '/api/knowledge', body: {'id': widget.article!['id'], 'title': title, 'content': content});
               } else {
