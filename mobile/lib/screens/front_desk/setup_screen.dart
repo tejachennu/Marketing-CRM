@@ -186,10 +186,10 @@ class ServicesSetup extends StatelessWidget {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen())),
             icon: const Icon(Icons.inventory_2_outlined),
           ),
-          IconButton(
-            tooltip: 'Categories',
+          TextButton.icon(
             onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, showDragHandle: true, builder: (_) => const _CategoriesSheet()),
-            icon: const Icon(Icons.label_outline),
+            icon: const Icon(Icons.label_outline, size: 18),
+            label: const Text('Categories'),
           ),
         ],
       ),

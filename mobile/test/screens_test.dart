@@ -28,7 +28,7 @@ void main() {
       ('setup_services', ['Categories']),
       ('setup_services', ['Add service']),
       ('setup_catalog', ['Keratin hair serum', 'Gift card']),
-      ('setup_catalog', ['Tick all shown', 'Add 6 to services']),
+      ('setup_catalog', ['Tick all shown']),
       ('setup_history', ['Services']),
       ('setup_team', ['Anitha']),
       ('setup_team', ['Add person']),
