@@ -122,10 +122,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   (`blue` = action green #008069, `green` = unread badges #25D366, `bubble` = picked / own message
   #D9FDD3, `navy` = dark text #111B21, WhatsApp greys). Front Desk home redesigned like WhatsApp's
   home: green "Front Desk" title, days as status-style bubbles (`_DayStrip`), one numbers strip, visits
-  grouped In now / Coming up / Done as chat-like rows with the next step. Front Desk icon = reception
-  bell (`Icons.room_service`, filled when picked). New launcher icon (white chat bubble with a bell on
-  green; adaptive icon in `mipmap-anydpi-v26`, made by a small script, also `assets/app_icon.png` on
-  sign-in and the web favicon).
+  grouped In now / Coming up / Done as chat-like rows with the next step. Logo (owner's pick, "option 5"):
+  a shop front with a striped awning and a chat bubble in the window, white on WhatsApp dark green
+  #008069; no currency sign (the product is for any country). Used as the launcher icon (adaptive icon in
+  `mipmap-anydpi-v26`, background colour in `values/colors.xml`), `assets/app_icon.png` on sign-in and
+  the web favicon. Front Desk tab icon = `Icons.storefront` (outline, filled when picked).
 - **App: WhatsApp-like look** (owner's choice): white lists with round avatars
   (`Avatar` picks one of three quiet tones by name), pill search (`SearchField`), soft filter chips
   (`FilterChips`; picked = light blue with a blue edge, theme `chipTheme` / `segmentedButtonTheme`),
