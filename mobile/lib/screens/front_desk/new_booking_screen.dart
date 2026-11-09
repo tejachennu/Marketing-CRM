@@ -90,40 +90,77 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
     final times = _times;
     return Scaffold(
       appBar: AppBar(title: const Text('Book a visit')),
-      body: Column(children: [
-        const SyncBanner(),
-        Expanded(
-          child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
-            FormSection(title: 'Customer', child: CustomerPicker(onChanged: (c) => _customer = c)),
-            FormSection(title: 'Services', child: ServicePicker(desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v))),
-            FormSection(title: 'With', child: StaffPicker(desk: desk, value: _staff, onChanged: (v) => setState(() => _staff = v))),
-            FormSection(
-              title: 'Day',
-              child: SizedBox(
-                height: 64,
-                child: ListView(scrollDirection: Axis.horizontal, children: [
-                  for (var i = 0; i < 14; i++) _DayChip(day: istNow().add(Duration(days: i)), selected: _dayOffset == i, today: i == 0, onTap: () => setState(() {
-                        _dayOffset = i;
-                        _time = null;
-                      })),
-                ]),
-              ),
+      body: Column(
+        children: [
+          const SyncBanner(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              children: [
+                FormSection(
+                  title: 'Customer',
+                  child: CustomerPicker(onChanged: (c) => _customer = c),
+                ),
+                FormSection(
+                  title: 'Services',
+                  child: ServicePicker(desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v)),
+                ),
+                FormSection(
+                  title: 'With',
+                  child: StaffPicker(desk: desk, value: _staff, onChanged: (v) => setState(() => _staff = v)),
+                ),
+                FormSection(
+                  title: 'Day',
+                  child: SizedBox(
+                    height: 64,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (var i = 0; i < 14; i++)
+                          _DayChip(
+                            day: istNow().add(Duration(days: i)),
+                            selected: _dayOffset == i,
+                            today: i == 0,
+                            onTap: () => setState(() {
+                              _dayOffset = i;
+                              _time = null;
+                            }),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                FormSection(
+                  title: 'Time',
+                  child: times.isEmpty
+                      ? const Text('No times left today. Pick another day.', style: TextStyle(color: Brand.muted))
+                      : Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [for (final t in times) ChoiceChip(label: Text(_label(t)), selected: _time == t, onSelected: (_) => setState(() => _time = t))],
+                        ),
+                ),
+                FormSection(
+                  title: 'Note (optional)',
+                  child: TextField(
+                    controller: _notes,
+                    maxLines: 2,
+                    decoration: const InputDecoration(hintText: 'Prefers Anitha, allergic to…'),
+                  ),
+                ),
+              ],
             ),
-            FormSection(
-              title: 'Time',
-              child: times.isEmpty
-                  ? const Text('No times left today. Pick another day.', style: TextStyle(color: Brand.muted))
-                  : Wrap(spacing: 8, runSpacing: 8, children: [for (final t in times) ChoiceChip(label: Text(_label(t)), selected: _time == t, onSelected: (_) => setState(() => _time = t))]),
-            ),
-            FormSection(title: 'Note (optional)', child: TextField(controller: _notes, maxLines: 2, decoration: const InputDecoration(hintText: 'Prefers Anitha, allergic to…'))),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Brand.line))),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Brand.line)),
+          ),
           child: FilledButton.icon(onPressed: () => _save(desk), icon: const Icon(Icons.event_available), label: Text(_time == null ? 'Book' : 'Book ${formatDay(_day)}, ${_label(_time!)}')),
         ),
       ),
@@ -146,11 +183,24 @@ class _DayChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Container(
           width: 56,
-          decoration: BoxDecoration(color: selected ? Brand.navy : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? Brand.navy : Brand.border)),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(today ? 'Today' : names[day.weekday - 1], style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted)),
-            Text('${day.day}', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: selected ? Colors.white : Brand.navy)),
-          ]),
+          decoration: BoxDecoration(
+            color: selected ? Brand.navy : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: selected ? Brand.navy : Brand.border),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                today ? 'Today' : names[day.weekday - 1],
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted),
+              ),
+              Text(
+                '${day.day}',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: selected ? Colors.white : Brand.navy),
+              ),
+            ],
+          ),
         ),
       ),
     );

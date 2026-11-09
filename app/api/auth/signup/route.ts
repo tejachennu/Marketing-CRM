@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { isSuperAdminEmail } from '@/lib/api-auth-helper'
+import { checkSignupCode, clearSignupCode, parseSignup } from '@/lib/auth/signup-otp'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -29,30 +30,22 @@ export async function POST(request: NextRequest) {
   try {
     supabase = getSupabaseAdminClient()
     const body = await request.json()
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-    const password = typeof body.password === 'string' ? body.password : ''
-    const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : ''
-    const companyName = typeof body.companyName === 'string' ? body.companyName.trim() : ''
-
-    if (!email || !password || !fullName || !companyName) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    const parsed = parseSignup(body)
+    if ('error' in parsed) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
+    const { email, password, fullName, companyName } = parsed.value
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 })
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters long' }, { status: 400 })
-    }
-
-    // Signup skips email verification, and these addresses are promoted to superadmin on
+    // These addresses are promoted to superadmin on
     // login. They must therefore never be registrable by whoever types them in first.
     if (isSuperAdminEmail(email)) {
       return NextResponse.json({ error: 'This email address cannot be used to sign up' }, { status: 403 })
+    }
+
+    // The 6-digit code emailed by /api/auth/signup/send-code proves the email is theirs
+    const code = await checkSignupCode(supabase, email, body.code)
+    if ('error' in code) {
+      return NextResponse.json({ error: code.error, field: 'code' }, { status: 400 })
     }
 
     // Create organization first
@@ -79,7 +72,7 @@ export async function POST(request: NextRequest) {
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Skip email verification
+      email_confirm: true, // The email was confirmed with the sign-up code
     })
 
     if (authError) throw authError
@@ -101,6 +94,7 @@ export async function POST(request: NextRequest) {
     // The account is complete from here on; demo data below is best-effort
     createdOrgId = null
     createdAuthUserId = null
+    await clearSignupCode(supabase, email).catch(() => {})
 
     // Create demo data
     const { data: stagesData } = await supabase

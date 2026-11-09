@@ -31,6 +31,9 @@ class OfflineException implements Exception {
 abstract class Backend {
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]);
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body);
+
+  /// Send a file (a photo or document for a chat). Returns the server's reply ({ url, filename }).
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename);
   Future<void> signIn(String email, String password);
   Future<void> signOut();
   bool get signedIn;
@@ -69,8 +72,7 @@ class HttpBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) =>
-      _read(http.get(Uri.parse('${AppConfig.apiBase}$path').replace(queryParameters: query), headers: _headers()));
+  Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) => _read(http.get(Uri.parse('${AppConfig.apiBase}$path').replace(queryParameters: query), headers: _headers()));
 
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) {
@@ -82,6 +84,14 @@ class HttpBackend implements Backend {
       'DELETE' => http.delete(uri, headers: _headers(), body: payload),
       _ => http.post(uri, headers: _headers(), body: payload),
     });
+  }
+
+  @override
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename) {
+    final request = http.MultipartRequest('POST', Uri.parse('${AppConfig.apiBase}$path'))
+      ..headers.addAll({..._headers()}..remove('Content-Type'))
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    return _read(request.send().then(http.Response.fromStream));
   }
 
   @override

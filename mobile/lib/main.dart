@@ -19,6 +19,10 @@ import 'screens/front_desk/new_bill_screen.dart';
 import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/templates/templates_screen.dart';
+import 'screens/ai/assistant_screen.dart';
+import 'screens/ai/knowledge_screen.dart';
+import 'screens/front_desk/booking_flow_screen.dart';
+import 'screens/more/signup_screen.dart';
 import 'ui/front_desk_icon.dart';
 import 'ui/theme.dart';
 
@@ -57,24 +61,66 @@ Future<void> _demoOffline(AppState app, DemoBackend backend) async {
     label: 'Booking for Ananya Rao · today, 7:30 pm',
     localId: AppState.newLocalId(),
     resultIdPath: 'appointment.id',
-    action: {'type': 'create_appointment', 'customer': {'name': 'Ananya Rao', 'phone': '+919555512345'}, 'service_ids': ['s-cleanup'], 'starts_at': start.toIso8601String()},
-    preview: {'day': istToday(), 'customer_name': 'Ananya Rao', 'customer_phone': '+919555512345', 'starts_at': start.toIso8601String(), 'ends_at': start.add(const Duration(minutes: 40)).toIso8601String(), 'status': 'booked', 'services': [desk.service('s-cleanup')], 'staff_id': 'st-lakshmi'},
+    action: {
+      'type': 'create_appointment',
+      'customer': {'name': 'Ananya Rao', 'phone': '+919555512345'},
+      'service_ids': ['s-cleanup'],
+      'starts_at': start.toIso8601String(),
+    },
+    preview: {
+      'day': istToday(),
+      'customer_name': 'Ananya Rao',
+      'customer_phone': '+919555512345',
+      'starts_at': start.toIso8601String(),
+      'ends_at': start.add(const Duration(minutes: 40)).toIso8601String(),
+      'status': 'booked',
+      'services': [desk.service('s-cleanup')],
+      'staff_id': 'st-lakshmi',
+    },
   );
   await app.counterAction(
     kind: 'bill',
     label: 'Bill for Vikram Singh · ₹2,800',
     localId: AppState.newLocalId(),
     resultIdPath: 'invoice.id',
-    action: {'type': 'walk_in_bill', 'customer': {'name': 'Vikram Singh', 'phone': '+919444455555'}, 'service_ids': ['s-menscut', 's-colour'], 'payment_method': 'cash'},
-    preview: {'customer_name': 'Vikram Singh', 'total': 2800, 'status': 'paid', 'payment_method': 'cash', 'issued_at': DateTime.now().toUtc().toIso8601String(), 'items': [desk.service('s-menscut'), desk.service('s-colour')]},
+    action: {
+      'type': 'walk_in_bill',
+      'customer': {'name': 'Vikram Singh', 'phone': '+919444455555'},
+      'service_ids': ['s-menscut', 's-colour'],
+      'payment_method': 'cash',
+    },
+    preview: {
+      'customer_name': 'Vikram Singh',
+      'total': 2800,
+      'status': 'paid',
+      'payment_method': 'cash',
+      'issued_at': DateTime.now().toUtc().toIso8601String(),
+      'items': [desk.service('s-menscut'), desk.service('s-colour')],
+    },
   );
-  await app.enqueue(kind: 'contact', label: 'New contact: Rohit Gupta', path: '/api/contacts', body: {'firstName': 'Rohit', 'lastName': 'Gupta', 'phoneNumber': '+919811122233', 'tags': ['New']});
-  await app.enqueue(kind: 'message', label: 'Message to Meera Joshi: Yes, 11 am tomorrow is free!', path: '/api/messages/send', body: {'conversationId': 'conv-5', 'message': 'Yes, 11 am tomorrow is free! Shall I book it?'});
+  await app.enqueue(
+    kind: 'contact',
+    label: 'New contact: Rohit Gupta',
+    path: '/api/contacts',
+    body: {
+      'firstName': 'Rohit',
+      'lastName': 'Gupta',
+      'phoneNumber': '+919811122233',
+      'tags': ['New'],
+    },
+  );
+  await app.enqueue(
+    kind: 'message',
+    label: 'Message to Meera Joshi: Yes, 11 am tomorrow is free!',
+    path: '/api/messages/send',
+    body: {'conversationId': 'conv-5', 'message': 'Yes, 11 am tomorrow is free! Shall I book it?'},
+  );
 }
 
 class WamaApp extends StatelessWidget {
   const WamaApp({super.key, required this.app, this.screen});
   final AppState app;
+
   /// Demo only: open one screen directly (for previews and screenshots).
   final String? screen;
 
@@ -86,10 +132,7 @@ class WamaApp extends StatelessWidget {
         title: 'WAMA CRM',
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
-        routes: {
-          '/sync': (_) => const SyncScreen(),
-          '/templates': (_) => const TemplatesScreen(),
-        },
+        routes: {'/sync': (_) => const SyncScreen(), '/templates': (_) => const TemplatesScreen()},
         home: screen != null ? _preview(screen!) : const _Root(),
       ),
     );
@@ -99,6 +142,13 @@ class WamaApp extends StatelessWidget {
     final desk = FrontDesk(app);
     return switch (name) {
       'login' => const LoginScreen(),
+      'signup' => const SignupScreen(),
+      'signup_code' => const SignupScreen(demoCodeStep: true),
+      'chat_ai' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first), showSuggestions: true),
+      'knowledge' => const KnowledgeScreen(),
+      'article' => ArticleScreen(article: Map<String, dynamic>.from((app.cached('knowledge')!['articles'] as List)[2])),
+      'assistant' => const AssistantScreen(demoQuestion: 'How much is a gold facial?'),
+      'booking_flow' => const BookingFlowScreen(),
       'desk' => const HomeShell(),
       'bills' => const HomeShell(deskTab: 1),
       'new_bill' => const NewBillScreen(),
@@ -146,27 +196,34 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final unread = ((app.cached('conversations') ?? const {})['conversations'] as List? ?? const []).where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
-    final pages = [
-      FrontDeskScreen(initialTab: widget.deskTab),
-      const ChatsScreen(),
-      const ContactsScreen(),
-      const CampaignsScreen(),
-      const MoreScreen(),
-    ];
+    final pages = [FrontDeskScreen(initialTab: widget.deskTab), const ChatsScreen(), const ContactsScreen(), const CampaignsScreen(), const MoreScreen()];
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Brand.line))),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Brand.line)),
+        ),
         child: NavigationBar(
           selectedIndex: _tab,
           onDestinationSelected: (i) => setState(() => _tab = i),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
-            const NavigationDestination(icon: FrontDeskIcon(size: 24, color: Brand.muted), selectedIcon: FrontDeskIcon(size: 24, color: Brand.blue), label: 'Front Desk'),
-            NavigationDestination(icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.blue, child: const Icon(Icons.chat_bubble_outline)), selectedIcon: const Icon(Icons.chat_bubble), label: 'Chats'),
+            const NavigationDestination(
+              icon: FrontDeskIcon(size: 24, color: Brand.muted),
+              selectedIcon: FrontDeskIcon(size: 24, color: Brand.blue),
+              label: 'Front Desk',
+            ),
+            NavigationDestination(
+              icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.blue, child: const Icon(Icons.chat_bubble_outline)),
+              selectedIcon: const Icon(Icons.chat_bubble),
+              label: 'Chats',
+            ),
             const NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
             const NavigationDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: 'Campaigns'),
-            NavigationDestination(icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.menu)), label: 'More'),
+            NavigationDestination(
+              icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.menu)),
+              label: 'More',
+            ),
           ],
         ),
       ),

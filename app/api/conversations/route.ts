@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { canSeeAll } from '@/lib/rbac'
-import { getAssignedConversationScope, isUuid } from '@/lib/record-visibility'
+import { getAssignedConversationScope, isUuid, verifyConversationAccess } from '@/lib/record-visibility'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -179,5 +179,32 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// PATCH { conversationId, autoReply?: boolean, read?: true }: switch the AI chatbot on or off for
+// this chat, or mark it read. Used by the mobile app; the same rules as opening the chat.
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const conversationId = body?.conversationId
+    if (!isUuid(conversationId)) return NextResponse.json({ error: 'Choose a chat.' }, { status: 400 })
+    const changesAutoReply = typeof body?.autoReply === 'boolean'
+    if (!changesAutoReply && body?.read !== true) return NextResponse.json({ error: 'Nothing to change.' }, { status: 400 })
+
+    const supabase = getSupabaseClient()
+    // Switching the chatbot changes the chat; marking it read only needs to see it
+    const access = await verifyConversationAccess(request, supabase, conversationId, changesAutoReply ? { permission: 'records.write' } : {})
+    if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
+
+    const patch: Record<string, unknown> = {}
+    if (changesAutoReply) patch.auto_reply_enabled = body.autoReply
+    if (body?.read === true) patch.unread_count = 0
+    const { data, error } = await supabase.from('conversations').update(patch).eq('id', conversationId).select('id, auto_reply_enabled, unread_count').single()
+    if (error) throw error
+    return NextResponse.json({ success: true, conversation: data })
+  } catch (error: any) {
+    console.error('[API] Update conversation error:', error)
+    return NextResponse.json({ error: error?.message || 'The chat could not be updated' }, { status: 500 })
   }
 }

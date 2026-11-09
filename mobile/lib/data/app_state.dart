@@ -85,6 +85,45 @@ class AppState extends ChangeNotifier {
     await syncNow();
   }
 
+  // ── Sign up (with the code emailed to them) ──
+
+  /// Check the form and email a 6-digit code. Returns how long until another can be sent.
+  Future<int> sendSignupCode(Map<String, String> form) async {
+    final data = await backend.send('POST', '/api/auth/signup/send-code', form);
+    return (data['resendAfterSeconds'] as num?)?.toInt() ?? 60;
+  }
+
+  /// Make the account with the code, then sign in.
+  Future<void> createAccount(Map<String, String> form, String code) async {
+    await backend.send('POST', '/api/auth/signup', {...form, 'code': code});
+    await signIn(form['email']!, form['password']!);
+  }
+
+  // ── Things that need the internet now (AI, files) ──
+
+  /// Ask the server and wait for the answer. Offline: says it needs the internet.
+  Future<Map<String, dynamic>> ask(String path, Map<String, dynamic> body, {String method = 'POST'}) async {
+    try {
+      final data = await backend.send(method, path, {if (orgId.isNotEmpty) 'organizationId': orgId, ...body});
+      _markOnline();
+      return data;
+    } on OfflineException {
+      _markOffline();
+      throw OfflineException('This needs the internet. Try again when you are online.');
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadFile(List<int> bytes, String filename) async {
+    try {
+      final data = await backend.upload('/api/media/upload', bytes, filename);
+      _markOnline();
+      return data;
+    } on OfflineException {
+      _markOffline();
+      throw OfflineException('Sending a file needs the internet.');
+    }
+  }
+
   Future<void> signOut() async {
     await backend.signOut();
     await store.clear();
@@ -145,6 +184,8 @@ class AppState extends ChangeNotifier {
         load('conversations', '/api/conversations', query: {'limit': '50'}, force: true),
         load('templates', '/api/whatsapp-templates', force: true),
         if (can('campaigns')) load('campaigns', '/api/campaigns', query: {'limit': '30'}, force: true),
+        load('knowledge', '/api/knowledge', force: true),
+        load('tickets', '/api/tickets', force: true),
       ]);
       if (online) {
         await _prefetchChats();
@@ -165,7 +206,9 @@ class AppState extends ChangeNotifier {
       final last = DateTime.tryParse('${c['last_message_at']}');
       return saved == null || (last != null && last.isAfter(saved));
     });
-    await Future.wait([for (final c in stale) load('messages:${c['id']}', '/api/messages', query: {'conversationId': '${c['id']}', 'limit': '60'}, force: true)]);
+    await Future.wait([
+      for (final c in stale) load('messages:${c['id']}', '/api/messages', query: {'conversationId': '${c['id']}', 'limit': '60'}, force: true),
+    ]);
   }
 
   /// Send what is waiting, then bring every list up to date.

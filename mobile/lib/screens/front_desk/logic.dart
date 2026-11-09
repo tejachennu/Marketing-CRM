@@ -8,7 +8,14 @@ class FrontDesk {
   final AppState app;
 
   Map<String, dynamic> get _setup => app.cached('setup') ?? const {};
-  Map<String, dynamic> get settings => Map<String, dynamic>.from(_setup['settings'] ?? const {});
+  Map<String, dynamic> get settings {
+    final out = Map<String, dynamic>.from(_setup['settings'] ?? const {});
+    for (final item in app.pending('settings')) {
+      out.addAll({...item.body}..remove('organizationId'));
+    }
+    return out;
+  }
+
   String get businessName => (settings['business_name'] ?? app.orgName).toString();
   bool get pricesIncludeTax => settings['prices_include_tax'] == true;
   bool get hasGst => (settings['gstin'] ?? '').toString().isNotEmpty;
@@ -23,6 +30,7 @@ class FrontDesk {
     void add(String name) {
       if (name.isNotEmpty && seen.add(name.toLowerCase())) out.add(name);
     }
+
     for (final c in (settings['service_categories'] as List? ?? const [])) {
       add('$c'.trim());
     }
@@ -111,7 +119,9 @@ class FrontDesk {
 
   num get collectedToday {
     final today = istToday();
-    return invoices.where((i) => i['status'] == 'paid' && i['issued_at'] != null && toIst(DateTime.parse(i['issued_at'])).toIso8601String().startsWith(today)).fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0));
+    return invoices
+        .where((i) => i['status'] == 'paid' && i['issued_at'] != null && toIst(DateTime.parse(i['issued_at'])).toIso8601String().startsWith(today))
+        .fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0));
   }
 }
 

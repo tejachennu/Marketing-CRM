@@ -14,7 +14,8 @@ import { classifyGreeting } from '@/lib/greeting-classifier'
 import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
-import { handleSlotPick, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
+import { handleSlotPick, loadChatSetup, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
+import { handleBookingFlowButton, isBookingRequest, parseBookingFlow, parseFlowButton, startBookingFlow } from '@/lib/salon/booking-flow'
 import { handleFeedbackReply, parseFeedbackButton } from '@/lib/salon/jobs'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
@@ -715,6 +716,37 @@ async function processEvent(
         }
       } catch (salonErr: any) {
         console.error('[Facebook Webhook] Salon booking failed:', salonErr?.message || salonErr)
+      }
+    }
+
+    // ── Front Desk booking flow: a service, person or day tapped in one of its lists. The customer
+    //    chose it, so the next step goes even when auto-reply is off for this chat.
+    if (interactiveButtonId && parseFlowButton(interactiveButtonId) && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const step = await handleBookingFlowButton({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], buttonId: interactiveButtonId })
+        if (step.handled) {
+          await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+          return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: step.step })
+        }
+      } catch (flowErr: any) {
+        console.error('[Facebook Webhook] Booking flow step failed:', flowErr?.message || flowErr)
+      }
+    }
+
+    // ── Front Desk booking flow: "Book" (or another word the business chose) starts it. No AI needed.
+    if (!interactiveButtonId && messageBody && conversation.auto_reply_enabled !== false && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const setup = await loadChatSetup(supabase, orgId)
+        const flow = parseBookingFlow(setup.settings.booking_flow)
+        if (flow.enabled && isBookingRequest(messageBody, flow.triggers)) {
+          const started = await startBookingFlow({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [] }, setup)
+          if (started.handled) {
+            await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: started.step })
+          }
+        }
+      } catch (flowErr: any) {
+        console.error('[Facebook Webhook] Booking flow could not start:', flowErr?.message || flowErr)
       }
     }
 

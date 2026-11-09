@@ -93,7 +93,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 - **Auto-migrations**: the app adds its own tables/columns the first time they are needed.
   `createAutoSetup` + `runMigrationSql` (advisory lock per feature) with a `withXSchema(step)` wrapper
   that retries after a missing-column error. Locks used: salon 724519002, api_keys 724519010,
-  pipeline 724519011. When adding columns, follow this pattern and also add a `supabase/migrations/` file.
+  pipeline 724519011, sign-up codes 724519012. When adding columns, follow this pattern and also add a `supabase/migrations/` file.
 - **Connectors**: E-commerce (`organizations.enable_commerce`) and Sales Pipeline (`organizations.enable_pipeline`)
   are on unless switched off; Front Desk is in the `organizations.enabled_connectors` array. Admins switch
   them in `/dashboard/connectors`.
@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Sign-up with an email code** (web and mobile): `POST /api/auth/signup/send-code` emails a 6-digit
+  code (10 min, 5 tries, resend once a minute, 5 an hour; only a hash is stored in `signup_otps`,
+  `lib/auth/signup-otp.ts`, lock 724519012); `POST /api/auth/signup` needs `code`.
+- **WhatsApp booking flow** (Front Desk → Setup → Booking flow; `salon_settings.booking_flow`,
+  `lib/salon/booking-flow.ts`, settings in `booking-flow-settings.ts`): a customer sends "Book" (trigger
+  words are set by the business) and picks service (category first if more than 10), who (optional),
+  day, then a time from the same list as the assistant (`sb:` ids, `handleSlotPick`). Choices ride in
+  `bf:` button ids, so there is no state table. Hooked in the Facebook webhook before the AI assistant.
+- `PATCH /api/conversations` (AI replies on/off, mark read) for the mobile app.
+- Mobile app: full chat features (AI on/off, AI suggestions, Rephrase, files, reply-to, tickets),
+  Knowledge base, Try the AI chatbot, Booking flow settings, Sign up with code.
 - (mobile) **Flutter app in `mobile/`** (see `mobile/README.md`): Front Desk, Chats, Contacts,
   Templates, Campaigns, **offline first** (Hive copy + outbox synced in order). Server additions:
   `GET /api/mobile/me`, and `client_ref` on `/api/salon/act` so a replayed action is done once

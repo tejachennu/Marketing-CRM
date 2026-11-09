@@ -5,6 +5,7 @@ import 'package:wama_mobile/data/app_state.dart';
 import 'package:wama_mobile/data/demo_backend.dart';
 import 'package:wama_mobile/data/format.dart';
 import 'package:wama_mobile/data/local_store.dart';
+import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
 import 'package:wama_mobile/screens/templates/template_widgets.dart';
 import 'package:wama_mobile/ui/widgets.dart';
@@ -111,5 +112,60 @@ void main() {
   test('Front Desk categories follow the business order', () async {
     final (app, _) = await makeApp();
     expect(FrontDesk(app).categories, ['Hair', 'Skin', 'Nails']);
+  });
+
+  test('Knowledge base: answers added and removed offline show at once and sync', () async {
+    final (app, backend) = await makeApp();
+    final before = articlesOf(app).length;
+    backend.offline = true;
+    await app.enqueue(kind: 'knowledge', label: 'New answer', path: '/api/knowledge', body: {'type': 'manual', 'title': 'Wi-Fi', 'content': 'Free Wi-Fi: glow-guest'});
+    final first = articlesOf(app).last;
+    await app.enqueue(kind: 'knowledge', label: 'Remove', method: 'DELETE', path: '/api/knowledge?id=${first['id']}', body: {});
+    await app.flush();
+    expect(articlesOf(app).length, before);
+    expect(articlesOf(app).first['title'], 'Wi-Fi');
+    expect(articlesOf(app).first['_waiting'], isTrue);
+    backend.offline = false;
+    await app.flush();
+    await app.refreshAll();
+    expect(app.waitingCount, 0);
+    expect(articlesOf(app).any((a) => a['title'] == 'Wi-Fi' && a['_waiting'] == null), isTrue);
+    expect(articlesOf(app).any((a) => a['id'] == first['id']), isFalse);
+  });
+
+  test('AI features need the internet and say so', () async {
+    final (app, backend) = await makeApp();
+    final rephrased = await app.ask('/api/ai/rephrase', {'text': 'ok we will call you tomorrow', 'tone': 'grammar'});
+    expect(rephrased['rephrased'], 'Ok we will call you tomorrow.');
+    final suggestions = await app.ask('/api/ai/copilot', {'conversationId': 'conv-5'});
+    expect((suggestions['suggestions'] as List).first['article_title'], 'Gold facial');
+    backend.offline = true;
+    await expectLater(app.ask('/api/ai/rephrase', {'text': 'hi', 'tone': 'short'}), throwsA(predicate((e) => '$e'.contains('needs the internet'))));
+    expect(app.online, isFalse);
+  });
+
+  test('AI replies on/off for a chat is saved and synced', () async {
+    final (app, _) = await makeApp();
+    await app.enqueue(kind: 'chat_setting', label: 'AI off', method: 'PATCH', path: '/api/conversations', body: {'conversationId': 'conv-5', 'autoReply': false});
+    await app.flush();
+    await app.refreshAll();
+    final conv = (app.cached('conversations')!['conversations'] as List).firstWhere((c) => c['id'] == 'conv-5');
+    expect(conv['auto_reply_enabled'], isFalse);
+  });
+
+  test('Sign up: a wrong code is refused; the right one makes the account', () async {
+    final (app, _) = await makeApp();
+    final form = {'fullName': 'Teja', 'companyName': 'Glow', 'email': 'new@glow.in', 'password': 'secret12'};
+    expect(await app.sendSignupCode(form), 60);
+    await expectLater(app.createAccount(form, '000000'), throwsA(predicate((e) => '$e'.contains('not right'))));
+    await app.createAccount(form, '123456');
+    expect(app.signedIn, isTrue);
+  });
+
+  test('Booking flow settings saved offline show on the phone straight away', () async {
+    final (app, backend) = await makeApp();
+    backend.offline = true;
+    await app.enqueue(kind: 'settings', label: 'Booking flow on', method: 'PATCH', path: '/api/salon/settings', body: {'organizationId': app.orgId, 'booking_flow': {'enabled': true, 'triggers': ['book']}});
+    expect((FrontDesk(app).settings['booking_flow'] as Map)['enabled'], isTrue);
   });
 }

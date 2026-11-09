@@ -7,6 +7,7 @@ import 'theme.dart';
 /// The strip under the title bar: offline, sending, or changes that need a look.
 class SyncBanner extends StatelessWidget {
   const SyncBanner({super.key, this.cacheKey});
+
   /// The list this screen shows, to say how old the copy on the phone is.
   final String? cacheKey;
 
@@ -37,12 +38,19 @@ class SyncBanner extends StatelessWidget {
         onTap: () => Navigator.of(context).pushNamed('/sync'),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(children: [
-            Icon(icon, size: 18, color: attention ? Brand.red : Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(text, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: attention ? Brand.red : Colors.white))),
-            Icon(Icons.chevron_right, size: 18, color: attention ? Brand.red : Colors.white70),
-          ]),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: attention ? Brand.red : Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: attention ? Brand.red : Colors.white),
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: attention ? Brand.red : Colors.white70),
+            ],
+          ),
         ),
       ),
     );
@@ -61,7 +69,10 @@ class Avatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(size * 0.32)),
-      child: Text(initials(name), style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w800, fontSize: size * 0.36)),
+      child: Text(
+        initials(name),
+        style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w800, fontSize: size * 0.36),
+      ),
     );
   }
 }
@@ -84,10 +95,16 @@ class Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 4)],
-        Text(text, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: fg)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 4)],
+          Text(
+            text,
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: fg),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -99,9 +116,7 @@ class WaitingPill extends StatelessWidget {
   const WaitingPill({super.key, this.failed = false});
   final bool failed;
   @override
-  Widget build(BuildContext context) => failed
-      ? const Pill('Not saved', tone: PillTone.red, icon: Icons.error_outline)
-      : const Pill('Waiting to sync', tone: PillTone.navy, icon: Icons.schedule);
+  Widget build(BuildContext context) => failed ? const Pill('Not saved', tone: PillTone.red, icon: Icons.error_outline) : const Pill('Waiting to sync', tone: PillTone.navy, icon: Icons.schedule);
 }
 
 class SectionLabel extends StatelessWidget {
@@ -110,12 +125,19 @@ class SectionLabel extends StatelessWidget {
   final Widget? trailing;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-        child: Row(children: [
-          Expanded(child: Text(text.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Brand.faint))),
-          ?trailing,
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            text.toUpperCase(),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Brand.faint),
+          ),
+        ),
+        ?trailing,
+      ],
+    ),
+  );
 }
 
 class EmptyState extends StatelessWidget {
@@ -126,16 +148,35 @@ class EmptyState extends StatelessWidget {
   final Widget? action;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
-        child: Column(children: [
-          Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Brand.line)), child: Icon(icon, color: Brand.textSoft)),
-          const SizedBox(height: 14),
-          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Brand.muted, height: 1.4)),
-          if (action != null) ...[const SizedBox(height: 16), action!],
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+    child: Column(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Brand.line),
+          ),
+          child: Icon(icon, color: Brand.textSoft),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: Brand.muted, height: 1.4),
+        ),
+        if (action != null) ...[const SizedBox(height: 16), action!],
+      ],
+    ),
+  );
 }
 
 /// A white rounded box with a thin border.
@@ -146,9 +187,12 @@ class Panel extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
-      );
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(padding: padding, child: child),
+    ),
+  );
 }
 
 // ── Phone number with a country code ──
@@ -231,17 +275,26 @@ class _PhoneFieldState extends State<PhoneField> {
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: ListView(shrinkWrap: true, children: [
-          const Padding(padding: EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text('Country code', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
-          for (final c in countries)
-            ListTile(
-              leading: Text(c.flag, style: const TextStyle(fontSize: 22)),
-              title: Text(c.name),
-              trailing: Text(c.code, style: const TextStyle(fontWeight: FontWeight.w700, color: Brand.textSoft)),
-              selected: c == _country,
-              onTap: () => Navigator.pop(context, c),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text('Country code', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             ),
-        ]),
+            for (final c in countries)
+              ListTile(
+                leading: Text(c.flag, style: const TextStyle(fontSize: 22)),
+                title: Text(c.name),
+                trailing: Text(
+                  c.code,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Brand.textSoft),
+                ),
+                selected: c == _country,
+                onTap: () => Navigator.pop(context, c),
+              ),
+          ],
+        ),
       ),
     );
     if (picked != null) {
@@ -252,40 +305,52 @@ class _PhoneFieldState extends State<PhoneField> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      InkWell(
-        onTap: _pick,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Brand.border)),
-          child: Row(children: [
-            Text(_country.flag, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 6),
-            Text(_country.code, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            const Icon(Icons.expand_more, size: 18, color: Brand.faint),
-          ]),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: _pick,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Brand.border),
+            ),
+            child: Row(
+              children: [
+                Text(_country.flag, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 6),
+                Text(_country.code, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const Icon(Icons.expand_more, size: 18, color: Brand.faint),
+              ],
+            ),
+          ),
         ),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: TextField(
-          controller: _number,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(labelText: widget.label, hintText: _country.hint),
-          onChanged: (text) {
-            if (text.trim().startsWith('+')) {
-              final (country, local) = splitPhone(text);
-              _country = country;
-              _number.value = TextEditingValue(text: local, selection: TextSelection.collapsed(offset: local.length));
-              setState(() {});
-            }
-            _emit();
-          },
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _number,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(labelText: widget.label, hintText: _country.hint),
+            onChanged: (text) {
+              if (text.trim().startsWith('+')) {
+                final (country, local) = splitPhone(text);
+                _country = country;
+                _number.value = TextEditingValue(
+                  text: local,
+                  selection: TextSelection.collapsed(offset: local.length),
+                );
+                setState(() {});
+              }
+              _emit();
+            },
+          ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 

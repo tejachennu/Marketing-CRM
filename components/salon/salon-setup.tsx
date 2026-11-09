@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Clock3, Dumbbell, FolderPlus, Pencil, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, Pencil, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
@@ -11,6 +11,7 @@ import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButt
 import type { SalonSetup, Service, StaffMember } from './types'
 import { PhoneField } from '../phone-field'
 import { WhatsAppSettings } from './salon-whatsapp-settings'
+import { BookingFlowSettingsSection } from './salon-booking-flow'
 import { SalonTemplates } from './salon-templates'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
@@ -18,12 +19,13 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'templates'
+export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'booking' | 'templates'
 const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
   { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
   { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
   { id: 'business', label: 'Business', hint: 'Invoice details and logo', icon: Store },
   { id: 'whatsapp', label: 'WhatsApp', hint: 'Chat, bookings, feedback', icon: MessageCircle },
+  { id: 'booking', label: 'Booking flow', hint: 'Book on WhatsApp in taps', icon: CalendarCheck2 },
   { id: 'templates', label: 'Templates', hint: 'Messages for Meta', icon: FileText },
 ]
 
@@ -466,6 +468,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       </section>}
 
       {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
+      {section === 'booking' && <BookingFlowSettingsSection orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} onSaved={(message_templates) => onChange({ ...setup, settings: { ...setup.settings, message_templates } })} />}
       </div>
       </div>

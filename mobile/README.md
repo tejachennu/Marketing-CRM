@@ -1,7 +1,9 @@
 # WAMA CRM mobile (Flutter)
 
-The phone app for WAMA CRM: **Front Desk** (today's visits, bills, bookings), **Chats**,
-**Contacts**, **Templates** and **Campaigns**. It works **offline**: everything is kept on the
+The phone app for WAMA CRM: **Front Desk** (today's visits, bills, bookings, the WhatsApp
+booking flow), **Chats** (with AI replies on/off, AI suggested replies, Rephrase, photos and
+documents, reply-to, templates, tickets), the **Knowledge base** and **Try the AI chatbot**,
+**Contacts**, **Templates**, **Campaigns**, and **Sign up with an email code**. It works **offline**: everything is kept on the
 phone and changes sync on their own when the internet is back.
 
 ![All screens](docs/all-screens.png)
@@ -24,7 +26,7 @@ flutter run \
 Release builds: `flutter build apk --release` (Android) or `flutter build ipa` (iOS, on a Mac),
 with the same `--dart-define` values. Tests: `flutter test`. Checks: `flutter analyze`.
 
-In demo mode on the web, `?screen=desk|bills|new_bill|new_booking|appointment|bill|chats|chat|chat_closed|contacts|new_contact|templates|template|campaigns|new_campaign|more|sync|login`
+In demo mode on the web, `?screen=login|signup|signup_code|desk|bills|new_bill|new_booking|appointment|bill|booking_flow|chats|chat|chat_ai|chat_closed|knowledge|article|assistant|contacts|new_contact|templates|template|campaigns|new_campaign|more|sync`
 opens one screen, and `&offline=1` shows it with no internet and a few changes waiting.
 
 ## How offline works
@@ -43,6 +45,8 @@ opens one screen, and `&offline=1` shows it with no internet and a few changes w
   reason in **More → Sync**, with Try again and Discard.
 - **WhatsApp's 24 hours**: when a customer has not written in 24 hours the chat offers an approved
   template instead of free text.
+- **Needs the internet**: AI suggestions, Rephrase, Try the AI chatbot, sending a photo or
+  document, and signing up. These say so when offline; everything else works offline.
 
 ## Code map
 
@@ -53,6 +57,8 @@ opens one screen, and `&offline=1` shows it with no internet and a few changes w
 - `lib/screens/*`: Front Desk, Chats, Contacts, Templates, Campaigns, More/Sync/Sign in.
 - `lib/ui/theme.dart`: the WAMA colours (navy, one blue, greys; red only for attention).
 
-Server endpoints it uses: `/api/mobile/me`, `/api/salon/setup|appointments|invoices|act`,
+Server endpoints it uses: `/api/mobile/me`, `/api/auth/signup/send-code`, `/api/auth/signup`,
+`/api/conversations` (GET, and PATCH for AI on/off and read), `/api/ai/copilot`, `/api/ai/rephrase`,
+`/api/ai/playground-chat`, `/api/knowledge`, `/api/tickets`, `/api/media/upload`, `/api/salon/settings`, `/api/salon/setup|appointments|invoices|act`,
 `/api/contacts`, `/api/conversations`, `/api/messages`, `/api/messages/send`,
 `/api/whatsapp-templates`, `/api/campaigns`, `/api/campaigns/run`.

@@ -6,6 +6,11 @@ import '../../data/local_store.dart';
 import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import '../ai/assistant_screen.dart';
+import '../ai/knowledge_screen.dart';
+import '../front_desk/booking_flow_screen.dart';
+import '../front_desk/logic.dart';
+import 'signup_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -76,6 +81,40 @@ class MoreScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SectionLabel('AI'),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.menu_book_outlined, color: Brand.navy),
+                        title: const Text('Knowledge base', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text('${articlesOf(app).length} answers the AI uses'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KnowledgeScreen())),
+                      ),
+                      const Divider(indent: 56),
+                      ListTile(
+                        leading: const Icon(Icons.smart_toy_outlined, color: Brand.navy),
+                        title: const Text('Try the AI chatbot', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Ask like a customer, see its reply'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AssistantScreen())),
+                      ),
+                    ],
+                  ),
+                ),
+                if (app.frontDeskOn && app.can('manage')) ...[
+                  const SectionLabel('Front Desk'),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.event_available_outlined, color: Brand.navy),
+                      title: const Text('Booking flow on WhatsApp', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingFlowScreen())),
+                    ),
+                  ),
+                ],
                 const SectionLabel('Workspace'),
                 Card(
                   child: Column(
@@ -153,6 +192,10 @@ class SyncScreen extends StatelessWidget {
     'bill' || 'checkout' || 'payment' || 'send' => Icons.receipt_long_outlined,
     'booking' || 'appointment' => Icons.event_note_outlined,
     'contact' => Icons.person_outline,
+    'knowledge' => Icons.menu_book_outlined,
+    'chat_setting' => Icons.smart_toy_outlined,
+    'ticket' => Icons.confirmation_number_outlined,
+    'settings' => Icons.tune,
     'message' => Icons.chat_bubble_outline,
     _ => Icons.campaign_outlined,
   };
@@ -371,6 +414,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     'Use the same email and password as the web app. Forgot it? Reset it on wamacrm.magnetora.in.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12.5, color: Brand.muted),
+                  ),
+                  const SizedBox(height: 18),
+                  const Divider(),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
+                    child: const Text('New here? Create an account'),
                   ),
                 ],
               ),

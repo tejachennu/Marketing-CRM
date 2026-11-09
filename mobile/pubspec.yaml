@@ -41,6 +41,7 @@ dependencies:
   connectivity_plus: ^7.3.2
   uuid: ^4.6.0
   intl: ^0.20.3
+  file_picker: ^13.3.2
 
 dev_dependencies:
   flutter_test:

@@ -218,7 +218,7 @@ What you do:
 ${LANGUAGE_RULES}`
 }
 
-async function logMessage(input: { supabase: any; organization: any; conversationId: string }, body: string, messageId: string | null) {
+export async function logMessage(input: { supabase: any; organization: any; conversationId: string }, body: string, messageId: string | null) {
   try {
     await input.supabase.from('messages').insert({ organization_id: input.organization.id, conversation_id: input.conversationId, sender_type: 'user', body, twilio_message_sid: messageId ? `FB_${messageId}` : null, status: 'sent' })
   } catch (error: any) {
@@ -226,7 +226,7 @@ async function logMessage(input: { supabase: any; organization: any; conversatio
   }
 }
 
-async function sendText(input: SalonChatInput, text: string) {
+export async function sendText(input: SalonChatInput, text: string) {
   const sent = await sendWhatsAppMessage(input.organization, buildTextMessage(input.customerPhone, text))
   if (!sent.ok) throw new Error(sent.error || 'WhatsApp did not accept the reply')
   await logMessage(input, text, sent.messageId || null)
@@ -235,7 +235,7 @@ async function sendText(input: SalonChatInput, text: string) {
 const LIST_LIMIT = 10
 
 /** Busy time on a day: every appointment that holds a chair. */
-async function busyOn(db: any, organizationId: string, date: string): Promise<Busy[]> {
+export async function busyOn(db: any, organizationId: string, date: string): Promise<Busy[]> {
   const { start, end } = istDayRange(date)
   const { data } = await db.from('salon_appointments').select('starts_at, ends_at, status, staff_id, services').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end)
   return busyFrom(data || [])
@@ -271,6 +271,17 @@ async function offerTimes(input: SalonChatInput, setup: ChatSetup, args: OfferAr
     if (!staffFor([match], chosen.map((s) => s.id)).length) return { note: `${match.name} does not do ${chosen.map((s) => s.name).join(', ')}. Suggest someone else or anyone.` }
     staffId = match.id
   }
+  return sendFreeTimes(input, setup, { services: chosen, staffId, date: args.date, language, around: args.around || null })
+}
+
+/**
+ * Send the free times for these services on this day as a list to tap (the tap books it, see
+ * handleSlotPick). No free time: a note saying so and the next day with free times.
+ */
+export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, args: { services: ChatService[]; staffId: string | null; date: string; language: ChatLanguage; around?: string | null; body?: string }): Promise<{ sent: true } | { note: string; nextDay: string | null }> {
+  const now = input.now ?? Date.now()
+  const today = istDate(now)
+  const { services: chosen, staffId, language } = args
   const minutes = chosen.reduce((sum, s) => sum + (Number(s.duration_minutes) || 30), 0)
   const eligible = staffFor(setup.staff, chosen.map((s) => s.id))
   const base = { now, hours: setup.settings, minutes, eligibleStaff: eligible, staffId }
@@ -279,7 +290,7 @@ async function offerTimes(input: SalonChatInput, setup: ChatSetup, args: OfferAr
     const cache = new Map<string, Busy[]>()
     for (let i = 1; i < 14; i++) { const d = addDays(args.date, i); cache.set(d, await busyOn(input.supabase, input.organization.id, d)) }
     const next = nextOpenDay({ ...base, from: addDays(args.date, 1), busyFor: (d) => cache.get(d) || [] })
-    return { note: `No free time on ${args.date}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.` }
+    return { note: `No free time on ${args.date}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.`, nextDay: next }
   }
 
   const { data: offer, error } = await withSalonSchema(() => input.supabase.from('salon_chat_offers').insert({
@@ -290,7 +301,7 @@ async function offerTimes(input: SalonChatInput, setup: ChatSetup, args: OfferAr
   if (error || !offer) throw new Error(error?.message || 'Could not save the times offered')
   const names = chosen.map((s) => s.name).join(', ')
   const day = formatIstDay(args.date, today)
-  const body = chooseTimeText(language, names, day)
+  const body = args.body || chooseTimeText(language, names, day)
   const sent = await sendWhatsAppMessage(input.organization, buildTimesList(input.customerPhone, body, day, offer.id, times, args.date))
   if (!sent.ok) throw new Error(sent.error || 'WhatsApp did not accept the list of times')
   await logMessage(input, `${body}\n[Times: ${times.map((t) => formatIstTime(fromIst(args.date, t) || new Date())).join(', ')}]`, sent.messageId || null)

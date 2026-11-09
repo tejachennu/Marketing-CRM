@@ -4,6 +4,7 @@
  */
 
 import { BUSINESS_TYPE_IDS, type BusinessType } from './business'
+import { parseBookingFlow, type BookingFlowSettings } from './booking-flow-settings'
 import { parseMessageTemplates, type MessageTemplates } from './message-templates'
 import { cleanInvoicePrefix, isValidGstin, normalizeGstin } from './invoice'
 import { parsePhoneNumber } from './spoken'
@@ -109,6 +110,7 @@ export interface SalonSettingsInput {
   review_link?: string | null
   business_type?: BusinessType
   message_templates?: MessageTemplates
+  booking_flow?: BookingFlowSettings
 }
 
 export const FEEDBACK_DELAYS = [30, 60, 120, 240, 1440]
@@ -167,6 +169,11 @@ export function parseWhatsAppSettings(body: any): Parsed<Partial<SalonSettingsIn
   if (has('business_type')) {
     if (!BUSINESS_TYPE_IDS.includes(body.business_type)) return { error: 'Choose your kind of business.' }
     value.business_type = body.business_type
+  }
+  if (has('booking_flow')) {
+    const flow = parseBookingFlow(body.booking_flow)
+    if (flow.enabled && flow.welcome && !flow.welcome.trim()) return { error: 'Write the first message, or leave it empty for the default.' }
+    value.booking_flow = flow
   }
   if (has('message_templates')) {
     const parsed = parseMessageTemplates(body.message_templates)

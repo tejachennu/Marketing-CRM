@@ -22,6 +22,7 @@ export interface SalonSettings {
   review_link?: string | null
   business_type?: 'salon' | 'clinic' | 'fitness' | 'repair' | 'other'
   service_categories?: string[]
+  booking_flow?: Record<string, unknown>
   message_templates?: Record<string, { name: string; language: string; fields: string[]; url_field?: string | null } | undefined>
 }
 

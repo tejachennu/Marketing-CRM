@@ -8,10 +8,7 @@ class FrontDeskIcon extends StatelessWidget {
   final double strokeWidth;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        size: Size.square(size),
-        painter: _FrontDeskPainter(color ?? IconTheme.of(context).color ?? Colors.black, strokeWidth),
-      );
+  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: _FrontDeskPainter(color ?? IconTheme.of(context).color ?? Colors.black, strokeWidth));
 }
 
 class _FrontDeskPainter extends CustomPainter {

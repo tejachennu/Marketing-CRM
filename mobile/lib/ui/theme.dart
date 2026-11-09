@@ -25,7 +25,10 @@ ThemeData buildTheme() {
     scaffoldBackgroundColor: Brand.page,
   );
   final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
-  OutlineInputBorder box(Color color, [double width = 1]) => OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: color, width: width));
+  OutlineInputBorder box(Color color, [double width = 1]) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: color, width: width),
+  );
   return base.copyWith(
     textTheme: base.textTheme.apply(bodyColor: Brand.text, displayColor: Brand.text),
     appBarTheme: const AppBarTheme(
@@ -40,15 +43,35 @@ ThemeData buildTheme() {
       color: Colors.white,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Brand.line)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Brand.line),
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(backgroundColor: Brand.blue, foregroundColor: Colors.white, minimumSize: const Size(48, 48), shape: rounded, textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Brand.blue,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(48, 48),
+        shape: rounded,
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(foregroundColor: Brand.navy, minimumSize: const Size(48, 48), side: const BorderSide(color: Brand.border), shape: rounded, textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Brand.navy,
+        minimumSize: const Size(48, 48),
+        side: const BorderSide(color: Brand.border),
+        shape: rounded,
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
     ),
-    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: Brand.blue, textStyle: const TextStyle(fontWeight: FontWeight.w700))),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: Brand.blue,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,

@@ -30,63 +30,86 @@ class _CustomerPickerState extends State<CustomerPicker> {
     final word = _name.text.trim().toLowerCase();
     if (_contactId != null || (local.length < 4 && word.length < 2)) return const [];
     final contacts = [for (final c in ((app.cached('contacts') ?? const {})['contacts'] as List? ?? const [])) Map<String, dynamic>.from(c)];
-    return contacts.where((c) {
-      final phone = '${c['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '');
-      if (local.length >= 4) return phone.contains(local.substring(local.length > 6 ? local.length - 6 : 0));
-      return contactName(c).toLowerCase().contains(word);
-    }).take(4).toList();
+    return contacts
+        .where((c) {
+          final phone = '${c['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '');
+          if (local.length >= 4) return phone.contains(local.substring(local.length > 6 ? local.length - 6 : 0));
+          return contactName(c).toLowerCase().contains(word);
+        })
+        .take(4)
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final matches = _matches(app);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PhoneField(
-        key: ValueKey(_phoneVersion),
-        value: _phone,
-        label: widget.optional ? 'Mobile (optional)' : 'Mobile number',
-        onChanged: (v) => setState(() {
-          _phone = v;
-          _contactId = null;
-          _emit();
-        }),
-      ),
-      const SizedBox(height: 10),
-      TextField(
-        controller: _name,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(labelText: widget.optional ? 'Name (optional)' : 'Name', hintText: widget.optional ? 'Walk-in customer' : 'Priya'),
-        onChanged: (_) => setState(() {
-          _contactId = null;
-          _emit();
-        }),
-      ),
-      if (_contactId != null)
-        const Padding(padding: EdgeInsets.only(top: 8), child: Row(children: [Icon(Icons.check_circle, size: 16, color: Brand.blue), SizedBox(width: 6), Text('From your contacts', style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w600, fontSize: 13))])),
-      if (matches.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        Card(
-          child: Column(children: [
-            for (final c in matches)
-              ListTile(
-                dense: true,
-                leading: Avatar(contactName(c), size: 34),
-                title: Text(contactName(c), style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('${c['phone_number'] ?? ''}'),
-                trailing: const Text('Pick', style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w700)),
-                onTap: () => setState(() {
-                  _contactId = '${c['id']}';
-                  _phone = '${c['phone_number'] ?? ''}';
-                  _phoneVersion++;
-                  _name.text = contactName(c);
-                  _emit();
-                }),
-              ),
-          ]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PhoneField(
+          key: ValueKey(_phoneVersion),
+          value: _phone,
+          label: widget.optional ? 'Mobile (optional)' : 'Mobile number',
+          onChanged: (v) => setState(() {
+            _phone = v;
+            _contactId = null;
+            _emit();
+          }),
         ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(labelText: widget.optional ? 'Name (optional)' : 'Name', hintText: widget.optional ? 'Walk-in customer' : 'Priya'),
+          onChanged: (_) => setState(() {
+            _contactId = null;
+            _emit();
+          }),
+        ),
+        if (_contactId != null)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, size: 16, color: Brand.blue),
+                SizedBox(width: 6),
+                Text(
+                  'From your contacts',
+                  style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        if (matches.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Card(
+            child: Column(
+              children: [
+                for (final c in matches)
+                  ListTile(
+                    dense: true,
+                    leading: Avatar(contactName(c), size: 34),
+                    title: Text(contactName(c), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${c['phone_number'] ?? ''}'),
+                    trailing: const Text(
+                      'Pick',
+                      style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w700),
+                    ),
+                    onTap: () => setState(() {
+                      _contactId = '${c['id']}';
+                      _phone = '${c['phone_number'] ?? ''}';
+                      _phoneVersion++;
+                      _name.text = contactName(c);
+                      _emit();
+                    }),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ],
-    ]);
+    );
   }
 }
 
@@ -107,27 +130,32 @@ class _ServicePickerState extends State<ServicePicker> {
   Widget build(BuildContext context) {
     final categories = ['All', ...widget.desk.categories];
     final shown = widget.desk.services.where((s) => _category == 'All' || '${s['category'] ?? 'General'}'.toLowerCase() == _category.toLowerCase()).toList();
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        height: 40,
-        child: ListView(scrollDirection: Axis.horizontal, children: [
-          for (final c in categories)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(label: Text(c), selected: _category == c, onSelected: (_) => setState(() => _category = c)),
-            ),
-        ]),
-      ),
-      const SizedBox(height: 10),
-      Card(
-        child: Column(children: [
-          for (var i = 0; i < shown.length; i++) ...[
-            if (i > 0) const Divider(indent: 16),
-            _row(shown[i]),
-          ],
-        ]),
-      ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final c in categories)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(label: Text(c), selected: _category == c, onSelected: (_) => setState(() => _category = c)),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: Column(
+            children: [
+              for (var i = 0; i < shown.length; i++) ...[if (i > 0) const Divider(indent: 16), _row(shown[i])],
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _row(Map<String, dynamic> s) {
@@ -136,23 +164,32 @@ class _ServicePickerState extends State<ServicePicker> {
       onTap: () => widget.onChanged(on ? (widget.selected.toList()..remove(s['id'])) : [...widget.selected, '${s['id']}']),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(color: on ? Brand.blue : Colors.white, borderRadius: BorderRadius.circular(7), border: Border.all(color: on ? Brand.blue : Brand.border, width: 1.5)),
-            child: on ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${s['name']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              Text('${s['duration_minutes']} min${_category == 'All' ? ' · ${s['category'] ?? 'General'}' : ''}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
-            ]),
-          ),
-          Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-        ]),
+        child: Row(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: on ? Brand.blue : Colors.white,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: on ? Brand.blue : Brand.border, width: 1.5),
+              ),
+              child: on ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${s['name']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text('${s['duration_minutes']} min${_category == 'All' ? ' · ${s['category'] ?? 'General'}' : ''}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                ],
+              ),
+            ),
+            Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ],
+        ),
       ),
     );
   }
@@ -165,10 +202,15 @@ class StaffPicker extends StatelessWidget {
   final String? value;
   final ValueChanged<String?> onChanged;
   @override
-  Widget build(BuildContext context) => Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(label: const Text('Anyone'), selected: value == null, onSelected: (_) => onChanged(null)),
-        for (final s in desk.staff) ChoiceChip(avatar: value == s['id'] ? null : Avatar('${s['name']}', size: 20), label: Text('${s['name']}'), selected: value == s['id'], onSelected: (_) => onChanged('${s['id']}')),
-      ]);
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      ChoiceChip(label: const Text('Anyone'), selected: value == null, onSelected: (_) => onChanged(null)),
+      for (final s in desk.staff)
+        ChoiceChip(avatar: value == s['id'] ? null : Avatar('${s['name']}', size: 20), label: Text('${s['name']}'), selected: value == s['id'], onSelected: (_) => onChanged('${s['id']}')),
+    ],
+  );
 }
 
 class FormSection extends StatelessWidget {
@@ -178,12 +220,19 @@ class FormSection extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          if (hint != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(hint!, style: const TextStyle(fontSize: 12.5, color: Brand.muted))),
-          const SizedBox(height: 10),
-          child,
-        ]),
-      );
+    padding: const EdgeInsets.only(bottom: 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        if (hint != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(hint!, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+          ),
+        const SizedBox(height: 10),
+        child,
+      ],
+    ),
+  );
 }

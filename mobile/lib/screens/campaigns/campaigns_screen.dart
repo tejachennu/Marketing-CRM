@@ -17,11 +17,23 @@ class CampaignsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     if (!app.can('campaigns')) {
-      return Scaffold(appBar: AppBar(title: const Text('Campaigns')), body: const EmptyState(icon: Icons.campaign_outlined, title: 'For managers', text: 'Ask an admin for access to campaigns.'));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Campaigns')),
+        body: const EmptyState(icon: Icons.campaign_outlined, title: 'For managers', text: 'Ask an admin for access to campaigns.'),
+      );
     }
     final waiting = [
       for (final item in app.pending('campaign'))
-        {'id': item.id, 'name': item.body['name'], 'status': '_WAITING', 'template_name': item.body['templateName'], 'total_contacts': (item.body['audience'] as List?)?.length ?? 0, 'sent_count': 0, 'created_at': item.createdAt.toIso8601String(), '_failed': item.state.name == 'failed'},
+        {
+          'id': item.id,
+          'name': item.body['name'],
+          'status': '_WAITING',
+          'template_name': item.body['templateName'],
+          'total_contacts': (item.body['audience'] as List?)?.length ?? 0,
+          'sent_count': 0,
+          'created_at': item.createdAt.toIso8601String(),
+          '_failed': item.state.name == 'failed',
+        },
     ];
     final campaigns = [...waiting.reversed, for (final c in ((app.cached('campaigns') ?? const {})['campaigns'] as List? ?? const [])) Map<String, dynamic>.from(c)];
     num sum(String key) => campaigns.fold<num>(0, (s, c) => s + ((c[key] as num?) ?? 0));
@@ -35,26 +47,33 @@ class CampaignsScreen extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('New campaign', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
-      body: Column(children: [
-        const SyncBanner(cacheKey: 'campaigns'),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: app.syncNow,
-            child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 96), children: [
-              Panel(
-                child: Row(children: [
-                  _Stat(label: 'Sent', value: '${sent.toInt()}'),
-                  _Stat(label: 'Delivered', value: sent == 0 ? '—' : '${(delivered * 100 / sent).round()}%'),
-                  _Stat(label: 'Read', value: sent == 0 ? '—' : '${(read * 100 / sent).round()}%'),
-                ]),
+      body: Column(
+        children: [
+          const SyncBanner(cacheKey: 'campaigns'),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: app.syncNow,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                children: [
+                  Panel(
+                    child: Row(
+                      children: [
+                        _Stat(label: 'Sent', value: '${sent.toInt()}'),
+                        _Stat(label: 'Delivered', value: sent == 0 ? '—' : '${(delivered * 100 / sent).round()}%'),
+                        _Stat(label: 'Read', value: sent == 0 ? '—' : '${(read * 100 / sent).round()}%'),
+                      ],
+                    ),
+                  ),
+                  const SectionLabel('All campaigns'),
+                  if (campaigns.isEmpty) const EmptyState(icon: Icons.campaign_outlined, title: 'No campaigns yet', text: 'Send an approved template to many customers at once.'),
+                  for (final c in campaigns) ...[_CampaignCard(campaign: c), const SizedBox(height: 10)],
+                ],
               ),
-              const SectionLabel('All campaigns'),
-              if (campaigns.isEmpty) const EmptyState(icon: Icons.campaign_outlined, title: 'No campaigns yet', text: 'Send an approved template to many customers at once.'),
-              for (final c in campaigns) ...[_CampaignCard(campaign: c), const SizedBox(height: 10)],
-            ]),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -64,12 +83,17 @@ class _Stat extends StatelessWidget {
   final String label, value;
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Column(children: [
-          Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w600)),
-        ]),
-      );
+    child: Column(
+      children: [
+        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w600),
+        ),
+      ],
+    ),
+  );
 }
 
 class _CampaignCard extends StatelessWidget {
@@ -85,27 +109,55 @@ class _CampaignCard extends StatelessWidget {
     final read = (c['read_count'] as num?) ?? 0;
     final failed = (c['failed_count'] as num?) ?? 0;
     return Panel(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text('${c['name']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
-          if (status == '_WAITING') WaitingPill(failed: c['_failed'] == true) else Pill(_statusWords[status] ?? status, tone: status == 'FAILED' ? PillTone.red : status == 'RUNNING' ? PillTone.blue : PillTone.grey),
-        ]),
-        const SizedBox(height: 4),
-        Text(
-          status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])} · ${c['template_name']}' : '${formatWhen(c['created_at'])} · ${c['template_name'] ?? ''}',
-          style: const TextStyle(fontSize: 13, color: Brand.muted),
-        ),
-        const SizedBox(height: 12),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(minHeight: 7, value: total == 0 ? 0 : (sent / total).clamp(0, 1).toDouble(), backgroundColor: Brand.lineSoft, color: status == 'FAILED' ? Brand.red : Brand.blue),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          status == 'FAILED' ? '${failed.toInt()} of ${total.toInt()} could not be sent' : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${delivered.toInt()} delivered · ${read.toInt()} read' : ''}',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: status == 'FAILED' ? Brand.red : Brand.textSoft),
-        ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${c['name']}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (status == '_WAITING')
+                WaitingPill(failed: c['_failed'] == true)
+              else
+                Pill(
+                  _statusWords[status] ?? status,
+                  tone: status == 'FAILED'
+                      ? PillTone.red
+                      : status == 'RUNNING'
+                      ? PillTone.blue
+                      : PillTone.grey,
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])} · ${c['template_name']}' : '${formatWhen(c['created_at'])} · ${c['template_name'] ?? ''}',
+            style: const TextStyle(fontSize: 13, color: Brand.muted),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              minHeight: 7,
+              value: total == 0 ? 0 : (sent / total).clamp(0, 1).toDouble(),
+              backgroundColor: Brand.lineSoft,
+              color: status == 'FAILED' ? Brand.red : Brand.blue,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            status == 'FAILED'
+                ? '${failed.toInt()} of ${total.toInt()} could not be sent'
+                : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${delivered.toInt()} delivered · ${read.toInt()} read' : ''}',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: status == 'FAILED' ? Brand.red : Brand.textSoft),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -137,7 +189,10 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final contacts = contactsOf(app).where((c) => c['_waiting'] != true && '${c['phone_number'] ?? ''}'.isNotEmpty).toList();
-    final tags = <String>{for (final c in contacts) for (final t in (c['tags'] as List? ?? const [])) '$t'}.toList()..sort();
+    final tags = <String>{
+      for (final c in contacts)
+        for (final t in (c['tags'] as List? ?? const [])) '$t',
+    }.toList()..sort();
     final audience = contacts.where((c) => _tag == null || (c['tags'] as List? ?? const []).contains(_tag)).toList();
     final templates = templatesOf(app).where((t) => t['status'] == 'APPROVED').toList();
     final parts = _template == null ? null : TemplateParts(_template!);
@@ -149,62 +204,100 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('New campaign')),
-      body: Column(children: [
-        const SyncBanner(),
-        Expanded(
-          child: ListView(padding: const EdgeInsets.all(16), children: [
-            TextField(controller: _name, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'Campaign name', hintText: 'Diwali offer')),
-            const SectionLabel('Template'),
-            if (templates.isEmpty) const Text('No approved templates yet. Create one on the web first.', style: TextStyle(color: Brand.muted)),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final t in templates)
-                ChoiceChip(
-                  label: Text('${t['name']}'),
-                  selected: _template?['id'] == t['id'],
-                  onSelected: (_) => setState(() {
-                    _template = t;
-                    _fixed.clear();
-                    _useName.clear();
-                    final blanks = TemplateParts(t).blanks;
-                    if (blanks.isNotEmpty) _useName[blanks.first] = true;
-                  }),
+      body: Column(
+        children: [
+          const SyncBanner(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                TextField(
+                  controller: _name,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Campaign name', hintText: 'Diwali offer'),
                 ),
-            ]),
-            if (parts != null) ...[
-              const SizedBox(height: 12),
-              TemplateBubble(parts: parts, values: sample),
-              for (final b in parts.blanks) ...[
-                const SizedBox(height: 12),
-                Text('Blank {{$b}}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Wrap(spacing: 8, children: [
-                  ChoiceChip(label: const Text("Customer's first name"), selected: _useName[b] == true, onSelected: (_) => setState(() => _useName[b] = true)),
-                  ChoiceChip(label: const Text('Same text for all'), selected: _useName[b] != true, onSelected: (_) => setState(() => _useName[b] = false)),
-                ]),
-                if (_useName[b] != true) Padding(padding: const EdgeInsets.only(top: 8), child: TextField(decoration: const InputDecoration(hintText: 'Text for this blank'), onChanged: (v) => setState(() => _fixed[b] = v))),
+                const SectionLabel('Template'),
+                if (templates.isEmpty) const Text('No approved templates yet. Create one on the web first.', style: TextStyle(color: Brand.muted)),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final t in templates)
+                      ChoiceChip(
+                        label: Text('${t['name']}'),
+                        selected: _template?['id'] == t['id'],
+                        onSelected: (_) => setState(() {
+                          _template = t;
+                          _fixed.clear();
+                          _useName.clear();
+                          final blanks = TemplateParts(t).blanks;
+                          if (blanks.isNotEmpty) _useName[blanks.first] = true;
+                        }),
+                      ),
+                  ],
+                ),
+                if (parts != null) ...[
+                  const SizedBox(height: 12),
+                  TemplateBubble(parts: parts, values: sample),
+                  for (final b in parts.blanks) ...[
+                    const SizedBox(height: 12),
+                    Text('Blank {{$b}}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(label: const Text("Customer's first name"), selected: _useName[b] == true, onSelected: (_) => setState(() => _useName[b] = true)),
+                        ChoiceChip(label: const Text('Same text for all'), selected: _useName[b] != true, onSelected: (_) => setState(() => _useName[b] = false)),
+                      ],
+                    ),
+                    if (_useName[b] != true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: TextField(
+                          decoration: const InputDecoration(hintText: 'Text for this blank'),
+                          onChanged: (v) => setState(() => _fixed[b] = v),
+                        ),
+                      ),
+                  ],
+                ],
+                SectionLabel('Who gets it · ${audience.length}'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(label: Text('Everyone · ${contacts.length}'), selected: _tag == null, onSelected: (_) => setState(() => _tag = null)),
+                    for (final t in tags)
+                      ChoiceChip(label: Text('$t · ${contacts.where((c) => (c['tags'] as List? ?? const []).contains(t)).length}'), selected: _tag == t, onSelected: (_) => setState(() => _tag = t)),
+                  ],
+                ),
+                const SectionLabel('When'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(label: Text(app.online ? 'Now' : 'As soon as online'), selected: _when == 0, onSelected: (_) => setState(() => _when = 0)),
+                    if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
+                    ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Only customers who agreed to hear from you should get marketing messages. WhatsApp may limit numbers that get many blocks.',
+                  style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4),
+                ),
               ],
-            ],
-            SectionLabel('Who gets it · ${audience.length}'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              ChoiceChip(label: Text('Everyone · ${contacts.length}'), selected: _tag == null, onSelected: (_) => setState(() => _tag = null)),
-              for (final t in tags) ChoiceChip(label: Text('$t · ${contacts.where((c) => (c['tags'] as List? ?? const []).contains(t)).length}'), selected: _tag == t, onSelected: (_) => setState(() => _tag = t)),
-            ]),
-            const SectionLabel('When'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              ChoiceChip(label: Text(app.online ? 'Now' : 'As soon as online'), selected: _when == 0, onSelected: (_) => setState(() => _when = 0)),
-              if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
-              ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
-            ]),
-            const SizedBox(height: 14),
-            const Text('Only customers who agreed to hear from you should get marketing messages. WhatsApp may limit numbers that get many blocks.', style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4)),
-          ]),
-        ),
-      ]),
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Brand.line))),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Brand.line)),
+          ),
           child: FilledButton.icon(
             onPressed: parts == null || audience.isEmpty || _name.text.trim().isEmpty || parts.blanks.any((b) => _useName[b] != true && (_fixed[b] ?? '').trim().isEmpty)
                 ? null

@@ -1,7 +1,7 @@
 'use client'
 
 import { WamaLogo } from '@/components/brand/wama-logo'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
@@ -16,6 +16,40 @@ export default function SignupPage() {
   const [companyName, setCompanyName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Step 2: the 6-digit code emailed to them
+  const [codeSent, setCodeSent] = useState(false)
+  const [code, setCode] = useState('')
+  const [resendIn, setResendIn] = useState(0)
+
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const timer = window.setTimeout(() => setResendIn((s) => s - 1), 1000)
+    return () => window.clearTimeout(timer)
+  }, [resendIn])
+
+  async function sendCode() {
+    setError(null)
+    setLoading(true)
+    try {
+      const response = await fetch('/api/auth/signup/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName, companyName }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        if (data.retryAfter) setResendIn(Number(data.retryAfter))
+        throw new Error(data.error || 'The code could not be sent')
+      }
+      setCodeSent(true)
+      setCode('')
+      setResendIn(Number(data.resendAfterSeconds) || 60)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
 
   useState(() => {
@@ -40,6 +74,10 @@ export default function SignupPage() {
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
+    if (!codeSent) {
+      await sendCode()
+      return
+    }
     setError(null)
     setLoading(true)
 
@@ -52,6 +90,7 @@ export default function SignupPage() {
           password,
           fullName,
           companyName,
+          code,
         }),
       })
 
@@ -106,14 +145,6 @@ export default function SignupPage() {
         {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
       </button>
 
-      {/* Ambient background glows */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-teal-500/5 dark:bg-teal-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-[30%] left-[55%] w-[35%] h-[35%] bg-purple-500/2 dark:bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Grid Pattern Overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-50 dark:opacity-30 pointer-events-none" />
-
       {/* Main Signup Card Container */}
       <div className="w-full max-w-[440px] relative z-10 my-8">
         
@@ -145,7 +176,8 @@ export default function SignupPage() {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  readOnly={codeSent}
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="John Doe"
                   required
                 />
@@ -165,7 +197,8 @@ export default function SignupPage() {
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  readOnly={codeSent}
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="Acme Inc"
                   required
                 />
@@ -185,7 +218,8 @@ export default function SignupPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  readOnly={codeSent}
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="you@example.com"
                   required
                 />
@@ -205,12 +239,40 @@ export default function SignupPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  readOnly={codeSent}
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="Choose a strong password"
                   required
                 />
               </div>
             </div>
+
+            {codeSent && (
+              <div className="rounded-xl border border-[#d5ddeb] dark:border-slate-800 p-4 space-y-3">
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  We emailed a 6-digit code to <strong className="text-slate-900 dark:text-white">{email}</strong>. It works for 10 minutes. Check spam if you do not see it.
+                </p>
+                <label htmlFor="code" className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Code</label>
+                <input
+                  id="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xl font-bold tracking-[0.5em] text-center text-slate-900 dark:text-white"
+                  placeholder="······"
+                  required
+                />
+                <div className="flex items-center justify-between text-xs">
+                  <button type="button" onClick={() => { setCodeSent(false); setCode(''); setError(null) }} className="font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer">Change details</button>
+                  <button type="button" onClick={sendCode} disabled={loading || resendIn > 0} className="font-bold text-[#1D5BEA] disabled:text-slate-400 cursor-pointer disabled:cursor-default">
+                    {resendIn > 0 ? `Send again in ${resendIn}s` : 'Send a new code'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/50 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400">
@@ -220,14 +282,14 @@ export default function SignupPage() {
 
             <Button
               type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white py-3 rounded-xl font-bold transition-all duration-300 shadow-md shadow-teal-500/10 dark:shadow-teal-500/25 disabled:opacity-50 text-xs hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer border-0"
+              disabled={loading || (codeSent && code.length !== 6)}
+              className="w-full bg-[#1D5BEA] hover:bg-[#174bc4] text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-2 cursor-pointer border-0"
             >
               {loading ? (
-                <span>Creating account...</span>
+                <span>{codeSent ? 'Creating account...' : 'Sending code...'}</span>
               ) : (
                 <>
-                  <span>Create Account</span>
+                  <span>{codeSent ? 'Create Account' : 'Email me a code'}</span>
                   <ArrowRight size={14} />
                 </>
               )}
@@ -237,7 +299,7 @@ export default function SignupPage() {
           <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800/80 text-center">
             <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
               Already have an account?{' '}
-              <Link href="/login" className="text-teal-600 dark:text-teal-400 hover:text-teal-500 dark:hover:text-teal-300 font-bold transition-colors">
+              <Link href="/login" className="text-[#1D5BEA] dark:text-blue-300 hover:text-[#174bc4] dark:hover:text-blue-200 font-bold transition-colors">
                 Sign in
               </Link>
             </p>

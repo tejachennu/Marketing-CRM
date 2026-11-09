@@ -80,8 +80,10 @@ class OutboxItem {
 
   /// Also the client reference the server uses to do it only once.
   final String id;
+
   /// bill, booking, appointment, payment, contact, message, campaign, campaign_run
   final String kind;
+
   /// What it is, in words: "Bill for Priya · ₹700"
   final String label;
   final String method;
@@ -91,29 +93,40 @@ class OutboxItem {
   OutboxState state;
   String? error;
   int attempts;
+
   /// The local id given to what this creates (shown in lists until synced).
   final String? localId;
+
   /// Where the server's id for it is in the reply, like "invoice.id".
   final String? resultIdPath;
 
   Map<String, dynamic> toJson() => {
-        'id': id, 'kind': kind, 'label': label, 'method': method, 'path': path, 'body': body,
-        'createdAt': createdAt.toIso8601String(), 'state': state.name, 'error': error, 'attempts': attempts,
-        'localId': localId, 'resultIdPath': resultIdPath,
-      };
+    'id': id,
+    'kind': kind,
+    'label': label,
+    'method': method,
+    'path': path,
+    'body': body,
+    'createdAt': createdAt.toIso8601String(),
+    'state': state.name,
+    'error': error,
+    'attempts': attempts,
+    'localId': localId,
+    'resultIdPath': resultIdPath,
+  };
 
   factory OutboxItem.fromJson(Map<String, dynamic> json) => OutboxItem(
-        id: json['id'],
-        kind: json['kind'],
-        label: json['label'] ?? '',
-        method: json['method'] ?? 'POST',
-        path: json['path'],
-        body: Map<String, dynamic>.from(json['body'] ?? {}),
-        createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
-        state: OutboxState.values.firstWhere((s) => s.name == json['state'], orElse: () => OutboxState.waiting),
-        error: json['error'],
-        attempts: json['attempts'] ?? 0,
-        localId: json['localId'],
-        resultIdPath: json['resultIdPath'],
-      );
+    id: json['id'],
+    kind: json['kind'],
+    label: json['label'] ?? '',
+    method: json['method'] ?? 'POST',
+    path: json['path'],
+    body: Map<String, dynamic>.from(json['body'] ?? {}),
+    createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+    state: OutboxState.values.firstWhere((s) => s.name == json['state'], orElse: () => OutboxState.waiting),
+    error: json['error'],
+    attempts: json['attempts'] ?? 0,
+    localId: json['localId'],
+    resultIdPath: json['resultIdPath'],
+  );
 }

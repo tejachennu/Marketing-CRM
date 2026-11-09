@@ -259,9 +259,17 @@ ALTER TABLE salon_action_log ENABLE ROW LEVEL SECURITY;
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261115_front_desk_booking_flow.sql word for word: the WhatsApp booking flow. */
+export const FRONT_DESK_BOOKING_FLOW_SQL = `-- Front Desk: the WhatsApp booking flow (customer sends "Book", then picks service, day and time).
+-- Safe to run more than once. The app runs it on its own when the flow is first saved.
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS booking_flow JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}\n${FRONT_DESK_BOOKING_FLOW_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {
