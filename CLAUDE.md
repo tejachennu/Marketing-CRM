@@ -53,6 +53,9 @@ team roles, a Super Admin console, and a public REST API for integrators (`/api/
 
 ### Environment variables (names only; values live in Vercel / `.env.local`)
 
+`.env.example` lists every variable with notes. To get the real values, be added to the Vercel project
+and run `vercel link && vercel env pull .env.local`. Values never go in the repo or in chat.
+
 Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 Direct DB for auto-migrations: `POSTGRES_URL_NON_POOLING` / `POSTGRES_URL` / `DATABASE_URL`.
 WhatsApp/Meta: `WHATSAPP_*`, `META_APP_SECRET`, `META_SYSTEM_USER_TOKEN`, `NEXT_PUBLIC_META_*`.
