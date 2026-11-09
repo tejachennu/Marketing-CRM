@@ -216,7 +216,7 @@ void main() {
         },
         {'type': 'datetime'},
       ]),
-      'Step 2 needs at least two answers to tap.',
+      'Finish or remove step 2: it needs at least two answers.',
     );
     expect(
       unfinishedStep([
@@ -224,7 +224,7 @@ void main() {
         {'type': 'services'},
         {'type': 'datetime'},
       ]),
-      'Write step 1, or remove it.',
+      'Finish or remove step 1: it needs its words.',
     );
     expect(unfinishedStep(defaultSteps(false)), isNull);
     final (app, _) = await makeApp();

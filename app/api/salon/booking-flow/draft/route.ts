@@ -18,14 +18,23 @@ Step types (use only these):
 - {"type":"choice","text":question,"label":short name,"options":[2 to 10 short answers, each at most 24 characters]}
 - {"type":"text","text":question,"label":short name}   customer types an answer (name, age, problem, car number…)
 - {"type":"message","text":words}   a short note, no answer needed (e.g. "Please come 10 minutes early")
+- {"type":"location","name":place name,"address":full address,"url":Google Maps link if the business gave one,"text":optional line}
+     sends the business's location as a map (use it when they mention location, map, address, directions)
+- {"type":"link","text":words,"button":button words (max 20 characters),"url":https link}   a button that opens a page
+     (only when the business gives the link: menu, price list, website, Instagram)
+- {"type":"image","url":https link to a picture,"text":caption}   a photo (only when the business gives the picture's link)
 - {"type":"datetime"}  customer picks day and time (required, always the last step)
+"services", "staff" and "datetime" may have "text": the question in the business's own words (use {service}
+for the services picked, e.g. "Which day suits you for {service}?"); leave it out to use the standard words.
 
 Rules: at most 12 steps. "services" before "staff". "datetime" last. Keep questions short and friendly,
 the way a shopkeeper talks on WhatsApp. "label" is how the answer is saved on the booking (1 to 3 words).
 "welcome" greets the customer: use {name} for their first name and {business} for the business name, and
 end it with "Which service would you like?" (in the chosen language) when the first step is services.
 Write in the language the business asks for; Telugu and Hindi as they are typed on WhatsApp in Latin
-letters (Tenglish / Hinglish) unless they ask for the script. Ask only what the business asked for.`
+letters (Tenglish / Hinglish) unless they ask for the script. Ask only what the business asked for.
+Never write blanks to fill in like "[insert address]": use the business details given, or leave that step out.
+{name} (customer's first name) and {business} work in any text.`
 
 // POST { organizationId, description }: AI drafts the booking flow's steps from the business's words.
 // Nothing is saved: the draft comes back to edit and save.
@@ -42,14 +51,15 @@ export async function POST(request: NextRequest) {
     const setup = await loadSalonSetup(db, organizationId)
     const services = (setup.services || []).filter((s: any) => s.active)
     const categories = groupByCategory(setup.settings?.service_categories, services).filter(([, list]) => list.length > 0).map(([name, list]) => `${name} (${list.length})`).join(', ')
-    const context = `Business: ${setup.settings?.business_name || 'the business'} (${setup.settings?.business_type || 'salon'}). Service categories: ${categories || 'none yet'}. Team: ${(setup.staff || []).filter((m: any) => m.active).length} people.`
+    const address = String(setup.settings?.address || '').trim()
+    const context = `Business: ${setup.settings?.business_name || 'the business'} (${setup.settings?.business_type || 'salon'}). Address: ${address || 'not given'}. Service categories: ${categories || 'none yet'}. Team: ${(setup.staff || []).filter((m: any) => m.active).length} people.`
     const res = await aiFetch(db, ai, 'booking_flow_draft', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.3,
-        max_tokens: 900,
+        max_tokens: 1200,
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: `${context}\n\nHow customers should book:\n${description}` }],
       }),

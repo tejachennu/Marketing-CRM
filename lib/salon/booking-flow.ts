@@ -20,7 +20,7 @@ import { groupByCategory } from './categories'
 import { busyOn, loadChatSetup, logMessage, salonChatReady, sendFreeTimes, sendText, staffFor, type ChatLanguage, type ChatService, type ChatSetup, type SalonChatInput } from './chat'
 import { formatRupees } from './invoice'
 import { addDays, formatIstDay, istDate } from './spoken'
-import { MAX_SERVICES, parseBookingFlow, type BookingFlowSettings, type FlowStep as SetupStep } from './booking-flow-settings'
+import { MAX_SERVICES, parseBookingFlow, SAY_STEPS, type BookingFlowSettings, type FlowStep as SetupStep } from './booking-flow-settings'
 import { withSalonSchema } from './schema'
 import { phoneKey } from './spoken'
 
@@ -92,6 +92,37 @@ export function buildButtons(phone: string, body: string, buttons: { id: string;
     },
   }
 }
+
+/** A picture with its caption. */
+export function buildImage(phone: string, link: string, caption?: string) {
+  return { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone.replace(/[^\d]/g, ''), type: 'image', image: { link, ...(caption ? { caption: clip(caption, 1024) } : {}) } }
+}
+
+/** Words with one button that opens a link (a menu, a price list, the map). */
+export function buildLinkButton(phone: string, body: string, button: string, url: string) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: phone.replace(/[^\d]/g, ''),
+    type: 'interactive',
+    interactive: { type: 'cta_url', body: { text: clip(body, 1024) }, action: { name: 'cta_url', parameters: { display_text: clip(button, 20), url } } },
+  }
+}
+
+/** A map pin. */
+export function buildLocation(phone: string, place: { latitude: number; longitude: number; name?: string; address?: string }) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: phone.replace(/[^\d]/g, ''),
+    type: 'location',
+    location: { latitude: place.latitude, longitude: place.longitude, ...(place.name ? { name: place.name } : {}), ...(place.address ? { address: place.address } : {}) },
+  }
+}
+
+/** The map link for a place: the business's own link, else a search for the address. */
+export const mapLink = (step: { url?: string; address?: string; name?: string }) =>
+  step.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([step.name, step.address].filter(Boolean).join(', '))}`
 
 // ── Button ids ──
 // The services picked so far ride in every id, each as 22 characters (the 16 bytes of its id),
@@ -387,15 +418,38 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
   const lang = flow.language
   const withIntro = (text: string) => (intro ? `${intro}\n\n${text}` : text)
   if (!step) return { handled: true, step: 'expired' }
+  // The business's own words, with the customer's name and the business's name filled in
+  const own = (text: string | undefined, fill: Record<string, string> = {}) => {
+    const all = { name: String(input.contact.first_name || '').trim() || 'there', business: String(setup.settings.business_name || input.organization.name || 'us'), ...fill }
+    return Object.entries(all).reduce((t, [k, v]) => t.replaceAll(`{${k}}`, v), text || '')
+  }
 
-  if (step.type === 'message') {
-    await sendText(input, withIntro(step.text || ''))
+  if (SAY_STEPS.includes(step.type)) {
+    if (step.type === 'message') {
+      await sendText(input, withIntro(own(step.text)))
+    } else {
+      if (intro) await sendText(input, intro)
+      if (step.type === 'image') {
+        await sendPayload(input, buildImage(input.customerPhone, step.url || '', own(step.text) || undefined), `[Photo] ${own(step.text)}`.trim())
+      } else if (step.type === 'link') {
+        await sendPayload(input, buildLinkButton(input.customerPhone, own(step.text), step.button || 'Open', step.url || ''), `${own(step.text)}\n[${step.button || 'Open'}: ${step.url}]`)
+      } else {
+        // A pin when the place is known; otherwise the address with a button that opens the map
+        if (step.text) await sendText(input, own(step.text))
+        if (typeof step.latitude === 'number' && typeof step.longitude === 'number') {
+          await sendPayload(input, buildLocation(input.customerPhone, { latitude: step.latitude, longitude: step.longitude, name: step.name, address: step.address }), `[Location] ${[step.name, step.address].filter(Boolean).join(', ')}`)
+        } else {
+          const body = [step.name, step.address].filter(Boolean).join('\n') || own('{business}')
+          await sendPayload(input, buildLinkButton(input.customerPhone, body, 'Open map', mapLink(step)), `${body}\n[Open map]`)
+        }
+      }
+    }
     await saveSession(run, { step: session.step + 1, waiting: null })
     return runStep(run)
   }
 
   if (step.type === 'text') {
-    await sendText(input, withIntro(`${step.text}\n${say('typeAnswer', lang)}`))
+    await sendText(input, withIntro(`${own(step.text)}\n${say('typeAnswer', lang)}`))
     await saveSession(run, { waiting: 'text' })
     return { handled: true, step: 'question' }
   }
@@ -403,9 +457,9 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
   if (step.type === 'choice') {
     const options = step.options || []
     if (options.length <= 3) {
-      await sendPayload(input, buildButtons(input.customerPhone, withIntro(step.text || ''), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o }))), `${withIntro(step.text || '')}\n[${options.join(' | ')}]`)
+      await sendPayload(input, buildButtons(input.customerPhone, withIntro(own(step.text)), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o }))), `${withIntro(own(step.text))}\n[${options.join(' | ')}]`)
     } else {
-      await sendList(input, withIntro(step.text || ''), say('choose', lang), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o })))
+      await sendList(input, withIntro(own(step.text)), say('choose', lang), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o })))
     }
     return { handled: true, step: 'question' }
   }
@@ -414,7 +468,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
     const picked = session.service_ids
     const left = setup.services.filter((s) => !picked.includes(s.id))
     // A welcome that already asks a question needs no second one
-    const body = picked.length ? withIntro(say('whichMore', lang, { list: namesOf(pickedServices(run)) })) : intro?.trim().endsWith('?') ? intro : withIntro(say('pickService', lang))
+    const body = picked.length ? withIntro(say('whichMore', lang, { list: namesOf(pickedServices(run)) })) : intro?.trim().endsWith('?') ? intro : withIntro(step.text ? own(step.text) : say('pickService', lang))
     if (left.length <= 10) {
       await sendList(input, body, say('service', lang), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
       return { handled: true, step: 'services' }
@@ -441,7 +495,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
       await saveSession(run, { step: session.step + 1 })
       return runStep(run, intro)
     }
-    await sendList(input, withIntro(say('who', lang, { service: namesOf(services) })), say('person', lang), [
+    await sendList(input, withIntro(step.text ? own(step.text, { service: namesOf(services) }) : say('who', lang, { service: namesOf(services) })), say('person', lang), [
       { id: tapId(run, 'p', 'any'), title: say('anyone', lang) },
       ...people.slice(0, 9).map((m) => ({ id: tapId(run, 'p', packId(m.id)), title: m.name })),
     ])
@@ -455,7 +509,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
     return { handled: true, step: 'closed' }
   }
   const today = istDate(input.now ?? Date.now())
-  await sendList(input, withIntro(say('day', lang, { service: namesOf(services) })), say('dayButton', lang), days.map((d) => {
+  await sendList(input, withIntro(step.text ? own(step.text, { service: namesOf(services) }) : say('day', lang, { service: namesOf(services) })), say('dayButton', lang), days.map((d) => {
     const title = formatIstDay(d, today)
     const full = formatIstDay(d, '')
     return { id: tapId(run, 'd', d.replaceAll('-', '')), title, ...(title !== full ? { description: full } : {}) }

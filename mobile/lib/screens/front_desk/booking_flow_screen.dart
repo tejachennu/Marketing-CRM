@@ -5,6 +5,7 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'booking_steps.dart';
+import 'booking_try_screen.dart';
 import 'logic.dart';
 
 const _defaultTriggers = ['book', 'booking', 'appointment', 'బుక్', 'बुक'];
@@ -82,6 +83,8 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                 ),
                 const SectionLabel('Steps'),
                 StepsEditor(
+                  business: desk.businessName,
+                  address: '${desk.settings['address'] ?? ''}'.trim(),
                   steps: List<Map<String, dynamic>>.from(_flow['steps'] as List),
                   onChanged: (steps) => _set('steps', steps),
                   onDraft: (welcome, language) => setState(() {
@@ -191,6 +194,26 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                   ),
                 ),
                 const SectionLabel('What the customer sees'),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingTryScreen(
+                        steps: List<Map<String, dynamic>>.from(_flow['steps'] as List),
+                        welcome: _welcomeText.text.trim().isEmpty ? _welcome[_flow['language']]! : _welcomeText.text.trim(),
+                        trigger: triggers.first,
+                        multiSelect: _flow['multi_select'] == true,
+                        autoApprove: _autoApprove,
+                        daysAhead: (_flow['days_ahead'] as num?)?.toInt() ?? 7,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: const Text('Try it as a customer'),
+                ),
+                const SizedBox(height: 4),
+                const Text('Tap through your flow here, as a customer would on WhatsApp. Nothing is sent or booked.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+                const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(color: const Color(0xFFEFEAE2), borderRadius: BorderRadius.circular(16)),
@@ -205,8 +228,6 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                         multiSelect: _flow['multi_select'] == true,
                         autoApprove: _autoApprove,
                         business: desk.businessName,
-                        chat: (text, {mine = false}) => _Chat(mine: mine, text: text),
-                        list: (text, button, rows) => _ListChat(text: text, button: button, rows: rows),
                       ),
                     ],
                   ),
@@ -258,93 +279,4 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
     if (w.isNotEmpty && !triggers.contains(w) && triggers.length < 12) _set('triggers', [...triggers, w]);
     _word.clear();
   }
-}
-
-class _Chat extends StatelessWidget {
-  const _Chat({this.mine = false, required this.text});
-  final bool mine;
-  final String text;
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-    child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      constraints: const BoxConstraints(maxWidth: 260),
-      decoration: BoxDecoration(color: mine ? const Color(0xFFD9FDD3) : Colors.white, borderRadius: BorderRadius.circular(10)),
-      child: Text(text, style: const TextStyle(fontSize: 13)),
-    ),
-  );
-}
-
-class _ListChat extends StatelessWidget {
-  const _ListChat({required this.text, required this.button, required this.rows});
-  final String text, button;
-
-  /// With no button text, the rows are reply buttons under the message.
-  final List<String> rows;
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      constraints: const BoxConstraints(maxWidth: 270),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
-            child: Text(text, style: const TextStyle(fontSize: 13)),
-          ),
-          if (button.isEmpty)
-            for (final r in rows) ...[
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                child: Text(
-                  '↩  $r',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF027EB5), fontWeight: FontWeight.w600, fontSize: 13),
-                ),
-              ),
-            ]
-          else ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Text(
-                '☰  $button',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF027EB5), fontWeight: FontWeight.w600, fontSize: 13),
-              ),
-            ),
-            Container(
-              color: Brand.page,
-              child: Column(
-                children: [
-                  for (final r in rows)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              r,
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const Icon(Icons.radio_button_unchecked, size: 14, color: Brand.faint),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    ),
-  );
 }

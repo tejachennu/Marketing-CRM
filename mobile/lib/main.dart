@@ -30,6 +30,7 @@ import 'screens/templates/templates_screen.dart';
 import 'screens/ai/assistant_screen.dart';
 import 'screens/ai/knowledge_screen.dart';
 import 'screens/front_desk/booking_flow_screen.dart';
+import 'screens/front_desk/booking_try_screen.dart';
 import 'screens/more/signup_screen.dart';
 import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
@@ -169,6 +170,13 @@ class WamaApp extends StatelessWidget {
       'article' => ArticleScreen(article: Map<String, dynamic>.from((app.cached('knowledge')!['articles'] as List)[2])),
       'assistant' => const AssistantScreen(demoQuestion: 'How much is a gold facial?'),
       'booking_flow' => const BookingFlowScreen(),
+      'booking_try' => BookingTryScreen(
+        steps: [for (final x in (desk.settings['booking_flow'] as Map)['steps'] as List) Map<String, dynamic>.from(x as Map)],
+        welcome: "Hi {name}! Let's book your visit at {business}. Which service would you like?",
+        trigger: 'book',
+        multiSelect: true,
+        autoApprove: false,
+      ),
       'desk' => const HomeShell(),
       'bills' => const HomeShell(deskTab: 1),
       'reviews' => const HomeShell(deskTab: 2),

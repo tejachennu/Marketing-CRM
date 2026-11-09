@@ -6,7 +6,7 @@ void main() {
     screens: [
       'login', 'signup', 'signup_code', 'desk', 'bills', 'reviews', 'team', 'setup', 'setup_services', 'setup_team', 'setup_business', //
       'setup_whatsapp', 'setup_templates', 'checkout', 'new_bill', 'new_booking', 'appointment', 'bill', 'booking_flow', 'chats', 'chat', //
-      'chat_ai', 'chat_closed', 'contacts', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
+      'chat_ai', 'chat_closed', 'booking_try', 'contacts', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
     ],
     flows: [
       ('setup_services', ['Haircut (Women)']),
@@ -24,6 +24,9 @@ void main() {
       ('appointment', ['Done · make the bill']),
       ('reviews', ['To call back · 1']),
       ('booking_flow', ['2. Pick services']),
+      ('booking_flow', ['6. Location']),
+      ('booking_flow', ['7. Link button']),
+      ('booking_flow', ['Photo']),
     ],
   );
 }

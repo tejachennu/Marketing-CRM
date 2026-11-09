@@ -117,6 +117,18 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Booking flow: every step editable + new styles + Try it** (web and app): services / staff /
+  datetime take the business's own words (`text`, with {service}); new step types `image` (photo +
+  caption, WhatsApp image), `link` (words + button, WhatsApp `cta_url`) and `location` (name, address,
+  Google Maps link; a map pin when the link has coordinates — `mapsCoordinates` — else the address
+  with an "Open map" button). {name} and {business} work in every step's words. `stepProblem` (one
+  rule, mirrored in the app) says what a step still needs; `parseSteps` flags blanks like
+  "[insert …]". The AI drafter knows the new types and gets the business address. App: step sheets for
+  each type (photo upload), shared bubbles, and **Try it as a customer** (`booking_try_screen.dart`,
+  tap through the flow with real services, team and hours; nothing sent). Chip text colour fixed for
+  phones (theme `labelStyle` uses a `WidgetStateColor`; `test/chip_colors_test.dart`).
+  **The new step types need the server deployed**: an older server drops them when saving.
+
 - **App: Campaigns like the web, simpler** (`mobile/lib/screens/campaigns/`): list with totals
   (`summary`), search, status filters and Load more; campaign page (`campaign_screen.dart`: numbers,
   message, Replies → opens the chat, Everyone with status filters; Send now / Cancel a scheduled one,

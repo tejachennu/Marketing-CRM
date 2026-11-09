@@ -157,3 +157,59 @@ test('Another customer\'s buttons, or an old session, do not work for this numbe
     assert.deepEqual(await F.handleBookingStepButton(input(db, { buttonId: id, now: NOW + 25 * 3600_000 })), { handled: true, step: 'expired' })
   } finally { wa.restore() }
 })
+
+test('New step styles are checked: photo and link need https, location reads the map link, blanks are flagged', () => {
+  const { steps, notes } = S.parseSteps([
+    { type: 'services', text: '  What would you like today, {name}?  ' },
+    { type: 'image', url: 'http://not-safe.example/a.jpg', text: 'Our salon' },
+    { type: 'image', url: 'https://cdn.example.com/menu.jpg', text: 'Our menu' },
+    { type: 'link', text: 'See all prices', url: 'https://glow.example.com/prices', button: 'Price list that is far too long' },
+    { type: 'link', text: 'No link here' },
+    { type: 'location', name: 'Glow Salon', address: 'Road 12, Banjara Hills', url: 'https://www.google.com/maps/place/Glow/@17.4126,78.4482,17z' },
+    { type: 'location', address: 'Jubilee Hills, Hyderabad' },
+    { type: 'location' },
+    { type: 'message', text: 'We are at [insert map location].' },
+    { type: 'datetime', text: 'Which day for {service}?' },
+  ])
+  assert.deepEqual(steps.map((s) => s.type), ['services', 'image', 'link', 'location', 'location', 'message', 'datetime'])
+  assert.equal(steps[0].text, 'What would you like today, {name}?')
+  assert.equal(steps[1].url, 'https://cdn.example.com/menu.jpg')
+  assert.equal(steps[2].button.length, 20)
+  assert.deepEqual([steps[3].latitude, steps[3].longitude], [17.4126, 78.4482])
+  assert.equal(steps[4].latitude, undefined)
+  assert.equal(steps[6].text, 'Which day for {service}?')
+  assert.ok(notes.some((n) => /photo step needs the picture/.test(n)))
+  assert.ok(notes.some((n) => /link button needs words and an https link/.test(n)))
+  assert.ok(notes.some((n) => /location step needs your address/.test(n)))
+  assert.ok(notes.some((n) => /Fill in "\[insert map location\]"/.test(n)))
+  assert.deepEqual(S.mapsCoordinates('https://maps.google.com/?q=17.43,78.41'), { latitude: 17.43, longitude: 78.41 })
+  assert.equal(S.mapsCoordinates('https://maps.app.goo.gl/abc'), null)
+})
+
+test('Photo, link and location steps go out as WhatsApp sends them; the business\'s own words replace the built-in ones', async () => {
+  const db = seed({ steps: [
+    { type: 'services', text: 'Hi {name}, what shall we do for you?' },
+    { type: 'image', url: 'https://cdn.example.com/offer.jpg', text: '20% off for {name}' },
+    { type: 'link', text: 'Our full price list', url: 'https://glow.example.com/prices', button: 'See prices' },
+    { type: 'location', name: 'Glow Salon', address: 'Road 12, Banjara Hills', url: 'https://www.google.com/maps/@17.4126,78.4482,17z', text: 'Find us here:' },
+    { type: 'location', address: 'Jubilee Hills, Hyderabad' },
+    { type: 'datetime', text: 'When should we see you for {service}?' },
+  ], welcome: 'Welcome to {business}!' })
+  const wa = whatsapp()
+  try {
+    assert.deepEqual(await F.startBookingFlow(input(db)), { handled: true, step: 'started' })
+    assert.equal(wa.sent[0].interactive.body.text, 'Welcome to Glow Salon!\n\nHi Priya, what shall we do for you?')
+    await tap(db, rows(wa.sent[0])[0].id)
+    assert.deepEqual(buttons(wa.sent[1]).map((b) => b.title), ['Add another', 'Continue'])
+    await tap(db, buttons(wa.sent[1])[1].id)
+    assert.deepEqual(wa.sent[2].image, { link: 'https://cdn.example.com/offer.jpg', caption: '20% off for Priya' })
+    assert.equal(wa.sent[3].interactive.type, 'cta_url')
+    assert.deepEqual(wa.sent[3].interactive.action.parameters, { display_text: 'See prices', url: 'https://glow.example.com/prices' })
+    assert.equal(wa.sent[4].text.body, 'Find us here:')
+    assert.deepEqual(wa.sent[5].location, { latitude: 17.4126, longitude: 78.4482, name: 'Glow Salon', address: 'Road 12, Banjara Hills' })
+    // No map point known: the address with a button that opens the map
+    assert.equal(wa.sent[6].interactive.body.text, 'Jubilee Hills, Hyderabad')
+    assert.match(wa.sent[6].interactive.action.parameters.url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Jubilee%20Hills/)
+    assert.equal(wa.sent[7].interactive.body.text, 'When should we see you for Service 1?')
+  } finally { wa.restore() }
+})

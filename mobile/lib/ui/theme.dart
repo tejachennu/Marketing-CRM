@@ -87,7 +87,11 @@ ThemeData buildTheme() {
       backgroundColor: Colors.white,
       selectedColor: Brand.navy,
       side: const BorderSide(color: Brand.border),
-      labelStyle: WidgetStateTextStyle.resolveWith((states) => TextStyle(color: states.contains(WidgetState.selected) ? Colors.white : Brand.textSoft, fontWeight: FontWeight.w600)),
+      // A real colour for each state (a chip with no text colour shows nothing on some phones)
+      labelStyle: TextStyle(
+        color: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.selected) ? Colors.white : (states.contains(WidgetState.disabled) ? Brand.faint : Brand.textSoft)),
+        fontWeight: FontWeight.w600,
+      ),
       secondaryLabelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       showCheckmark: false,

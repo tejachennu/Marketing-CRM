@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from 'react'
 import { CalendarCheck2, Check, Copy, Loader2, Plus, X } from 'lucide-react'
-import { DAYS_AHEAD_CHOICES, DEFAULT_TRIGGERS, parseBookingFlow, type BookingFlowSettings, type FlowLanguage } from '@/lib/salon/booking-flow-settings'
+import { DAYS_AHEAD_CHOICES, DEFAULT_TRIGGERS, parseBookingFlow, stepProblem, type BookingFlowSettings, type FlowLanguage } from '@/lib/salon/booking-flow-settings'
 import { StepsEditor, StepsPreview } from './booking-steps-editor'
 import { api, card, Chip, Field, input, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup } from './types'
@@ -46,8 +46,8 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
   }
 
   async function save() {
-    const unfinished = flow.steps.find((x) => (x.type === 'choice' && ((x.options || []).length < 2 || !x.text?.trim())) || ((x.type === 'text' || x.type === 'message') && !x.text?.trim()))
-    if (unfinished) { flash('error', `Finish or remove step ${flow.steps.indexOf(unfinished) + 1}: it needs ${unfinished.type === 'choice' ? 'a question and at least two answers' : 'its words'}.`); return }
+    const unfinished = flow.steps.findIndex((x) => stepProblem(x))
+    if (unfinished >= 0) { flash('error', `Finish or remove step ${unfinished + 1}: it needs ${stepProblem(flow.steps[unfinished])}.`); return }
     setSaving(true)
     try {
       const data = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, booking_flow: flow, auto_approve_bookings: autoApprove }) })
@@ -78,7 +78,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
           )}
 
           <Field group label="Steps" hint="The order customers go through. Add your own questions; answers are saved on the booking.">
-            <StepsEditor orgId={orgId} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
+            <StepsEditor orgId={orgId} business={business} address={setup.settings.address || ''} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
               onDraft={({ welcome, language }) => set({ ...(welcome ? { welcome } : {}), ...(language ? { language } : {}) })} />
           </Field>
 
