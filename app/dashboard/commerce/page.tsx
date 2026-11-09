@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { announceConnectorBadges, announceConnectorTab, connectorTabFromSearch, onTabRequest } from '@/lib/connector-nav'
 import { AlertCircle, CheckCircle2, Circle, Clock, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Truck, Wallet, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -16,9 +17,23 @@ import { StoreSettings } from '@/components/commerce/store-settings'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
 type Tab = 'orders' | 'products' | 'flow' | 'settings'
+const MANAGER_TABS: Tab[] = ['flow', 'settings']
 
 export default function CommercePage() {
-  const [activeTab, setActiveTab] = useState<Tab>('orders')
+  // The tab is in the address (?tab=…): the phone's bottom bar shows it, and Back steps through tabs
+  const [activeTab, setTab] = useState<Tab>(() => (typeof window === 'undefined' ? 'orders' : (connectorTabFromSearch('commerce', window.location.search) as Tab) || 'orders'))
+  const scroller = useRef<HTMLDivElement>(null)
+  const shown = useRef<Tab>(activeTab)
+  const setActiveTab = useCallback((next: Tab) => {
+    if (shown.current !== next) {
+      const url = new URL(window.location.href)
+      if (next === 'orders') url.searchParams.delete('tab'); else url.searchParams.set('tab', next)
+      window.history.pushState(window.history.state, '', url)
+      scroller.current?.scrollTo({ top: 0 })
+    }
+    shown.current = next
+    setTab(next)
+  }, [])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [orgId, setOrgId] = useState<string | null>(null)
@@ -79,6 +94,22 @@ export default function CommercePage() {
   const canManageStore = can(viewer, 'automation.manage')
   const canEdit = can(viewer, 'records.write')
 
+  // The bottom bar (phones) opens tabs; Back and Forward move between them
+  useEffect(() => {
+    const allowed = (tab: Tab) => canManageStore || !MANAGER_TABS.includes(tab)
+    const stop = onTabRequest('commerce', (tab) => { if (allowed(tab as Tab)) setActiveTab(tab as Tab) })
+    const back = () => { const tab = (connectorTabFromSearch('commerce', window.location.search) as Tab) || 'orders'; shown.current = tab; setTab(allowed(tab) ? tab : 'orders') }
+    window.addEventListener('popstate', back)
+    return () => { stop(); window.removeEventListener('popstate', back) }
+  }, [canManageStore, setActiveTab])
+  // Setup tabs are for admins and managers: anyone else who follows a link to one sees orders
+  useEffect(() => {
+    if (!loading && !canManageStore && MANAGER_TABS.includes(activeTab)) { shown.current = 'orders'; setTab('orders') }
+  }, [loading, canManageStore, activeTab])
+  // Tell the bottom bar which tab is showing, and how many orders are waiting to ship
+  useEffect(() => { announceConnectorTab('commerce', activeTab) }, [activeTab])
+  useEffect(() => { announceConnectorBadges('commerce', { orders: summary?.toShip || 0 }) }, [summary?.toShip])
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-slate-50 dark:bg-[#0b141a]">
@@ -110,7 +141,7 @@ export default function CommercePage() {
 
   return (
     // The dashboard shell does not scroll; each page scrolls itself
-    <div className="h-full overflow-y-auto bg-slate-50 dark:bg-[#0b141a] text-slate-900 dark:text-slate-100">
+    <div ref={scroller} className="h-full overflow-y-auto bg-slate-50 dark:bg-[#0b141a] text-slate-900 dark:text-slate-100">
       <div className="max-w-7xl mx-auto p-4 pb-24 md:p-8 md:pb-10 space-y-5">
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -124,7 +155,8 @@ export default function CommercePage() {
             </div>
           </div>
 
-          <div role="tablist" aria-label="Commerce sections" className="inline-flex max-w-full overflow-x-auto no-scrollbar gap-1 p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]">
+          {/* Phones: the tabs are in the bottom bar */}
+          <div role="tablist" aria-label="Commerce sections" className="max-md:hidden inline-flex max-w-full overflow-x-auto no-scrollbar gap-1 p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]">
             {tabs.map(({ id, label, icon: Icon, count }) => (
               <button
                 key={id}

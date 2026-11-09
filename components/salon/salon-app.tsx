@@ -5,7 +5,7 @@ import { ConciergeBell, FileText, Loader2, ReceiptText, Settings2, Sparkles, Sta
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
-import { announceFrontDeskTab, isFrontDeskTab, MANAGER_TABS, OPEN_TAB_EVENT, tabFromSearch, type FrontDeskTab } from '@/lib/front-desk-nav'
+import { announceFrontDeskTab, MANAGER_TABS, onFrontDeskTabRequest, tabFromSearch, type FrontDeskTab } from '@/lib/front-desk-nav'
 import { api, card, secondaryButton, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab, type Section } from './salon-setup'
 import { SalonCounter } from './salon-counter'
@@ -66,11 +66,10 @@ export function SalonApp() {
 
   // The bottom bar (phones) opens tabs; Back and Forward move between them
   useEffect(() => {
-    const open = (event: Event) => { const next = (event as CustomEvent).detail; if (isFrontDeskTab(next)) go(next) }
+    const stop = onFrontDeskTabRequest(go)
     const back = () => { const asked = tabFromSearch(window.location.search) || 'counter'; if (allowed(asked)) setTab(asked) }
-    window.addEventListener(OPEN_TAB_EVENT, open)
     window.addEventListener('popstate', back)
-    return () => { window.removeEventListener(OPEN_TAB_EVENT, open); window.removeEventListener('popstate', back) }
+    return () => { stop(); window.removeEventListener('popstate', back) }
   }, [go, allowed])
 
   // Setup opens on Services unless asked for a section (the templates reminder opens Templates)

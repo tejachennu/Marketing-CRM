@@ -5,8 +5,9 @@
  * The tab is in the address (?tab=), and ?deal=<id> opens a deal.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlarmClock, BarChart3, KanbanSquare, List, Loader2, Plus, Search, Settings2, TrendingUp } from 'lucide-react'
+import { announceConnectorBadges, announceConnectorTab, onTabRequest } from '@/lib/connector-nav'
 import { followUpState } from '@/lib/pipeline/rules'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
 import { api, card, input, primaryButton, Toast, useToast, useWorkspace } from '../salon/ui'
@@ -59,17 +60,24 @@ export function PipelineApp() {
   }, [orgId, loadDeals])
 
   // The address follows the tab and the open deal, so Back and links work
+  const scroller = useRef<HTMLDivElement>(null)
+  const shown = useRef<Tab>(tab)
+  useEffect(() => { shown.current = tab }, [tab])
   const go = useCallback((next: Tab) => {
+    if (shown.current !== next) {
+      const url = new URL(window.location.href)
+      if (next === 'board') url.searchParams.delete('tab'); else url.searchParams.set('tab', next)
+      window.history.pushState(window.history.state, '', url)
+      scroller.current?.scrollTo({ top: 0 })
+    }
+    shown.current = next
     setTab(next)
-    const url = new URL(window.location.href)
-    if (next === 'board') url.searchParams.delete('tab'); else url.searchParams.set('tab', next)
-    window.history.pushState({}, '', url)
   }, [])
   const showDeal = useCallback((id: string | null) => {
     setOpenDeal(id)
     const url = new URL(window.location.href)
     if (id) url.searchParams.set('deal', id); else url.searchParams.delete('deal')
-    window.history.replaceState({}, '', url)
+    window.history.replaceState(window.history.state, '', url)
   }, [])
   useEffect(() => {
     const back = () => {
@@ -77,9 +85,16 @@ export function PipelineApp() {
       setTab(TABS.includes(t) ? t : 'board')
       setOpenDeal(readParam('deal'))
     }
+    // The bottom bar (phones) opens tabs
+    const stop = onTabRequest('pipeline', (next) => go(next as Tab))
     window.addEventListener('popstate', back)
-    return () => window.removeEventListener('popstate', back)
-  }, [])
+    return () => { stop(); window.removeEventListener('popstate', back) }
+  }, [go])
+
+  // Tell the bottom bar which tab is showing, and how many follow-ups are due
+  useEffect(() => { announceConnectorTab('pipeline', tab) }, [tab])
+  const dueCount = useMemo(() => deals.filter((d) => ['overdue', 'today'].includes(followUpState(d.next_follow_up_at))).length, [deals])
+  useEffect(() => { announceConnectorBadges('pipeline', { 'follow-ups': dueCount }) }, [dueCount])
 
   // A changed deal: kept on the board while open, taken off once won, lost or on hold
   const updated = useCallback((deal: Deal) => {
@@ -153,7 +168,7 @@ export function PipelineApp() {
   ]
 
   return (
-    <div className="@container flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
+    <div ref={scroller} className="@container flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
       <div className={`${tab === 'board' ? 'max-w-[1600px]' : 'max-w-6xl'} mx-auto px-3 min-[400px]:px-4 @xl:px-6 py-4 @xl:py-7 space-y-4 @xl:space-y-5`}>
         <header className="flex flex-col @4xl:flex-row @4xl:items-center justify-between gap-3 @xl:gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -165,9 +180,16 @@ export function PipelineApp() {
                 {due > 0 && <span className="max-[419px]:hidden"> · <span className={overdue ? 'font-semibold text-[#b91c1c]' : 'font-semibold text-[#0E1B3D] dark:text-white'}>{due} follow-up{due === 1 ? '' : 's'} due</span></span>}
               </p>
             </div>
+            {/* Phones: the tabs are in the bottom bar; Stages is this button */}
+            {me.canManage && (
+              <button type="button" onClick={() => go(tab === 'setup' ? 'board' : 'setup')} aria-label={tab === 'setup' ? 'Close stages' : 'Stages'} aria-pressed={tab === 'setup'}
+                className={`md:hidden shrink-0 h-11 w-11 rounded-xl border flex items-center justify-center cursor-pointer transition-colors ${tab === 'setup' ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672] dark:text-slate-300'}`}>
+                <Settings2 size={20} />
+              </button>
+            )}
             {canWrite && <button type="button" onClick={() => setCreating({})} className={`${primaryButton} @4xl:hidden shrink-0 px-3.5`} aria-label="New deal"><Plus size={18} /><span className="max-[399px]:hidden">New deal</span></button>}
           </div>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="max-md:hidden flex items-center gap-2 min-w-0">
             <div role="tablist" aria-label="Sales Pipeline" className="flex flex-1 min-w-0 rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
               {tabs.map(({ id, label, short, icon: Icon, badge }) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go(id)}
