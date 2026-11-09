@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Blocks, Check, Loader2, ConciergeBell, ShoppingBag } from 'lucide-react'
+import { ArrowRight, Blocks, Check, Loader2, ConciergeBell, ShoppingBag, TrendingUp } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { CONNECTORS, type ConnectorKey } from '@/lib/connectors'
 import { can } from '@/lib/rbac'
 import { api, card, primaryButton, secondaryButton, Toast, Toggle, useToast, useWorkspace } from '@/components/salon/ui'
 
-const ICONS: Record<ConnectorKey, LucideIcon> = { salon: ConciergeBell, ecommerce: ShoppingBag }
+const ICONS: Record<ConnectorKey, LucideIcon> = { salon: ConciergeBell, ecommerce: ShoppingBag, pipeline: TrendingUp }
 
 const LOOKS: Record<ConnectorKey, { band: string; icon: string; tags: string[]; tick: string }> = {
   salon: { band: 'bg-[#eef3fe] dark:bg-blue-950/30', icon: 'bg-[#1D5BEA]', tags: ['Bookings', 'Billing', 'Reviews'], tick: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' },
   ecommerce: { band: 'bg-[#e8f7f1] dark:bg-emerald-950/30', icon: 'bg-[#00A884]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' },
+  pipeline: { band: 'bg-[#f4f6fa] dark:bg-slate-800/40', icon: 'bg-[#0E1B3D] dark:bg-slate-700', tags: ['Deals', 'Follow-ups', 'Reports'], tick: 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' },
 }
 
 export default function ConnectorsPage() {

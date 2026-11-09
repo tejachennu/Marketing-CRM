@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { apiAuth } from '@/lib/public-api/auth'
+import { isConnectorOn } from '@/lib/connectors'
 
 export const runtime = 'nodejs'
 
@@ -14,6 +15,7 @@ export async function GET(request: Request) {
       key: { id: key.id, name: key.name, scopes: key.scopes },
       whatsapp_connected: Boolean(organization.whatsapp_api_token && organization.whatsapp_phone_number_id),
       front_desk: (organization.enabled_connectors || []).includes('salon'),
+      sales_pipeline: isConnectorOn(organization, 'pipeline'),
     },
   })
 }

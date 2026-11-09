@@ -35,6 +35,7 @@ export default function DashboardLayout({
     enable_phone_calls: true,
     // Use-case connectors (lib/connectors.ts)
     enable_commerce: true,
+    enable_pipeline: true,
     enabled_connectors: [] as string[],
   })
   const [credentialsStatus, setCredentialsStatus] = useState({
@@ -407,6 +408,7 @@ export default function DashboardLayout({
             enable_messages: org.enable_messages !== false,
             enable_phone_calls: org.enable_phone_calls !== false,
             enable_commerce: org.enable_commerce !== false,
+            enable_pipeline: org.enable_pipeline !== false,
             enabled_connectors: Array.isArray(org.enabled_connectors) ? org.enabled_connectors : [],
           })
 
@@ -712,6 +714,9 @@ export default function DashboardLayout({
   // Helpdesk, which keeps its original setup (lib/workspace-modules.ts)
   const isModulePage = (path: string) => CONSULAR_HIDDEN_PAGES.some((base) => path === base || path.startsWith(`${base}/`))
 
+  // Pages that a connector switches on and off (Connectors page)
+  const isConnectorPage = (path: string) => ['/dashboard/leads', '/dashboard/commerce', '/dashboard/front-desk', '/dashboard/salon'].some((base) => path === base || path.startsWith(`${base}/`))
+
   // Whether the organization has the feature behind a page switched on (independent of role)
   const isFeatureEnabled = (path: string) => {
     if (isModulePage(path) && (!workspaceModules.loaded || workspaceModules.consular)) return false
@@ -719,6 +724,7 @@ export default function DashboardLayout({
     // Use-case connectors appear once switched on in Connectors
     if (path.startsWith('/dashboard/front-desk') || path.startsWith('/dashboard/salon')) return features.enabled_connectors.includes('salon')
     if (path.startsWith('/dashboard/commerce')) return features.enable_commerce
+    if (path.startsWith('/dashboard/leads')) return features.enable_pipeline
     if (path.startsWith('/dashboard/flows')) return features.enable_messages
     if (path.startsWith('/dashboard/campaigns') || path.startsWith('/dashboard/contacts')) {
       return features.enable_messages || features.enable_email
@@ -1417,15 +1423,17 @@ export default function DashboardLayout({
                     <>
                       <h2 className="text-base font-bold text-slate-900 dark:text-white mb-2">Feature Disabled</h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed font-semibold">
-                        {canAccessPage(currentUser, '/dashboard/settings')
-                          ? 'This feature is switched off for your organization. You can turn it on in Settings.'
-                          : 'This feature is switched off for your organization. Ask an organization admin to turn it on.'}
+                        {!canAccessPage(currentUser, '/dashboard/settings')
+                          ? 'This feature is switched off for your organization. Ask an organization admin to turn it on.'
+                          : isConnectorPage(pathname)
+                            ? 'This connector is switched off for your organization. You can turn it on in Connectors.'
+                            : 'This feature is switched off for your organization. You can turn it on in Settings.'}
                       </p>
                       <Link
-                        href={canAccessPage(currentUser, '/dashboard/settings') ? '/dashboard/settings' : '/dashboard/profile'}
-                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                        href={canAccessPage(currentUser, '/dashboard/settings') ? (isConnectorPage(pathname) ? '/dashboard/connectors' : '/dashboard/settings') : '/dashboard/profile'}
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                       >
-                        {canAccessPage(currentUser, '/dashboard/settings') ? 'Go to Settings' : 'Go to my profile'}
+                        {canAccessPage(currentUser, '/dashboard/settings') ? (isConnectorPage(pathname) ? 'Go to Connectors' : 'Go to Settings') : 'Go to my profile'}
                       </Link>
                     </>
                   )}

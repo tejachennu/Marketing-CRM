@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { CONNECTORS, isConnectorOn, withConnector, type ConnectorKey } from '@/lib/connectors'
+import { withPipelineSchema } from '@/lib/pipeline/schema'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
 
@@ -8,8 +9,9 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 async function loadOrganization(db: any, organizationId: string) {
-  // enabled_connectors is added by the Spa & Salon migration; set it up when it is missing
-  return withSalonSchema(() => db.from('organizations').select('id, name, slug, whatsapp_provider, twilio_account_sid, twilio_auth_token, enable_commerce, enabled_connectors').eq('id', organizationId).maybeSingle())
+  // Every column, so a switch whose column is not there yet (enable_pipeline before its migration)
+  // reads as on; enabled_connectors comes with the Front Desk migration, set up when missing
+  return withSalonSchema(() => db.from('organizations').select('*').eq('id', organizationId).maybeSingle())
 }
 
 // GET: which connectors the workspace has switched on (every member may see this)
@@ -38,10 +40,9 @@ export async function POST(request: NextRequest) {
   if (error || !organization) return NextResponse.json({ error: error?.message || 'Workspace not found' }, { status: 500 })
   if (isConsularHelpdesk(organization)) return NextResponse.json({ error: 'Connectors are not available for this workspace.' }, { status: 403 })
 
-  const update = key === 'ecommerce' ? { enable_commerce: enabled } : { enabled_connectors: withConnector(organization.enabled_connectors, key, enabled) }
-  const { data: saved, error: saveError } = await withSalonSchema(() =>
-    db.from('organizations').update(update).eq('id', organizationId).select('enable_commerce, enabled_connectors').single()
-  )
+  const update = key === 'ecommerce' ? { enable_commerce: enabled } : key === 'pipeline' ? { enable_pipeline: enabled } : { enabled_connectors: withConnector(organization.enabled_connectors, key, enabled) }
+  const save = () => db.from('organizations').update(update).eq('id', organizationId).select('*').single()
+  const { data: saved, error: saveError } = key === 'pipeline' ? await withPipelineSchema(save) : await withSalonSchema(save)
   if (saveError) return NextResponse.json({ error: saveError.message }, { status: 500 })
   return NextResponse.json({ success: true, connectors: CONNECTORS.map((connector) => ({ key: connector.key, enabled: isConnectorOn({ ...organization, ...saved }, connector.key) })) })
 }

@@ -12,8 +12,14 @@ function salonDb(seed = {}) {
       in(k, list) { filters.push((r) => list.includes(r[k])); return this },
       or(expr) {
         // "first_name.ilike.pri*,last_name.ilike.pri*": any of them
-        const parts = String(expr).split(',').map((part) => { const [k, op, ...rest] = part.split('.'); return { k, op, v: rest.join('.') } })
-        filters.push((r) => parts.some(({ k, op, v }) => op === 'ilike' ? new RegExp('^' + v.replace(/[*%]/g, '.*') + '$', 'i').test(String(r[k] ?? '')) : String(r[k]) === v))
+        // Commas inside "in.(a,b)" belong to the list, not between conditions
+        const pieces = []
+        let depth = 0, current = ''
+        for (const ch of String(expr)) { if (ch === '(') depth++; if (ch === ')') depth--; if (ch === ',' && depth === 0) { pieces.push(current); current = '' } else current += ch }
+        pieces.push(current)
+        const parts = pieces.map((part) => { const [k, op, ...rest] = part.split('.'); return { k, op, v: rest.join('.') } })
+        filters.push((r) => parts.some(({ k, op, v }) => op === 'ilike' ? new RegExp('^' + v.replace(/[*%]/g, '.*') + '$', 'i').test(String(r[k] ?? ''))
+          : op === 'in' ? v.replace(/^\(|\)$/g, '').split(',').includes(String(r[k])) : String(r[k]) === v))
         return this
       },
       ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },

@@ -114,7 +114,7 @@ export default function DevelopersPage() {
           <section className="space-y-4">
             <p className="inline-flex items-center h-7 px-2.5 rounded-full bg-[#eef3fe] text-[#1D5BEA] text-[12.5px] font-bold">REST · JSON · HTTPS</p>
             <h1 className="text-[32px] sm:text-[42px] font-extrabold tracking-tight leading-tight">Connect your systems to WAMA CRM</h1>
-            <P>Add contacts from your website, send WhatsApp messages from your own software, take bookings from your app, and create bills from your till. Everything you do through the API shows up in WAMA CRM at once: contacts in Contacts, messages in the inbox, bookings and bills on the Front Desk counter.</P>
+            <P>Add contacts and enquiries from your website, send WhatsApp messages from your own software, take bookings from your app, and create bills from your till. Everything you do through the API shows up in WAMA CRM at once: contacts in Contacts, messages in the inbox, deals on the Sales Pipeline board, bookings and bills on the Front Desk counter.</P>
             <div className="rounded-2xl border border-[#e3e8f2] bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
               <span className="text-[13px] font-bold uppercase tracking-wide text-[#6B7894] shrink-0">Base URL</span>
               <code className="text-[14.5px] font-bold [overflow-wrap:anywhere]">{base}</code>

@@ -38,6 +38,13 @@ const invoice = {
   items: [{ service_id: service.id, name: 'Facial', quantity: 1, price: 1200, tax_rate: 18, taxable: 1016.95, tax: 183.05, total: 1200, staff_id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', staff_name: 'Anitha' }],
   subtotal: 1200, discount: 0, taxable: 1016.95, cgst: 91.53, sgst: 91.52, igst: 0, total: 1200, payment_method: 'upi', issued_at: '2026-11-08T12:35:00.000Z', paid_at: '2026-11-08T12:35:00.000Z', url: 'https://wamacrm.magnetora.in/i/AbCdEf123456',
 }
+const stage = { id: '5ea9e000-0000-4000-8000-000000000003', name: 'Qualified' }
+const lead = {
+  id: '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a', title: '500 shirts for Mehta Exports', value: 85000, currency: 'INR', status: 'open', stage, priority: 'hot', source: 'website',
+  owner: { id: 'bbbbbbbb-0000-4000-8000-000000000002', name: 'Ravi Kumar' }, contact: { id: contact.id, name: contact.name, phone: contact.phone, email: contact.email, company: 'Mehta Exports' },
+  product_service: 'Cotton shirts', description: null, expected_close_date: '2026-11-30', next_follow_up_at: '2026-11-10T05:00:00.000Z', won_lost_reason: null, won_at: null, lost_at: null,
+  last_activity_at: '2026-11-08T10:15:00.000Z', created_at: '2026-11-08T10:15:00.000Z', updated_at: '2026-11-08T10:15:00.000Z',
+}
 const page = (data: unknown[]) => ({ data, pagination: { limit: 50, offset: 0, has_more: false } })
 const LIST: ParamDoc[] = [
   { name: 'limit', type: 'integer', description: 'How many to return, 1 to 100. Default 50.' },
@@ -54,8 +61,8 @@ export const API_GROUPS: GroupDoc[] = [
   {
     id: 'workspace', title: 'Workspace', description: 'Check that a key works and what it may do.',
     endpoints: [{
-      id: 'get-me', method: 'GET', path: '/me', scope: null, title: 'Who am I', description: 'The workspace this key belongs to, its permissions, and whether WhatsApp and Front Desk are on.',
-      status: 200, responseExample: { data: { workspace: { id: 'c0ffee00-0000-4000-8000-000000000001', name: 'Glow Studio' }, key: { id: 'a1b2c3d4-0000-4000-8000-000000000001', name: 'Website', scopes: ['contacts:read', 'contacts:write'] }, whatsapp_connected: true, front_desk: true } },
+      id: 'get-me', method: 'GET', path: '/me', scope: null, title: 'Who am I', description: 'The workspace this key belongs to, its permissions, and whether WhatsApp, Front Desk and the Sales Pipeline are on.',
+      status: 200, responseExample: { data: { workspace: { id: 'c0ffee00-0000-4000-8000-000000000001', name: 'Glow Studio' }, key: { id: 'a1b2c3d4-0000-4000-8000-000000000001', name: 'Website', scopes: ['contacts:read', 'contacts:write'] }, whatsapp_connected: true, front_desk: true, sales_pipeline: true } },
     }],
   },
   {
@@ -117,6 +124,26 @@ export const API_GROUPS: GroupDoc[] = [
         body: [{ name: 'status', type: 'string', required: true, description: '"paid" or "void".' }, { name: 'payment_method', type: 'string', description: 'With paid: cash, upi or card.' }], requestExample: { status: 'paid', payment_method: 'cash' }, status: 200, responseExample: { data: { ...invoice, payment_method: 'cash' } }, errors: ['not_found', 'invalid_change'] },
     ],
   },
+  {
+    id: 'leads', title: 'Sales Pipeline', description: 'Deals (leads) on the Sales Pipeline board, the same ones your team works on. Send website enquiries straight in, move deals as they progress, and note calls. Priority is hot, warm or cold; status is open, won, lost or on_hold. Values are in the workspace currency (rupees by default).',
+    endpoints: [
+      { id: 'list-stages', method: 'GET', path: '/pipeline-stages', scope: 'leads:read', title: 'List stages', description: 'The stages a deal moves through, in order.', status: 200, responseExample: { data: [{ id: '5ea9e000-0000-4000-8000-000000000001', name: 'New lead', position: 1 }, { ...stage, position: 3 }] } },
+      { id: 'list-leads', method: 'GET', path: '/leads', scope: 'leads:read', title: 'List deals', description: 'Newest first. Open deals unless you ask for another status.', exampleQuery: '?status=open&follow_up=due',
+        query: [{ name: 'status', type: 'string', description: 'open (default), won, lost, on_hold or all.' }, { name: 'stage_id', type: 'string (uuid)', description: 'Only this stage.' }, { name: 'owner_id', type: 'string (uuid)', description: 'Only this teammate\'s deals; "none" for deals with no owner.' }, { name: 'source', type: 'string', description: 'Like website, whatsapp, referral or api.' }, { name: 'search', type: 'string', description: 'Part of the deal name, the customer\'s name or company, or at least 4 digits of their number.' }, { name: 'follow_up', type: 'string', description: 'due (overdue and today), upcoming, or none.' }, ...LIST],
+        status: 200, responseExample: page([lead]) },
+      { id: 'create-lead', method: 'POST', path: '/leads', scope: 'leads:write', title: 'Create a deal', description: 'Adds an open deal to the board. The customer is found by phone number or saved to Contacts. Without a stage it goes in the first one; its source is "api" unless you send one.',
+        body: [{ name: 'title', type: 'string', required: true, description: 'The deal\'s name, like "500 shirts for Mehta Exports".' }, { name: 'contact', type: 'object', description: '{ name, phone, email, company }: found by phone, or saved as a new contact. Or send contact_id.' }, { name: 'contact_id', type: 'string (uuid)', description: 'An existing contact.' }, { name: 'value', type: 'number', description: 'The amount, like 85000.' }, { name: 'stage_id', type: 'string (uuid)', description: 'Or stage: the stage\'s name.' }, { name: 'priority', type: 'string', description: 'hot, warm (default) or cold.' }, { name: 'source', type: 'string', description: '' }, { name: 'owner_id', type: 'string (uuid)', description: 'The teammate who owns it.' }, { name: 'next_follow_up_at', type: 'string (date-time)', description: 'When to follow up, like 2026-11-10T10:30:00+05:30.' }, { name: 'expected_close_date', type: 'string (date)', description: 'YYYY-MM-DD.' }, { name: 'product_service', type: 'string', description: '' }, { name: 'description', type: 'string', description: '' }],
+        requestExample: { title: '500 shirts for Mehta Exports', value: 85000, contact: { name: 'Rahul Mehta', phone: '+91 98490 10000', company: 'Mehta Exports' }, source: 'website', priority: 'hot' },
+        status: 201, responseExample: { data: { ...lead, stage: { id: '5ea9e000-0000-4000-8000-000000000001', name: 'New lead' }, owner: null } }, errors: ['invalid_request', 'pipeline_off'] },
+      { id: 'get-lead', method: 'GET', path: '/leads/{id}', scope: 'leads:read', title: 'Get a deal', description: 'With its history, newest first.', pathParams: ID, status: 200, responseExample: { data: { ...lead, history: [{ id: 'e1f2a3b4-0000-4000-8000-000000000001', type: 'call', content: 'Wants samples by Friday', created_at: '2026-11-08T11:00:00.000Z', by: 'Ravi Kumar' }] } }, errors: ['not_found'] },
+      { id: 'update-lead', method: 'PATCH', path: '/leads/{id}', scope: 'leads:write', title: 'Update, move or close a deal', description: 'Changes only the fields sent. Move it with stage_id (or stage). Close it with status won or lost; lost needs a reason. status open reopens it.', pathParams: ID,
+        body: [{ name: 'stage_id', type: 'string (uuid)', description: 'Or stage: the stage\'s name.' }, { name: 'status', type: 'string', description: 'open, won, lost or on_hold.' }, { name: 'reason', type: 'string', description: 'Why it was won or lost (needed for lost).' }, { name: 'value', type: 'number', description: '' }, { name: 'priority', type: 'string', description: 'hot, warm or cold.' }, { name: 'owner_id', type: 'string (uuid)', description: '' }, { name: 'next_follow_up_at', type: 'string (date-time)', description: 'null clears it.' }, { name: 'title', type: 'string', description: 'And the other fields of Create a deal.' }],
+        requestExample: { status: 'won', reason: 'Paid advance' }, status: 200, responseExample: { data: { ...lead, status: 'won', won_lost_reason: 'Paid advance', won_at: '2026-11-09T06:00:00.000Z', next_follow_up_at: null } }, errors: ['not_found', 'invalid_request'] },
+      { id: 'add-lead-activity', method: 'POST', path: '/leads/{id}/activities', scope: 'leads:write', title: 'Note a call or meeting', description: 'Adds to the deal\'s history, for example from your phone system, and can set the next follow-up.', pathParams: ID,
+        body: [{ name: 'type', type: 'string', description: 'note (default), call, whatsapp, meeting or email.' }, { name: 'content', type: 'string', required: true, description: 'What happened.' }, { name: 'next_follow_up_at', type: 'string (date-time)', description: 'When to follow up next; null clears it.' }],
+        requestExample: { type: 'call', content: 'Wants samples by Friday', next_follow_up_at: '2026-11-13T10:30:00+05:30' }, status: 201, responseExample: { data: { id: 'e1f2a3b4-0000-4000-8000-000000000001', type: 'call', content: 'Wants samples by Friday', created_at: '2026-11-08T11:00:00.000Z', by: 'System' } }, errors: ['not_found', 'invalid_request'] },
+    ],
+  },
 ]
 
 export const ERROR_CODES: { code: string; status: number; meaning: string }[] = [
@@ -125,6 +152,7 @@ export const ERROR_CODES: { code: string; status: number; meaning: string }[] = 
   { code: 'workspace_locked', status: 402, meaning: 'The workspace\'s plan has ended.' },
   { code: 'insufficient_scope', status: 403, meaning: 'The key does not have the permission this needs.' },
   { code: 'front_desk_off', status: 403, meaning: 'Front Desk is switched off for the workspace.' },
+  { code: 'pipeline_off', status: 403, meaning: 'The Sales Pipeline is switched off for the workspace.' },
   { code: 'not_found', status: 404, meaning: 'No such record in this workspace.' },
   { code: 'invalid_json', status: 400, meaning: 'The body is not a JSON object.' },
   { code: 'invalid_request', status: 400, meaning: 'A value is missing or wrong; "field" says which.' },
@@ -169,7 +197,7 @@ export function openApiSpec(baseUrl: string) {
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'WAMA CRM API', version: '1.0.0', description: `Connect your website, app or till to WAMA CRM: contacts, WhatsApp messages and Front Desk. Create a key in Settings → API. ${RATE_LIMIT_PER_MINUTE} requests a minute per key.` },
+    info: { title: 'WAMA CRM API', version: '1.0.0', description: `Connect your website, app or till to WAMA CRM: contacts, WhatsApp messages, Front Desk and the Sales Pipeline. Create a key in Settings → API. ${RATE_LIMIT_PER_MINUTE} requests a minute per key.` },
     servers: [{ url: `${baseUrl.replace(/\/+$/, '')}/api/v1` }],
     security: [{ bearerAuth: [] }],
     tags: API_GROUPS.map((g) => ({ name: g.title, description: g.description })),
