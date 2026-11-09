@@ -48,3 +48,26 @@ test('WhatsApp window: closed when the customer never wrote or wrote over 24 hou
   assert.equal(W.windowIsClosed('2026-11-09T07:30:00Z', now), false)
   assert.equal(W.windowIsClosed('2026-11-08T11:59:00Z', now), true)
 })
+
+test('Action log migration: the app runs the file word for word', () => {
+  const { FRONT_DESK_ACTION_LOG_SQL } = require('../lib/salon/schema.ts')
+  const file = fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261113_front_desk_action_log.sql'), 'utf8')
+  assert.equal(FRONT_DESK_ACTION_LOG_SQL, file)
+})
+
+test('Action log: the same client reference is done once; a failed one can be tried again', async () => {
+  const L = require('../lib/salon/action-log.ts')
+  const { salonDb } = require('./salon-fake-db.cjs')
+  const db = salonDb({ salon_action_log: [] })
+  const org = 'c0ffee00-0000-4000-8000-0000000000aa'
+  assert.ok(L.isClientRef('local_8f3a2b1c9d'))
+  assert.ok(!L.isClientRef('short'))
+  assert.ok(!L.isClientRef('has spaces in it'))
+  assert.deepEqual(await L.claimClientRef(db, org, 'local_bill_0001'), { fresh: true })
+  assert.deepEqual(await L.claimClientRef(db, org, 'local_bill_0001'), { fresh: false, result: null })
+  await L.saveClientResult(db, org, 'local_bill_0001', { success: true, message: 'Billed' })
+  assert.deepEqual(await L.claimClientRef(db, org, 'local_bill_0001'), { fresh: false, result: { success: true, message: 'Billed' } })
+  assert.deepEqual(await L.claimClientRef(db, org, 'local_bill_0002'), { fresh: true })
+  await L.releaseClientRef(db, org, 'local_bill_0002')
+  assert.deepEqual(await L.claimClientRef(db, org, 'local_bill_0002'), { fresh: true })
+})

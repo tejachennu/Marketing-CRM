@@ -243,9 +243,25 @@ ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS service_categories TEXT[] NO
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261113_front_desk_action_log.sql word for word: counter actions done once. */
+export const FRONT_DESK_ACTION_LOG_SQL = `-- Front Desk: counter actions sent with a client reference (the mobile app's offline queue) are
+-- remembered, so an action sent twice (a lost reply, a retry after the network came back) is done once.
+-- Safe to run more than once. The app runs it on its own the first time it is needed.
+CREATE TABLE IF NOT EXISTS salon_action_log (
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  client_ref TEXT NOT NULL,
+  result JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (organization_id, client_ref)
+);
+ALTER TABLE salon_action_log ENABLE ROW LEVEL SECURITY;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

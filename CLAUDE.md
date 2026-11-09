@@ -117,7 +117,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
-- (this change) Store settings: **Turn off cart** (switches the WhatsApp cart button off on Meta).
+- (mobile) **Flutter app in `mobile/`** (see `mobile/README.md`): Front Desk, Chats, Contacts,
+  Templates, Campaigns, **offline first** (Hive copy + outbox synced in order). Server additions:
+  `GET /api/mobile/me`, and `client_ref` on `/api/salon/act` so a replayed action is done once
+  (`salon_action_log`, `lib/salon/action-log.ts`). Demo mode: `--dart-define=DEMO=true`.
+  Flutter SDK is not in the cloud image; it was downloaded to `/opt/flutter-sdk` for the build.
+- Store settings: **Turn off cart** (switches the WhatsApp cart button off on Meta).
   Front Desk: **service categories** you can add, rename, reorder and remove (Setup → Services →
   Categories; new column `salon_settings.service_categories`, `/api/salon/categories`); the "Counter"
   tab is now **Front Desk** with its own icon (`components/salon/front-desk-icon.tsx`); phone numbers
