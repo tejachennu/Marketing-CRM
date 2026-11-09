@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'data/remote_config.dart';
+
 import 'config.dart';
 import 'data/app_state.dart';
 import 'data/backend.dart';
@@ -36,7 +38,12 @@ Future<void> main() async {
   if (AppConfig.demo) {
     backend = DemoBackend();
   } else {
-    await Supabase.initialize(url: AppConfig.supabaseUrl, publishableKey: AppConfig.supabaseAnonKey);
+    final config = await loadSignInConfig(store);
+    if (config == null) {
+      runApp(const _NeedsInternetApp());
+      return;
+    }
+    await Supabase.initialize(url: config.url, publishableKey: config.key);
     backend = HttpBackend(Supabase.instance.client);
   }
   final app = AppState(backend: backend, store: store);
@@ -229,4 +236,34 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
+}
+
+/// First start with no internet: the app needs to fetch its sign-in settings once.
+class _NeedsInternetApp extends StatelessWidget {
+  const _NeedsInternetApp();
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: buildTheme(),
+    home: Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.wifi_off, size: 40, color: Brand.navy),
+              const SizedBox(height: 16),
+              const Text('Connect to the internet once', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              const Text('The first time, WAMA CRM needs the internet to set itself up and sign you in. After that it works offline too.', style: TextStyle(color: Brand.textSoft, height: 1.4)),
+              const SizedBox(height: 20),
+              FilledButton(onPressed: () => main(), child: const Text('Try again')),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

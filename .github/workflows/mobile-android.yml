@@ -1,0 +1,78 @@
+# Builds the WAMA CRM Android app and publishes it at a fixed download link:
+#   https://github.com/tejachennu/Marketing-CRM/releases/download/mobile-latest/wama-crm.apk
+# Runs when the app changes on v4 (or this session's branch), or by hand (Actions → Run workflow).
+#
+# Signing: add these repository secrets to sign with your own key, so new versions install over
+# old ones: ANDROID_KEYSTORE_BASE64 (the .jks file, base64), ANDROID_STORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Without them a test key is used (fine for trying it;
+# each build then needs the old app removed first).
+name: Mobile app (Android)
+
+on:
+  push:
+    branches: [v4, ccr-7a545d5a-4kbhlw]
+    paths: ['mobile/**', '.github/workflows/mobile-android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-android
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+
+      - name: Signing key (when the secrets are set)
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > android/app/upload.jks
+            printf 'storeFile=upload.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
+            echo "Signing with your key."
+          else
+            echo "No signing secrets: using a test key."
+          fi
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      # No keys are built in: the app reads the public sign-in settings from /api/mobile/config
+      - name: Build the app
+        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=API_BASE=https://wamacrm.magnetora.in
+
+      - name: Publish the download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk wama-crm.apk
+          gh release delete mobile-latest --yes --cleanup-tag || true
+          gh release create mobile-latest wama-crm.apk \
+            --target "${{ github.sha }}" \
+            --title "WAMA CRM Android app (build ${{ github.run_number }})" \
+            --notes "Download wama-crm.apk on the phone and open it to install. Android may ask to allow installs from this source. Built from ${{ github.sha }}." \
+            --latest=false

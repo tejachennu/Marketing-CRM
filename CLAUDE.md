@@ -128,6 +128,9 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 - `PATCH /api/conversations` (AI replies on/off, mark read) for the mobile app.
 - Mobile app: full chat features (AI on/off, AI suggestions, Rephrase, files, reply-to, tickets),
   Knowledge base, Try the AI chatbot, Booking flow settings, Sign up with code.
+- **Android download link**: GitHub Actions (`.github/workflows/mobile-android.yml`) builds the app and publishes
+  `releases/download/mobile-latest/wama-crm.apk`. The app reads the public Supabase URL and key from
+  `GET /api/mobile/config`, so no keys are built in. Signing key: optional repo secrets (see the workflow).
 - (mobile) **Flutter app in `mobile/`** (see `mobile/README.md`): Front Desk, Chats, Contacts,
   Templates, Campaigns, **offline first** (Hive copy + outbox synced in order). Server additions:
   `GET /api/mobile/me`, and `client_ref` on `/api/salon/act` so a replayed action is done once

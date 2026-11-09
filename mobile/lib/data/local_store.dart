@@ -52,8 +52,11 @@ class LocalStore {
   String? serverId(String localId) => _ids.get(localId);
   Future<void> mapId(String localId, String serverId) => _ids.put(localId, serverId);
 
+  /// Signing out: everything goes except where to sign in (so the next sign-in works offline-first).
   Future<void> clear() async {
+    final config = _cache.get('config');
     await _cache.clear();
+    if (config != null) await _cache.put('config', config);
     await _outbox.clear();
     await _ids.clear();
   }
