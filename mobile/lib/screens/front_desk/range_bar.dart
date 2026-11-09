@@ -46,7 +46,7 @@ class RangeBar extends StatelessWidget {
               child: ChoiceChip(label: Text(DateRangeChoice(p).label), selected: value.preset == p, onSelected: (_) => onChanged(DateRangeChoice(p))),
             ),
           ChoiceChip(
-            avatar: Icon(Icons.date_range, size: 18, color: value.preset == 'custom' ? Colors.white : Brand.textSoft),
+            avatar: Icon(Icons.date_range, size: 18, color: value.preset == 'custom' ? Brand.blue : Brand.textSoft),
             label: Text(value.preset == 'custom' ? value.label : 'Pick dates'),
             selected: value.preset == 'custom',
             onSelected: (_) async {

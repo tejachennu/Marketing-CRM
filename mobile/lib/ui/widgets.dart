@@ -62,16 +62,20 @@ class Avatar extends StatelessWidget {
   final String name;
   final double size;
 
+  /// Three quiet tones from the brand colours, picked by name so a person keeps theirs.
+  static const _tones = [(Brand.blueSoft, Brand.blue), (Color(0xFFE6E9F2), Brand.navy), (Color(0xFFEAF0FB), Color(0xFF3F5E9E))];
+  (Color, Color) get tone => _tones[name.codeUnits.fold<int>(0, (a, b) => a + b) % _tones.length];
+
   @override
   Widget build(BuildContext context) {
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(size * 0.32)),
+      decoration: BoxDecoration(color: tone.$1, shape: BoxShape.circle),
       child: Text(
         initials(name),
-        style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w800, fontSize: size * 0.36),
+        style: TextStyle(color: tone.$2, fontWeight: FontWeight.w700, fontSize: size * 0.36),
       ),
     );
   }
@@ -134,8 +138,8 @@ class SectionLabel extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            text.toUpperCase(),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: Brand.faint),
+            text,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted),
           ),
         ),
         ?trailing,
@@ -156,14 +160,10 @@ class EmptyState extends StatelessWidget {
     child: Column(
       children: [
         Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Brand.line),
-          ),
-          child: Icon(icon, color: Brand.textSoft),
+          width: 72,
+          height: 72,
+          decoration: const BoxDecoration(color: Brand.blueSoft, shape: BoxShape.circle),
+          child: Icon(icon, color: Brand.blue, size: 32),
         ),
         const SizedBox(height: 14),
         Text(
@@ -365,4 +365,76 @@ void toast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// WhatsApp-style search: a grey pill with a magnifier, no border.
+class SearchField extends StatelessWidget {
+  const SearchField({super.key, required this.hint, required this.onChanged, this.controller, this.padding = const EdgeInsets.fromLTRB(16, 8, 16, 4)});
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final TextEditingController? controller;
+  final EdgeInsets padding;
+  @override
+  Widget build(BuildContext context) {
+    const pill = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(999)), borderSide: BorderSide.none);
+    return Padding(
+      padding: padding,
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: const Icon(Icons.search, color: Brand.muted),
+          filled: true,
+          fillColor: Brand.lineSoft,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          border: pill,
+          enabledBorder: pill,
+          focusedBorder: pill,
+        ),
+      ),
+    );
+  }
+}
+
+/// A row of filter chips that scrolls sideways (All, Unread, …), as at the top of WhatsApp.
+class FilterChips extends StatelessWidget {
+  const FilterChips({super.key, required this.children, this.padding = const EdgeInsets.fromLTRB(16, 6, 16, 6)});
+  final List<Widget> children;
+  final EdgeInsets padding;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: ListView(
+      scrollDirection: Axis.horizontal,
+      padding: padding,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(width: 8), children[i]],
+      ],
+    ),
+  );
+}
+
+/// A full-width list row on white with a thin line under it (WhatsApp lists), in place of a box.
+class FlatRow extends StatelessWidget {
+  const FlatRow({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 14)});
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsets padding;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    child: InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: padding,
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Brand.lineSoft)),
+        ),
+        child: child,
+      ),
+    ),
+  );
 }

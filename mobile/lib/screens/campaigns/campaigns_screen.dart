@@ -117,7 +117,20 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
     final pages = ((data?['pagination'] as Map?)?['pages'] as num?)?.toInt() ?? 1;
     int count(String key) => (summary?[key] as num?)?.toInt() ?? 0;
 
+    final searchBox = SearchField(
+      controller: _searchBox,
+      hint: 'Search campaign or template',
+      onChanged: (v) {
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 450), () {
+          if (!mounted) return;
+          setState(() => _search = v.trim());
+          _reload();
+        });
+      },
+    );
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Campaigns')),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'fab-campaigns',
@@ -133,6 +146,20 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
       body: Column(
         children: [
           SyncBanner(cacheKey: _key),
+          searchBox,
+          FilterChips(
+            children: [
+              for (final (value, label) in _filters)
+                ChoiceChip(
+                  label: Text(summary == null || value.isEmpty || count(value) == 0 ? label : '$label ${count(value)}'),
+                  selected: _status == value,
+                  onSelected: (_) {
+                    setState(() => _status = value);
+                    _reload();
+                  },
+                ),
+            ],
+          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
@@ -140,10 +167,13 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                 await app.syncNow();
               },
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                padding: const EdgeInsets.only(bottom: 96),
                 children: [
                   if (summary != null)
-                    Panel(
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(14)),
                       child: Row(
                         children: [
                           _Stat(label: 'Campaigns', value: '${count('total')}'),
@@ -152,57 +182,8 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _searchBox,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Search campaign or template',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _search.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                _searchBox.clear();
-                                setState(() => _search = '');
-                                _reload();
-                              },
-                            ),
-                    ),
-                    onChanged: (v) {
-                      _debounce?.cancel();
-                      _debounce = Timer(const Duration(milliseconds: 450), () {
-                        if (!mounted) return;
-                        setState(() => _search = v.trim());
-                        _reload();
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 40,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        for (final (value, label) in _filters)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(summary == null || value.isEmpty || count(value) == 0 ? label : '$label · ${count(value)}'),
-                              selected: _status == value,
-                              onSelected: (_) {
-                                setState(() => _status = value);
-                                _reload();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
                   if (data == null && app.isLoading(_key))
-                    const SizedBox(height: 400, child: SkeletonCards(cards: 3))
+                    const SizedBox(height: 400, child: SkeletonList())
                   else if (campaigns.isEmpty)
                     EmptyState(
                       icon: Icons.campaign_outlined,
@@ -210,12 +191,14 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                       text: _status.isEmpty && _search.isEmpty ? 'Send an approved template to many customers at once.' : 'Try another word or filter.',
                     )
                   else ...[
-                    for (final c in campaigns) ...[
+                    for (var i = 0; i < campaigns.length; i++) ...[
+                      if (i > 0) const Divider(indent: 76),
                       CampaignCard(
-                        campaign: c,
-                        onTap: c['status'] == '_WAITING'
+                        campaign: campaigns[i],
+                        onTap: campaigns[i]['status'] == '_WAITING'
                             ? null
                             : () async {
+                                final c = campaigns[i];
                                 await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -225,11 +208,13 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                                 if (mounted) _reload();
                               },
                       ),
-                      const SizedBox(height: 10),
                     ],
                     if (_page < pages)
-                      Center(
-                        child: OutlinedButton(onPressed: _loadingMore || !app.online ? null : _loadMore, child: Text(_loadingMore ? 'Loading…' : 'Load more')),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Center(
+                          child: OutlinedButton(onPressed: _loadingMore || !app.online ? null : _loadMore, child: Text(_loadingMore ? 'Loading…' : 'Load more')),
+                        ),
                       ),
                   ],
                 ],
@@ -287,71 +272,90 @@ class CampaignCard extends StatelessWidget {
     final status = '${c['status']}';
     final total = (c['total_contacts'] as num?) ?? 0;
     final sent = (c['sent_count'] as num?) ?? 0;
-    final delivered = (c['delivered_count'] as num?) ?? 0;
     final read = (c['read_count'] as num?) ?? 0;
     final failed = (c['failed_count'] as num?) ?? 0;
     final replies = (c['active_chats_count'] as num?) ?? 0;
     final toReply = (c['unread_chats_count'] as num?) ?? 0;
-    return Panel(
+    final when = status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])}' : formatWhen(c['created_at']);
+    final (icon, iconBg, iconFg) = switch (status) {
+      'FAILED' => (Icons.error_outline, Brand.redSoft, Brand.red),
+      'SCHEDULED' => (Icons.schedule, Brand.blueSoft, Brand.blue),
+      '_WAITING' => (Icons.cloud_upload_outlined, Brand.lineSoft, Brand.textSoft),
+      _ when isSending(status) => (Icons.send, Brand.blueSoft, Brand.blue),
+      _ => (Icons.campaign_outlined, Brand.lineSoft, Brand.navy),
+    };
+    return InkWell(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${c['name']}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (status == '_WAITING') WaitingPill(failed: c['_failed'] == true) else Pill(campaignStatusWords[status] ?? status, tone: campaignTone(status)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            [
-              status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])}' : formatWhen(c['created_at']),
-              if ('${c['template_name'] ?? ''}'.isNotEmpty) '${c['template_name']}',
-            ].join(' · '),
-            style: const TextStyle(fontSize: 13, color: Brand.muted),
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              minHeight: 7,
-              value: total == 0 ? 0 : (sent / total).clamp(0, 1).toDouble(),
-              backgroundColor: Brand.lineSoft,
-              color: status == 'FAILED' ? Brand.red : Brand.blue,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+              child: Icon(icon, color: iconFg, size: 22),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            status == 'FAILED' && sent == 0
-                ? '${failed.toInt()} of ${total.toInt()} could not be sent'
-                : status == 'SCHEDULED' || status == '_WAITING'
-                ? '${total.toInt()} people'
-                : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${delivered.toInt()} delivered · ${read.toInt()} read' : ''}${failed > 0 ? ' · ${failed.toInt()} not sent' : ''}',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: status == 'FAILED' ? Brand.red : Brand.textSoft),
-          ),
-          if (replies > 0) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(Icons.chat_bubble_outline, size: 15, color: Brand.blue),
-                const SizedBox(width: 6),
-                Text(
-                  '${replies.toInt()} replied${toReply > 0 ? ' · ${toReply.toInt()} waiting for you' : ''}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue),
-                ),
-              ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${c['name']}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        when,
+                        style: TextStyle(fontSize: 12, color: status == 'SCHEDULED' ? Brand.blue : Brand.faint, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          status == 'FAILED' && sent == 0
+                              ? '${failed.toInt()} of ${total.toInt()} could not be sent'
+                              : status == 'SCHEDULED' || status == '_WAITING'
+                              ? '${total.toInt()} people · ${c['template_name'] ?? ''}'
+                              : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${read.toInt()} read' : ''}${failed > 0 ? ' · ${failed.toInt()} not sent' : ''}',
+                          style: TextStyle(fontSize: 13.5, color: status == 'FAILED' ? Brand.red : Brand.muted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (status == '_WAITING') WaitingPill(failed: c['_failed'] == true) else Pill(campaignStatusWords[status] ?? status, tone: campaignTone(status)),
+                    ],
+                  ),
+                  if (isSending(status) || (status == 'COMPLETED' && total > 0)) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(minHeight: 4, value: total == 0 ? 0 : (sent / total).clamp(0, 1).toDouble(), backgroundColor: Brand.lineSoft, color: Brand.blue),
+                    ),
+                  ],
+                  if (replies > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${replies.toInt()} replied${toReply > 0 ? ' · ${toReply.toInt()} waiting for you' : ''}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }

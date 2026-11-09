@@ -117,6 +117,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: WhatsApp-like look** (owner's choice): brand colours kept; white lists with round avatars
+  (`Avatar` picks one of three quiet tones by name), pill search (`SearchField`), soft filter chips
+  (`FilterChips`; picked = light blue with a blue edge, theme `chipTheme` / `segmentedButtonTheme`),
+  flat rows (`FlatRow`), rounded-square FABs, sentence-case section titles, More as a settings list,
+  Front Desk tabs as chips with Book / New bill as corner buttons. Do not bring back navy-filled chips.
+
 - **Booking flow: every step editable + new styles + Try it** (web and app): services / staff /
   datetime take the business's own words (`text`, with {service}); new step types `image` (photo +
   caption, WhatsApp image), `link` (words + button, WhatsApp `cta_url`) and `location` (name, address,

@@ -200,9 +200,9 @@ class _DayChip extends StatelessWidget {
         child: Container(
           width: 56,
           decoration: BoxDecoration(
-            color: selected ? Brand.navy : Colors.white,
+            color: selected ? Brand.blue : Colors.white,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: selected ? Brand.navy : Brand.border),
+            border: Border.all(color: selected ? Brand.blue : Brand.border),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

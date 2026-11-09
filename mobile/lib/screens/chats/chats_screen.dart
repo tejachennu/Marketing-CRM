@@ -30,26 +30,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
     }).toList();
     final unread = all.where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Chats')),
       body: Column(
         children: [
           const SyncBanner(cacheKey: 'conversations'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search name or number'),
-              onChanged: (v) => setState(() => _query = v.trim()),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-            child: Row(
-              children: [
-                ChoiceChip(label: const Text('All'), selected: !_unreadOnly, onSelected: (_) => setState(() => _unreadOnly = false)),
-                const SizedBox(width: 8),
-                ChoiceChip(label: Text('Unread · $unread'), selected: _unreadOnly, onSelected: (_) => setState(() => _unreadOnly = true)),
-              ],
-            ),
+          SearchField(hint: 'Search name or number', onChanged: (v) => setState(() => _query = v.trim())),
+          FilterChips(
+            children: [
+              ChoiceChip(label: const Text('All'), selected: !_unreadOnly, onSelected: (_) => setState(() => _unreadOnly = false)),
+              ChoiceChip(label: Text(unread > 0 ? 'Unread $unread' : 'Unread'), selected: _unreadOnly, onSelected: (_) => setState(() => _unreadOnly = true)),
+            ],
           ),
           Expanded(
             child: RefreshIndicator(

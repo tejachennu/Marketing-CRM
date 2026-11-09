@@ -17,158 +17,97 @@ import 'signup_screen.dart';
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final user = app.me?['user'] ?? const {};
+    void open(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('More')),
       body: Column(
         children: [
           const SyncBanner(),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(bottom: 24),
               children: [
-                Panel(
+                // You, as in WhatsApp's settings
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Row(
                     children: [
-                      Avatar('${user['name'] ?? user['email'] ?? 'You'}', size: 52),
-                      const SizedBox(width: 14),
+                      Avatar('${user['name'] ?? user['email'] ?? 'You'}', size: 64),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${user['name'] ?? 'You'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                            Text('${user['email'] ?? ''}', style: const TextStyle(color: Brand.muted)),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 6,
-                              children: [
-                                Pill(app.orgName, tone: PillTone.navy),
-                                Pill('${user['role'] ?? ''}'),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Panel(
-                  onTap: () => Navigator.pushNamed(context, '/sync'),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(color: app.online ? Brand.blueSoft : Brand.page, borderRadius: BorderRadius.circular(12)),
-                        child: Icon(app.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined, color: app.online ? Brand.blue : Brand.textSoft),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(app.online ? 'Online' : 'Offline', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                            Text('${user['name'] ?? 'You'}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text('${user['email'] ?? ''}', style: const TextStyle(color: Brand.muted, fontSize: 14)),
+                            const SizedBox(height: 2),
                             Text(
-                              app.waitingCount == 0 ? 'Everything is saved · synced ${formatAgo(app.lastSync)}' : '${app.waitingCount} change${app.waitingCount == 1 ? '' : 's'} waiting to sync',
-                              style: const TextStyle(color: Brand.muted, fontSize: 13),
+                              [app.orgName, '${user['role'] ?? ''}'.replaceAll('_', ' ')].where((x) => x.trim().isNotEmpty).join(' · '),
+                              style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right, color: Brand.faint),
                     ],
                   ),
                 ),
-                const SectionLabel('AI'),
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.menu_book_outlined, color: Brand.navy),
-                        title: const Text('Knowledge base', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text('${articlesOf(app).length} answers the AI uses'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KnowledgeScreen())),
-                      ),
-                      const Divider(indent: 56),
-                      ListTile(
-                        leading: const Icon(Icons.smart_toy_outlined, color: Brand.navy),
-                        title: const Text('Try the AI chatbot', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Ask like a customer, see its reply'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AssistantScreen())),
-                      ),
-                    ],
-                  ),
+                const _Gap(),
+                _Row(
+                  icon: app.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                  iconColor: app.online ? Brand.blue : Brand.textSoft,
+                  title: app.online ? 'Online' : 'Offline',
+                  subtitle: app.waitingCount == 0 ? 'Everything is saved · synced ${formatAgo(app.lastSync)}' : '${app.waitingCount} change${app.waitingCount == 1 ? '' : 's'} waiting to sync',
+                  onTap: () => Navigator.pushNamed(context, '/sync'),
                 ),
+                const _Gap(),
+                const _Title('AI'),
+                _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
+                _Row(icon: Icons.smart_toy_outlined, title: 'Try the AI chatbot', subtitle: 'Ask like a customer, see its reply', onTap: () => open(const AssistantScreen())),
                 if (app.frontDeskOn && app.can('manage')) ...[
-                  const SectionLabel('Front Desk'),
-                  Card(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          leading: const Padding(
-                            padding: EdgeInsets.only(left: 2),
-                            child: FrontDeskIcon(size: 22, color: Brand.navy),
-                          ),
-                          title: const Text('Front Desk setup', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: const Text('Services, team, business details, WhatsApp, templates'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
-                        ),
-                        const Divider(indent: 56),
-                        ListTile(
-                          leading: const Icon(Icons.event_available_outlined, color: Brand.navy),
-                          title: const Text('Booking flow on WhatsApp', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingFlowScreen())),
-                        ),
-                      ],
-                    ),
+                  const _Gap(),
+                  const _Title('Front Desk'),
+                  _Row(
+                    leading: const FrontDeskIcon(size: 24, color: Brand.textSoft),
+                    title: 'Front Desk setup',
+                    subtitle: 'Services, team, business details, WhatsApp, templates',
+                    onTap: () => open(const SetupScreen()),
+                  ),
+                  _Row(
+                    icon: Icons.event_available_outlined,
+                    title: 'Booking flow on WhatsApp',
+                    subtitle: ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up',
+                    onTap: () => open(const BookingFlowScreen()),
                   ),
                 ],
-                const SectionLabel('Workspace'),
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.description_outlined, color: Brand.navy),
-                        title: const Text('WhatsApp templates', style: TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.pushNamed(context, '/templates'),
-                      ),
-                      if (!app.frontDeskOn) ...[
-                        const Divider(indent: 56),
-                        const ListTile(
-                          leading: Padding(
-                            padding: EdgeInsets.only(left: 2),
-                            child: FrontDeskIcon(size: 22, color: Brand.navy),
-                          ),
-                          title: Text('Front Desk', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text('Off · an admin can switch it on in Connectors on the web'),
-                        ),
-                      ],
-                      const Divider(indent: 56),
-                      const ListTile(
-                        leading: Icon(Icons.language, color: Brand.navy),
-                        title: Text('Team members, connectors and billing', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text('On the web at wamacrm.magnetora.in'),
-                      ),
-                    ],
-                  ),
+                const _Gap(),
+                const _Title('Workspace'),
+                _Row(
+                  icon: Icons.description_outlined,
+                  title: 'WhatsApp templates',
+                  subtitle: 'Messages Meta has approved, for campaigns and replies',
+                  onTap: () => Navigator.pushNamed(context, '/templates'),
                 ),
-                const SizedBox(height: 18),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Brand.red,
-                    side: const BorderSide(color: Color(0xFFF3C7C7)),
+                if (!app.frontDeskOn)
+                  const _Row(
+                    leading: FrontDeskIcon(size: 24, color: Brand.textSoft),
+                    title: 'Front Desk',
+                    subtitle: 'Off · an admin can switch it on in Connectors on the web',
                   ),
-                  onPressed: () async {
+                const _Row(icon: Icons.language, title: 'Team members, connectors and billing', subtitle: 'On the web at wamacrm.magnetora.in'),
+                const _Gap(),
+                _Row(
+                  icon: Icons.logout,
+                  iconColor: Brand.red,
+                  title: 'Sign out',
+                  titleColor: Brand.red,
+                  onTap: () async {
                     final waiting = app.waitingCount;
                     final ok = await showDialog<bool>(
                       context: context,
@@ -191,8 +130,6 @@ class MoreScreen extends StatelessWidget {
                     );
                     if (ok == true) await app.signOut();
                   },
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign out'),
                 ),
               ],
             ),
@@ -201,6 +138,63 @@ class MoreScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The light grey strip between groups.
+class _Gap extends StatelessWidget {
+  const _Gap();
+  @override
+  Widget build(BuildContext context) => Container(height: 8, color: Brand.page);
+}
+
+class _Title extends StatelessWidget {
+  const _Title(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+    child: Text(
+      text,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted),
+    ),
+  );
+}
+
+/// A settings row: icon, title and a line under it.
+class _Row extends StatelessWidget {
+  const _Row({this.icon, this.leading, required this.title, this.subtitle, this.onTap, this.iconColor = Brand.textSoft, this.titleColor});
+  final IconData? icon;
+  final Widget? leading;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final Color iconColor;
+  final Color? titleColor;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+      child: Row(
+        children: [
+          SizedBox(width: 26, child: leading ?? Icon(icon, color: iconColor, size: 24)),
+          const SizedBox(width: 22),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: titleColor ?? Brand.text),
+                ),
+                if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: const TextStyle(fontSize: 13.5, color: Brand.muted, height: 1.3))],
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// What is waiting to reach the server, what was refused and why, with Try again and Discard.

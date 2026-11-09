@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
-import '../../ui/front_desk_icon.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
@@ -60,27 +59,13 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: Brand.navy, borderRadius: BorderRadius.circular(11)),
-              child: const Center(child: FrontDeskIcon(size: 24, color: Colors.white)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(desk.businessName, overflow: TextOverflow.ellipsis),
-                  Text(
-                    'Front Desk · ${formatDay(istNow())}',
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Brand.muted),
-                  ),
-                ],
-              ),
+            Text(desk.businessName, overflow: TextOverflow.ellipsis),
+            Text(
+              'Front Desk · ${formatDay(istNow())}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted),
             ),
           ],
         ),
@@ -98,24 +83,17 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: SegmentedButton<int>(
-              showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(
-                selectedBackgroundColor: Brand.navy,
-                selectedForegroundColor: Colors.white,
-                side: const BorderSide(color: Brand.border),
-              ),
-              segments: [
-                const ButtonSegment(value: 0, label: Text('Visits')),
-                const ButtonSegment(value: 1, label: Text('Bills')),
-                if (manage) ...[const ButtonSegment(value: 2, label: Text('Reviews')), const ButtonSegment(value: 3, label: Text('Team'))],
-              ],
-              selected: {_tab},
-              onSelectionChanged: (s) => setState(() => _tab = s.first),
-            ),
+          preferredSize: const Size.fromHeight(50),
+          child: FilterChips(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+            children: [
+              for (final (i, label) in [
+                (0, 'Visits'),
+                (1, 'Bills'),
+                if (manage) ...[(2, 'Reviews'), (3, 'Team')],
+              ])
+                ChoiceChip(label: Text(label), selected: _tab == i, onSelected: (_) => setState(() => _tab = i)),
+            ],
           ),
         ),
       ),
@@ -138,35 +116,29 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: app.can('write') && _tab < 2
-          ? SafeArea(
-              top: false,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Brand.line)),
+      // The two counter actions, as WhatsApp's buttons in the corner
+      floatingActionButton: app.can('write') && _tab < 2
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'fab-book',
+                  backgroundColor: Colors.white,
+                  foregroundColor: Brand.navy,
+                  elevation: 2,
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBookingScreen())),
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('Book'),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBookingScreen())),
-                        icon: const Icon(Icons.event_available_outlined),
-                        label: const Text('Book'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBillScreen())),
-                        icon: const Icon(Icons.receipt_long),
-                        label: const Text('New bill'),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'fab-bill',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBillScreen())),
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('New bill'),
                 ),
-              ),
+              ],
             )
           : null,
     );
@@ -185,7 +157,7 @@ class _Today extends StatelessWidget {
     final visits = appointments.where((a) => !['cancelled', 'no_show', 'declined'].contains(a['status'])).length;
     final waiting = appointments.where((a) => a['status'] == 'booked').length;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 150),
       children: [
         DayBar(date: desk.date, onChanged: onDay),
         const SizedBox(height: 10),
@@ -448,7 +420,7 @@ class _Bills extends StatelessWidget {
     final unpaid = invoices.where((i) => i['status'] == 'unpaid');
     final summary = desk.billsSummary;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 150),
       children: [
         RangeBar(value: range, onChanged: onRange),
         const SizedBox(height: 10),

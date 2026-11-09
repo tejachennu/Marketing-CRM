@@ -52,6 +52,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return contactName(c).toLowerCase().contains(q) || (digits.length >= 3 && '${c['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '').contains(digits));
     }).toList();
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: Text('Contacts · ${all.length}')),
       floatingActionButton: app.can('write')
           ? FloatingActionButton.extended(
@@ -66,31 +67,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: Column(
         children: [
           const SyncBanner(cacheKey: 'contacts'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search name or number'),
-              onChanged: (v) => setState(() => _query = v.trim()),
-            ),
-          ),
+          SearchField(hint: 'Search name or number', onChanged: (v) => setState(() => _query = v.trim())),
           if (tags.isNotEmpty)
-            SizedBox(
-              height: 52,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(label: const Text('Everyone'), selected: _tag == null, onSelected: (_) => setState(() => _tag = null)),
-                  ),
-                  for (final t in tags)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(label: Text(t), selected: _tag == t, onSelected: (_) => setState(() => _tag = t)),
-                    ),
-                ],
-              ),
+            FilterChips(
+              children: [
+                ChoiceChip(label: const Text('Everyone'), selected: _tag == null, onSelected: (_) => setState(() => _tag = null)),
+                for (final t in tags) ChoiceChip(label: Text(t), selected: _tag == t, onSelected: (_) => setState(() => _tag = t)),
+              ],
             ),
           Expanded(
             child: RefreshIndicator(

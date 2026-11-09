@@ -5,7 +5,7 @@ import 'package:wama_mobile/ui/theme.dart';
 
 /// Chip text must be readable on every chip type, picked or not (it once came out invisible on phones).
 void main() {
-  testWidgets('Chip text colours: dark on white, white on navy', (tester) async {
+  testWidgets('Chip text colours: grey when not picked, blue when picked', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: buildTheme(),
@@ -37,7 +37,7 @@ void main() {
       expect(colorOf(t), Brand.textSoft, reason: t);
     }
     for (final t in ['choice on', 'filter on']) {
-      expect(colorOf(t), Colors.white, reason: t);
+      expect(colorOf(t), Brand.blue, reason: t);
     }
   });
 }

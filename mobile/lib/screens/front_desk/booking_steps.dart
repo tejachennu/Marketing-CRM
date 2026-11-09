@@ -629,7 +629,9 @@ class ListBubble extends StatelessWidget {
                       children: [
                         const Icon(Icons.reply, size: 16, color: Color(0xFF027EB5)),
                         const SizedBox(width: 6),
-                        Flexible(child: Text(rows[i], style: blue, overflow: TextOverflow.ellipsis)),
+                        Flexible(
+                          child: Text(rows[i], style: blue, overflow: TextOverflow.ellipsis),
+                        ),
                       ],
                     ),
                   ),
@@ -644,7 +646,9 @@ class ListBubble extends StatelessWidget {
                   children: [
                     const Icon(Icons.format_list_bulleted, size: 16, color: Color(0xFF027EB5)),
                     const SizedBox(width: 6),
-                    Flexible(child: Text(button, style: blue, overflow: TextOverflow.ellipsis)),
+                    Flexible(
+                      child: Text(button, style: blue, overflow: TextOverflow.ellipsis),
+                    ),
                   ],
                 ),
               ),

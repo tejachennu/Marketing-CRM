@@ -266,7 +266,6 @@ class _CampaignScreenState extends State<CampaignScreen> {
                         const SizedBox(height: 16),
                         SegmentedButton<bool>(
                           showSelectedIcon: false,
-                          style: SegmentedButton.styleFrom(selectedBackgroundColor: Brand.navy, selectedForegroundColor: Colors.white),
                           segments: [
                             ButtonSegment(value: false, label: Text('Replies · ${replied.length}')),
                             ButtonSegment(value: true, label: Text('Everyone · ${people.length}')),
@@ -367,8 +366,9 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
     final shown = people.where(keep).toList();
     return [
-      TextField(
-        decoration: const InputDecoration(hintText: 'Search name or number', prefixIcon: Icon(Icons.search)),
+      SearchField(
+        hint: 'Search name or number',
+        padding: EdgeInsets.zero,
         onChanged: (v) => setState(() {
           _search = v.trim();
           _limit = 50;

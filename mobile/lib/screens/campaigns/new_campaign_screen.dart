@@ -251,7 +251,6 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
                 _Step(2, 'Who gets it', '${list.recipients.length} ${list.recipients.length == 1 ? 'person' : 'people'}'),
                 SegmentedButton<bool>(
                   showSelectedIcon: false,
-                  style: SegmentedButton.styleFrom(selectedBackgroundColor: Brand.navy, selectedForegroundColor: Colors.white),
                   segments: const [
                     ButtonSegment(value: false, icon: Icon(Icons.people_outline, size: 18), label: Text('My contacts')),
                     ButtonSegment(value: true, icon: Icon(Icons.upload_file, size: 18), label: Text('Upload a list')),
@@ -408,7 +407,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
                     if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
                     ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
                     ChoiceChip(
-                      avatar: Icon(Icons.event, size: 18, color: _when == 3 ? Colors.white : Brand.textSoft),
+                      avatar: Icon(Icons.event, size: 18, color: _when == 3 ? Brand.blue : Brand.textSoft),
                       label: Text(_when == 3 && _pickedAt != null ? DateFormat('d MMM, h:mm a').format(_pickedAt!.add(istOffset)) : 'Pick date and time'),
                       selected: _when == 3,
                       onSelected: (_) => _pickTime(),
@@ -642,7 +641,6 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
                   child: SegmentedButton<TagMode>(
                     showSelectedIcon: false,
-                    style: SegmentedButton.styleFrom(selectedBackgroundColor: Brand.navy, selectedForegroundColor: Colors.white),
                     segments: const [
                       ButtonSegment(value: TagMode.any, label: Text('Any of')),
                       ButtonSegment(value: TagMode.all, label: Text('All of')),
@@ -708,7 +706,6 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
                   child: SegmentedButton<bool>(
                     showSelectedIcon: false,
-                    style: SegmentedButton.styleFrom(selectedBackgroundColor: Brand.navy, selectedForegroundColor: Colors.white),
                     segments: const [
                       ButtonSegment(value: true, label: Text('Got it')),
                       ButtonSegment(value: false, label: Text('Did not get it')),
@@ -772,12 +769,9 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
       appBar: AppBar(title: const Text('Choose people')),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              decoration: const InputDecoration(hintText: 'Search name or number', prefixIcon: Icon(Icons.search)),
-              onChanged: (v) => setState(() => _filter = _filter.copyWith(search: v)),
-            ),
+          SearchField(
+            hint: 'Search name or number',
+            onChanged: (v) => setState(() => _filter = _filter.copyWith(search: v)),
           ),
           SizedBox(
             height: 52,

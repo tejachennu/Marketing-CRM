@@ -23,28 +23,21 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     final shown = all.where((t) => _status == 'ALL' || t['status'] == _status).toList();
     int count(String s) => all.where((t) => t['status'] == s).length;
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Templates')),
       body: Column(
         children: [
           const SyncBanner(cacheKey: 'templates'),
-          SizedBox(
-            height: 56,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-              children: [
-                for (final (key, label) in [
-                  ('ALL', 'All · ${all.length}'),
-                  ('APPROVED', 'Approved · ${count('APPROVED')}'),
-                  ('PENDING', 'In review · ${count('PENDING')}'),
-                  ('REJECTED', 'Rejected · ${count('REJECTED')}'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(label: Text(label), selected: _status == key, onSelected: (_) => setState(() => _status = key)),
-                  ),
-              ],
-            ),
+          FilterChips(
+            children: [
+              for (final (key, label) in [
+                ('ALL', 'All ${all.length}'),
+                ('APPROVED', 'Approved ${count('APPROVED')}'),
+                ('PENDING', 'In review ${count('PENDING')}'),
+                ('REJECTED', 'Rejected ${count('REJECTED')}'),
+              ])
+                ChoiceChip(label: Text(label), selected: _status == key, onSelected: (_) => setState(() => _status = key)),
+            ],
           ),
           Expanded(
             child: RefreshIndicator(
@@ -52,11 +45,11 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               child: app.isLoading('templates')
                   ? const SkeletonCards(tiles: false)
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                      padding: const EdgeInsets.only(bottom: 24),
                       children: [
                         if (shown.isEmpty) const EmptyState(icon: Icons.description_outlined, title: 'No templates here', text: 'Create templates on the web; they appear here once Meta has them.'),
                         for (final t in shown) ...[
-                          Panel(
+                          FlatRow(
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TemplateScreen(template: t))),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -64,7 +57,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text('${t['name']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
+                                      child: Text('${t['name']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                                     ),
                                     Pill(statusWords[t['status']] ?? '${t['status']}', tone: statusTone('${t['status']}')),
                                   ],
@@ -81,10 +74,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 10),
                         ],
                         const Padding(
-                          padding: EdgeInsets.only(top: 6),
+                          padding: EdgeInsets.fromLTRB(24, 16, 24, 0),
                           child: Text(
                             'To create or change a template, use Templates on the web. Meta checks each one before it can be sent.',
                             textAlign: TextAlign.center,

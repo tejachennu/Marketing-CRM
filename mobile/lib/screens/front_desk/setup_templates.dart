@@ -158,7 +158,6 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                   const SizedBox(height: 10),
                   SegmentedButton<bool>(
                     showSelectedIcon: false,
-                    style: SegmentedButton.styleFrom(selectedBackgroundColor: Brand.navy, selectedForegroundColor: Colors.white),
                     segments: const [
                       ButtonSegment(value: false, label: Text('Use my template')),
                       ButtonSegment(value: true, label: Text('Use suggested')),

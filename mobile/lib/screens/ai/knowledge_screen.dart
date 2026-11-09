@@ -50,6 +50,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     final shown = all.where((a) => q.isEmpty || '${a['title']} ${a['content']}'.toLowerCase().contains(q)).toList();
     final canEdit = app.can('manage');
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(title: Text('Knowledge base · ${all.length}')),
       floatingActionButton: canEdit
           ? FloatingActionButton.extended(
@@ -64,23 +65,17 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       body: Column(
         children: [
           const SyncBanner(cacheKey: 'knowledge'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search answers'),
-              onChanged: (v) => setState(() => _query = v.trim()),
-            ),
-          ),
+          SearchField(hint: 'Search answers', onChanged: (v) => setState(() => _query = v.trim())),
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
               child: app.isLoading('knowledge')
                   ? const SkeletonCards(tiles: false)
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                      padding: const EdgeInsets.only(bottom: 96),
                       children: [
                         const Padding(
-                          padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 10),
                           child: Text(
                             'The AI chatbot replies to customers from these answers, and AI suggestions in chats use them too. Write them the way you would answer a customer.',
                             style: TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.4),
@@ -93,7 +88,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                             text: q.isEmpty ? 'Add your timings, prices, address and common questions.' : 'Try other words.',
                           ),
                         for (final a in shown) ...[
-                          Panel(
+                          FlatRow(
                             onTap: canEdit && a['_waiting'] != true ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ArticleScreen(article: a))) : null,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,7 +96,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text('${a['title']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
+                                      child: Text('${a['title']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                                     ),
                                     if (a['_waiting'] == true) WaitingPill(failed: a['_failed'] == true),
                                   ],
@@ -117,7 +112,6 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 10),
                         ],
                       ],
                     ),
