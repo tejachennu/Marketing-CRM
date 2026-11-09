@@ -14,7 +14,7 @@ plugins {
 }
 
 android {
-    namespace = "`in`.magnetora.wama_mobile"
+    namespace = "com.magnetora.wamacrm"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +24,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "`in`.magnetora.wama_mobile"
+        applicationId = "com.magnetora.wamacrm"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
