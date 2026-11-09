@@ -6,7 +6,7 @@
 import { BUSINESS_TYPE_IDS, type BusinessType } from './business'
 import { parseMessageTemplates, type MessageTemplates } from './message-templates'
 import { cleanInvoicePrefix, isValidGstin, normalizeGstin } from './invoice'
-import { parseSpokenPhone } from './spoken'
+import { parsePhoneNumber } from './spoken'
 
 type Parsed<T> = { value: T } | { error: string }
 
@@ -71,8 +71,8 @@ export function parseStaff(body: any, partial = false): Parsed<Partial<StaffInpu
   }
   if (!partial || body?.phone !== undefined) {
     const raw = text(body?.phone, 30)
-    const phone = raw ? parseSpokenPhone(raw) : null
-    if (raw && !phone) return { error: 'Enter a 10-digit mobile number.' }
+    const phone = raw ? parsePhoneNumber(raw) : null
+    if (raw && !phone) return { error: 'Enter the mobile number with its country code, like +91 98765 43210.' }
     value.phone = phone
   }
   if (!partial || body?.service_ids !== undefined) {

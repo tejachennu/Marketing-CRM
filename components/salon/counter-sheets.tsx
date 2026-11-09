@@ -9,9 +9,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Banknote, CalendarPlus, Check, Clock, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Plus, Receipt, RotateCcw, Search, Smartphone, UserRound, X } from 'lucide-react'
 import { busyFrom, counterSlots, describeHours, isClosedOn, type Busy } from '@/lib/salon/availability'
+import { groupByCategory } from '@/lib/salon/categories'
 import { customerSearch, type CustomerMatch } from '@/lib/salon/customers'
 import { computeInvoice, formatRupees, type Discount } from '@/lib/salon/invoice'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
+import { PhoneField } from '../phone-field'
 import { api, Avatar, Chip, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { Appointment, SalonSetup, Service } from './types'
 
@@ -126,8 +128,7 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
       <div className="grid sm:grid-cols-2 gap-3">
         <Field label={optional ? 'Mobile number (optional)' : 'Mobile number'}>
           <span className="relative block">
-            <input className={`${input} pr-9`} value={value.phone} inputMode="tel" autoComplete="off" placeholder="98765 43210"
-              onChange={(e) => { setLastEdited('phone'); onChange({ ...value, phone: e.target.value }) }} />
+            <PhoneField inputClassName={input} value={value.phone} onChange={(phone) => { setLastEdited('phone'); onChange({ ...value, phone }) }} />
             {searching && lastEdited === 'phone' && <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[#8a94a8]" />}
           </span>
         </Field>
@@ -168,13 +169,13 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
 // ── Services ─────────────────────────────────────────────────────────────────
 
 /** The service list as tappable rows, with a search box and categories once the list is long. */
-export function ServicePicker({ services, selected, onChange }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void }) {
+export function ServicePicker({ services, selected, onChange, order }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[] }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const active = useMemo(() => services.filter((s) => s.active), [services])
-  const categories = useMemo(() => ['All', ...new Set(active.map((s) => s.category || 'General'))], [active])
+  const categories = useMemo(() => ['All', ...groupByCategory(order, active).filter(([, list]) => list.length > 0).map(([name]) => name)], [active, order])
   const words = query.trim().toLowerCase()
-  const shown = active.filter((s) => (category === 'All' || (s.category || 'General') === category) && (!words || s.name.toLowerCase().includes(words) || (s.category || '').toLowerCase().includes(words)))
+  const shown = active.filter((s) => (category === 'All' || (s.category || 'General').toLowerCase() === category.toLowerCase()) && (!words || s.name.toLowerCase().includes(words) || (s.category || '').toLowerCase().includes(words)))
   const long = active.length > 6
   return (
     <div className="space-y-3 min-w-0">
@@ -421,7 +422,7 @@ export function BookingSheet({ orgId, setup, draft, onClose, onBooked }: {
         </section>
         <section className="space-y-2">
           <p className={sectionTitle}>Services</p>
-          <ServicePicker services={setup.services} selected={serviceIds} onChange={setServiceIds} />
+          <ServicePicker services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={setServiceIds} />
         </section>
         <WhoDidIt planned setup={setup} lines={chosen.map((service) => ({ key: service.id, service_id: service.id, name: service.name }))} value={lineStaff} onChange={setLineStaff} />
         <DayAndTime orgId={orgId} setup={setup} date={date} time={time} minutes={minutes} serviceIds={serviceIds} staffIds={serviceIds.map((id) => lineStaff[id] || null)} onDate={setDate} onTime={setTime} />
@@ -543,14 +544,14 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           )}
           <section className="space-y-2">
             <p className={sectionTitle}>Services</p>
-            {walkIn ? <ServicePicker services={setup.services} selected={serviceIds} onChange={setServiceIds} /> : (
+            {walkIn ? <ServicePicker services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={setServiceIds} /> : (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {target.appointment.services.map((s, i) => <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200">{s.name}</span>)}
                 </div>
                 {!addMore
                   ? <button type="button" onClick={() => setAddMore(true)} className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef] hover:text-[#1D5BEA] cursor-pointer"><Plus size={18} /> Add another service</button>
-                  : <div className="pt-1"><ServicePicker services={setup.services} selected={extra} onChange={setExtra} /></div>}
+                  : <div className="pt-1"><ServicePicker services={setup.services} order={setup.settings.service_categories} selected={extra} onChange={setExtra} /></div>}
               </>
             )}
           </section>

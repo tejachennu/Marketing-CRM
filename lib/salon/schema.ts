@@ -235,9 +235,17 @@ ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS message_templates JSONB NOT 
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261112_front_desk_categories.sql word for word: the business's service categories. */
+export const FRONT_DESK_CATEGORIES_SQL = `-- Front Desk: the business's own service categories, in order, including ones with no services yet.
+-- Safe to run more than once. The app runs it on its own when categories are first saved.
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS service_categories TEXT[] NOT NULL DEFAULT '{}';
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

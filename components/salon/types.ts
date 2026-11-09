@@ -21,6 +21,7 @@ export interface SalonSettings {
   feedback_delay_minutes?: number
   review_link?: string | null
   business_type?: 'salon' | 'clinic' | 'fitness' | 'repair' | 'other'
+  service_categories?: string[]
   message_templates?: Record<string, { name: string; language: string; fields: string[]; url_field?: string | null } | undefined>
 }
 

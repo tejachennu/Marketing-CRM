@@ -69,6 +69,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   drawer, page access checks (role, feature switched off, billing locked).
 - `app/api/*`: API routes. `app/api/v1/*` is the **public API** (API keys). `app/api/pipeline/*`,
   `app/api/salon/*`, `app/api/commerce/*` serve the connector screens.
+- `components/phone-field.tsx`: phone number with a country code picker (use it for every new phone input).
 - `components/pipeline/*`: Sales Pipeline screens. `components/salon/*`: Front Desk screens (and shared
   UI bits in `components/salon/ui.tsx`: `api()`, `card`, `Modal`, `primaryButton`, `StatTile`, `Toast`…).
   `components/commerce/*`: E-commerce.
@@ -116,6 +117,13 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- (this change) Store settings: **Turn off cart** (switches the WhatsApp cart button off on Meta).
+  Front Desk: **service categories** you can add, rename, reorder and remove (Setup → Services →
+  Categories; new column `salon_settings.service_categories`, `/api/salon/categories`); the "Counter"
+  tab is now **Front Desk** with its own icon (`components/salon/front-desk-icon.tsx`); phone numbers
+  take a **country code** (`components/phone-field.tsx`, `parsePhoneNumber` in `lib/salon/spoken.ts`);
+  bills, reminders and feedback check the **24-hour WhatsApp window before sending** (Meta accepts a
+  free text and fails it later), so a closed window sends the set-up template or nothing.
 - `4ce54f0`: Phone bottom bar follows the connector you are in (Pipeline, E-commerce, Front Desk).
 - `923b915`: **Sales Pipeline** as a connector, fully rebuilt: Board (drag or Move menu), List (search,
   filters, CSV), Follow-ups (overdue/today/tomorrow/later, Done + next follow-up, Snooze), Reports
