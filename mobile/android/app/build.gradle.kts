@@ -15,7 +15,8 @@ plugins {
 
 android {
     namespace = "com.magnetora.wamacrm"
-    compileSdk = flutter.compileSdkVersion
+    // The notifications package needs Android 37 to compile against (the app still runs on older phones)
+    compileSdk = maxOf(flutter.compileSdkVersion, 37)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
