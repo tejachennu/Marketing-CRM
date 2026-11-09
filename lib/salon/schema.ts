@@ -267,9 +267,35 @@ ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS booking_flow JSONB NOT NULL 
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261116_front_desk_booking_sessions.sql word for word: bookings in progress. */
+export const FRONT_DESK_BOOKING_SESSIONS_SQL = `-- Front Desk booking flow with the business's own steps: a booking in progress on WhatsApp (which
+-- step, the services and person picked, the answers so far), and the answers carried to the times
+-- offered so they end up on the booking. Safe to run more than once. The app runs it on its own.
+CREATE TABLE IF NOT EXISTS salon_booking_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
+  customer_phone TEXT NOT NULL,
+  step INTEGER NOT NULL DEFAULT 0,
+  waiting TEXT,
+  service_ids UUID[] NOT NULL DEFAULT '{}',
+  staff_id UUID,
+  answers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  language TEXT NOT NULL DEFAULT 'en',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_salon_booking_sessions_phone ON salon_booking_sessions(organization_id, customer_phone);
+ALTER TABLE salon_booking_sessions ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE salon_chat_offers ADD COLUMN IF NOT EXISTS notes TEXT;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}\n${FRONT_DESK_BOOKING_FLOW_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}\n${FRONT_DESK_BOOKING_FLOW_SQL}\n${FRONT_DESK_BOOKING_SESSIONS_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

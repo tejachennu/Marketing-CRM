@@ -58,6 +58,18 @@ class DemoBackend implements Backend {
         'invoice_prefix': 'GLOW',
         'service_categories': ['Hair', 'Skin', 'Nails'],
         'phone': '+919876500000',
+        'booking_flow': {
+          'enabled': true,
+          'multi_select': true,
+          'steps': [
+            {'id': 's1', 'type': 'choice', 'text': 'Is this your first visit?', 'label': 'First visit', 'options': ['Yes', 'No']},
+            {'id': 's2', 'type': 'services'},
+            {'id': 's3', 'type': 'text', 'text': 'Any allergies we should know about?', 'label': 'Allergies'},
+            {'id': 's4', 'type': 'staff'},
+            {'id': 's5', 'type': 'message', 'text': 'Please come 10 minutes early.'},
+            {'id': 's6', 'type': 'datetime'},
+          ],
+        },
       },
       'services': services,
       'staff': [
@@ -609,6 +621,28 @@ class DemoBackend implements Backend {
           'reply': reply,
           'isRiseTicket': match == null,
           'matchedFaqs': match == null ? [] : [match],
+        };
+      case '/api/salon/booking-flow/draft':
+        return {
+          'success': true,
+          'notes': [],
+          'draft': {
+            'welcome': "Hi {name}! Welcome to {business}. Let's book your visit.",
+            'steps': [
+              {
+                'id': 's1',
+                'type': 'choice',
+                'text': 'Is this your first visit?',
+                'label': 'First visit',
+                'options': ['Yes', 'No'],
+              },
+              {'id': 's2', 'type': 'services'},
+              {'id': 's3', 'type': 'text', 'text': 'Any allergies we should know about?', 'label': 'Allergies'},
+              {'id': 's4', 'type': 'staff'},
+              {'id': 's5', 'type': 'message', 'text': 'Please come 10 minutes early.'},
+              {'id': 's6', 'type': 'datetime'},
+            ],
+          },
         };
       case '/api/salon/settings':
         final settings = Map<String, dynamic>.from(_setup['settings']);

@@ -23,7 +23,7 @@ import { formatRupees } from './invoice'
 import { withSalonSchema } from './schema'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate, istDayRange, istTime, matchByName, phoneKey } from './spoken'
 
-const MODEL = 'gpt-4o-mini'
+export const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
 export type ChatLanguage = 'en' | 'te' | 'hi'
 
@@ -278,7 +278,7 @@ async function offerTimes(input: SalonChatInput, setup: ChatSetup, args: OfferAr
  * Send the free times for these services on this day as a list to tap (the tap books it, see
  * handleSlotPick). No free time: a note saying so and the next day with free times.
  */
-export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, args: { services: ChatService[]; staffId: string | null; date: string; language: ChatLanguage; around?: string | null; body?: string }): Promise<{ sent: true } | { note: string; nextDay: string | null }> {
+export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, args: { services: ChatService[]; staffId: string | null; date: string; language: ChatLanguage; around?: string | null; body?: string; notes?: string | null }): Promise<{ sent: true } | { note: string; nextDay: string | null }> {
   const now = input.now ?? Date.now()
   const today = istDate(now)
   const { services: chosen, staffId, language } = args
@@ -297,6 +297,7 @@ export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, arg
     organization_id: input.organization.id, contact_id: input.contact.id, customer_phone: input.customerPhone,
     customer_name: [input.contact.first_name, input.contact.last_name].filter(Boolean).join(' ').trim() || null,
     service_ids: chosen.map((s) => s.id), staff_id: staffId, date: args.date, language,
+    ...(args.notes ? { notes: args.notes } : {}),
   }).select('id').single())
   if (error || !offer) throw new Error(error?.message || 'Could not save the times offered')
   const names = chosen.map((s) => s.name).join(', ')
@@ -413,7 +414,7 @@ export async function handleSlotPick(input: SalonChatInput & { buttonId: string 
     customer_name: offer.customer_name || [input.contact.first_name, input.contact.last_name].filter(Boolean).join(' ').trim() || 'WhatsApp customer',
     customer_phone: input.customerPhone, staff_id: offer.staff_id || null,
     starts_at: startsAt.toISOString(), ends_at: new Date(startsAt.getTime() + minutes * 60_000).toISOString(),
-    status: autoApprove ? 'booked' : 'requested', services: booked, notes: 'Booked on WhatsApp', source: 'chat',
+    status: autoApprove ? 'booked' : 'requested', services: booked, notes: offer.notes ? `Booked on WhatsApp · ${offer.notes}` : 'Booked on WhatsApp', source: 'chat',
   }).select('id').single())
   if (error) throw new Error(error.message)
   // One tap, one booking: the list cannot book a second time

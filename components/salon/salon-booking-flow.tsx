@@ -9,8 +9,7 @@
 import { useMemo, useState } from 'react'
 import { CalendarCheck2, Check, Copy, Loader2, Plus, X } from 'lucide-react'
 import { DAYS_AHEAD_CHOICES, DEFAULT_TRIGGERS, parseBookingFlow, type BookingFlowSettings, type FlowLanguage } from '@/lib/salon/booking-flow-settings'
-import { groupByCategory } from '@/lib/salon/categories'
-import { formatRupees } from '@/lib/salon/invoice'
+import { StepsEditor, StepsPreview } from './booking-steps-editor'
 import { api, card, Chip, Field, input, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup } from './types'
 
@@ -23,45 +22,8 @@ const WELCOME: Record<FlowLanguage, string> = {
   hi: 'Namaste {name}! {business} mein aapki visit book karte hain. Kaunsi service chahiye?',
 }
 
-function Bubble({ mine, children }: { mine?: boolean; children: React.ReactNode }) {
-  return (
-    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-snug shadow-[0_1px_1px_rgba(0,0,0,0.08)] ${mine ? 'bg-[#d9fdd3] text-[#111b21] rounded-br-sm' : 'bg-white text-[#111b21] rounded-bl-sm'}`}>{children}</div>
-    </div>
-  )
-}
 
-/** A WhatsApp list message: the text, then the button that opens the choices (shown opened). */
-function ListBubble({ text, button, rows }: { text: string; button: string; rows: { title: string; note?: string }[] }) {
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] w-full rounded-xl rounded-bl-sm bg-white shadow-[0_1px_1px_rgba(0,0,0,0.08)] overflow-hidden">
-        <p className="px-3 pt-2 pb-2 text-[13px] leading-snug text-[#111b21]">{text}</p>
-        <p className="border-t border-[#eef1f6] py-2 text-center text-[13px] font-semibold text-[#027eb5]">☰ {button}</p>
-        <ul className="border-t border-[#eef1f6] bg-[#f8fafc]">
-          {rows.map((r) => (
-            <li key={r.title} className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-[#eef1f6] last:border-0">
-              <span className="min-w-0"><span className="block text-[12.5px] font-semibold text-[#111b21] truncate">{r.title}</span>{r.note && <span className="block text-[11px] text-[#6B7894] truncate">{r.note}</span>}</span>
-              <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-[#8a94a8]" />
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  )
-}
 
-/** A WhatsApp message with reply buttons under it. */
-function ButtonsBubble({ text, buttons }: { text: string; buttons: string[] }) {
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] w-full rounded-xl rounded-bl-sm bg-white shadow-[0_1px_1px_rgba(0,0,0,0.08)] overflow-hidden">
-        <p className="px-3 pt-2 pb-2 text-[13px] leading-snug text-[#111b21] whitespace-pre-line">{text}</p>
-        {buttons.map((b) => <p key={b} className="border-t border-[#eef1f6] py-2 text-center text-[13px] font-semibold text-[#027eb5]">↩ {b}</p>)}
-      </div>
-    </div>
-  )
-}
 
 export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash }) {
   const saved = useMemo(() => parseBookingFlow((setup.settings as any).booking_flow), [setup.settings])
@@ -72,15 +34,10 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
   const set = (patch: Partial<BookingFlowSettings>) => setFlow((current) => ({ ...current, ...patch }))
 
   const services = setup.services.filter((s) => s.active)
-  const groups = groupByCategory(setup.settings.service_categories, services).filter(([, list]) => list.length > 0)
   const business = setup.settings.business_name || 'your business'
   const welcome = (flow.welcome || WELCOME[flow.language]).replaceAll('{name}', 'Priya').replaceAll('{business}', business)
   const phoneDigits = String(setup.settings.phone || '').replace(/\D/g, '')
   const link = phoneDigits.length >= 10 ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(flow.triggers[0] ? flow.triggers[0][0].toUpperCase() + flow.triggers[0].slice(1) : 'Book')}` : null
-  const first = services[0]
-  const second = services[1]
-  // What the steps after the services are about: one service, or the two in the preview
-  const picked = flow.multi_select && second ? `${first?.name}, ${second.name}` : first?.name || 'Haircut'
 
   function addWord() {
     const word = newWord.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 30)
@@ -89,6 +46,8 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
   }
 
   async function save() {
+    const unfinished = flow.steps.find((x) => (x.type === 'choice' && ((x.options || []).length < 2 || !x.text?.trim())) || ((x.type === 'text' || x.type === 'message') && !x.text?.trim()))
+    if (unfinished) { flash('error', `Finish or remove step ${flow.steps.indexOf(unfinished) + 1}: it needs ${unfinished.type === 'choice' ? 'a question and at least two answers' : 'its words'}.`); return }
     setSaving(true)
     try {
       const data = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, booking_flow: flow, auto_approve_bookings: autoApprove }) })
@@ -142,6 +101,11 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             </div>
           </Field>
 
+          <Field group label="Steps" hint="The order customers go through. Add your own questions; answers are saved on the booking.">
+            <StepsEditor orgId={orgId} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
+              onDraft={({ welcome, language }) => set({ ...(welcome ? { welcome } : {}), ...(language ? { language } : {}) })} />
+          </Field>
+
           <Field label="First message" hint="{name} is the customer's first name, {business} your business name. Leave empty for the message shown.">
             <textarea className={`${input} h-24 py-2.5`} value={flow.welcome} maxLength={600} onChange={(e) => set({ welcome: e.target.value })} placeholder={WELCOME[flow.language]} />
           </Field>
@@ -156,10 +120,6 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             <label className="flex items-center justify-between gap-4 px-4 py-3.5">
               <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">More than one service</span><span className="block text-[13.5px] text-[#6B7894]">After each service, customers can tap “Add another” (up to 5), then pick one time for all of them.</span></span>
               <Toggle checked={flow.multi_select} onChange={(multi_select) => set({ multi_select })} label="More than one service" />
-            </label>
-            <label className="flex items-center justify-between gap-4 px-4 py-3.5">
-              <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">Ask who they want</span><span className="block text-[13.5px] text-[#6B7894]">A step to pick a team member (or anyone free), when more than one person does the service.</span></span>
-              <Toggle checked={flow.ask_staff} onChange={(ask_staff) => set({ ask_staff })} label="Ask who they want" />
             </label>
             <label className="flex items-center justify-between gap-4 px-4 py-3.5">
               <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">Confirm free times on their own</span><span className="block text-[13.5px] text-[#6B7894]">Off: each booking waits for you to approve it on the Front Desk. On: a free time is booked at once.</span></span>
@@ -193,34 +153,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             <div className="mx-auto max-w-[340px] rounded-[28px] border-[6px] border-[#0E1B3D] overflow-hidden">
               <div className="bg-[#0E1B3D] px-4 py-2.5 text-white text-[13.5px] font-bold truncate">{business}</div>
               <div className="bg-[#efeae2] p-3 space-y-2.5 max-h-[620px] overflow-y-auto">
-                <Bubble mine>{(flow.triggers[0] || 'book').replace(/^./, (c) => c.toUpperCase())}</Bubble>
-                {services.length <= 10 ? (
-                  <ListBubble text={welcome} button="Choose a service" rows={services.slice(0, 4).map((s) => ({ title: s.name, note: `${formatRupees(Number(s.price))} · ${s.duration_minutes} min` }))} />
-                ) : (
-                  <ListBubble text={welcome} button="Choose a category" rows={groups.slice(0, 4).map(([c, list]) => ({ title: c, note: `${list.length} services` }))} />
-                )}
-                <Bubble mine>{first?.name || 'Haircut'}</Bubble>
-                {flow.multi_select && second && (
-                  <>
-                    <ButtonsBubble text={`Added: ${first!.name}.\nSo far: ${first!.name} · ${formatRupees(Number(first!.price))}, about ${first!.duration_minutes} min.\n\nWould you like another service?`} buttons={['Add another', 'Choose a day']} />
-                    <Bubble mine>Add another</Bubble>
-                    <ListBubble text={`Which other service would you like? (You have: ${first!.name})`} button="Choose a service" rows={services.slice(1, 3).map((s) => ({ title: s.name, note: `${formatRupees(Number(s.price))} · ${s.duration_minutes} min` }))} />
-                    <Bubble mine>{second.name}</Bubble>
-                    <ButtonsBubble text={`Added: ${second.name}.\nSo far: ${first!.name}, ${second.name} · ${formatRupees(Number(first!.price) + Number(second.price))}, about ${Number(first!.duration_minutes) + Number(second.duration_minutes)} min.\n\nWould you like another service?`} buttons={['Add another', 'Choose a day']} />
-                    <Bubble mine>Choose a day</Bubble>
-                  </>
-                )}
-                {flow.ask_staff && (
-                  <>
-                    <ListBubble text={`Who would you like for ${picked}?`} button="Choose who" rows={[{ title: 'Anyone free' }, ...setup.staff.filter((m) => m.active).slice(0, 2).map((m) => ({ title: m.name }))]} />
-                    <Bubble mine>Anyone free</Bubble>
-                  </>
-                )}
-                <ListBubble text={`Which day suits you for ${picked}?`} button="Choose a day" rows={[{ title: 'Today', note: 'Only days with free times' }, { title: 'Tomorrow' }, { title: 'Wed, 11 Nov' }]} />
-                <Bubble mine>Tomorrow</Bubble>
-                <ListBubble text={`${picked} on Tomorrow: tap "Choose a time" to pick one.`} button="Choose a time" rows={[{ title: '10:00 am' }, { title: '10:30 am' }, { title: '11:30 am' }]} />
-                <Bubble mine>10:30 am</Bubble>
-                <Bubble>{autoApprove ? `Confirmed! ${picked} at ${business}, Tomorrow at 10:30 am. See you soon! ✨` : `Thank you! We have your request for ${picked} on Tomorrow at 10:30 am. We will confirm it shortly.`}</Bubble>
+                <StepsPreview steps={flow.steps} welcome={welcome} trigger={flow.triggers[0] || 'book'} services={services} staff={setup.staff} multiSelect={flow.multi_select} autoApprove={autoApprove} business={business} />
               </div>
             </div>
             {!autoApprove && <p className="mt-2 text-center text-[12.5px] text-[#6B7894]">Requests appear on the Front Desk under Booking requests, to approve or decline.</p>}

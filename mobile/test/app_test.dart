@@ -6,6 +6,7 @@ import 'package:wama_mobile/data/demo_backend.dart';
 import 'package:wama_mobile/data/format.dart';
 import 'package:wama_mobile/data/local_store.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
+import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
 import 'package:wama_mobile/screens/templates/template_widgets.dart';
 import 'package:wama_mobile/ui/widgets.dart';
@@ -167,5 +168,15 @@ void main() {
     backend.offline = true;
     await app.enqueue(kind: 'settings', label: 'Booking flow on', method: 'PATCH', path: '/api/salon/settings', body: {'organizationId': app.orgId, 'booking_flow': {'enabled': true, 'triggers': ['book']}});
     expect((FrontDesk(app).settings['booking_flow'] as Map)['enabled'], isTrue);
+  });
+
+  test('Booking flow steps: defaults, and unfinished steps are caught before saving', () async {
+    expect(defaultSteps(true).map((s) => s['type']), ['services', 'staff', 'datetime']);
+    expect(unfinishedStep([{'type': 'services'}, {'type': 'choice', 'text': 'First visit?', 'options': ['Yes']}, {'type': 'datetime'}]), 'Step 2 needs at least two answers to tap.');
+    expect(unfinishedStep([{'type': 'text', 'text': ' '}, {'type': 'services'}, {'type': 'datetime'}]), 'Write step 1, or remove it.');
+    expect(unfinishedStep(defaultSteps(false)), isNull);
+    final (app, _) = await makeApp();
+    final draft = await app.ask('/api/salon/booking-flow/draft', {'description': 'First visit question, services, allergies, who, day and time'});
+    expect(((draft['draft'] as Map)['steps'] as List).length, 6);
   });
 }

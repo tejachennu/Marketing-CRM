@@ -20,7 +20,9 @@ import { groupByCategory } from './categories'
 import { busyOn, loadChatSetup, logMessage, salonChatReady, sendFreeTimes, sendText, staffFor, type ChatLanguage, type ChatService, type ChatSetup, type SalonChatInput } from './chat'
 import { formatRupees } from './invoice'
 import { addDays, formatIstDay, istDate } from './spoken'
-import { MAX_SERVICES, parseBookingFlow, type BookingFlowSettings } from './booking-flow-settings'
+import { MAX_SERVICES, parseBookingFlow, type BookingFlowSettings, type FlowStep as SetupStep } from './booking-flow-settings'
+import { withSalonSchema } from './schema'
+import { phoneKey } from './spoken'
 
 export { DAYS_AHEAD_CHOICES, DEFAULT_FLOW, MAX_SERVICES, DEFAULT_TRIGGERS, isBookingRequest, parseBookingFlow, type BookingFlowSettings } from './booking-flow-settings'
 
@@ -43,7 +45,13 @@ const words = {
   added: { en: 'Added: {service}.\nSo far: {list} · {total}, about {minutes} min.\n\nWould you like another service?', te: 'Add chesamu: {service}.\nIppativaraku: {list} · {total}, sumaru {minutes} min.\n\nInko service kavala?', hi: 'Jod diya: {service}.\nAb tak: {list} · {total}, lagbhag {minutes} min.\n\nKoi aur service chahiye?' },
   addAnother: { en: 'Add another', te: 'Inkokati add', hi: 'Aur jodiye' },
   next: { en: 'Choose a day', te: 'Roju enchukondi', hi: 'Din chuniye' },
+  continue: { en: 'Continue', te: 'Munduku', hi: 'Aage badhiye' },
   whichMore: { en: 'Which other service would you like? (You have: {list})', te: 'Inka ee service kavali? (Ippativaraku: {list})', hi: 'Aur kaunsi service chahiye? (Ab tak: {list})' },
+  oldList: { en: 'That list is from an earlier step. Here is where you are:', te: 'Aa list mundu step di andi. Ippudu ikkada unnaru:', hi: 'Ye list pichle step ki hai. Aap yahan hain:' },
+  cancelled: { en: 'Booking cancelled. Send "Book" any time to start again.', te: 'Booking cancel chesamu. Malli "Book" ani pampandi.', hi: 'Booking cancel ho gayi. Phir se "Book" bhejiye.' },
+  typeAnswer: { en: '(Type your answer, or "cancel" to stop.)', te: '(Mee answer type cheyandi, aapadaniki "cancel".)', hi: '(Apna jawab likhiye, rokne ke liye "cancel".)' },
+  pickService: { en: 'Which service would you like?', te: 'Ee service kavali?', hi: 'Kaunsi service chahiye?' },
+  choose: { en: 'Choose', te: 'Enchukondi', hi: 'Chuniye' },
   noServices: { en: 'Bookings are not open on WhatsApp yet. Please call us to book.', te: 'WhatsApp lo bookings inka start avvaledu andi. Call chesi book cheyandi.', hi: 'WhatsApp par booking abhi shuru nahi hui. Call karke book kijiye.' },
 }
 
@@ -232,10 +240,10 @@ async function afterPicking(input: SalonChatInput, setup: ChatSetup, flow: Booki
   return 'days'
 }
 
-export type FlowResult = { handled: true; step: 'started' | 'categories' | 'services' | 'added' | 'people' | 'days' | 'times' | 'expired' | 'closed' } | { handled: false; reason: string }
+export type FlowResult = { handled: true; step: 'started' | 'categories' | 'services' | 'added' | 'people' | 'days' | 'times' | 'expired' | 'closed' | 'question' | 'cancelled' } | { handled: false; reason: string }
 
-/** Start the flow: the welcome, with the services (or categories) to pick from. */
-export async function startBookingFlow(input: SalonChatInput, setupIn?: ChatSetup): Promise<FlowResult> {
+/** The first, stateless version of the flow (lists already sent in chats use its "bf:" ids). */
+export async function startStatelessFlow(input: SalonChatInput, setupIn?: ChatSetup): Promise<FlowResult> {
   if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const setup = setupIn || await loadChatSetup(input.supabase, input.organization.id)
   const flow = parseBookingFlow(setup.settings.booking_flow)
@@ -320,4 +328,275 @@ export async function handleBookingFlowButton(input: SalonChatInput & { buttonId
     return { handled: true, step: 'days' }
   }
   return { handled: true, step: 'times' }
+}
+
+// ── The flow with the business's own steps ───────────────────────────────────
+// A booking in progress is kept in salon_booking_sessions (which step, services, person, answers),
+// so typed answers work. Every button id names the session and the step it belongs to:
+//   bs:<session>:<step>:s:<service>  a service       bs:<session>:<step>:c:<category index>
+//   bs:<session>:<step>:m  Add another               bs:<session>:<step>:n  done picking
+//   bs:<session>:<step>:p:<person|any>               bs:<session>:<step>:o:<answer index>
+//   bs:<session>:<step>:d:<YYYYMMDD>  a day
+// A tap on a list from an earlier step gets "here is where you are" and the current step again.
+
+const SESSION_HOURS = 24
+const CANCEL_WORDS = ['cancel', 'stop', 'exit', 'quit']
+
+interface Session {
+  id: string
+  organization_id: string
+  contact_id: string | null
+  customer_phone: string
+  step: number
+  waiting: string | null
+  service_ids: string[]
+  staff_id: string | null
+  answers: { label: string; answer: string }[]
+  language: ChatLanguage
+  updated_at: string
+}
+
+export type StepTap = { sessionId: string; step: number; kind: 's' | 'c' | 'm' | 'n' | 'p' | 'o' | 'd'; value: string | null }
+
+export function parseStepButton(id: unknown): StepTap | null {
+  const m = /^bs:([A-Za-z0-9_-]{22}):(\d{1,2}):([scmnpod])(?::([A-Za-z0-9_-]{1,22}))?$/.exec(String(id || ''))
+  if (!m) return null
+  const sessionId = unpackId(m[1])
+  return sessionId ? { sessionId, step: Number(m[2]), kind: m[3] as StepTap['kind'], value: m[4] ?? null } : null
+}
+
+/** The answers, as written on the booking: "Gender: Female · Allergies: none". */
+export const answersNote = (answers: { label: string; answer: string }[]) => answers.map((a) => `${a.label}: ${a.answer}`).join(' · ')
+
+interface Run { input: SalonChatInput; setup: ChatSetup; flow: BookingFlowSettings; session: Session }
+
+const tapId = (run: Run, kind: StepTap['kind'], value?: string) => `bs:${packId(run.session.id)}:${run.session.step}:${kind}${value === undefined ? '' : `:${value}`}`
+
+async function saveSession(run: Run, patch: Partial<Session>) {
+  Object.assign(run.session, patch)
+  const { error } = await run.input.supabase.from('salon_booking_sessions').update({ ...patch, updated_at: new Date(run.input.now ?? Date.now()).toISOString() }).eq('id', run.session.id).eq('organization_id', run.session.organization_id)
+  if (error) throw new Error(error.message)
+}
+
+const pickedServices = (run: Run) => run.session.service_ids.map((id) => run.setup.services.find((s) => s.id === id)).filter(Boolean) as ChatService[]
+
+/** Send the step the session is on. `intro` (the welcome, or "here is where you are") goes first. */
+async function runStep(run: Run, intro?: string): Promise<FlowResult> {
+  const { input, setup, flow, session } = run
+  const step: SetupStep | undefined = flow.steps[session.step]
+  const lang = flow.language
+  const withIntro = (text: string) => (intro ? `${intro}\n\n${text}` : text)
+  if (!step) return { handled: true, step: 'expired' }
+
+  if (step.type === 'message') {
+    await sendText(input, withIntro(step.text || ''))
+    await saveSession(run, { step: session.step + 1, waiting: null })
+    return runStep(run)
+  }
+
+  if (step.type === 'text') {
+    await sendText(input, withIntro(`${step.text}\n${say('typeAnswer', lang)}`))
+    await saveSession(run, { waiting: 'text' })
+    return { handled: true, step: 'question' }
+  }
+
+  if (step.type === 'choice') {
+    const options = step.options || []
+    if (options.length <= 3) {
+      await sendPayload(input, buildButtons(input.customerPhone, withIntro(step.text || ''), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o }))), `${withIntro(step.text || '')}\n[${options.join(' | ')}]`)
+    } else {
+      await sendList(input, withIntro(step.text || ''), say('choose', lang), options.map((o, k) => ({ id: tapId(run, 'o', String(k)), title: o })))
+    }
+    return { handled: true, step: 'question' }
+  }
+
+  if (step.type === 'services') {
+    const picked = session.service_ids
+    const left = setup.services.filter((s) => !picked.includes(s.id))
+    // A welcome that already asks a question needs no second one
+    const body = picked.length ? withIntro(say('whichMore', lang, { list: namesOf(pickedServices(run)) })) : intro?.trim().endsWith('?') ? intro : withIntro(say('pickService', lang))
+    if (left.length <= 10) {
+      await sendList(input, body, say('service', lang), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
+      return { handled: true, step: 'services' }
+    }
+    const rows = categoriesOf(setup)
+      .map(([category, list], index) => ({ category, index, count: list.filter((sv) => !picked.includes(sv.id)).length }))
+      .filter((g) => g.count > 0).slice(0, 10)
+      .map((g) => ({ id: tapId(run, 'c', String(g.index)), title: g.category, description: `${g.count} service${g.count === 1 ? '' : 's'}` }))
+    await sendList(input, body, say('category', lang), rows)
+    return { handled: true, step: 'categories' }
+  }
+
+  const services = pickedServices(run)
+  if (!services.length) {
+    // Services must come first; a flow saved oddly falls back to asking for them
+    await saveSession(run, { step: flow.steps.findIndex((s) => s.type === 'services') })
+    return runStep(run, intro)
+  }
+
+  if (step.type === 'staff') {
+    const ids = services.map((s) => s.id)
+    const people = setup.staff.filter((m) => staffFor([m], ids).length)
+    if (people.length <= 1) {
+      await saveSession(run, { step: session.step + 1 })
+      return runStep(run, intro)
+    }
+    await sendList(input, withIntro(say('who', lang, { service: namesOf(services) })), say('person', lang), [
+      { id: tapId(run, 'p', 'any'), title: say('anyone', lang) },
+      ...people.slice(0, 9).map((m) => ({ id: tapId(run, 'p', packId(m.id)), title: m.name })),
+    ])
+    return { handled: true, step: 'people' }
+  }
+
+  // Day and time
+  const days = await openDays(input, setup, services, session.staff_id, flow.days_ahead)
+  if (!days.length) {
+    await sendText(input, withIntro(say('full', lang, { days: String(flow.days_ahead) })))
+    return { handled: true, step: 'closed' }
+  }
+  const today = istDate(input.now ?? Date.now())
+  await sendList(input, withIntro(say('day', lang, { service: namesOf(services) })), say('dayButton', lang), days.map((d) => {
+    const title = formatIstDay(d, today)
+    const full = formatIstDay(d, '')
+    return { id: tapId(run, 'd', d.replaceAll('-', '')), title, ...(title !== full ? { description: full } : {}) }
+  }))
+  return { handled: true, step: 'days' }
+}
+
+async function loadRun(input: SalonChatInput, sessionId: string): Promise<Run | null> {
+  const { data: session } = await withSalonSchema(() => input.supabase.from('salon_booking_sessions').select('*').eq('id', sessionId).eq('organization_id', input.organization.id).maybeSingle())
+  if (!session || phoneKey(session.customer_phone) !== phoneKey(input.customerPhone)) return null
+  if ((input.now ?? Date.now()) - Date.parse(session.updated_at) > SESSION_HOURS * 3600_000) return null
+  const setup = await loadChatSetup(input.supabase, input.organization.id)
+  const flow = parseBookingFlow(setup.settings.booking_flow)
+  return { input, setup, flow, session: { ...session, service_ids: session.service_ids || [], answers: Array.isArray(session.answers) ? session.answers : [] } }
+}
+
+/** Start the flow: a new booking in progress, then its first step with the welcome. */
+export async function startBookingFlow(input: SalonChatInput, setupIn?: ChatSetup): Promise<FlowResult> {
+  if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
+  const setup = setupIn || await loadChatSetup(input.supabase, input.organization.id)
+  const flow = parseBookingFlow(setup.settings.booking_flow)
+  if (!flow.enabled) return { handled: false, reason: 'flow_off' }
+  if (!setup.services.length) {
+    await sendText(input, say('noServices', flow.language))
+    return { handled: true, step: 'closed' }
+  }
+  const db = input.supabase
+  await withSalonSchema(() => db.from('salon_booking_sessions').delete().eq('organization_id', input.organization.id).eq('customer_phone', input.customerPhone))
+  const { data: session, error } = await withSalonSchema(() => db.from('salon_booking_sessions').insert({
+    organization_id: input.organization.id, contact_id: input.contact.id || null, customer_phone: input.customerPhone, step: 0, service_ids: [], answers: [], language: flow.language,
+    updated_at: new Date(input.now ?? Date.now()).toISOString(),
+  }).select('*').single())
+  if (error || !session) throw new Error(error?.message || 'The booking could not be started')
+  const name = String(input.contact.first_name || '').trim() || 'there'
+  const business = String(setup.settings.business_name || input.organization.name || 'us')
+  const welcome = (flow.welcome || words.welcome[flow.language] || words.welcome.en).replaceAll('{name}', name).replaceAll('{business}', business)
+  const run: Run = { input, setup, flow, session: { ...session, service_ids: [], answers: [] } }
+  // The default welcome already asks "Which service would you like?"; then the list needs no more words
+  const result = await runStep(run, welcome)
+  return result.handled && result.step === 'services' ? { handled: true, step: 'started' } : result
+}
+
+/** A tap in one of the flow's lists or buttons ("bs:…"). */
+export async function handleBookingStepButton(input: SalonChatInput & { buttonId: string }): Promise<FlowResult> {
+  const tap = parseStepButton(input.buttonId)
+  if (!tap) return { handled: false, reason: 'not_a_step_button' }
+  if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
+  const run = await loadRun(input, tap.sessionId)
+  if (!run) {
+    const flow = parseBookingFlow((await loadChatSetup(input.supabase, input.organization.id)).settings.booking_flow)
+    await sendText(input, say('expired', flow.language))
+    return { handled: true, step: 'expired' }
+  }
+  const { setup, flow, session } = run
+  if (tap.step !== session.step || session.waiting === 'text') return runStep(run, say('oldList', flow.language))
+  const step = flow.steps[session.step]
+  const next = async () => {
+    await saveSession(run, { step: session.step + 1, waiting: null })
+    return runStep(run)
+  }
+
+  if (step?.type === 'services' && tap.kind === 's') {
+    const id = unpackId(tap.value || '')
+    if (!id || !setup.services.some((sv) => sv.id === id)) return runStep(run, say('oldList', flow.language))
+    const ids = session.service_ids.includes(id) ? session.service_ids : [...session.service_ids, id].slice(0, MAX_SERVICES)
+    await saveSession(run, { service_ids: ids })
+    const left = setup.services.filter((sv) => !ids.includes(sv.id))
+    if (flow.multi_select && ids.length < MAX_SERVICES && left.length) {
+      const picked = pickedServices(run)
+      const last = picked[picked.length - 1]
+      const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0))
+      const body = say('added', flow.language, { service: last.name, list: namesOf(picked), total, minutes: String(minutesOf(picked)) })
+      await sendPayload(input, buildButtons(input.customerPhone, body, [
+        { id: tapId(run, 'm'), title: say('addAnother', flow.language) },
+        { id: tapId(run, 'n'), title: say(flow.steps[session.step + 1]?.type === 'datetime' ? 'next' : 'continue', flow.language) },
+      ]), `${body}\n[${say('addAnother', flow.language)}]`)
+      return { handled: true, step: 'added' }
+    }
+    return next()
+  }
+  if (step?.type === 'services' && tap.kind === 'c') {
+    const group = categoriesOf(setup)[Number(tap.value)]
+    const left = group?.[1].filter((sv) => !session.service_ids.includes(sv.id)) || []
+    if (!left.length) return runStep(run, say('oldList', flow.language))
+    const body = session.service_ids.length ? say('whichMore', flow.language, { list: namesOf(pickedServices(run)) }) : say('whichService', flow.language, { category: group![0] })
+    await sendList(input, body, say('service', flow.language), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
+    return { handled: true, step: 'services' }
+  }
+  if (step?.type === 'services' && tap.kind === 'm') return runStep(run)
+  if (step?.type === 'services' && tap.kind === 'n' && session.service_ids.length) return next()
+
+  if (step?.type === 'staff' && tap.kind === 'p') {
+    const staffId = tap.value === 'any' ? null : unpackId(tap.value || '')
+    if (tap.value !== 'any' && !setup.staff.some((m) => m.id === staffId && staffFor([m], session.service_ids).length)) return runStep(run, say('oldList', flow.language))
+    await saveSession(run, { staff_id: staffId })
+    return next()
+  }
+
+  if (step?.type === 'choice' && tap.kind === 'o') {
+    const answer = step.options?.[Number(tap.value)]
+    if (!answer) return runStep(run, say('oldList', flow.language))
+    await saveSession(run, { answers: [...session.answers, { label: step.label || 'Answer', answer }] })
+    return next()
+  }
+
+  if (step?.type === 'datetime' && tap.kind === 'd') {
+    const m = /^(\d{4})(\d{2})(\d{2})$/.exec(tap.value || '')
+    const today = istDate(input.now ?? Date.now())
+    const date = m ? `${m[1]}-${m[2]}-${m[3]}` : ''
+    if (!date || date < today) return runStep(run, say('oldList', flow.language))
+    const services = pickedServices(run)
+    const day = formatIstDay(date, today)
+    const sent = await sendFreeTimes(input, setup, { services, staffId: session.staff_id, date, language: flow.language, body: say('times', flow.language, { service: namesOf(services), day }), notes: answersNote(session.answers) || null })
+    if ('note' in sent) return runStep(run, say('dayFull', flow.language, { day }))
+    // The times list carries everything from here; tapping a time books it
+    await input.supabase.from('salon_booking_sessions').delete().eq('id', session.id).eq('organization_id', session.organization_id)
+    return { handled: true, step: 'times' }
+  }
+
+  return runStep(run, say('oldList', flow.language))
+}
+
+/** The customer's booking waiting for a typed answer, if any. */
+export async function waitingForAnswer(db: any, organizationId: string, phone: string, now = Date.now()): Promise<string | null> {
+  const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, waiting, updated_at, customer_phone').eq('organization_id', organizationId).eq('waiting', 'text').order('updated_at', { ascending: false }).limit(20))
+  const session = (data || []).find((s: any) => phoneKey(s.customer_phone) === phoneKey(phone) && now - Date.parse(s.updated_at) <= SESSION_HOURS * 3600_000)
+  return session?.id || null
+}
+
+/** A typed answer to the flow's question (or "cancel"). */
+export async function handleBookingText(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
+  const run = await loadRun(input, input.sessionId)
+  if (!run || run.session.waiting !== 'text') return { handled: false, reason: 'not_waiting' }
+  const text = String(input.message || '').trim()
+  if (!text) return { handled: false, reason: 'empty' }
+  if (CANCEL_WORDS.includes(text.toLowerCase())) {
+    await input.supabase.from('salon_booking_sessions').delete().eq('id', run.session.id).eq('organization_id', run.session.organization_id)
+    await sendText(input, say('cancelled', run.flow.language))
+    return { handled: true, step: 'cancelled' }
+  }
+  const step = run.flow.steps[run.session.step]
+  await saveSession(run, { answers: [...run.session.answers, { label: step?.label || 'Answer', answer: text.slice(0, 300) }], step: run.session.step + 1, waiting: null })
+  return runStep(run)
 }

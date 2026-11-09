@@ -15,7 +15,7 @@ import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
 import { handleSlotPick, loadChatSetup, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
-import { handleBookingFlowButton, isBookingRequest, parseBookingFlow, parseFlowButton, startBookingFlow } from '@/lib/salon/booking-flow'
+import { handleBookingFlowButton, handleBookingStepButton, handleBookingText, isBookingRequest, parseBookingFlow, parseFlowButton, parseStepButton, startBookingFlow, waitingForAnswer } from '@/lib/salon/booking-flow'
 import { handleFeedbackReply, parseFeedbackButton } from '@/lib/salon/jobs'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
@@ -719,7 +719,36 @@ async function processEvent(
       }
     }
 
-    // ── Front Desk booking flow: a service, person or day tapped in one of its lists. The customer
+    // ── Front Desk booking flow (the business's own steps): a tap in one of its lists or buttons
+    if (interactiveButtonId && parseStepButton(interactiveButtonId) && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const step = await handleBookingStepButton({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], buttonId: interactiveButtonId })
+        if (step.handled) {
+          await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+          return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: step.step })
+        }
+      } catch (flowErr: any) {
+        console.error('[Facebook Webhook] Booking flow step failed:', flowErr?.message || flowErr)
+      }
+    }
+
+    // ── Front Desk booking flow: the answer to a question that asked for a typed answer
+    if (!interactiveButtonId && messageBody && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const sessionId = await waitingForAnswer(supabase, orgId, phoneNumber)
+        if (sessionId) {
+          const step = await handleBookingText({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], sessionId })
+          if (step.handled) {
+            await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: step.step })
+          }
+        }
+      } catch (flowErr: any) {
+        console.error('[Facebook Webhook] Booking flow answer failed:', flowErr?.message || flowErr)
+      }
+    }
+
+    // ── Front Desk booking flow (first version, lists already sent): a service, person or day tapped. The customer
     //    chose it, so the next step goes even when auto-reply is off for this chat.
     if (interactiveButtonId && parseFlowButton(interactiveButtonId) && salonChatReady(orgData) && !previousMessage) {
       try {

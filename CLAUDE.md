@@ -117,6 +117,13 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Custom booking flow steps** (web Setup → Booking flow, and the app): the business arranges its own
+  steps (`booking_flow.steps`: services, staff, choice = question with buttons, text = typed answer,
+  message, datetime last; checked by `parseSteps`), and "Write with AI" drafts them
+  (`POST /api/salon/booking-flow/draft`). Runs with a booking in progress per customer
+  (`salon_booking_sessions`, `bs:` button ids with session + step); typed answers are caught in the
+  webhook before the AI; answers go on the booking's notes via `salon_chat_offers.notes`.
+  Lists already sent with `bf:` ids still work (`startStatelessFlow`, `handleBookingFlowButton`).
 - **Sign-up with an email code** (web and mobile): `POST /api/auth/signup/send-code` emails a 6-digit
   code (10 min, 5 tries, resend once a minute, 5 an hour; only a hash is stored in `signup_otps`,
   `lib/auth/signup-otp.ts`, lock 724519012); `POST /api/auth/signup` needs `code`.

@@ -87,11 +87,11 @@ test('Switched off: nothing is sent', async () => {
   } finally { wa.restore() }
 })
 
-test('"Book" → service → Add another → second service → day → times → a tap books both', async () => {
+test('First version (lists already in chats): service → Add another → second service → day → times → a tap books both', async () => {
   const db = seed()
   const wa = whatsapp()
   try {
-    assert.deepEqual(await F.startBookingFlow(input(db)), { handled: true, step: 'started' })
+    assert.deepEqual(await F.startStatelessFlow(input(db)), { handled: true, step: 'started' })
     const first = wa.sent[0]
     assert.match(first.interactive.body.text, /^Hi Priya! Let's book your visit at Glow Salon/)
     assert.deepEqual(rows(first).map((r) => F.parseFlowButton(r.id).picked), [[svc(1)], [svc(2)], [svc(3)]])

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
-import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'booking_steps.dart';
 import 'logic.dart';
 
 const _defaultTriggers = ['book', 'booking', 'appointment', 'బుక్', 'बुक'];
@@ -41,6 +41,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
       'multi_select': saved['multi_select'] != false,
       'days_ahead': (saved['days_ahead'] as num?)?.toInt() ?? 7,
       'language': '${saved['language'] ?? 'en'}',
+      'steps': (saved['steps'] as List?)?.isNotEmpty == true ? [for (final x in saved['steps'] as List) Map<String, dynamic>.from(x as Map)] : defaultSteps(saved['ask_staff'] == true),
     };
     if ((_flow['triggers'] as List).isEmpty) _flow['triggers'] = [..._defaultTriggers];
     _autoApprove = desk.settings['auto_approve_bookings'] == true;
@@ -55,7 +56,6 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
     final desk = FrontDesk(app);
     final triggers = List<String>.from(_flow['triggers']);
     final services = desk.services;
-    final first = services.isEmpty ? null : services.first;
     final welcome = (_welcomeText.text.trim().isEmpty ? _welcome[_flow['language']]! : _welcomeText.text.trim()).replaceAll('{name}', 'Priya').replaceAll('{business}', desk.businessName);
     final phone = '${desk.settings['phone'] ?? ''}'.replaceAll(RegExp(r'\D'), '');
     final link = phone.length >= 10 ? 'https://wa.me/$phone?text=${Uri.encodeComponent(triggers.first[0].toUpperCase() + triggers.first.substring(1))}' : null;
@@ -116,6 +116,15 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(hintText: _welcome[_flow['language']], helperText: '{name}: customer\'s first name · {business}: your name', helperMaxLines: 2),
                 ),
+                const SectionLabel('Steps'),
+                StepsEditor(
+                  steps: List<Map<String, dynamic>>.from(_flow['steps'] as List),
+                  onChanged: (steps) => _set('steps', steps),
+                  onDraft: (welcome, language) => setState(() {
+                    if (welcome != null) _welcomeText.text = welcome;
+                    if (language != null) _flow['language'] = language;
+                  }),
+                ),
                 const SectionLabel('Book how far ahead'),
                 Wrap(
                   spacing: 8,
@@ -134,15 +143,6 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                         activeTrackColor: Brand.blue,
                         title: const Text('More than one service', style: TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: const Text('Customers tap "Add another" after each service (up to 5)'),
-                      ),
-                      const Divider(),
-                      SwitchListTile(
-                        value: _flow['ask_staff'] == true,
-                        onChanged: (v) => _set('ask_staff', v),
-                        activeThumbColor: Colors.white,
-                        activeTrackColor: Brand.blue,
-                        title: const Text('Ask who they want', style: TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: const Text('A step to pick a team member, or anyone free'),
                       ),
                       const Divider(),
                       SwitchListTile(
@@ -187,21 +187,17 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                   decoration: BoxDecoration(color: const Color(0xFFEFEAE2), borderRadius: BorderRadius.circular(16)),
                   child: Column(
                     children: [
-                      _Chat(mine: true, text: triggers.first[0].toUpperCase() + triggers.first.substring(1)),
-                      _ListChat(text: welcome, button: 'Choose a service', rows: [for (final s in services.take(3)) '${s['name']} · ${formatRupees(s['price'])}']),
-                      _Chat(mine: true, text: '${first?['name'] ?? 'Haircut'}'),
-                      if (_flow['ask_staff'] == true) ...[
-                        _ListChat(text: 'Who would you like for ${first?['name'] ?? 'Haircut'}?', button: 'Choose who', rows: ['Anyone free', ...desk.staff.take(2).map((m) => '${m['name']}')]),
-                        const _Chat(mine: true, text: 'Anyone free'),
-                      ],
-                      _ListChat(text: 'Which day suits you for ${first?['name'] ?? 'Haircut'}?', button: 'Choose a day', rows: const ['Today', 'Tomorrow', 'Wed, 11 Nov']),
-                      const _Chat(mine: true, text: 'Tomorrow'),
-                      _ListChat(text: '${first?['name'] ?? 'Haircut'} on Tomorrow: tap "Choose a time" to pick one.', button: 'Choose a time', rows: const ['10:00 am', '10:30 am', '11:30 am']),
-                      const _Chat(mine: true, text: '10:30 am'),
-                      _Chat(
-                        text: _autoApprove
-                            ? 'Confirmed! ${first?['name'] ?? 'Haircut'} at ${desk.businessName}, Tomorrow at 10:30 am. See you soon! ✨'
-                            : 'Thank you! We have your request for ${first?['name'] ?? 'Haircut'} on Tomorrow at 10:30 am. We will confirm it shortly.',
+                      ...stepsPreview(
+                        steps: List<Map<String, dynamic>>.from(_flow['steps'] as List),
+                        welcome: welcome,
+                        trigger: triggers.first,
+                        services: services,
+                        staff: desk.staff,
+                        multiSelect: _flow['multi_select'] == true,
+                        autoApprove: _autoApprove,
+                        business: desk.businessName,
+                        chat: (text, {mine = false}) => _Chat(mine: mine, text: text),
+                        list: (text, button, rows) => _ListChat(text: text, button: button, rows: rows),
                       ),
                     ],
                   ),
@@ -221,6 +217,10 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
           ),
           child: FilledButton.icon(
             onPressed: () async {
+              final steps = List<Map<String, dynamic>>.from(_flow['steps'] as List);
+              final problem = unfinishedStep(steps);
+              if (problem != null) return toast(context, problem);
+              _flow['ask_staff'] = steps.any((x) => x['type'] == 'staff');
               await app.enqueue(
                 kind: 'settings',
                 label: 'Booking flow ${_flow['enabled'] == true ? 'on' : 'off'}',
@@ -271,6 +271,8 @@ class _Chat extends StatelessWidget {
 class _ListChat extends StatelessWidget {
   const _ListChat({required this.text, required this.button, required this.rows});
   final String text, button;
+
+  /// With no button text, the rows are reply buttons under the message.
   final List<String> rows;
   @override
   Widget build(BuildContext context) => Align(
@@ -286,38 +288,52 @@ class _ListChat extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
             child: Text(text, style: const TextStyle(fontSize: 13)),
           ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            child: Text(
-              '☰  $button',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF027EB5), fontWeight: FontWeight.w600, fontSize: 13),
+          if (button.isEmpty)
+            for (final r in rows) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Text(
+                  '↩  $r',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF027EB5), fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ]
+          else ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Text(
+                '☰  $button',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF027EB5), fontWeight: FontWeight.w600, fontSize: 13),
+              ),
             ),
-          ),
-          Container(
-            color: Brand.page,
-            child: Column(
-              children: [
-                for (final r in rows)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            r,
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                            overflow: TextOverflow.ellipsis,
+            Container(
+              color: Brand.page,
+              child: Column(
+                children: [
+                  for (final r in rows)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.radio_button_unchecked, size: 14, color: Brand.faint),
-                      ],
+                          const Icon(Icons.radio_button_unchecked, size: 14, color: Brand.faint),
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     ),
