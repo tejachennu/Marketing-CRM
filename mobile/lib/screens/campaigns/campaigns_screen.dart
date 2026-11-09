@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
@@ -5,14 +7,83 @@ import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
-import '../contacts/contacts_screen.dart';
-import '../templates/template_widgets.dart';
+import 'campaign_screen.dart';
+import 'new_campaign_screen.dart';
 
-const _statusWords = {'COMPLETED': 'Sent', 'RUNNING': 'Sending', 'PENDING': 'Starting', 'SCHEDULED': 'Scheduled', 'FAILED': 'Failed', 'STOPPED': 'Stopped', 'PAUSED': 'Paused'};
+export 'new_campaign_screen.dart' show NewCampaignScreen;
 
-/// Campaigns: how each one did (sent, delivered, read), and New campaign.
-class CampaignsScreen extends StatelessWidget {
+/// What each campaign state is called, as on the web.
+const campaignStatusWords = {
+  'COMPLETED': 'Sent',
+  'RUNNING': 'Sending',
+  'PROCESSING': 'Sending',
+  'PENDING': 'Starting',
+  'SCHEDULED': 'Scheduled',
+  'FAILED': 'Failed',
+  'STOPPED': 'Stopped',
+  'CANCELLED': 'Stopped',
+  'PAUSED': 'Paused',
+};
+
+bool isSending(String status) => status == 'RUNNING' || status == 'PROCESSING' || status == 'PENDING';
+
+PillTone campaignTone(String status) => status == 'FAILED'
+    ? PillTone.red
+    : isSending(status) || status == 'SCHEDULED'
+    ? PillTone.blue
+    : PillTone.grey;
+
+/// The filters on the list, with the server's names for them.
+const _filters = [('', 'All'), ('scheduled', 'Scheduled'), ('sending', 'Sending'), ('completed', 'Sent'), ('failed', 'Failed'), ('stopped', 'Stopped')];
+
+/// Campaigns: totals, search and filters, and every campaign; tap one to see who got it and who replied.
+class CampaignsScreen extends StatefulWidget {
   const CampaignsScreen({super.key});
+  @override
+  State<CampaignsScreen> createState() => _CampaignsScreenState();
+}
+
+class _CampaignsScreenState extends State<CampaignsScreen> {
+  String _status = '';
+  String _search = '';
+  final _searchBox = TextEditingController();
+  Timer? _debounce;
+  int _page = 1;
+  final List<Map<String, dynamic>> _more = [];
+  bool _loadingMore = false;
+
+  /// The first page with no filter is the list kept on the phone for offline use.
+  String get _key => _status.isEmpty && _search.isEmpty ? 'campaigns' : 'campaigns:$_status:$_search';
+  Map<String, String> get _query => {'limit': '30', if (_status.isNotEmpty) 'status': _status, if (_search.isNotEmpty) 'search': _search};
+
+  void _reload() {
+    _page = 1;
+    _more.clear();
+    AppScope.read(context).load(_key, '/api/campaigns', query: _query, force: true);
+  }
+
+  Future<void> _loadMore() async {
+    final app = AppScope.read(context);
+    setState(() => _loadingMore = true);
+    try {
+      final data = await app.backend.get('/api/campaigns', {..._query, 'organizationId': app.orgId, 'page': '${_page + 1}', 'summary': 'false'});
+      setState(() {
+        _page++;
+        _more.addAll([for (final c in (data['campaigns'] as List? ?? const [])) Map<String, dynamic>.from(c)]);
+      });
+    } catch (e) {
+      if (mounted) toast(context, 'Could not load more. ${'$e'.replaceFirst('Exception: ', '')}');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchBox.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,56 +94,146 @@ class CampaignsScreen extends StatelessWidget {
         body: const EmptyState(icon: Icons.campaign_outlined, title: 'For managers', text: 'Ask an admin for access to campaigns.'),
       );
     }
-    final waiting = [
-      for (final item in app.pending('campaign'))
-        {
-          'id': item.id,
-          'name': item.body['name'],
-          'status': '_WAITING',
-          'template_name': item.body['templateName'],
-          'total_contacts': (item.body['audience'] as List?)?.length ?? 0,
-          'sent_count': 0,
-          'created_at': item.createdAt.toIso8601String(),
-          '_failed': item.state.name == 'failed',
-        },
-    ];
-    final campaigns = [...waiting.reversed, for (final c in ((app.cached('campaigns') ?? const {})['campaigns'] as List? ?? const [])) Map<String, dynamic>.from(c)];
-    num sum(String key) => campaigns.fold<num>(0, (s, c) => s + ((c[key] as num?) ?? 0));
-    final sent = sum('sent_count'), delivered = sum('delivered_count'), read = sum('read_count');
+    final data = app.cached(_key);
+    final base = app.cached('campaigns');
+    final summary = (data?['summary'] ?? base?['summary']) as Map?;
+    // Campaigns made on this phone that have not reached the server yet
+    final waiting = _status.isNotEmpty || _search.isNotEmpty
+        ? const <Map<String, dynamic>>[]
+        : [
+            for (final item in app.pending('campaign'))
+              {
+                'id': item.id,
+                'name': item.body['name'],
+                'status': '_WAITING',
+                'template_name': item.body['templateName'],
+                'total_contacts': (item.body['audience'] as List?)?.length ?? 0,
+                'sent_count': 0,
+                'created_at': item.createdAt.toIso8601String(),
+                '_failed': item.state.name == 'failed',
+              },
+          ];
+    final campaigns = [...waiting.reversed, for (final c in (data?['campaigns'] as List? ?? const [])) Map<String, dynamic>.from(c), ..._more];
+    final pages = ((data?['pagination'] as Map?)?['pages'] as num?)?.toInt() ?? 1;
+    int count(String key) => (summary?[key] as num?)?.toInt() ?? 0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Campaigns')),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-campaigns',
         backgroundColor: Brand.blue,
         foregroundColor: Colors.white,
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewCampaignScreen())),
+        onPressed: () async {
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => const NewCampaignScreen()));
+          if (mounted && _key != 'campaigns') _reload();
+        },
         icon: const Icon(Icons.add),
         label: const Text('New campaign', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: Column(
         children: [
-          const SyncBanner(cacheKey: 'campaigns'),
+          SyncBanner(cacheKey: _key),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: app.syncNow,
-              child: app.isLoading('campaigns')
-                  ? const SkeletonCards(cards: 3)
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              onRefresh: () async {
+                _reload();
+                await app.syncNow();
+              },
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                children: [
+                  if (summary != null)
+                    Panel(
+                      child: Row(
+                        children: [
+                          _Stat(label: 'Campaigns', value: '${count('total')}'),
+                          _Stat(label: 'Messages sent', value: shortCount(count('sent'))),
+                          _Stat(label: 'Not sent', value: shortCount(count('failedMessages')), attention: count('failedMessages') > 0),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _searchBox,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Search campaign or template',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _search.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () {
+                                _searchBox.clear();
+                                setState(() => _search = '');
+                                _reload();
+                              },
+                            ),
+                    ),
+                    onChanged: (v) {
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 450), () {
+                        if (!mounted) return;
+                        setState(() => _search = v.trim());
+                        _reload();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
                       children: [
-                        Panel(
-                          child: Row(
-                            children: [
-                              _Stat(label: 'Sent', value: '${sent.toInt()}'),
-                              _Stat(label: 'Delivered', value: sent == 0 ? '—' : '${(delivered * 100 / sent).round()}%'),
-                              _Stat(label: 'Read', value: sent == 0 ? '—' : '${(read * 100 / sent).round()}%'),
-                            ],
+                        for (final (value, label) in _filters)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(summary == null || value.isEmpty || count(value) == 0 ? label : '$label · ${count(value)}'),
+                              selected: _status == value,
+                              onSelected: (_) {
+                                setState(() => _status = value);
+                                _reload();
+                              },
+                            ),
                           ),
-                        ),
-                        const SectionLabel('All campaigns'),
-                        if (campaigns.isEmpty) const EmptyState(icon: Icons.campaign_outlined, title: 'No campaigns yet', text: 'Send an approved template to many customers at once.'),
-                        for (final c in campaigns) ...[_CampaignCard(campaign: c), const SizedBox(height: 10)],
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (data == null && app.isLoading(_key))
+                    const SizedBox(height: 400, child: SkeletonCards(cards: 3))
+                  else if (campaigns.isEmpty)
+                    EmptyState(
+                      icon: Icons.campaign_outlined,
+                      title: _status.isEmpty && _search.isEmpty ? 'No campaigns yet' : 'No campaigns match',
+                      text: _status.isEmpty && _search.isEmpty ? 'Send an approved template to many customers at once.' : 'Try another word or filter.',
+                    )
+                  else ...[
+                    for (final c in campaigns) ...[
+                      CampaignCard(
+                        campaign: c,
+                        onTap: c['status'] == '_WAITING'
+                            ? null
+                            : () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CampaignScreen(campaignId: '${c['id']}', name: '${c['name']}'),
+                                  ),
+                                );
+                                if (mounted) _reload();
+                              },
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (_page < pages)
+                      Center(
+                        child: OutlinedButton(onPressed: _loadingMore || !app.online ? null : _loadMore, child: Text(_loadingMore ? 'Loading…' : 'Load more')),
+                      ),
+                  ],
+                ],
+              ),
             ),
           ),
         ],
@@ -81,17 +242,33 @@ class CampaignsScreen extends StatelessWidget {
   }
 }
 
+/// 1,250 or 12.5K.
+String shortCount(num n) => n >= 100000 ? '${(n / 1000).round()}K' : (n >= 10000 ? '${(n / 1000).toStringAsFixed(1)}K' : formatCount(n));
+
+String formatCount(num n) {
+  final s = n.toInt().toString();
+  return s.length <= 3 ? s : '${s.substring(0, s.length - 3)},${s.substring(s.length - 3)}';
+}
+
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
+  const _Stat({required this.label, required this.value, this.attention = false});
   final String label, value;
+  final bool attention;
   @override
   Widget build(BuildContext context) => Expanded(
     child: Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+          ),
+        ),
         const SizedBox(height: 2),
         Text(
           label,
+          textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w600),
         ),
       ],
@@ -99,9 +276,11 @@ class _Stat extends StatelessWidget {
   );
 }
 
-class _CampaignCard extends StatelessWidget {
-  const _CampaignCard({required this.campaign});
+/// One campaign in the list: name, state, when, and how far it got.
+class CampaignCard extends StatelessWidget {
+  const CampaignCard({super.key, required this.campaign, this.onTap});
   final Map<String, dynamic> campaign;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) {
     final c = campaign;
@@ -111,7 +290,10 @@ class _CampaignCard extends StatelessWidget {
     final delivered = (c['delivered_count'] as num?) ?? 0;
     final read = (c['read_count'] as num?) ?? 0;
     final failed = (c['failed_count'] as num?) ?? 0;
+    final replies = (c['active_chats_count'] as num?) ?? 0;
+    final toReply = (c['unread_chats_count'] as num?) ?? 0;
     return Panel(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -124,23 +306,18 @@ class _CampaignCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (status == '_WAITING')
-                WaitingPill(failed: c['_failed'] == true)
-              else
-                Pill(
-                  _statusWords[status] ?? status,
-                  tone: status == 'FAILED'
-                      ? PillTone.red
-                      : status == 'RUNNING'
-                      ? PillTone.blue
-                      : PillTone.grey,
-                ),
+              const SizedBox(width: 8),
+              if (status == '_WAITING') WaitingPill(failed: c['_failed'] == true) else Pill(campaignStatusWords[status] ?? status, tone: campaignTone(status)),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])} · ${c['template_name']}' : '${formatWhen(c['created_at'])} · ${c['template_name'] ?? ''}',
+            [
+              status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])}' : formatWhen(c['created_at']),
+              if ('${c['template_name'] ?? ''}'.isNotEmpty) '${c['template_name']}',
+            ].join(' · '),
             style: const TextStyle(fontSize: 13, color: Brand.muted),
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 12),
           ClipRRect(
@@ -154,198 +331,28 @@ class _CampaignCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            status == 'FAILED'
+            status == 'FAILED' && sent == 0
                 ? '${failed.toInt()} of ${total.toInt()} could not be sent'
-                : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${delivered.toInt()} delivered · ${read.toInt()} read' : ''}',
+                : status == 'SCHEDULED' || status == '_WAITING'
+                ? '${total.toInt()} people'
+                : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${delivered.toInt()} delivered · ${read.toInt()} read' : ''}${failed > 0 ? ' · ${failed.toInt()} not sent' : ''}',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: status == 'FAILED' ? Brand.red : Brand.textSoft),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A new campaign: an approved template, who gets it, what fills its blanks, and when.
-/// Made offline, it waits on the phone and is created and started when the internet is back.
-class NewCampaignScreen extends StatefulWidget {
-  const NewCampaignScreen({super.key});
-  @override
-  State<NewCampaignScreen> createState() => _NewCampaignScreenState();
-}
-
-class _NewCampaignScreenState extends State<NewCampaignScreen> {
-  final _name = TextEditingController();
-  Map<String, dynamic>? _template;
-  String? _tag; // null: everyone
-  final Map<String, String> _fixed = {};
-  final Map<String, bool> _useName = {};
-  int _when = 0; // 0 now, 1 this evening, 2 tomorrow morning
-
-  DateTime? get _scheduledAt {
-    final now = istNow();
-    if (_when == 1) return fromIst(now, 18, 0);
-    if (_when == 2) return fromIst(now.add(const Duration(days: 1)), 10, 0);
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final contacts = contactsOf(app).where((c) => c['_waiting'] != true && '${c['phone_number'] ?? ''}'.isNotEmpty).toList();
-    final tags = <String>{
-      for (final c in contacts)
-        for (final t in (c['tags'] as List? ?? const [])) '$t',
-    }.toList()..sort();
-    final audience = contacts.where((c) => _tag == null || (c['tags'] as List? ?? const []).contains(_tag)).toList();
-    final templates = templatesOf(app).where((t) => t['status'] == 'APPROVED').toList();
-    final parts = _template == null ? null : TemplateParts(_template!);
-    final sample = <String, String>{
-      if (parts != null)
-        for (final b in parts.blanks) b: _useName[b] == true ? (audience.isEmpty ? 'Priya' : contactName(audience.first).split(' ').first) : (_fixed[b] ?? ''),
-    };
-    final eveningPassed = istNow().hour >= 18;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('New campaign')),
-      body: Column(
-        children: [
-          const SyncBanner(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
+          if (replies > 0) ...[
+            const SizedBox(height: 6),
+            Row(
               children: [
-                TextField(
-                  controller: _name,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Campaign name', hintText: 'Diwali offer'),
-                ),
-                const SectionLabel('Template'),
-                if (templates.isEmpty) const Text('No approved templates yet. Create one on the web first.', style: TextStyle(color: Brand.muted)),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final t in templates)
-                      ChoiceChip(
-                        label: Text('${t['name']}'),
-                        selected: _template?['id'] == t['id'],
-                        onSelected: (_) => setState(() {
-                          _template = t;
-                          _fixed.clear();
-                          _useName.clear();
-                          final blanks = TemplateParts(t).blanks;
-                          if (blanks.isNotEmpty) _useName[blanks.first] = true;
-                        }),
-                      ),
-                  ],
-                ),
-                if (parts != null) ...[
-                  const SizedBox(height: 12),
-                  TemplateBubble(parts: parts, values: sample),
-                  for (final b in parts.blanks) ...[
-                    const SizedBox(height: 12),
-                    Text('Blank {{$b}}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        ChoiceChip(label: const Text("Customer's first name"), selected: _useName[b] == true, onSelected: (_) => setState(() => _useName[b] = true)),
-                        ChoiceChip(label: const Text('Same text for all'), selected: _useName[b] != true, onSelected: (_) => setState(() => _useName[b] = false)),
-                      ],
-                    ),
-                    if (_useName[b] != true)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: TextField(
-                          decoration: const InputDecoration(hintText: 'Text for this blank'),
-                          onChanged: (v) => setState(() => _fixed[b] = v),
-                        ),
-                      ),
-                  ],
-                ],
-                SectionLabel('Who gets it · ${audience.length}'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(label: Text('Everyone · ${contacts.length}'), selected: _tag == null, onSelected: (_) => setState(() => _tag = null)),
-                    for (final t in tags)
-                      ChoiceChip(label: Text('$t · ${contacts.where((c) => (c['tags'] as List? ?? const []).contains(t)).length}'), selected: _tag == t, onSelected: (_) => setState(() => _tag = t)),
-                  ],
-                ),
-                const SectionLabel('When'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(label: Text(app.online ? 'Now' : 'As soon as online'), selected: _when == 0, onSelected: (_) => setState(() => _when = 0)),
-                    if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
-                    ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Only customers who agreed to hear from you should get marketing messages. WhatsApp may limit numbers that get many blocks.',
-                  style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4),
+                const Icon(Icons.chat_bubble_outline, size: 15, color: Brand.blue),
+                const SizedBox(width: 6),
+                Text(
+                  '${replies.toInt()} replied${toReply > 0 ? ' · ${toReply.toInt()} waiting for you' : ''}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: FilledButton.icon(
-            onPressed: parts == null || audience.isEmpty || _name.text.trim().isEmpty || parts.blanks.any((b) => _useName[b] != true && (_fixed[b] ?? '').trim().isEmpty)
-                ? null
-                : () => _create(app, parts, audience),
-            icon: Icon(_when == 0 ? Icons.send : Icons.schedule_send),
-            label: Text(_when == 0 ? 'Send to ${audience.length}' : 'Schedule for ${audience.length}'),
-          ),
-        ),
-      ),
     );
-  }
-
-  Future<void> _create(AppState app, TemplateParts parts, List<Map<String, dynamic>> audience) async {
-    final localId = AppState.newLocalId();
-    final recipients = [
-      for (final c in audience)
-        {
-          'phone': c['phone_number'],
-          'variables': {for (final b in parts.blanks) b: _useName[b] == true ? contactName(c).split(' ').first : _fixed[b]!.trim()},
-        },
-    ];
-    await app.enqueue(
-      kind: 'campaign',
-      label: 'Campaign "${_name.text.trim()}" to ${audience.length}',
-      path: '/api/campaigns',
-      localId: localId,
-      resultIdPath: 'campaign.id',
-      body: {
-        'organizationId': app.orgId,
-        'name': _name.text.trim(),
-        'templateName': _template!['name'],
-        'templateBody': parts.body,
-        'templateLanguage': _template!['language'] ?? 'en',
-        'channel': 'whatsapp',
-        'audience': recipients,
-        'createdBy': app.me?['user']?['id'],
-        if (_scheduledAt != null) 'scheduledAt': _scheduledAt!.toIso8601String(),
-      },
-    );
-    // Sending now: start it once it exists on the server (scheduled ones start on their own)
-    if (_scheduledAt == null) {
-      await app.enqueue(kind: 'campaign_run', label: 'Start "${_name.text.trim()}"', path: '/api/campaigns/run', body: {'campaignId': localId});
-    }
-    if (!mounted) return;
-    toast(context, app.online ? 'Campaign created.' : 'Campaign saved. It is created and sent when you are online.');
-    Navigator.pop(context);
   }
 }

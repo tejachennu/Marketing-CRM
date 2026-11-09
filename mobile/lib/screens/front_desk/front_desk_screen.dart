@@ -8,6 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'appointment_screen.dart';
 import 'bill_screen.dart';
+import 'checkout_screen.dart';
 import 'logic.dart';
 import 'new_bill_screen.dart';
 import 'new_booking_screen.dart';
@@ -199,8 +200,7 @@ class _Today extends StatelessWidget {
             ),
           ],
         ),
-        if (requests.isNotEmpty || AppScope.of(context).can('manage')) _WhatsAppBookings(desk: desk, requests: requests),
-        for (final r in requests) _RequestCard(request: r),
+        if (requests.isNotEmpty) _WhatsAppBookings(desk: desk, requests: requests),
         SectionLabel('${desk.isToday ? 'Today' : 'This day'} · ${appointments.length}'),
         if (appointments.isEmpty)
           const Panel(
@@ -256,6 +256,44 @@ class _AppointmentRow extends StatelessWidget {
     final services = (a['services'] as List? ?? const []).map((s) => s['name']).join(', ');
     final staff = desk.staffName(a['staff_id']);
     final done = ['completed', 'cancelled', 'no_show'].contains(status);
+    final app = AppScope.read(context);
+    // The next step, one tap from the list (today only; changes made on this phone wait to sync first)
+    void step(String label, String to) {
+      app.counterAction(kind: 'appointment', label: '$label · ${a['customer_name']}', action: {'type': 'set_status', 'status': to, 'appointment_id': a['id']});
+      toast(context, app.online ? '$label.' : '$label. It syncs when you are online.');
+    }
+
+    Widget small(String label, VoidCallback onPressed, {bool primary = false}) {
+      final style = ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
+        textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+      );
+      return Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: primary ? FilledButton(style: style, onPressed: onPressed, child: Text(label)) : OutlinedButton(style: style, onPressed: onPressed, child: Text(label)),
+      );
+    }
+
+    final canStep = desk.isToday && a['_outbox'] == null && a['_changing'] != true && app.can('write');
+    final Widget? next = !canStep
+        ? null
+        : switch (status) {
+            'booked' => small('Arrived', () => step('Marked arrived', 'arrived')),
+            'arrived' => small('Start', () => step('Started', 'in_service')),
+            'in_service' => small(
+              'Bill',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute<bool>(
+                  builder: (_) => CheckoutScreen(appointment: a, date: desk.date),
+                ),
+              ),
+              primary: true,
+            ),
+            _ => null,
+          };
     return InkWell(
       onTap: () => Navigator.push(
         context,
@@ -269,15 +307,18 @@ class _AppointmentRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 50,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    formatTime(a['starts_at']).replaceAll(' ', '\n'),
-                    style: TextStyle(fontSize: 14, height: 1.15, fontWeight: FontWeight.w800, color: done ? Brand.faint : Brand.navy),
-                  ),
-                ],
+              width: 70,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: formatTime(a['starts_at']).split(' ').first),
+                    TextSpan(
+                      text: ' ${formatTime(a['starts_at']).split(' ').skip(1).join(' ')}',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                style: TextStyle(fontSize: 15, height: 1.3, fontWeight: FontWeight.w800, color: done ? Brand.faint : Brand.navy),
               ),
             ),
             const SizedBox(width: 8),
@@ -297,26 +338,34 @@ class _AppointmentRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Pill(
-                        statusLabels[status] ?? status,
-                        tone: status == 'in_service' || status == 'arrived'
-                            ? PillTone.blue
-                            : status == 'no_show'
-                            ? PillTone.red
-                            : PillTone.grey,
+                      Expanded(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            Pill(
+                              statusLabels[status] ?? status,
+                              tone: status == 'in_service' || status == 'arrived'
+                                  ? PillTone.blue
+                                  : status == 'no_show'
+                                  ? PillTone.red
+                                  : PillTone.grey,
+                            ),
+                            if (a['source'] == 'chat') const Pill('From WhatsApp', icon: Icons.chat_bubble_outline),
+                            if (a['_outbox'] != null || a['_changing'] == true) WaitingPill(failed: a['_failed'] == true),
+                          ],
+                        ),
                       ),
-                      if (a['source'] == 'chat') const Pill('From WhatsApp', icon: Icons.chat_bubble_outline),
-                      if (a['_outbox'] != null || a['_changing'] == true) WaitingPill(failed: a['_failed'] == true),
+                      ?next,
                     ],
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Brand.faint),
+            if (next == null) const Icon(Icons.chevron_right, color: Brand.faint),
           ],
         ),
       ),
@@ -486,7 +535,8 @@ class _BillRow extends StatelessWidget {
   }
 }
 
-/// Bookings from WhatsApp: accept them on their own (switch), or accept every waiting one at once.
+/// Booking requests from WhatsApp in one card: each with Decline / Approve, Accept all, and (for
+/// managers) the switch to accept them on their own from now on.
 class _WhatsAppBookings extends StatelessWidget {
   const _WhatsAppBookings({required this.desk, required this.requests});
   final FrontDesk desk;
@@ -497,69 +547,83 @@ class _WhatsAppBookings extends StatelessWidget {
     final app = AppScope.of(context);
     final auto = desk.settings['auto_approve_bookings'] == true;
     return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 10),
-      child: Panel(
-        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (app.can('manage'))
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: auto,
-                activeThumbColor: Colors.white,
-                activeTrackColor: Brand.blue,
-                title: const Text('Accept WhatsApp bookings on their own', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                subtitle: Text(auto ? 'On: a free time a customer picks is booked at once, and they get the confirmation.' : 'Off: each booking waits here for you to accept.'),
-                onChanged: (on) {
-                  app.enqueue(
-                    kind: 'settings',
-                    label: on ? 'Accept bookings on their own' : 'Accept bookings by hand',
-                    method: 'PATCH',
-                    path: '/api/salon/settings',
-                    body: {'organizationId': app.orgId, 'auto_approve_bookings': on},
-                  );
-                  toast(context, on ? 'New WhatsApp bookings are accepted on their own.' : 'New WhatsApp bookings wait for you to accept.');
-                },
-              ),
-            if (requests.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${requests.length} booking request${requests.length == 1 ? '' : 's'} waiting',
-                        style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.red),
-                      ),
-                    ),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Accept all ${requests.length}?'),
-                            content: const Text('Each customer gets a WhatsApp confirmation.'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Accept all')),
-                            ],
-                          ),
-                        );
-                        if (ok != true) return;
-                        for (final r in requests) {
-                          await app.counterAction(kind: 'appointment', label: 'Approve ${r['customer_name']}', action: {'type': 'approve_request', 'appointment_id': r['id']});
-                        }
-                        if (context.mounted) toast(context, app.online ? 'All accepted. Customers get a WhatsApp.' : 'All accepted. It syncs when you are online.');
-                      },
-                      icon: const Icon(Icons.done_all, size: 18),
-                      label: const Text('Accept all'),
-                    ),
-                  ],
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 0, 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(color: Brand.red, shape: BoxShape.circle),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('${requests.length} booking request${requests.length == 1 ? '' : 's'} from WhatsApp', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                ),
+                if (requests.length > 1)
+                  TextButton.icon(
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Accept all ${requests.length}?'),
+                          content: const Text('Each customer gets a WhatsApp confirmation.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Accept all')),
+                          ],
+                        ),
+                      );
+                      if (ok != true) return;
+                      for (final r in requests) {
+                        await app.counterAction(kind: 'appointment', label: 'Approve ${r['customer_name']}', action: {'type': 'approve_request', 'appointment_id': r['id']});
+                      }
+                      if (context.mounted) toast(context, app.online ? 'All accepted. Customers get a WhatsApp.' : 'All accepted. It syncs when you are online.');
+                    },
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: const Text('Accept all'),
+                  ),
+              ],
+            ),
+          ),
+          for (final r in requests) _RequestCard(request: r),
+          if (app.can('manage'))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Accept new WhatsApp bookings on their own',
+                      style: TextStyle(fontSize: 13, color: Brand.textSoft, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.85,
+                    child: Switch(
+                      value: auto,
+                      activeThumbColor: Colors.white,
+                      activeTrackColor: Brand.blue,
+                      onChanged: (on) {
+                        app.enqueue(
+                          kind: 'settings',
+                          label: on ? 'Accept bookings on their own' : 'Accept bookings by hand',
+                          method: 'PATCH',
+                          path: '/api/salon/settings',
+                          body: {'organizationId': app.orgId, 'auto_approve_bookings': on},
+                        );
+                        toast(context, on ? 'New WhatsApp bookings are accepted on their own.' : 'New WhatsApp bookings wait for you to accept.');
+                      },
+                    ),
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

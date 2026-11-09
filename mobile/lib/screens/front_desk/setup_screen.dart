@@ -184,6 +184,7 @@ class ServicesSetup extends StatelessWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-services',
         backgroundColor: Brand.blue,
         foregroundColor: Colors.white,
         onPressed: () => _editService(context, null, order),
@@ -550,6 +551,7 @@ class StaffSetup extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Team')),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-team',
         backgroundColor: Brand.blue,
         foregroundColor: Colors.white,
         onPressed: () => _editStaff(context, null, services),

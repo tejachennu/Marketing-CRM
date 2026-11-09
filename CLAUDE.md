@@ -117,6 +117,19 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: Campaigns like the web, simpler** (`mobile/lib/screens/campaigns/`): list with totals
+  (`summary`), search, status filters and Load more; campaign page (`campaign_screen.dart`: numbers,
+  message, Replies → opens the chat, Everyone with status filters; Send now / Cancel a scheduled one,
+  Stop, send again to those who missed it or to everyone); new campaign on one page
+  (`new_campaign_screen.dart`: template, My contacts with Choose people (tags any/all/none, past
+  campaigns got / did not get, ticks) or Upload a list (.xlsx/.csv, `excel` package), blanks from a
+  contact field or a column or the same text, send-from number, now / quick times / any date and time).
+  Same APIs as the web (`/api/campaigns`, `/run`, `/stop`, `/rerun`, `/scheduled`, `/participants`,
+  `/senders`); number rules mirror `lib/campaigns/audience.ts` in `campaigns/audience.dart`. WhatsApp
+  only (SMS/email stay on the web). Front Desk Visits: one-tap next step (Arrived → Start → Bill) and
+  booking requests in one card. Layout checks: `test/screen_check.dart` (320px, 412px, large text).
+  App changes are pushed with `[skip ci]` until the owner has seen the pictures (a push builds the APK).
+
 - **App: every web Front Desk feature** (`mobile/lib/screens/front_desk/`): Visits / Bills / Reviews / Team
   tabs; any day on Visits (`DayBar`), date ranges on Bills, Reviews and Team (`range_bar.dart`,
   `FrontDesk.billsKey`); Setup (`setup_screen.dart`: services + categories, team with commission and

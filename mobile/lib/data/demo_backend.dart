@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'backend.dart';
+import 'demo_campaigns.dart';
 import 'demo_front_desk.dart';
 import 'format.dart';
 
@@ -383,6 +384,8 @@ class DemoBackend implements Backend {
         'delivered_count': 238,
         'read_count': 171,
         'failed_count': 4,
+        'active_chats_count': 3,
+        'unread_chats_count': 2,
         'created_at': now.subtract(const Duration(days: 6)).toIso8601String(),
       },
       {
@@ -530,12 +533,13 @@ class DemoBackend implements Backend {
   @override
   Future<void> signOut() async => _signedIn = false;
 
+  late final DemoCampaigns _camp = DemoCampaigns(campaigns: _campaigns, contacts: _contacts, conversations: _conversations);
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
-    final desk = _desk.get(path, query);
+    final desk = _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
@@ -595,7 +599,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
-    final desk = _desk.send(method, path, body);
+    final desk = _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

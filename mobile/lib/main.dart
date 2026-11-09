@@ -9,7 +9,10 @@ import 'data/backend.dart';
 import 'data/demo_backend.dart';
 import 'data/format.dart';
 import 'data/local_store.dart';
+import 'screens/campaigns/audience.dart';
+import 'screens/campaigns/campaign_screen.dart';
 import 'screens/campaigns/campaigns_screen.dart';
+import 'screens/campaigns/new_campaign_screen.dart';
 import 'screens/chats/chat_screen.dart';
 import 'screens/chats/chats_screen.dart';
 import 'screens/contacts/contacts_screen.dart';
@@ -188,6 +191,10 @@ class WamaApp extends StatelessWidget {
       'new_contact' => const NewContactScreen(),
       'campaigns' => const HomeShell(tab: 3),
       'new_campaign' => const NewCampaignScreen(),
+      'campaign' => const CampaignScreen(campaignId: 'c1'),
+      'campaign_scheduled' => const CampaignScreen(campaignId: 'c2'),
+      'campaign_sending' => const CampaignScreen(campaignId: 'c3'),
+      'choose_people' => const ChoosePeopleScreen(picked: null, filter: AudienceFilter()),
       'templates' => const TemplatesScreen(),
       'template' => TemplateScreen(template: Map<String, dynamic>.from((app.cached('templates')!['templates'] as List)[3])),
       'more' => const HomeShell(tab: 4),

@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wama_mobile/data/app_state.dart';
@@ -7,6 +9,7 @@ import 'package:wama_mobile/data/format.dart';
 import 'package:wama_mobile/data/local_store.dart';
 import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
+import 'package:wama_mobile/screens/campaigns/audience.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
 import 'package:wama_mobile/screens/front_desk/pickers.dart';
@@ -349,5 +352,78 @@ void main() {
       },
     });
     expect((await backend.get('/api/salon/templates', {}))['choices']['bill']['name'], 'bill_v1');
+  });
+
+  test('Campaign numbers follow the web rules: Indian numbers get 91, repeats and bad ones are left out', () {
+    expect(phoneDigits('98765 43210'), '919876543210');
+    expect(phoneDigits('+91 98765-43210'), '919876543210');
+    expect(phoneDigits('0091 9876543210'), '919876543210');
+    expect(phoneDigits('12345'), '');
+    final list = buildRecipients([
+      ('9876543210', {'1': 'Priya'}),
+      ('+919876543210', {'1': 'Priya again'}),
+      ('abc', {'1': 'Nobody'}),
+      ('+971501234567', {'1': 'Arjun'}),
+    ]);
+    expect(list.recipients.map((r) => r.phone), ['+919876543210', '+971501234567']);
+    expect(list.recipients.first.variables['1'], 'Priya');
+    expect(list.duplicates, 1);
+    expect(list.invalid, 1);
+  });
+
+  test('Campaign audience filters: tags any / all / none, and past campaigns got / did not get', () {
+    final a = {
+      'id': 'a',
+      'first_name': 'Asha',
+      'phone_number': '+919800000001',
+      'tags': ['VIP', 'NRI'],
+    };
+    final b = {
+      'id': 'b',
+      'first_name': 'Bala',
+      'phone_number': '+919800000002',
+      'tags': ['VIP'],
+    };
+    final c = {'id': 'c', 'first_name': 'Chitra', 'phone_number': '+919800000003', 'tags': <String>[]};
+    final all = [a, b, c];
+    List<String> names(AudienceFilter f, [Set<String> got = const {}]) => [
+      for (final x in all)
+        if (f.matches(x, got)) '${x['first_name']}',
+    ];
+    expect(names(const AudienceFilter(tags: {'VIP', 'NRI'})), ['Asha', 'Bala']);
+    expect(names(const AudienceFilter(tags: {'VIP', 'NRI'}, tagMode: TagMode.all)), ['Asha']);
+    expect(names(const AudienceFilter(tags: {'VIP'}, tagMode: TagMode.none)), ['Chitra']);
+    expect(names(const AudienceFilter(search: '98000 00002')), ['Bala']);
+    final got = participantSet(
+      {
+        'c1': ['9800000001'],
+      },
+      {'c1'},
+    );
+    expect(names(const AudienceFilter(campaignIds: {'c1'}), got), ['Asha']);
+    expect(names(const AudienceFilter(campaignIds: {'c1'}, received: false), got), ['Bala', 'Chitra']);
+  });
+
+  test('A spreadsheet list: CSV with quotes, the phone and name columns are found', () {
+    final sheet = readSheet('list.csv', Uint8List.fromList(utf8.encode('Customer Name,Mobile,City\n"Rao, Priya",98765 43210,Hyderabad\nArjun,+971501234567,Dubai\n')));
+    expect(sheet.headers, ['Customer Name', 'Mobile', 'City']);
+    expect(sheet.rows.first['Customer Name'], 'Rao, Priya');
+    expect(sheet.phoneColumn, 'Mobile');
+    expect(sheet.nameColumn, 'Customer Name');
+  });
+
+  test('Campaign page: stop, send again to those who missed it, and scheduled send now / cancel', () async {
+    final (app, _) = await makeApp();
+    await app.load('campaign:c3', '/api/campaigns', query: {'id': 'c3'});
+    expect((app.cached('campaign:c3')!['conversations'] as List), isNotEmpty);
+    await app.ask('/api/campaigns/stop', {'campaignId': 'c3'});
+    await app.ask('/api/campaigns/scheduled', {'campaignId': 'c2', 'action': 'cancel_schedule'});
+    await app.load('campaigns', '/api/campaigns', force: true);
+    final list = {for (final c in (app.cached('campaigns')!['campaigns'] as List)) c['id']: c['status']};
+    expect(list['c3'], 'STOPPED');
+    expect(list['c2'], 'STOPPED');
+    await app.ask('/api/campaigns/rerun', {'campaignId': 'c4', 'rerunType': 'failed_only'});
+    await app.load('campaigns:failed:', '/api/campaigns', query: {'status': 'failed'}, force: true);
+    expect((app.cached('campaigns:failed:')!['campaigns'] as List), isEmpty);
   });
 }

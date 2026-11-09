@@ -53,6 +53,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       appBar: AppBar(title: Text('Knowledge base · ${all.length}')),
       floatingActionButton: canEdit
           ? FloatingActionButton.extended(
+              heroTag: 'fab-knowledge',
               backgroundColor: Brand.blue,
               foregroundColor: Colors.white,
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ArticleScreen())),

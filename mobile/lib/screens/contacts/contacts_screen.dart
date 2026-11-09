@@ -55,6 +55,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       appBar: AppBar(title: Text('Contacts · ${all.length}')),
       floatingActionButton: app.can('write')
           ? FloatingActionButton.extended(
+              heroTag: 'fab-contacts',
               backgroundColor: Brand.blue,
               foregroundColor: Colors.white,
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewContactScreen())),
