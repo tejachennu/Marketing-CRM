@@ -44,6 +44,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _text.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.read(context);
+      // No notifications for the chat on screen; new messages appear here live
+      app.openChatId = _id;
+      _app = app;
       app.load(_key, '/api/messages', query: {'conversationId': _id, 'limit': '60'}, force: true);
       if (((_conversation(app)['unread_count'] as num?) ?? 0) > 0) {
         app.enqueue(kind: 'chat_setting', label: 'Mark ${contactName(widget.conversation['contact'])} read', method: 'PATCH', path: '/api/conversations', body: {'conversationId': _id, 'read': true});
@@ -52,8 +55,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  AppState? _app;
+
   @override
   void dispose() {
+    if (_app?.openChatId == _id) _app!.openChatId = null;
     _text.dispose();
     super.dispose();
   }

@@ -62,7 +62,13 @@ class DemoBackend implements Backend {
           'enabled': true,
           'multi_select': true,
           'steps': [
-            {'id': 's1', 'type': 'choice', 'text': 'Is this your first visit?', 'label': 'First visit', 'options': ['Yes', 'No']},
+            {
+              'id': 's1',
+              'type': 'choice',
+              'text': 'Is this your first visit?',
+              'label': 'First visit',
+              'options': ['Yes', 'No'],
+            },
             {'id': 's2', 'type': 'services'},
             {'id': 's3', 'type': 'text', 'text': 'Any allergies we should know about?', 'label': 'Allergies'},
             {'id': 's4', 'type': 'staff'},
@@ -462,6 +468,44 @@ class DemoBackend implements Backend {
 
   @override
   bool get signedIn => _signedIn;
+
+  void Function(String table, String change, Map<String, dynamic> row)? _live;
+
+  @override
+  void live(String organizationId, void Function(String table, String change, Map<String, dynamic> row) onChange) => _live = onChange;
+
+  @override
+  void stopLive() => _live = null;
+
+  /// Demo: a customer writes, and a booking request arrives (for the notification screenshots).
+  void simulateIncoming() {
+    final message = {
+      'id': _id(),
+      'organization_id': 'org-demo',
+      'conversation_id': 'conv-2',
+      'body': 'Hi! Do you have a slot this evening for a hair spa?',
+      'sender_type': 'contact',
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    _messages.putIfAbsent('conv-2', () => []).add(message);
+    final conv = _conversations.firstWhere((c) => c['id'] == 'conv-2');
+    conv['unread_count'] = ((conv['unread_count'] as num?) ?? 0) + 1;
+    conv['last_message'] = {'body': message['body'], 'sender_type': 'contact', 'created_at': message['created_at']};
+    conv['last_message_at'] = message['created_at'];
+    _requests.add({
+      'id': _id(),
+      'customer_name': 'Sneha Reddy',
+      'customer_phone': '+919900112233',
+      'starts_at': DateTime.now().toUtc().add(const Duration(hours: 26)).toIso8601String(),
+      'ends_at': DateTime.now().toUtc().add(const Duration(hours: 27)).toIso8601String(),
+      'status': 'requested',
+      'services': [
+        {'name': 'Hair spa', 'price': 1200, 'duration_minutes': 60},
+      ],
+      'source': 'chat',
+    });
+    _live?.call('messages', 'INSERT', message);
+  }
 
   @override
   Future<void> signIn(String email, String password) async {

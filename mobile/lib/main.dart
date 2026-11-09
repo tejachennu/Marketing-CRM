@@ -26,6 +26,7 @@ import 'screens/ai/knowledge_screen.dart';
 import 'screens/front_desk/booking_flow_screen.dart';
 import 'screens/more/signup_screen.dart';
 import 'ui/front_desk_icon.dart';
+import 'ui/notice_host.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
@@ -55,6 +56,10 @@ Future<void> main() async {
   }
   await app.start();
   runApp(WamaApp(app: app, screen: preview['screen']));
+  // Demo: a customer writes and a booking request comes in (notification screenshots)
+  if (AppConfig.demo && preview['incoming'] == '1') {
+    Future<void>.delayed(const Duration(milliseconds: 1500), () => (backend as DemoBackend).simulateIncoming());
+  }
 }
 
 /// Demo: the internet drops after the lists were saved, and a few changes are made offline.
@@ -139,7 +144,9 @@ class WamaApp extends StatelessWidget {
         title: 'WAMA CRM',
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
+        navigatorKey: navigatorKey,
         routes: {'/sync': (_) => const SyncScreen(), '/templates': (_) => const TemplatesScreen()},
+        builder: (context, child) => NoticeHost(app: app, child: child ?? const SizedBox.shrink()),
         home: screen != null ? _preview(screen!) : const _Root(),
       ),
     );

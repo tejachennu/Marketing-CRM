@@ -37,6 +37,11 @@ abstract class Backend {
   Future<void> signIn(String email, String password);
   Future<void> signOut();
   bool get signedIn;
+
+  /// Live changes for the workspace (new messages, read ticks, chats). Calls back with the table,
+  /// the change ("INSERT" / "UPDATE") and the row. Stop with [stopLive].
+  void live(String organizationId, void Function(String table, String change, Map<String, dynamic> row) onChange);
+  void stopLive();
 }
 
 class HttpBackend implements Backend {
@@ -106,7 +111,36 @@ class HttpBackend implements Backend {
   }
 
   @override
-  Future<void> signOut() => client.auth.signOut();
+  Future<void> signOut() async {
+    stopLive();
+    await client.auth.signOut();
+  }
+
+  RealtimeChannel? _channel;
+
+  @override
+  void live(String organizationId, void Function(String table, String change, Map<String, dynamic> row) onChange) {
+    stopLive();
+    final filter = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'organization_id', value: organizationId);
+    var channel = client.channel('wama-app-$organizationId');
+    for (final table in ['messages', 'conversations']) {
+      channel = channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        filter: filter,
+        callback: (payload) => onChange(table, payload.eventType.name.toUpperCase(), Map<String, dynamic>.from(payload.newRecord)),
+      );
+    }
+    _channel = channel..subscribe();
+  }
+
+  @override
+  void stopLive() {
+    final channel = _channel;
+    _channel = null;
+    if (channel != null) client.removeChannel(channel);
+  }
 
   @override
   bool get signedIn => client.auth.currentSession != null;

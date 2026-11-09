@@ -5,6 +5,7 @@ import 'package:wama_mobile/data/app_state.dart';
 import 'package:wama_mobile/data/demo_backend.dart';
 import 'package:wama_mobile/data/format.dart';
 import 'package:wama_mobile/data/local_store.dart';
+import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
@@ -178,5 +179,38 @@ void main() {
     final (app, _) = await makeApp();
     final draft = await app.ask('/api/salon/booking-flow/draft', {'description': 'First visit question, services, allergies, who, day and time'});
     expect(((draft['draft'] as Map)['steps'] as List).length, 6);
+  });
+
+  test('Live: a new customer message updates the chat list and notifies; booking requests notify', () async {
+    final (app, backend) = await makeApp();
+    final notices = <Notice>[];
+    final sub = Notifier.instance.notices.listen(notices.add);
+    app.startLive();
+    await app.checkBookings(); // remembers what is there, no notice
+    backend.simulateIncoming();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final convs = app.cached('conversations')!['conversations'] as List;
+    expect(convs.first['id'], 'conv-2');
+    expect(convs.first['unread_count'], 1);
+    expect(notices.single.title, 'Sneha Reddy');
+    expect(notices.single.chatId, 'conv-2');
+    await app.checkBookings();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(notices.last.title, 'New booking request');
+    expect(notices.last.body, startsWith('Sneha Reddy · Hair spa · '));
+    await sub.cancel();
+  });
+
+  test('Live: no notification for the chat that is open', () async {
+    final (app, backend) = await makeApp();
+    final notices = <Notice>[];
+    final sub = Notifier.instance.notices.listen(notices.add);
+    app.startLive();
+    app.openChatId = 'conv-2';
+    backend.simulateIncoming();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(notices.where((n) => n.chatId != null), isEmpty);
+    expect((app.cached('conversations')!['conversations'] as List).first['unread_count'], 0);
+    await sub.cancel();
   });
 }

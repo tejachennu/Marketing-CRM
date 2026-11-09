@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'backend.dart';
 import 'format.dart';
 import 'local_store.dart';
+import 'notifier.dart';
 
 const _uuid = Uuid();
 
@@ -31,12 +32,18 @@ class AppState extends ChangeNotifier {
   final LocalStore store;
 
   bool online = true;
+
+  /// The chat open on screen (no notification for it).
+  String? openChatId;
+  Set<String>? _knownBookings;
   bool syncing = false;
   bool refreshing = false;
   DateTime? lastSync;
   String? lastError;
   Timer? _timer;
   Timer? _refreshTimer;
+  Timer? _bookingTimer;
+  Timer? _bookingSoon;
   StreamSubscription? _connectivity;
 
   // ── Start up ──
@@ -66,23 +73,36 @@ class AppState extends ChangeNotifier {
     _refreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (backend.signedIn && online) unawaited(refreshAll());
     });
-    if (signedIn) unawaited(syncNow());
+    // Booking requests arrive from WhatsApp: look for new ones every 30 seconds
+    _bookingTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkBookings());
+    unawaited(Notifier.instance.init());
+    if (signedIn) {
+      startLive();
+      unawaited(syncNow().then((_) => checkBookings()));
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _refreshTimer?.cancel();
+    _bookingTimer?.cancel();
+    backend.stopLive();
     _connectivity?.cancel();
     super.dispose();
   }
 
   bool get signedIn => backend.signedIn && me != null;
 
+  /// Tell the screens something changed (used by the live updates).
+  void changed() => notifyListeners();
+
   Future<void> signIn(String email, String password) async {
     await backend.signIn(email, password);
     await load('me', '/api/mobile/me', force: true, rethrowErrors: true);
+    startLive();
     await syncNow();
+    await checkBookings();
   }
 
   // ── Sign up (with the code emailed to them) ──
@@ -125,6 +145,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    backend.stopLive();
+    _knownBookings = null;
     await backend.signOut();
     await store.clear();
     notifyListeners();
@@ -379,6 +401,125 @@ class AppState extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+}
+
+// ── Live: new messages and booking requests ──
+
+extension LiveUpdates on AppState {
+  /// Listen for new messages and chat changes for this workspace.
+  void startLive() {
+    if (orgId.isEmpty) return;
+    backend.live(orgId, (table, change, row) => _onLive(table, change, row));
+  }
+
+  void _onLive(String table, String change, Map<String, dynamic> row) {
+    if (table == 'messages') return _onMessage(change, row);
+    if (table == 'conversations') return _onConversation(row);
+  }
+
+  void _onMessage(String change, Map<String, dynamic> row) {
+    final convId = '${row['conversation_id'] ?? ''}';
+    if (convId.isEmpty) return;
+    // The chat's messages on the phone
+    final key = 'messages:$convId';
+    final saved = cached(key);
+    if (saved != null) {
+      final list = [for (final m in (saved['messages'] as List? ?? const [])) Map<String, dynamic>.from(m)];
+      final at = list.indexWhere((m) => m['id'] == row['id']);
+      if (at >= 0) {
+        list[at] = {...list[at], ...row};
+      } else if (change == 'INSERT') {
+        list.add(row);
+      }
+      unawaited(store.write(key, {...saved, 'messages': list}));
+    }
+    if (change != 'INSERT') return changed();
+
+    // The chat list: last message, unread count, newest first
+    final fromCustomer = row['sender_type'] == 'contact';
+    final listData = cached('conversations');
+    final convs = [for (final c in (listData?['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
+    final index = convs.indexWhere((c) => c['id'] == convId);
+    if (index < 0) {
+      unawaited(load('conversations', '/api/conversations', query: {'limit': '50'}, force: true));
+    } else {
+      final conv = convs.removeAt(index);
+      conv['last_message'] = {'body': row['body'], 'sender_type': row['sender_type'], 'created_at': row['created_at']};
+      conv['last_message_at'] = row['created_at'];
+      if (fromCustomer && openChatId != convId) conv['unread_count'] = ((conv['unread_count'] as num?) ?? 0) + 1;
+      convs.insert(0, conv);
+      unawaited(store.write('conversations', {...?listData, 'conversations': convs}));
+    }
+    changed();
+
+    if (fromCustomer) {
+      if (openChatId != convId) {
+        final conv = index < 0 ? null : convs.first;
+        final media = '${row['media_url'] ?? ''}'.isNotEmpty;
+        final body = '${row['body'] ?? ''}'.trim();
+        unawaited(
+          Notifier.instance.notify(
+            Notice(
+              title: conv == null ? 'New WhatsApp message' : contactName(conv['contact']),
+              body: body.isNotEmpty
+                  ? body
+                  : media
+                  ? '📎 Photo or document'
+                  : 'New message',
+              chatId: convId,
+            ),
+          ),
+        );
+      }
+      // A booking may have come in through the chat: look soon
+      _bookingSoon?.cancel();
+      _bookingSoon = Timer(const Duration(seconds: 4), checkBookings);
+    }
+  }
+
+  void _onConversation(Map<String, dynamic> row) {
+    final listData = cached('conversations');
+    if (listData == null) return;
+    final convs = [for (final c in (listData['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
+    final index = convs.indexWhere((c) => c['id'] == row['id']);
+    if (index < 0) return;
+    for (final field in ['unread_count', 'auto_reply_enabled', 'last_message_at', 'assigned_to']) {
+      if (row.containsKey(field)) convs[index][field] = row[field];
+    }
+    if (openChatId == row['id']) convs[index]['unread_count'] = 0;
+    unawaited(store.write('conversations', {...listData, 'conversations': convs}));
+    changed();
+  }
+
+  /// New booking requests (and bookings confirmed on their own) since last time: notify.
+  Future<void> checkBookings() async {
+    if (!backend.signedIn || !frontDeskOn || !online) return;
+    final key = AppState.dayKey(istToday());
+    await load(key, '/api/salon/appointments', query: {'date': istToday()}, force: true);
+    final day = cached(key);
+    if (day == null) return;
+    final requests = [for (final r in (day['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)];
+    final booked = [
+      for (final a in (day['appointments'] as List? ?? const []))
+        if (a['source'] == 'chat') Map<String, dynamic>.from(a),
+    ];
+    final ids = {
+      for (final r in [...requests, ...booked]) '${r['id']}',
+    };
+    final known = _knownBookings;
+    _knownBookings = {...?known, ...ids};
+    if (known == null) return; // the first look only remembers what is there
+    for (final r in [...requests, ...booked]) {
+      if (known.contains('${r['id']}')) continue;
+      final services = ((r['services'] as List?) ?? const []).map((x) => x['name']).join(', ');
+      final start = DateTime.tryParse('${r['starts_at']}');
+      final when = start == null ? '' : '${formatDay(toIst(start))}, ${formatTime(r['starts_at'])}';
+      final request = r['status'] == 'requested';
+      unawaited(
+        Notifier.instance.notify(Notice(title: request ? 'New booking request' : 'New booking', body: [r['customer_name'], services, when].where((x) => '$x'.isNotEmpty).join(' · '), bookings: true)),
+      );
+    }
   }
 }
 
