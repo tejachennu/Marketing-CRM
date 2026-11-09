@@ -47,7 +47,7 @@ class TemplateBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFFEFEAE2), borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(color: Brand.chatBg, borderRadius: BorderRadius.circular(16)),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Container(

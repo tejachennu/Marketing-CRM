@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 
-/// WAMA CRM colours: navy, one blue, greys, and red only for things that need attention.
+/// The app's colours, in WhatsApp's look (the owner's choice for the app): WhatsApp's dark green
+/// for actions, its bright green for unread counts, light green for what is picked and for your own
+/// messages, its greys for text and lines, and red only for things that need attention.
+/// (The names are older than the colours: "blue" is the main action colour, "navy" the dark text.)
 class Brand {
-  static const navy = Color(0xFF0E1B3D);
-  static const blue = Color(0xFF1D5BEA);
-  static const blueHover = Color(0xFF174BC4);
-  static const blueSoft = Color(0xFFEEF3FE);
-  static const page = Color(0xFFF4F6FA);
-  static const line = Color(0xFFE3E8F2);
-  static const lineSoft = Color(0xFFEEF1F6);
-  static const border = Color(0xFFD5DDEB);
-  static const text = Color(0xFF0E1B3D);
-  static const textSoft = Color(0xFF4A5672);
-  static const muted = Color(0xFF6B7894);
-  static const faint = Color(0xFF8A94A8);
+  static const navy = Color(0xFF111B21);
+  static const blue = Color(0xFF008069);
+  static const blueHover = Color(0xFF017561);
+  static const blueSoft = Color(0xFFE7FCE3);
+  static const green = Color(0xFF25D366);
+  static const bubble = Color(0xFFD9FDD3);
+  static const chatBg = Color(0xFFEFEAE2);
+  static const page = Color(0xFFF0F2F5);
+  static const line = Color(0xFFE9EDEF);
+  static const lineSoft = Color(0xFFF0F2F5);
+  static const border = Color(0xFFD1D7DB);
+  static const text = Color(0xFF111B21);
+  static const textSoft = Color(0xFF3B4A54);
+  static const muted = Color(0xFF667781);
+  static const faint = Color(0xFF8696A0);
   static const red = Color(0xFFB91C1C);
   static const redSoft = Color(0xFFFDF0F0);
 }
@@ -123,30 +129,36 @@ ThemeData buildTheme() {
     // WhatsApp-style chips: soft grey, the picked one light blue with a blue edge
     chipTheme: base.chipTheme.copyWith(
       backgroundColor: Brand.lineSoft,
-      selectedColor: Brand.blueSoft,
-      side: WidgetStateBorderSide.resolveWith((states) => states.contains(WidgetState.selected) ? const BorderSide(color: Brand.blue, width: 1.2) : const BorderSide(color: Colors.transparent)),
+      selectedColor: Brand.bubble,
+      side: const BorderSide(color: Colors.transparent),
       // A real colour for each state (a chip with no text colour shows nothing on some phones)
       labelStyle: TextStyle(
-        color: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.selected) ? Brand.blue : (states.contains(WidgetState.disabled) ? Brand.faint : Brand.textSoft)),
+        color: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.selected) ? const Color(0xFF15603E) : (states.contains(WidgetState.disabled) ? Brand.faint : Brand.textSoft)),
         fontWeight: FontWeight.w600,
       ),
-      secondaryLabelStyle: const TextStyle(color: Brand.blue, fontWeight: FontWeight.w700),
+      secondaryLabelStyle: const TextStyle(color: Color(0xFF15603E), fontWeight: FontWeight.w700),
       iconTheme: const IconThemeData(color: Brand.textSoft, size: 18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       showCheckmark: false,
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white,
-      indicatorColor: Brand.blueSoft,
+      indicatorColor: Brand.bubble,
       surfaceTintColor: Colors.transparent,
       height: 70,
-      labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: states.contains(WidgetState.selected) ? Brand.navy : Brand.muted)),
-      iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(color: states.contains(WidgetState.selected) ? Brand.blue : Brand.muted)),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12.5,
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          color: states.contains(WidgetState.selected) ? Brand.navy : Brand.textSoft,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(color: states.contains(WidgetState.selected) ? Brand.navy : Brand.textSoft)),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Brand.blueSoft : Colors.white),
-        foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Brand.blue : Brand.textSoft),
+        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Brand.bubble : Colors.white),
+        foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? const Color(0xFF15603E) : Brand.textSoft),
         side: const WidgetStatePropertyAll(BorderSide(color: Brand.border)),
         textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
         minimumSize: const WidgetStatePropertyAll(Size(0, 44)),

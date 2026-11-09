@@ -72,7 +72,7 @@ class Notifier {
         body: notice.body,
         payload: notice.payload,
         notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(channel.$1, channel.$2, importance: Importance.high, priority: Priority.high, color: const Color(0xFF1D5BEA)),
+          android: AndroidNotificationDetails(channel.$1, channel.$2, importance: Importance.high, priority: Priority.high, color: const Color(0xFF008069)),
           iOS: const DarwinNotificationDetails(presentAlert: true, presentSound: true),
         ),
       );

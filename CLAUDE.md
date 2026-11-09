@@ -117,7 +117,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
-- **App: WhatsApp-like look** (owner's choice): brand colours kept; white lists with round avatars
+- **App: WhatsApp colours** (owner's choice, Nov 2026; overrides "no green" for the **mobile app only**,
+  the website keeps navy/blue): `Brand` in `mobile/lib/ui/theme.dart` now holds WhatsApp's palette
+  (`blue` = action green #008069, `green` = unread badges #25D366, `bubble` = picked / own message
+  #D9FDD3, `navy` = dark text #111B21, WhatsApp greys). Front Desk home redesigned like WhatsApp's
+  home: green "Front Desk" title, days as status-style bubbles (`_DayStrip`), one numbers strip, visits
+  grouped In now / Coming up / Done as chat-like rows with the next step. Front Desk icon = reception
+  bell (`Icons.room_service`, filled when picked). New launcher icon (white chat bubble with a bell on
+  green; adaptive icon in `mipmap-anydpi-v26`, made by a small script, also `assets/app_icon.png` on
+  sign-in and the web favicon).
+- **App: WhatsApp-like look** (owner's choice): white lists with round avatars
   (`Avatar` picks one of three quiet tones by name), pill search (`SearchField`), soft filter chips
   (`FilterChips`; picked = light blue with a blue edge, theme `chipTheme` / `segmentedButtonTheme`),
   flat rows (`FlatRow`), rounded-square FABs, sentence-case section titles, More as a settings list,

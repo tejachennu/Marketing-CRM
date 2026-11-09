@@ -201,7 +201,7 @@ class _StepsEditorState extends State<StepsEditor> {
           decoration: BoxDecoration(
             color: Brand.blueSoft,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFCFDCFB)),
+            border: Border.all(color: Brand.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -586,7 +586,7 @@ class ChatBubble extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 3),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       constraints: const BoxConstraints(maxWidth: 270),
-      decoration: BoxDecoration(color: mine ? const Color(0xFFD9FDD3) : Colors.white, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: mine ? Brand.bubble : Colors.white, borderRadius: BorderRadius.circular(10)),
       child: Text(text, style: const TextStyle(fontSize: 13.5, height: 1.3)),
     ),
   );

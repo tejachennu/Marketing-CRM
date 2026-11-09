@@ -63,7 +63,7 @@ class Avatar extends StatelessWidget {
   final double size;
 
   /// Three quiet tones from the brand colours, picked by name so a person keeps theirs.
-  static const _tones = [(Brand.blueSoft, Brand.blue), (Color(0xFFE6E9F2), Brand.navy), (Color(0xFFEAF0FB), Color(0xFF3F5E9E))];
+  static const _tones = [(Color(0xFFDFE5E7), Color(0xFF54656F)), (Brand.bubble, Brand.blue), (Color(0xFFE2F1EE), Color(0xFF2C6A5B))];
   (Color, Color) get tone => _tones[name.codeUnits.fold<int>(0, (a, b) => a + b) % _tones.length];
 
   @override

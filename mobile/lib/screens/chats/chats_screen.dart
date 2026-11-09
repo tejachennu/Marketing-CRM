@@ -98,7 +98,7 @@ class _ChatRow extends StatelessWidget {
                       ),
                       Text(
                         formatWhen(c['last_message_at']),
-                        style: TextStyle(fontSize: 12, fontWeight: unread > 0 ? FontWeight.w800 : FontWeight.w500, color: unread > 0 ? Brand.blue : Brand.faint),
+                        style: TextStyle(fontSize: 12, fontWeight: unread > 0 ? FontWeight.w800 : FontWeight.w500, color: unread > 0 ? const Color(0xFF1DAA61) : Brand.faint),
                       ),
                     ],
                   ),
@@ -122,7 +122,7 @@ class _ChatRow extends StatelessWidget {
                         Container(
                           margin: const EdgeInsets.only(left: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(99)),
+                          decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(99)),
                           child: Text(
                             '$unread',
                             style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800),

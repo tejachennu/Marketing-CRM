@@ -251,11 +251,11 @@ class _HomeShellState extends State<HomeShell> {
           destinations: [
             const NavigationDestination(
               icon: FrontDeskIcon(size: 24, color: Brand.muted),
-              selectedIcon: FrontDeskIcon(size: 24, color: Brand.blue),
+              selectedIcon: FrontDeskIcon(size: 24, color: Brand.navy, filled: true),
               label: 'Front Desk',
             ),
             NavigationDestination(
-              icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.blue, child: const Icon(Icons.chat_bubble_outline)),
+              icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline)),
               selectedIcon: const Icon(Icons.chat_bubble),
               label: 'Chats',
             ),

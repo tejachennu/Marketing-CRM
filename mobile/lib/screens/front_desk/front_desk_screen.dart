@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
@@ -59,12 +60,17 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
     }
     return Scaffold(
       appBar: AppBar(
+        // Like WhatsApp's own name at the top of its home screen, in its green
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(desk.businessName, overflow: TextOverflow.ellipsis),
+            const Text(
+              'Front Desk',
+              style: TextStyle(color: Color(0xFF1DAA61), fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4),
+            ),
             Text(
-              'Front Desk · ${formatDay(istNow())}',
+              '${desk.businessName} · ${formatDay(istNow())}',
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted),
             ),
           ],
@@ -154,41 +160,183 @@ class _Today extends StatelessWidget {
   Widget build(BuildContext context) {
     final appointments = desk.appointments;
     final requests = desk.requests;
-    final visits = appointments.where((a) => !['cancelled', 'no_show', 'declined'].contains(a['status'])).length;
+    final gone = ['cancelled', 'no_show', 'declined'];
+    final visits = appointments.where((a) => !gone.contains(a['status'])).length;
     final waiting = appointments.where((a) => a['status'] == 'booked').length;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 150),
+    final inNow = appointments.where((a) => a['status'] == 'arrived' || a['status'] == 'in_service').toList();
+    final coming = appointments.where((a) => a['status'] == 'booked').toList();
+    final done = appointments.where((a) => a['status'] == 'completed' || gone.contains(a['status'])).toList();
+    Widget group(String title, List<Map<String, dynamic>> list) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DayBar(date: desk.date, onChanged: onDay),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _Tile(label: desk.isToday ? 'Visits today' : 'Visits', value: '$visits', note: '$waiting still to come'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _Tile(label: 'Collected', value: shortRupees(desk.collectedToday), note: 'Paid bills today'),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Text(
+            '$title · ${list.length}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted),
+          ),
         ),
-        if (requests.isNotEmpty) _WhatsAppBookings(desk: desk, requests: requests),
-        SectionLabel('${desk.isToday ? 'Today' : 'This day'} · ${appointments.length}'),
-        if (appointments.isEmpty)
-          const Panel(
-            child: EmptyState(icon: Icons.event_busy_outlined, title: 'No bookings today', text: 'Tap Book to add one, or New bill for a walk-in.'),
-          )
-        else
-          Card(
-            child: Column(
+        for (var i = 0; i < list.length; i++) ...[if (i > 0) const Divider(indent: 78), _AppointmentRow(appointment: list[i], desk: desk)],
+      ],
+    );
+    return ColoredBox(
+      color: Colors.white,
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 150),
+        children: [
+          _DayStrip(date: desk.date, onChanged: onDay),
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(16)),
+            child: Row(
               children: [
-                for (var i = 0; i < appointments.length; i++) ...[if (i > 0) const Divider(indent: 72), _AppointmentRow(appointment: appointments[i], desk: desk)],
+                _Mini(value: '$visits', label: desk.isToday ? 'Visits today' : 'Visits'),
+                _Mini(value: '$waiting', label: 'Still to come'),
+                _Mini(value: shortRupees(desk.collectedToday), label: 'Collected'),
               ],
             ),
           ),
-      ],
+          if (requests.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _WhatsAppBookings(desk: desk, requests: requests),
+            ),
+          if (appointments.isEmpty)
+            EmptyState(icon: Icons.event_available_outlined, title: desk.isToday ? 'No visits today yet' : 'No visits this day', text: 'Tap Book to add one, or New bill for a walk-in.')
+          else ...[
+            if (inNow.isNotEmpty) group('In now', inNow),
+            if (coming.isNotEmpty) group('Coming up', coming),
+            if (done.isNotEmpty) group('Done', done),
+          ],
+        ],
+      ),
     );
   }
+}
+
+/// Days as round bubbles in a row, like WhatsApp's status bar: swipe to another day, or pick one.
+class _DayStrip extends StatefulWidget {
+  const _DayStrip({required this.date, required this.onChanged});
+  final String date;
+  final ValueChanged<String> onChanged;
+  @override
+  State<_DayStrip> createState() => _DayStripState();
+}
+
+class _DayStripState extends State<_DayStrip> {
+  static const _before = 3, _after = 13;
+  final _scroll = ScrollController(initialScrollOffset: (_DayStripState._before - 0.6) * 68);
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = DateTime.parse(widget.date);
+    final today = DateTime.parse(istToday());
+    final f = DateFormat('yyyy-MM-dd');
+    // Around the picked day, but always with today in it
+    final start = (picked.isBefore(today) ? picked : today).subtract(const Duration(days: _before));
+    final days = [for (var i = 0; i <= _before + _after + picked.difference(today).inDays.abs(); i++) start.add(Duration(days: i))];
+    return SizedBox(
+      height: 96,
+      child: ListView(
+        controller: _scroll,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+        children: [
+          _Bubble(
+            top: Icons.calendar_month_outlined,
+            label: 'Pick day',
+            selected: false,
+            onTap: () async {
+              final day = await showDatePicker(context: context, initialDate: picked, firstDate: DateTime(today.year - 2), lastDate: DateTime(today.year + 1, 12, 31));
+              if (day != null) widget.onChanged(f.format(day));
+            },
+          ),
+          for (final d in days)
+            _Bubble(
+              number: '${d.day}',
+              label: d == today ? 'Today' : (d.difference(today).inDays == 1 ? 'Tomorrow' : DateFormat('EEE').format(d)),
+              selected: f.format(d) == widget.date,
+              today: d == today,
+              onTap: () => widget.onChanged(f.format(d)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Bubble extends StatelessWidget {
+  const _Bubble({this.number, this.top, required this.label, required this.selected, this.today = false, required this.onTap});
+  final String? number;
+  final IconData? top;
+  final String label;
+  final bool selected, today;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(16),
+    child: SizedBox(
+      width: 68,
+      child: Column(
+        children: [
+          // The ring shows the picked day, as WhatsApp's ring shows a new status
+          Container(
+            width: 54,
+            height: 54,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: selected ? Brand.green : (today ? Brand.border : Colors.transparent), width: 2.5),
+            ),
+            child: Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: selected ? Brand.blue : Brand.page),
+              child: top != null
+                  ? Icon(top, color: Brand.textSoft, size: 22)
+                  : Text(
+                      number!,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: selected ? Colors.white : Brand.text),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? Brand.navy : Brand.muted),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _Mini extends StatelessWidget {
+  const _Mini({required this.value, required this.label});
+  final String value, label;
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Column(
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Brand.navy),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12.5, color: Brand.muted),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Tile extends StatelessWidget {
@@ -229,7 +377,6 @@ class _AppointmentRow extends StatelessWidget {
     final staff = desk.staffName(a['staff_id']);
     final done = ['completed', 'cancelled', 'no_show'].contains(status);
     final app = AppScope.read(context);
-    // The next step, one tap from the list (today only; changes made on this phone wait to sync first)
     void step(String label, String to) {
       app.counterAction(kind: 'appointment', label: '$label · ${a['customer_name']}', action: {'type': 'set_status', 'status': to, 'appointment_id': a['id']});
       toast(context, app.online ? '$label.' : '$label. It syncs when you are online.');
@@ -238,16 +385,15 @@ class _AppointmentRow extends StatelessWidget {
     Widget small(String label, VoidCallback onPressed, {bool primary = false}) {
       final style = ButtonStyle(
         visualDensity: VisualDensity.compact,
-        minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+        minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
         padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
-        textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        shape: const WidgetStatePropertyAll(StadiumBorder()),
+        textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
       );
-      return Padding(
-        padding: const EdgeInsets.only(left: 6),
-        child: primary ? FilledButton(style: style, onPressed: onPressed, child: Text(label)) : OutlinedButton(style: style, onPressed: onPressed, child: Text(label)),
-      );
+      return primary ? FilledButton(style: style, onPressed: onPressed, child: Text(label)) : OutlinedButton(style: style, onPressed: onPressed, child: Text(label));
     }
 
+    // The next step, one tap from the list (today only; changes made on this phone wait to sync first)
     final canStep = desk.isToday && a['_outbox'] == null && a['_changing'] != true && app.can('write');
     final Widget? next = !canStep
         ? null
@@ -266,6 +412,11 @@ class _AppointmentRow extends StatelessWidget {
             ),
             _ => null,
           };
+    final tone = status == 'in_service' || status == 'arrived'
+        ? PillTone.blue
+        : status == 'no_show'
+        ? PillTone.red
+        : PillTone.grey;
     return InkWell(
       onTap: () => Navigator.push(
         context,
@@ -274,59 +425,49 @@ class _AppointmentRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 70,
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(text: formatTime(a['starts_at']).split(' ').first),
-                    TextSpan(
-                      text: ' ${formatTime(a['starts_at']).split(' ').skip(1).join(' ')}',
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-                style: TextStyle(fontSize: 15, height: 1.3, fontWeight: FontWeight.w800, color: done ? Brand.faint : Brand.navy),
-              ),
-            ),
-            const SizedBox(width: 8),
+            Opacity(opacity: done ? 0.55 : 1, child: Avatar('${a['customer_name']}', size: 48)),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${a['customer_name']}',
-                    style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: done ? Brand.muted : Brand.text),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${a['customer_name']}',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600, color: done ? Brand.muted : Brand.text),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        formatTime(a['starts_at']),
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: status == 'in_service' || status == 'arrived' ? Brand.blue : Brand.muted),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
                     [services, if (staff.isNotEmpty) 'with $staff'].join(' '),
-                    style: const TextStyle(fontSize: 13, color: Brand.muted),
-                    maxLines: 2,
+                    style: const TextStyle(fontSize: 14, color: Brand.muted),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Expanded(
                         child: Wrap(
                           spacing: 6,
                           runSpacing: 4,
                           children: [
-                            Pill(
-                              statusLabels[status] ?? status,
-                              tone: status == 'in_service' || status == 'arrived'
-                                  ? PillTone.blue
-                                  : status == 'no_show'
-                                  ? PillTone.red
-                                  : PillTone.grey,
-                            ),
-                            if (a['source'] == 'chat') const Pill('From WhatsApp', icon: Icons.chat_bubble_outline),
+                            Pill(statusLabels[status] ?? status, tone: tone),
+                            if (a['source'] == 'chat') const Pill('WhatsApp', icon: Icons.chat_bubble_outline),
                             if (a['_outbox'] != null || a['_changing'] == true) WaitingPill(failed: a['_failed'] == true),
                           ],
                         ),
@@ -337,7 +478,6 @@ class _AppointmentRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (next == null) const Icon(Icons.chevron_right, color: Brand.faint),
           ],
         ),
       ),

@@ -291,7 +291,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
           ),
           Expanded(
             child: Container(
-              color: const Color(0xFFEFEAE2),
+              color: Brand.chatBg,
               child: ListView(
                 controller: _scroll,
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),

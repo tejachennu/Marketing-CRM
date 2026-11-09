@@ -339,7 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final ticket = _openTicket(app);
     final typed = _text.text.trim().isNotEmpty;
     return Scaffold(
-      backgroundColor: const Color(0xFFEFEAE2),
+      backgroundColor: Brand.chatBg,
       appBar: AppBar(
         titleSpacing: 0,
         title: InkWell(
@@ -704,7 +704,7 @@ class _Bubble extends StatelessWidget {
           color: failed
               ? Brand.redSoft
               : mine
-              ? const Color(0xFFD9FDD3)
+              ? Brand.bubble
               : Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(12),

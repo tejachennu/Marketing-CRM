@@ -252,7 +252,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                           SectionLabel('Message · ${c['template_name'] ?? ''}'),
                           Container(
                             padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: const Color(0xFFEFEAE2), borderRadius: BorderRadius.circular(16)),
+                            decoration: BoxDecoration(color: Brand.chatBg, borderRadius: BorderRadius.circular(16)),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Container(
@@ -321,7 +321,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                           unread > 0
                               ? Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                  decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(99)),
+                                  decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(99)),
                                   child: Text(
                                     '$unread',
                                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),

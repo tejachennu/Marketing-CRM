@@ -216,7 +216,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: const Color(0xFFEFEAE2), borderRadius: BorderRadius.circular(16)),
+                  decoration: BoxDecoration(color: Brand.chatBg, borderRadius: BorderRadius.circular(16)),
                   child: Column(
                     children: [
                       ...stepsPreview(

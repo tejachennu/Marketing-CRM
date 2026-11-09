@@ -378,16 +378,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(color: Brand.navy, borderRadius: BorderRadius.circular(18)),
-                      child: const Text(
-                        'W',
-                        style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900),
-                      ),
-                    ),
+                    child: Image.asset('assets/app_icon.png', width: 68, height: 68),
                   ),
                   const SizedBox(height: 22),
                   const Text('Sign in to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
