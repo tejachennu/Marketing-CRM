@@ -246,3 +246,51 @@ test('Team: each person\'s own rating from the form counts for them', () => {
   assert.equal(by.Anitha.averageRating, 4.5)
   assert.equal(by.Lakshmi.averageRating, 2)
 })
+
+// WhatsApp often accepts a free-form message and fails it later, so the window is checked first
+const chatSeed = (lastInboundMs) => ({
+  contacts: [{ id: 'k1', organization_id: ORG, phone_number: '+919876543210' }],
+  conversations: [{ id: 'cv1', organization_id: ORG, contact_id: 'k1' }],
+  messages: lastInboundMs === null ? [] : [{ id: 'm1', conversation_id: 'cv1', sender_type: 'contact', body: 'hi', created_at: iso(lastInboundMs) }],
+})
+
+test('Window check: a customer who last wrote over 24 hours ago gets no free-form message', async () => {
+  const W = require('../lib/salon/whatsapp.ts')
+  const db = seed()
+  Object.assign(db.tables, structuredClone(chatSeed(Date.now() - 30 * 3600_000)))
+  const wa = whatsapp()
+  try {
+    const outcome = await W.sendCustomerText(db, ORG, '+919876543210', 'Your bill', W.billTemplate({ customer_name: 'Priya', number: 'GLOW-1', total: 700, public_token: 'tok', business: { name: 'Glow' } }))
+    assert.equal(outcome.sent, false)
+    assert.equal(outcome.windowClosed, true)
+    assert.match(outcome.error, /24 hours/)
+    assert.match(outcome.error, /template is set up/)
+    assert.equal(wa.sent.length, 0)
+  } finally { wa.restore() }
+})
+
+test('Window check: a customer who never wrote gets the template the business set up', async () => {
+  const W = require('../lib/salon/whatsapp.ts')
+  const db = seed({ settings: { message_templates: { bill: { name: 'bill_ready', language: 'en', fields: ['first_name', 'amount'] } } } })
+  Object.assign(db.tables, structuredClone(chatSeed(null)))
+  const wa = whatsapp()
+  try {
+    const outcome = await W.sendCustomerText(db, ORG, '+919876543210', 'Your bill', W.billTemplate({ customer_name: 'Priya', number: 'GLOW-1', total: 700, public_token: 'tok', business: { name: 'Glow' } }))
+    assert.equal(outcome.sent, true)
+    assert.equal(wa.sent.length, 1)
+    assert.equal(wa.sent[0].type, 'template')
+    assert.equal(wa.sent[0].template.name, 'bill_ready')
+  } finally { wa.restore() }
+})
+
+test('Window check: a customer who wrote today gets the normal message', async () => {
+  const W = require('../lib/salon/whatsapp.ts')
+  const db = seed()
+  Object.assign(db.tables, structuredClone(chatSeed(Date.now() - 2 * 3600_000)))
+  const wa = whatsapp()
+  try {
+    const outcome = await W.sendCustomerText(db, ORG, '+919876543210', 'Your bill', undefined)
+    assert.equal(outcome.sent, true)
+    assert.equal(wa.sent[0].type, 'text')
+  } finally { wa.restore() }
+})

@@ -1,13 +1,15 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Check, Clock3, Dumbbell, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Clock3, Dumbbell, FolderPlus, Pencil, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
+import { categoryName, groupByCategory } from '@/lib/salon/categories'
 import { BUSINESS_TYPE_IDS, BUSINESS_TYPES, businessType, type BusinessType } from '@/lib/salon/business'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { SalonSetup, Service, StaffMember } from './types'
+import { PhoneField } from '../phone-field'
 import { WhatsAppSettings } from './salon-whatsapp-settings'
 import { SalonTemplates } from './salon-templates'
 
@@ -110,6 +112,103 @@ function LogoPicker({ orgId, logo, onSaved, flash }: { orgId: string; logo: stri
   )
 }
 
+/** Add, rename, reorder and remove the business's service categories. */
+function CategoriesEditor({ orgId, categories, onSaved, onClose, flash }: {
+  orgId: string
+  categories: { name: string; count: number }[]
+  onSaved: (data: { categories: string[]; services: Service[] }) => void
+  onClose: () => void
+  flash: Flash
+}) {
+  const confirm = useConfirm()
+  const [newName, setNewName] = useState('')
+  const [editing, setEditing] = useState<{ from: string; to: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  async function run(key: string, task: () => Promise<any>, done?: string) {
+    setBusy(key)
+    try {
+      const data = await task()
+      onSaved(data)
+      if (done) flash('success', done)
+      return true
+    } catch (err: any) {
+      flash('error', err.message)
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const add = async () => {
+    const name = categoryName(newName)
+    if (!name) return
+    if (await run('add', () => api('/api/salon/categories', { method: 'POST', body: JSON.stringify({ organizationId: orgId, name }) }), `Category "${name}" added.`)) setNewName('')
+  }
+  const rename = async () => {
+    if (!editing) return
+    const to = categoryName(editing.to)
+    if (!to || to === editing.from) { setEditing(null); return }
+    if (await run('rename', () => api('/api/salon/categories', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, from: editing.from, to }) }), `Renamed to "${to}".`)) setEditing(null)
+  }
+  const move = (index: number, by: -1 | 1) => {
+    const names = categories.map((c) => c.name)
+    const target = index + by
+    if (target < 0 || target >= names.length) return
+    ;[names[index], names[target]] = [names[target], names[index]]
+    run('order', () => api('/api/salon/categories', { method: 'PUT', body: JSON.stringify({ organizationId: orgId, categories: names }) }))
+  }
+  const remove = async (category: { name: string; count: number }) => {
+    const others = categories.filter((c) => c.name !== category.name)
+    const moveTo = others[0]?.name || 'General'
+    const message = category.count
+      ? `Its ${category.count} service${category.count === 1 ? '' : 's'} will move to "${moveTo}". Past bills are not changed.`
+      : 'It has no services. Past bills are not changed.'
+    if (!(await confirm({ title: `Remove "${category.name}"?`, message, confirmLabel: 'Remove', destructive: true }))) return
+    const params = new URLSearchParams({ organizationId: orgId, name: category.name, moveTo })
+    run(`del-${category.name}`, () => api(`/api/salon/categories?${params}`, { method: 'DELETE' }), `"${category.name}" removed.`)
+  }
+
+  return (
+    <Modal title="Categories" onClose={onClose} footer={<button type="button" onClick={onClose} className={secondaryButton}>Done</button>}>
+      <div className="space-y-4">
+        <p className="text-[14px] text-[#6B7894] dark:text-slate-400">Group your services, like Hair, Skin or Consultation. The counter and the WhatsApp menu show them in this order.</p>
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); add() }}>
+          <input className={`${input} flex-1 min-w-0`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="New category name" aria-label="New category name" />
+          <button type="submit" disabled={busy !== null || !categoryName(newName)} className={`${primaryButton} shrink-0`}>{busy === 'add' ? <Loader2 size={18} className="animate-spin" /> : <FolderPlus size={18} />} Add</button>
+        </form>
+        {categories.length === 0 ? (
+          <p className="text-center text-[14px] text-[#6B7894] py-4">No categories yet.</p>
+        ) : (
+          <ul className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
+            {categories.map((category, index) => (
+              <li key={category.name} className="flex items-center gap-1.5 px-3 py-2 min-h-14">
+                {editing?.from === category.name ? (
+                  <form className="flex flex-1 min-w-0 gap-2" onSubmit={(e) => { e.preventDefault(); rename() }}>
+                    <input className={`${input} h-10 flex-1 min-w-0`} value={editing.to} onChange={(e) => setEditing({ ...editing, to: e.target.value })} maxLength={40} autoFocus aria-label={`New name for ${category.name}`} />
+                    <button type="submit" disabled={busy !== null} className={`${primaryButton} h-10 shrink-0`}>{busy === 'rename' && <Loader2 size={16} className="animate-spin" />} Save</button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[15px] font-semibold text-[#0E1B3D] dark:text-white truncate">{category.name}</span>
+                      <span className="block text-[12.5px] text-[#6B7894]">{category.count ? `${category.count} service${category.count === 1 ? '' : 's'}` : 'No services yet'}</span>
+                    </span>
+                    <button type="button" onClick={() => move(index, -1)} disabled={busy !== null || index === 0} aria-label={`Move ${category.name} up`} className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[#4a5672] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"><ArrowUp size={16} /></button>
+                    <button type="button" onClick={() => move(index, 1)} disabled={busy !== null || index === categories.length - 1} aria-label={`Move ${category.name} down`} className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[#4a5672] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"><ArrowDown size={16} /></button>
+                    <button type="button" onClick={() => setEditing({ from: category.name, to: category.name })} disabled={busy !== null} aria-label={`Rename ${category.name}`} className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[#4a5672] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"><Pencil size={16} /></button>
+                    <button type="button" onClick={() => remove(category)} disabled={busy !== null || (categories.length === 1 && category.count > 0)} aria-label={`Remove ${category.name}`} className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[#b91c1c] hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 disabled:opacity-30 cursor-pointer">{busy === `del-${category.name}` ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}</button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.ReactNode; tone: string; title: string; subtitle: string; action?: React.ReactNode }) {
   return (
     <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
@@ -133,11 +232,9 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
   const [settings, setSettings] = useState(setup.settings)
   const [section, setSection] = useState<Section>(initialSection)
 
-  const categories = useMemo(() => {
-    const groups = new Map<string, Service[]>()
-    for (const service of setup.services) groups.set(service.category || 'General', [...(groups.get(service.category || 'General') || []), service])
-    return [...groups.entries()]
-  }, [setup.services])
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const categories = useMemo(() => groupByCategory(setup.settings.service_categories, setup.services), [setup.settings.service_categories, setup.services])
+  const newService = (category?: string) => setServiceForm({ category: category || categories[0]?.[0] || BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: BUSINESS_TYPES[type].kit?.taxRate ?? 18, active: true })
 
   async function run(key: string, task: () => Promise<void>) {
     setBusy(key)
@@ -242,17 +339,23 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       <div className="min-w-0 space-y-4 @xl:space-y-5">
       {/* Services */}
       {section === 'services' && setup.services.length === 0 && (
-        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => setServiceForm({ category: BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: 18, active: true })} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>.</div>
+        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>. You can also <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">create categories</button> first.</div>
       )}
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
           <SectionHead icon={<Scissors size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Services"
             subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
-            action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: BUSINESS_TYPES[type].kit?.taxRate ?? 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>} />
+            action={<div className="flex shrink-0 gap-2">
+              <button type="button" onClick={() => setCategoriesOpen(true)} className={secondaryButton} aria-label="Categories"><Tags size={18} /> <span className="hidden @xl:inline">Categories</span></button>
+              <button type="button" onClick={() => newService()} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>
+            </div>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {categories.map(([category, services]) => (
               <div key={category} className="px-2 @xl:px-3 py-3">
                 <h3 className="px-2 pb-1.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8]">{category} <span className="font-semibold normal-case tracking-normal">· {services.length}</span></h3>
+                {services.length === 0 && (
+                  <p className="px-2 py-1.5 text-[14px] text-[#6B7894]">No services in this category yet. <button type="button" onClick={() => newService(category)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">Add one</button></p>
+                )}
                 <ul>
                   {services.map((service) => (
                     <li key={service.id} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-[#f8fafc] dark:hover:bg-slate-900/60">
@@ -316,7 +419,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               onSaved={(saved) => { onChange({ ...setup, settings: { ...setup.settings, logo_url: saved?.logo_url ?? null } }); setSettings((current) => ({ ...current, logo_url: saved?.logo_url ?? null })) }} />
             <div className="grid @xl:grid-cols-2 gap-4">
               <Field label="Business name"><input className={input} value={settings.business_name || ''} onChange={(e) => setSettings({ ...settings, business_name: e.target.value })} placeholder="Your business name" /></Field>
-              <Field label="Phone"><input className={input} value={settings.phone || ''} onChange={(e) => setSettings({ ...settings, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
+              <Field group label="Phone"><PhoneField inputClassName={input} ariaLabel="Business phone" value={settings.phone} onChange={(phone) => setSettings({ ...settings, phone })} /></Field>
               <div className="@xl:col-span-2"><Field label="Address"><textarea className={`${input} h-20 py-2.5`} value={settings.address || ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} placeholder="Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034" /></Field></div>
               <Field label="GSTIN" hint="Leave empty if you are not registered for GST."><input className={`${input} uppercase`} value={settings.gstin || ''} onChange={(e) => setSettings({ ...settings, gstin: e.target.value })} placeholder="36ABCDE1234F1Z5" /></Field>
               <Field label="Email"><input className={input} value={settings.email || ''} onChange={(e) => setSettings({ ...settings, email: e.target.value })} placeholder="hello@yourbusiness.in" inputMode="email" /></Field>
@@ -391,6 +494,11 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
         </Modal>
       )}
 
+      {categoriesOpen && (
+        <CategoriesEditor orgId={orgId} categories={categories.map(([name, services]) => ({ name, count: services.length }))} flash={flash} onClose={() => setCategoriesOpen(false)}
+          onSaved={(data) => onChange({ ...setup, services: data.services, settings: { ...setup.settings, service_categories: data.categories } })} />
+      )}
+
       {staffForm && (
         <Modal wide title={staffForm.id ? `Edit ${staffForm.name || 'person'}` : 'Add a person'} onClose={() => setStaffForm(null)}
           footer={<>
@@ -401,7 +509,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
           <div className="space-y-4">
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Name"><input className={input} value={staffForm.name || ''} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Anitha" autoFocus /></Field>
-              <Field label="Mobile (optional)"><input className={input} value={staffForm.phone || ''} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="98765 43210" inputMode="tel" /></Field>
+              <Field group label="Mobile (optional)"><PhoneField inputClassName={input} value={staffForm.phone} onChange={(phone) => setStaffForm({ ...staffForm, phone })} /></Field>
             </div>
             <Field group label="Commission" hint="Their share of the services they do (before GST, after discounts). Team shows what they have earned.">
               <div className="flex flex-wrap items-center gap-2">
@@ -411,7 +519,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
             </Field>
             <Field group label="Services they do" hint="Leave all unselected if they do everything.">
               <div className="space-y-3 mt-1">
-                {categories.map(([category, services]) => (
+                {categories.filter(([, services]) => services.length > 0).map(([category, services]) => (
                   <div key={category}>
                     <div className="text-[13px] font-bold text-[#6B7894] mb-1.5">{category}</div>
                     <div className="flex flex-wrap gap-2">

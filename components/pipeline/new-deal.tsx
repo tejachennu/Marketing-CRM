@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, Plus, Search, UserRound, X } from 'lucide-react'
 import { followUpPreset, PRIORITIES, PRIORITY_LABEL, SOURCES } from '@/lib/pipeline/rules'
 import { api, Chip, Field, input, Modal, primaryButton, secondaryButton } from '../salon/ui'
+import { PhoneField } from '../phone-field'
 import { FOLLOW_PRESETS } from './deal-sheet'
 import { selectInput, type Deal, type PipelineData } from './shared'
 
@@ -128,10 +129,10 @@ export function NewDeal({ data, stageId, onClose, onCreated, flash }: {
               {lookup.trim().length >= 2 && !searching && !matches.some((m) => m.exact) && (
                 <div className="mt-2 rounded-xl border border-dashed border-[#d5ddeb] dark:border-slate-700 p-3 space-y-2">
                   <p className="text-[13.5px] font-semibold text-[#4a5672] dark:text-slate-300">{matches.length ? 'Or add someone new' : 'New customer'}: saved to Contacts too</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <input value={contactName} onChange={(e) => { setNewContact({ ...newContact, name: e.target.value }); setEdited({ ...edited, name: true }) }} placeholder="Name" aria-label="Name" className={input} />
-                    <input value={contactPhone} onChange={(e) => { setNewContact({ ...newContact, phone: e.target.value }); setEdited({ ...edited, phone: true }) }} placeholder="Mobile, like 98765 43210" inputMode="tel" aria-label="Mobile number" className={input} />
-                    <input value={newContact.company} onChange={(e) => setNewContact({ ...newContact, company: e.target.value })} placeholder="Company (optional)" aria-label="Company" className={input} />
+                    <PhoneField inputClassName={input} value={contactPhone} onChange={(phone) => { setNewContact({ ...newContact, phone }); setEdited({ ...edited, phone: true }) }} />
+                    <input value={newContact.company} onChange={(e) => setNewContact({ ...newContact, company: e.target.value })} placeholder="Company (optional)" aria-label="Company" className={`${input} sm:col-span-2`} />
                   </div>
                 </div>
               )}

@@ -212,7 +212,8 @@ test('Setup checks: services, staff and business details', () => {
   // A change only touches what was sent
   assert.deepEqual(V.parseService({ active: false }, true).value, { active: false })
   assert.deepEqual(V.parseStaff({ name: 'Anitha', phone: '98765 43210', service_ids: ['bad', '00000000-0000-4000-8000-000000000001'] }).value, { name: 'Anitha', phone: '+919876543210', service_ids: ['00000000-0000-4000-8000-000000000001'], active: true })
-  assert.match(V.parseStaff({ name: 'Anitha', phone: '123' }).error, /10-digit/)
+  assert.match(V.parseStaff({ name: 'Anitha', phone: '123' }).error, /country code/)
+  assert.equal(V.parseStaff({ name: 'Omar', phone: '+971 50 123 4567' }).value.phone, '+971501234567')
   const settings = V.parseSettings({ business_name: 'Glow', gstin: '36abcde1234f1z5', invoice_prefix: 'glow!', prices_include_tax: true })
   assert.equal(settings.value.gstin, '36ABCDE1234F1Z5')
   assert.equal(settings.value.invoice_prefix, 'GLOW')

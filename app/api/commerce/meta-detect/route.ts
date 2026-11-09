@@ -237,6 +237,21 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Action C: switch the cart button off on the WhatsApp number (the catalog stays visible)
+    if (action === 'disable_cart') {
+      if (!credentials.phoneNumberId) {
+        throw new Error('Phone Number ID is missing in organization settings')
+      }
+
+      try {
+        await setCommerceSettings(credentials, { is_cart_enabled: false })
+      } catch (error: any) {
+        return NextResponse.json({ error: explainCommerceError(error?.message) }, { status: 422 })
+      }
+
+      return NextResponse.json({ success: true, message: 'The cart is switched off on your WhatsApp number.' })
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (err: any) {
     console.error('[API Commerce Meta Detect POST] Error:', err)

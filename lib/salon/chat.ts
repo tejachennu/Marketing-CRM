@@ -12,6 +12,7 @@
  */
 
 import { BUSINESS_TYPES, businessType } from './business'
+import { groupByCategory } from './categories'
 import { aiFetch, type AiAccess } from '../ai-access'
 import { LANGUAGE_RULES } from '../chat-language'
 import { buildTextMessage } from '../commerce/commerce-messages'
@@ -191,9 +192,8 @@ export function chatSystemPrompt(setup: ChatSetup, organization: any, customerNa
     const date = addDays(today, i)
     return `${new Date(`${date}T12:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })} ${date}`
   }).join(', ')
-  const groups = new Map<string, ChatService[]>()
-  for (const service of setup.services) groups.set(service.category || 'Services', [...(groups.get(service.category || 'Services') || []), service])
-  const menu = [...groups.entries()].map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
+  const groups = groupByCategory(s.service_categories, setup.services).filter(([, list]) => list.length > 0)
+  const menu = groups.map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
   const gst = s.gstin ? (s.prices_include_tax ? 'Prices include GST.' : 'GST (usually 18%) is added to these prices.') : ''
   return `You are the WhatsApp assistant of ${business}, ${BUSINESS_TYPES[businessType(s.business_type)].describe} in India.${customerName ? ` The customer's name is ${customerName}.` : ''}
 

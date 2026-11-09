@@ -79,13 +79,62 @@ async function logInChat(db: any, organizationId: string, phone: string, body: s
   }
 }
 
+const WINDOW_MS = 24 * 60 * 60 * 1000
+
 /**
- * Send a message to a customer and log it in their chat. When WhatsApp refuses because the
- * customer has not messaged in 24 hours, the approved template (if any) goes instead.
+ * When the customer last wrote to this number: a time, null when they never have, or undefined
+ * when it could not be checked (then the message is tried as usual).
+ */
+export async function lastCustomerMessageAt(db: any, organizationId: string, phone: string): Promise<string | null | undefined> {
+  try {
+    const key = phoneKey(phone)
+    if (key.length < 6) return undefined
+    const { data: contacts, error } = await db.from('contacts').select('id').eq('organization_id', organizationId)
+      .or(`phone_number.ilike.*${key},whatsapp_number.ilike.*${key}`).limit(5)
+    if (error) return undefined
+    const contactIds = (contacts || []).map((c: any) => c.id)
+    // Not a saved contact: their chat cannot be found, so this cannot be told
+    if (!contactIds.length) return undefined
+    const { data: conversations, error: convError } = await db.from('conversations').select('id').eq('organization_id', organizationId).in('contact_id', contactIds).limit(20)
+    if (convError) return undefined
+    const conversationIds = (conversations || []).map((c: any) => c.id)
+    if (!conversationIds.length) return null
+    const { data: messages, error: msgError } = await db.from('messages').select('created_at').in('conversation_id', conversationIds).eq('sender_type', 'contact')
+      .order('created_at', { ascending: false }).limit(1)
+    if (msgError) return undefined
+    return messages?.[0]?.created_at || null
+  } catch {
+    return undefined
+  }
+}
+
+/** True when WhatsApp would refuse a free-form message: the customer has not written in 24 hours. */
+export function windowIsClosed(lastAt: string | null | undefined, now = Date.now()): boolean {
+  if (lastAt === undefined) return false
+  if (lastAt === null) return true
+  const at = Date.parse(lastAt)
+  return Number.isFinite(at) ? now - at >= WINDOW_MS : false
+}
+
+/**
+ * Send a message to a customer and log it in their chat. WhatsApp only delivers a free-form
+ * message within 24 hours of the customer's last message, and it often accepts one first and
+ * fails it later, so the window is checked before sending: when it is closed, the approved
+ * template (if the business set one up) goes instead, and otherwise nothing is sent.
  */
 export async function sendToCustomer(db: any, organizationId: string, phone: string, message: { text?: string; payload?: unknown; logBody: string }, template?: TemplateFallback): Promise<SendOutcome & { viaTemplate?: boolean }> {
   const organization = await connectedOrganization(db, organizationId)
   if (!organization) return { sent: false, error: 'WhatsApp is not connected for this workspace. Connect it in Settings.' }
+  if (windowIsClosed(await lastCustomerMessageAt(db, organizationId, phone))) {
+    const closed = 'This customer has not messaged you in the last 24 hours, so WhatsApp only delivers an approved template.'
+    if (!template) return { sent: false, windowClosed: true, error: closed }
+    const viaTemplate = await sendFallbackTemplate(db, organization, phone, template)
+    if (viaTemplate.ok) {
+      await logInChat(db, organizationId, phone, message.logBody, viaTemplate.messageId)
+      return { sent: true, viaTemplate: true }
+    }
+    return { sent: false, windowClosed: true, error: `${closed} ${viaTemplate.error || ''}`.trim() }
+  }
   const result = await sendWhatsAppMessage(organization, message.payload ?? buildTextMessage(phone, message.text || message.logBody))
   if (result.ok) {
     await logInChat(db, organizationId, phone, message.logBody, result.messageId)

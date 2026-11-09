@@ -341,6 +341,32 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
     }
   }
 
+  async function disableCart() {
+    const confirmed = await confirm({
+      title: 'Turn off the cart?',
+      message: 'Customers can still see your catalog on WhatsApp, but they cannot add products to a cart or send one to you. You can turn it on again any time.',
+      confirmLabel: 'Turn off cart',
+      destructive: true,
+    })
+    if (!confirmed) return
+    setIsEnablingCart(true)
+    try {
+      const res = await fetch('/api/commerce/meta-detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: orgId, action: 'disable_cart' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The cart could not be turned off')
+      setDetected((current) => (current ? { ...current, commerceSettings: { ...(current.commerceSettings || {}), is_cart_enabled: false } } : current))
+      showToast('success', 'The cart is turned off on your WhatsApp number.')
+    } catch (err: any) {
+      alert({ title: 'Cart not turned off', message: err.message })
+    } finally {
+      setIsEnablingCart(false)
+    }
+  }
+
   async function enableCart() {
     setIsEnablingCart(true)
     try {
@@ -650,7 +676,12 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                   : 'Customers need the cart and catalog buttons on your WhatsApp number to send an order.'}
             </span>
           </p>
-          {cartOn !== true && (
+          {cartOn === true ? (
+            <button type="button" onClick={disableCart} disabled={isEnablingCart || !whatsappConnected} className={`${secondaryButton} shrink-0`}>
+              {isEnablingCart ? <Loader2 size={13} className="animate-spin" /> : <ShoppingBag size={13} />}
+              {isEnablingCart ? 'Turning off…' : 'Turn off cart'}
+            </button>
+          ) : (
             <button type="button" onClick={enableCart} disabled={isEnablingCart || !whatsappConnected} className={`${secondaryButton} shrink-0`}>
               {isEnablingCart ? <Loader2 size={13} className="animate-spin" /> : <ShoppingBag size={13} />}
               {isEnablingCart ? 'Enabling…' : 'Enable cart'}

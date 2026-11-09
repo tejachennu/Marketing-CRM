@@ -6,7 +6,7 @@
 
 import { randomBytes } from 'crypto'
 import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
-import { formatIstDay, formatIstTime, istDate, parseSpokenPhone, phoneKey } from './spoken'
+import { formatIstDay, formatIstTime, istDate, parsePhoneNumber, phoneKey } from './spoken'
 import { isUuid } from './validate'
 import { withSalonSchema } from './schema'
 import type { SalonContext } from './server'
@@ -39,8 +39,8 @@ export const STATUS_CHANGES = ['booked', 'arrived', 'in_service', 'cancelled', '
 function parseCustomer(value: any): CustomerRef | { error: string } {
   const name = String(value?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
   const rawPhone = String(value?.phone ?? '').trim()
-  const phone = rawPhone ? parseSpokenPhone(rawPhone) : null
-  if (rawPhone && !phone) return { error: 'That phone number does not look right. Enter the 10-digit mobile number.' }
+  const phone = rawPhone ? parsePhoneNumber(rawPhone) : null
+  if (rawPhone && !phone) return { error: 'That phone number does not look right. Enter the mobile number with its country code, like +91 98765 43210.' }
   if (!name && !phone) return { error: 'Who is the customer? Give a name or a phone number.' }
   return { contact_id: isUuid(value?.contact_id) ? String(value.contact_id) : null, name: name || 'Walk-in customer', phone }
 }

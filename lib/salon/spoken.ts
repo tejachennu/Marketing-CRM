@@ -38,6 +38,22 @@ export function parseSpokenPhone(text: unknown): string | null {
   return /^[6-9]\d{9}$/.test(digits) ? `+91${digits}` : null
 }
 
+/**
+ * A customer's or team member's number as typed: with a country code (+971 50 123 4567) any
+ * country is accepted; without one it is read as an Indian mobile (98765 43210, also spoken).
+ * Returns +<country code><number>, or null when it does not look like a phone number.
+ */
+export function parsePhoneNumber(text: unknown): string | null {
+  const raw = String(text || '').trim()
+  if (raw.startsWith('+') || raw.startsWith('00')) {
+    let digits = raw.replace(/\D/g, '')
+    if (raw.startsWith('00')) digits = digits.slice(2)
+    if (digits.startsWith('91')) return parseSpokenPhone(digits)
+    return digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0') ? `+${digits}` : null
+  }
+  return parseSpokenPhone(raw)
+}
+
 /** The last ten digits, for matching numbers stored in different formats. */
 export function phoneKey(phone: unknown): string {
   return String(phone || '').replace(/\D/g, '').slice(-10)

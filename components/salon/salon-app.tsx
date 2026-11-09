@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ConciergeBell, FileText, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { FileText, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { FrontDeskIcon } from './front-desk-icon'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
@@ -77,8 +78,8 @@ export function SalonApp() {
 
   // Tell the bottom bar which tab is showing
   useEffect(() => { announceFrontDeskTab(tab) }, [tab])
-  const tabs: { id: Tab; label: string; icon: typeof ConciergeBell }[] = [
-    { id: 'counter', label: 'Counter', icon: ConciergeBell },
+  const tabs: { id: Tab; label: string; icon: typeof FrontDeskIcon }[] = [
+    { id: 'counter', label: 'Front Desk', icon: FrontDeskIcon },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
     ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
   ]
@@ -101,7 +102,7 @@ export function SalonApp() {
             {isSafeLogoUrl(setup.settings.logo_url)
               // eslint-disable-next-line @next/next/no-img-element
               ? <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
-              : <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><ConciergeBell size={24} /></span>}
+              : <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#0E1B3D] text-white flex items-center justify-center shadow-sm dark:bg-white dark:text-[#0E1B3D]"><FrontDeskIcon size={26} strokeWidth={1.9} /></span>}
             <div className="min-w-0">
               <h1 className="text-[21px] min-[400px]:text-[24px] @xl:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">{setup.settings.business_name || workspace.orgName || 'Front Desk'}</h1>
               <p className="text-[13.5px] @xl:text-[15px] text-[#4a5672] dark:text-slate-400 truncate"><span className="hidden min-[400px]:inline">Front Desk <span aria-hidden className="mx-1 text-[#c0c8d8]">•</span> </span>{todayLabel}</p>
@@ -139,8 +140,8 @@ export function SalonApp() {
           ? (
             <div className={`${card} px-6 py-12 text-center`}>
               <span className="mx-auto h-14 w-14 rounded-2xl bg-[#f4f6fa] dark:bg-slate-800 text-[#4a5672] dark:text-slate-300 flex items-center justify-center"><Sparkles size={26} /></span>
-              <h2 className="mt-4 text-[19px] font-extrabold text-[#0E1B3D] dark:text-white">Add your services to open the counter</h2>
-              <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, pick your kind of business to add a starter list of services and team in one tap, or add your own. Change anything any time.' : 'Your manager needs to add services in Setup before the counter can be used.'}</p>
+              <h2 className="mt-4 text-[19px] font-extrabold text-[#0E1B3D] dark:text-white">Add your services to open the front desk</h2>
+              <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, pick your kind of business to add a starter list of services and team in one tap, or add your own. Change anything any time.' : 'Your manager needs to add services in Setup before the front desk can be used.'}</p>
               {canManage && <button type="button" onClick={() => go('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
             </div>
           )

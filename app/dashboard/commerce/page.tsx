@@ -187,7 +187,7 @@ export default function CommercePage() {
           <div role="alert" className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <p className="flex items-start gap-2 text-[13px] text-amber-900 dark:text-amber-200">
               <PauseCircle size={16} className="shrink-0 mt-0.5" />
-              <span><strong className="font-semibold">Your store is switched off.</strong> Carts that customers send on WhatsApp are not turned into orders.</span>
+              <span><strong className="font-semibold">Your store is switched off.</strong> Carts that customers send on WhatsApp are not turned into orders. To stop customers sending carts at all, turn off the cart in store settings.</span>
             </p>
             {canManageStore && activeTab !== 'settings' && (
               <button type="button" onClick={() => setActiveTab('settings')} className={`${secondaryButton} shrink-0`}>

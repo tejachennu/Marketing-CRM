@@ -5,7 +5,8 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, ConciergeBell, Blocks, ReceiptText, Star, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket } from 'lucide-react'
+import { FrontDeskIcon } from '@/components/salon/front-desk-icon'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
@@ -693,7 +694,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
-    { href: '/dashboard/front-desk', label: 'Front Desk', icon: ConciergeBell },
+    { href: '/dashboard/front-desk', label: 'Front Desk', icon: FrontDeskIcon },
     { href: '/dashboard/commerce', label: 'Commerce', icon: ShoppingBag },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
@@ -752,7 +753,7 @@ export default function DashboardLayout({
   const canManageConnector = can(currentUser, 'automation.manage')
   const connectorBarItems: { tab: string; label: string; short?: string; icon: typeof Menu; badge: number }[] =
     connectorApp === 'front-desk' ? [
-      { tab: 'counter', label: 'Counter', icon: ConciergeBell, badge: connectorBadges.counter || 0 },
+      { tab: 'counter', label: 'Front Desk', short: 'Desk', icon: FrontDeskIcon, badge: connectorBadges.counter || 0 },
       { tab: 'invoices', label: 'Invoices', icon: ReceiptText, badge: 0 },
       ...(canManageConnector ? [
         { tab: 'reviews', label: 'Reviews', icon: Star, badge: connectorBadges.reviews || 0 },
