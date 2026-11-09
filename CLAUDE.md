@@ -122,7 +122,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `lib/auth/signup-otp.ts`, lock 724519012); `POST /api/auth/signup` needs `code`.
 - **WhatsApp booking flow** (Front Desk → Setup → Booking flow; `salon_settings.booking_flow`,
   `lib/salon/booking-flow.ts`, settings in `booking-flow-settings.ts`): a customer sends "Book" (trigger
-  words are set by the business) and picks service (category first if more than 10), who (optional),
+  words are set by the business) and picks services (category first if more than 10; "Add another" after each, up to 5, setting `multi_select`, ids packed to 22 chars each), who (optional),
   day, then a time from the same list as the assistant (`sb:` ids, `handleSlotPick`). Choices ride in
   `bf:` button ids, so there is no state table. Hooked in the Facebook webhook before the AI assistant.
 - `PATCH /api/conversations` (AI replies on/off, mark read) for the mobile app.

@@ -51,6 +51,18 @@ function ListBubble({ text, button, rows }: { text: string; button: string; rows
   )
 }
 
+/** A WhatsApp message with reply buttons under it. */
+function ButtonsBubble({ text, buttons }: { text: string; buttons: string[] }) {
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] w-full rounded-xl rounded-bl-sm bg-white shadow-[0_1px_1px_rgba(0,0,0,0.08)] overflow-hidden">
+        <p className="px-3 pt-2 pb-2 text-[13px] leading-snug text-[#111b21] whitespace-pre-line">{text}</p>
+        {buttons.map((b) => <p key={b} className="border-t border-[#eef1f6] py-2 text-center text-[13px] font-semibold text-[#027eb5]">↩ {b}</p>)}
+      </div>
+    </div>
+  )
+}
+
 export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash }) {
   const saved = useMemo(() => parseBookingFlow((setup.settings as any).booking_flow), [setup.settings])
   const [flow, setFlow] = useState<BookingFlowSettings>(saved)
@@ -66,6 +78,9 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
   const phoneDigits = String(setup.settings.phone || '').replace(/\D/g, '')
   const link = phoneDigits.length >= 10 ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(flow.triggers[0] ? flow.triggers[0][0].toUpperCase() + flow.triggers[0].slice(1) : 'Book')}` : null
   const first = services[0]
+  const second = services[1]
+  // What the steps after the services are about: one service, or the two in the preview
+  const picked = flow.multi_select && second ? `${first?.name}, ${second.name}` : first?.name || 'Haircut'
 
   function addWord() {
     const word = newWord.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 30)
@@ -139,6 +154,10 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
 
           <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
             <label className="flex items-center justify-between gap-4 px-4 py-3.5">
+              <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">More than one service</span><span className="block text-[13.5px] text-[#6B7894]">After each service, customers can tap “Add another” (up to 5), then pick one time for all of them.</span></span>
+              <Toggle checked={flow.multi_select} onChange={(multi_select) => set({ multi_select })} label="More than one service" />
+            </label>
+            <label className="flex items-center justify-between gap-4 px-4 py-3.5">
               <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">Ask who they want</span><span className="block text-[13.5px] text-[#6B7894]">A step to pick a team member (or anyone free), when more than one person does the service.</span></span>
               <Toggle checked={flow.ask_staff} onChange={(ask_staff) => set({ ask_staff })} label="Ask who they want" />
             </label>
@@ -181,17 +200,27 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
                   <ListBubble text={welcome} button="Choose a category" rows={groups.slice(0, 4).map(([c, list]) => ({ title: c, note: `${list.length} services` }))} />
                 )}
                 <Bubble mine>{first?.name || 'Haircut'}</Bubble>
+                {flow.multi_select && second && (
+                  <>
+                    <ButtonsBubble text={`Added: ${first!.name}.\nSo far: ${first!.name} · ${formatRupees(Number(first!.price))}, about ${first!.duration_minutes} min.\n\nWould you like another service?`} buttons={['Add another', 'Choose a day']} />
+                    <Bubble mine>Add another</Bubble>
+                    <ListBubble text={`Which other service would you like? (You have: ${first!.name})`} button="Choose a service" rows={services.slice(1, 3).map((s) => ({ title: s.name, note: `${formatRupees(Number(s.price))} · ${s.duration_minutes} min` }))} />
+                    <Bubble mine>{second.name}</Bubble>
+                    <ButtonsBubble text={`Added: ${second.name}.\nSo far: ${first!.name}, ${second.name} · ${formatRupees(Number(first!.price) + Number(second.price))}, about ${Number(first!.duration_minutes) + Number(second.duration_minutes)} min.\n\nWould you like another service?`} buttons={['Add another', 'Choose a day']} />
+                    <Bubble mine>Choose a day</Bubble>
+                  </>
+                )}
                 {flow.ask_staff && (
                   <>
-                    <ListBubble text={`Who would you like for ${first?.name || 'Haircut'}?`} button="Choose who" rows={[{ title: 'Anyone free' }, ...setup.staff.filter((m) => m.active).slice(0, 2).map((m) => ({ title: m.name }))]} />
+                    <ListBubble text={`Who would you like for ${picked}?`} button="Choose who" rows={[{ title: 'Anyone free' }, ...setup.staff.filter((m) => m.active).slice(0, 2).map((m) => ({ title: m.name }))]} />
                     <Bubble mine>Anyone free</Bubble>
                   </>
                 )}
-                <ListBubble text={`Which day suits you for ${first?.name || 'Haircut'}?`} button="Choose a day" rows={[{ title: 'Today', note: 'Only days with free times' }, { title: 'Tomorrow' }, { title: 'Wed, 11 Nov' }]} />
+                <ListBubble text={`Which day suits you for ${picked}?`} button="Choose a day" rows={[{ title: 'Today', note: 'Only days with free times' }, { title: 'Tomorrow' }, { title: 'Wed, 11 Nov' }]} />
                 <Bubble mine>Tomorrow</Bubble>
-                <ListBubble text={`${first?.name || 'Haircut'} on Tomorrow: tap "Choose a time" to pick one.`} button="Choose a time" rows={[{ title: '10:00 am' }, { title: '10:30 am' }, { title: '11:30 am' }]} />
+                <ListBubble text={`${picked} on Tomorrow: tap "Choose a time" to pick one.`} button="Choose a time" rows={[{ title: '10:00 am' }, { title: '10:30 am' }, { title: '11:30 am' }]} />
                 <Bubble mine>10:30 am</Bubble>
-                <Bubble>{autoApprove ? `Confirmed! ${first?.name || 'Haircut'} at ${business}, Tomorrow at 10:30 am. See you soon! ✨` : `Thank you! We have your request for ${first?.name || 'Haircut'} on Tomorrow at 10:30 am. We will confirm it shortly.`}</Bubble>
+                <Bubble>{autoApprove ? `Confirmed! ${picked} at ${business}, Tomorrow at 10:30 am. See you soon! ✨` : `Thank you! We have your request for ${picked} on Tomorrow at 10:30 am. We will confirm it shortly.`}</Bubble>
               </div>
             </div>
             {!autoApprove && <p className="mt-2 text-center text-[12.5px] text-[#6B7894]">Requests appear on the Front Desk under Booking requests, to approve or decline.</p>}

@@ -13,14 +13,18 @@ export interface BookingFlowSettings {
   welcome: string
   /** Ask which team member they want. */
   ask_staff: boolean
+  /** Let the customer pick more than one service ("Add another"), up to MAX_SERVICES. */
+  multi_select: boolean
   /** How many days ahead customers can book (3 to 30). */
   days_ahead: number
   language: FlowLanguage
 }
 
 export const DEFAULT_TRIGGERS = ['book', 'booking', 'appointment', 'బుక్', 'बुक']
-export const DEFAULT_FLOW: BookingFlowSettings = { enabled: false, triggers: DEFAULT_TRIGGERS, welcome: '', ask_staff: false, days_ahead: 7, language: 'en' }
+export const DEFAULT_FLOW: BookingFlowSettings = { enabled: false, triggers: DEFAULT_TRIGGERS, welcome: '', ask_staff: false, multi_select: true, days_ahead: 7, language: 'en' }
 export const DAYS_AHEAD_CHOICES = [3, 7, 14, 30]
+/** Most services in one booking (each rides in WhatsApp's 200-character button ids). */
+export const MAX_SERVICES = 5
 
 /** The business's flow settings, cleaned, with defaults for anything missing. */
 export function parseBookingFlow(value: unknown): BookingFlowSettings {
@@ -34,6 +38,7 @@ export function parseBookingFlow(value: unknown): BookingFlowSettings {
     triggers: triggers.length ? triggers : DEFAULT_TRIGGERS,
     welcome: String(v.welcome ?? '').trim().slice(0, 600),
     ask_staff: v.ask_staff === true,
+    multi_select: v.multi_select !== false,
     days_ahead: Number.isInteger(days) && days >= 3 && days <= 30 ? days : 7,
     language: (['en', 'te', 'hi'].includes(v.language) ? v.language : 'en') as FlowLanguage,
   }

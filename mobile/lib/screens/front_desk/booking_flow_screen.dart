@@ -38,6 +38,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
       'triggers': List<String>.from((saved['triggers'] as List?)?.map((t) => '$t') ?? _defaultTriggers),
       'welcome': '${saved['welcome'] ?? ''}',
       'ask_staff': saved['ask_staff'] == true,
+      'multi_select': saved['multi_select'] != false,
       'days_ahead': (saved['days_ahead'] as num?)?.toInt() ?? 7,
       'language': '${saved['language'] ?? 'en'}',
     };
@@ -126,6 +127,15 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                 Card(
                   child: Column(
                     children: [
+                      SwitchListTile(
+                        value: _flow['multi_select'] == true,
+                        onChanged: (v) => _set('multi_select', v),
+                        activeThumbColor: Colors.white,
+                        activeTrackColor: Brand.blue,
+                        title: const Text('More than one service', style: TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: const Text('Customers tap "Add another" after each service (up to 5)'),
+                      ),
+                      const Divider(),
                       SwitchListTile(
                         value: _flow['ask_staff'] == true,
                         onChanged: (v) => _set('ask_staff', v),
