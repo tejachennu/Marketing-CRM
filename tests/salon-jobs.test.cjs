@@ -53,44 +53,35 @@ test('Feedback: asked once it is due, with a Give feedback button to the form; n
   } finally { wa.restore() }
 })
 
-test('Feedback: after 24 hours the approved template goes, its button opening this bill\'s form; without it, skipped', async () => {
+test('Feedback: after 24 hours nothing goes until a template is set up — there is no default', async () => {
   const db = seed()
   const wa = whatsapp({ windowClosed: true })
   try {
-    await J.runSalonJobs(db, ORG, { now: NOW })
-    const template = wa.sent[1].template
-    assert.equal(template.name, 'wama_feedback_request')
-    assert.deepEqual(template.components[0].parameters.map((p) => p.text), ['Priya', 'Glow Salon', 'Facial, Manicure'])
-    assert.deepEqual(template.components[1], { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'TokFeedback1234567890' }] })
-    assert.equal(db.tables.salon_invoices[0].feedback_status, 'sent')
+    assert.deepEqual(await J.runSalonJobs(db, ORG, { now: NOW }), { feedbackSent: 0, feedbackSkipped: 1, remindersSent: 0 })
+    assert.equal(wa.sent.filter((m) => m.type === 'template').length, 0, 'no built-in template is sent')
+    assert.equal(db.tables.salon_invoices[0].feedback_status, 'skipped')
   } finally { wa.restore() }
-  const db2 = seed()
-  const wa2 = whatsapp({ windowClosed: true, templatesMissing: true })
-  try {
-    assert.deepEqual(await J.runSalonJobs(db2, ORG, { now: NOW }), { feedbackSent: 0, feedbackSkipped: 1, remindersSent: 0 })
-    assert.equal(db2.tables.salon_invoices[0].feedback_status, 'skipped')
-  } finally { wa2.restore() }
 })
 
-test('Templates: one submitted before the rename is found by its old name; the business\'s own choice wins', async () => {
-  // Meta only knows the old name: the new one is refused, then the old one goes
-  const db = seed()
-  const wa = whatsapp({ windowClosed: true, missingNames: ['wama_feedback_request'] })
-  try {
-    assert.deepEqual(await J.runSalonJobs(db, ORG, { now: NOW }), { feedbackSent: 1, feedbackSkipped: 0, remindersSent: 0 })
-    assert.deepEqual(wa.sent.filter((m) => m.type === 'template').map((m) => m.template.name), ['wama_feedback_request', 'wama_salon_feedback_form'])
-  } finally { wa.restore() }
-  // Their own template, with their blanks: full name and services, and the form link on the button
+test('Feedback: the template the business set up goes, with its blanks and the form link on its button', async () => {
   const own = seed({ settings: { message_templates: { feedback: { name: 'clinic_feedback', language: 'en_US', fields: ['customer_name', 'services'], url_field: 'link' } } } })
-  const wa2 = whatsapp({ windowClosed: true })
+  const wa = whatsapp({ windowClosed: true })
   try {
     assert.deepEqual(await J.runSalonJobs(own, ORG, { now: NOW }), { feedbackSent: 1, feedbackSkipped: 0, remindersSent: 0 })
-    const template = wa2.sent[1].template
+    const template = wa.sent[1].template
     assert.deepEqual([template.name, template.language.code], ['clinic_feedback', 'en_US'])
     assert.deepEqual(template.components, [
       { type: 'body', parameters: [{ type: 'text', text: 'Priya Sharma' }, { type: 'text', text: 'Facial, Manicure' }] },
       { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'TokFeedback1234567890' }] },
     ])
+    assert.equal(own.tables.salon_invoices[0].feedback_status, 'sent')
+  } finally { wa.restore() }
+  // Not approved (or deleted) on Meta: nothing else is tried in its place
+  const refused = seed({ settings: { message_templates: { feedback: { name: 'clinic_feedback', language: 'en', fields: [] } } } })
+  const wa2 = whatsapp({ windowClosed: true, templatesMissing: true })
+  try {
+    assert.deepEqual(await J.runSalonJobs(refused, ORG, { now: NOW }), { feedbackSent: 0, feedbackSkipped: 1, remindersSent: 0 })
+    assert.equal(wa2.sent.filter((m) => m.type === 'template').length, 1)
   } finally { wa2.restore() }
 })
 
@@ -149,23 +140,21 @@ test('Bills: feedback is due after the delay set in Setup, only when there is a 
   assert.equal(off.feedback_due_at, undefined)
 })
 
-test('Templates: every salon template is a valid draft for Meta; the bill button opens this app\'s invoice page', () => {
-  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.name), ['wama_bill', 'wama_booking_confirmed', 'wama_appointment_reminder', 'wama_feedback_request', 'wama_special_offer', 'wama_we_miss_you', 'wama_festival_greeting'])
-  assert.deepEqual(T.SALON_TEMPLATES.map((t) => t.legacyNames[0]), ['wama_salon_bill', 'wama_salon_booking', 'wama_salon_reminder', 'wama_salon_feedback_form', 'wama_salon_offer', 'wama_salon_we_miss_you', 'wama_salon_festival'])
-  for (const template of T.SALON_TEMPLATES) assert.doesNotMatch(`${template.name} ${template.title} ${template.body} ${Object.values(template.samples).join(' ')}`, /salon/i, template.key)
-  for (const template of T.SALON_TEMPLATES) {
-    const draft = T.templateDraft(template, 'https://wamacrm.magnetora.in/')
-    assert.deepEqual(validateDraft(draft), [], template.name)
+test('Templates: suggested texts are valid drafts for Meta, nothing more; the link buttons open this app', () => {
+  const { validateDraft: check } = require('../lib/whatsapp-templates/template-model.ts')
+  const { MESSAGE_PURPOSES, PURPOSES } = require('../lib/salon/message-templates.ts')
+  assert.deepEqual(T.SUGGESTED_TEMPLATES.map((t) => t.purpose), MESSAGE_PURPOSES)
+  for (const purpose of MESSAGE_PURPOSES) {
+    const { draft, fields, urlField } = T.suggestionFor(purpose, 'https://wamacrm.magnetora.in/')
+    assert.deepEqual(check(draft), [], purpose)
+    assert.equal(draft.category, 'UTILITY')
+    assert.ok(fields.every((f) => PURPOSES[purpose].fields.includes(f)), purpose)
+    assert.equal(fields.length, (draft.body.match(/\{\{\d+\}\}/g) || []).length, purpose)
+    assert.doesNotMatch(`${draft.name} ${draft.body}`, /salon/i)
+    assert.equal(urlField, PURPOSES[purpose].linkPath ? 'link' : null)
   }
-  const bill = T.templateDraft(T.templateFor('bill'), 'https://wamacrm.magnetora.in/')
-  assert.deepEqual(bill.buttons[0], { type: 'URL', text: 'View bill', url: 'https://wamacrm.magnetora.in/i/{{1}}', example: 'https://wamacrm.magnetora.in/i/AbCdEf123456' })
-  assert.deepEqual(T.SALON_TEMPLATES.filter((t) => t.category === 'MARKETING').map((t) => t.key), ['offer', 'comeback', 'festival'])
-  const payload = T.templatePayload(T.templateFor('bill'), '+91 98765 43210', ['Priya', 'Glow\nSalon', 'GLOW-0001', '₹1,911.60'], { urlSuffix: 'tok123' })
-  assert.equal(payload.to, '919876543210')
-  assert.deepEqual(payload.template.components, [
-    { type: 'body', parameters: [{ type: 'text', text: 'Priya' }, { type: 'text', text: 'Glow Salon' }, { type: 'text', text: 'GLOW-0001' }, { type: 'text', text: '₹1,911.60' }] },
-    { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'tok123' }] },
-  ])
+  const bill = T.suggestionFor('bill', 'https://wamacrm.magnetora.in/')
+  assert.deepEqual(bill.draft.buttons[0], { type: 'URL', text: 'View bill', url: 'https://wamacrm.magnetora.in/i/{{1}}', example: 'https://wamacrm.magnetora.in/i/AbCdEf123456' })
 })
 
 // ── Staff performance ───────────────────────────────────────────────────────
@@ -209,24 +198,6 @@ test('Team: periods are India dates — today, last 7 days, this month, last mon
   assert.deepEqual(P.periodRange('month', now), { from: '2026-11-01', to: '2026-11-07' })
   assert.deepEqual(P.periodRange('last_month', now), { from: '2026-10-01', to: '2026-10-31' })
   assert.deepEqual(P.periodRange('last_month', Date.parse('2027-01-15T10:00:00+05:30')), { from: '2026-12-01', to: '2026-12-31' })
-})
-
-test('Templates: where each one stands on Meta (English only); unknown when Meta could not be asked', () => {
-  const pack = T.packStatus([
-    { name: 'wama_salon_bill', language: 'en', status: 'APPROVED' },
-    { name: 'wama_salon_feedback_form', language: 'en', status: 'REJECTED', rejected_reason: 'INVALID_FORMAT' },
-    { name: 'wama_salon_booking', language: 'te', status: 'APPROVED' },
-    { name: 'wama_salon_offer', language: 'en_US', status: 'pending' },
-  ])
-  const by = Object.fromEntries(pack.map((p) => [p.key, p]))
-  assert.equal(by.bill.status, 'APPROVED')
-  assert.deepEqual([by.feedback.status, by.feedback.rejectedReason], ['REJECTED', 'INVALID_FORMAT'])
-  assert.equal(by.booking.status, 'NOT_SUBMITTED')
-  assert.equal(by.offer.status, 'PENDING')
-  assert.deepEqual(by.feedback.buttons, ['Give feedback'])
-  // Submitted before the rename: shown under the name Meta has; not submitted yet: the new name
-  assert.deepEqual([by.bill.name, by.reminder.name], ['wama_salon_bill', 'wama_appointment_reminder'])
-  assert.ok(T.packStatus(null).every((p) => p.status === 'UNKNOWN'))
 })
 
 // ── The feedback form ───────────────────────────────────────────────────────

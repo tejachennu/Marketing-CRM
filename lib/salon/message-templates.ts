@@ -1,12 +1,10 @@
 /**
  * Which WhatsApp template goes out for each automatic message. WhatsApp only allows free-form
- * messages within 24 hours of the customer's last message; after that an approved template is
- * sent instead. By default that is the built-in one (lib/salon/templates.ts); the business can
- * pick any of its own approved templates for each message and say what fills each blank
- * ("template 1 for bills, template 2 for reminders"). Pure and browser-safe.
+ * messages within 24 hours of the customer's last message; after that only an approved template
+ * reaches the customer. There is no default: the business sets up a template for each message
+ * ("template 1 for bills, template 2 for reminders") and says what fills each blank. Until it
+ * does, that message only goes to customers who wrote in the last 24 hours. Pure and browser-safe.
  */
-
-import type { SalonTemplateKey } from './templates'
 
 export type MessagePurpose = 'bill' | 'booking' | 'reminder' | 'feedback'
 export type FieldKey = 'first_name' | 'customer_name' | 'business' | 'bill_number' | 'amount' | 'services' | 'staff' | 'visit' | 'date_time' | 'date' | 'time' | 'link'
@@ -31,18 +29,17 @@ export interface PurposeInfo {
   use: string
   /** What this message can fill a template's blanks with */
   fields: FieldKey[]
-  /** The built-in template and what fills its blanks, in order */
-  defaultKey: SalonTemplateKey
-  defaultFields: FieldKey[]
-  /** The built-in template's link button opens this page with the link code */
+  /** What usually fills the blanks, in order (a first guess for a template just picked) */
+  usualFields: FieldKey[]
+  /** A link button opens this page of the app, with the link code at the end */
   linkPath?: string
 }
 
 export const PURPOSES: Record<MessagePurpose, PurposeInfo> = {
-  bill: { title: 'Bill', use: 'Sends the bill with a link to view it', fields: ['first_name', 'customer_name', 'business', 'bill_number', 'amount', 'services', 'staff', 'date', 'link'], defaultKey: 'bill', defaultFields: ['first_name', 'business', 'bill_number', 'amount'], linkPath: '/i/' },
-  booking: { title: 'Booking confirmed', use: 'Confirms a booking from the counter or the chat', fields: ['first_name', 'customer_name', 'business', 'date_time', 'date', 'time', 'services', 'staff', 'visit'], defaultKey: 'booking', defaultFields: ['first_name', 'business', 'date_time', 'visit'] },
-  reminder: { title: 'Appointment reminder', use: 'About 2 hours before the appointment', fields: ['first_name', 'customer_name', 'business', 'time', 'date', 'services', 'staff', 'visit'], defaultKey: 'reminder', defaultFields: ['first_name', 'business', 'time', 'services'] },
-  feedback: { title: 'Feedback request', use: 'Asks how the visit was, with a link to the feedback form', fields: ['first_name', 'customer_name', 'business', 'services', 'staff', 'link'], defaultKey: 'feedback', defaultFields: ['first_name', 'business', 'services'], linkPath: '/f/' },
+  bill: { title: 'Bill', use: 'Sends the bill with a link to view it', fields: ['first_name', 'customer_name', 'business', 'bill_number', 'amount', 'services', 'staff', 'date', 'link'], usualFields: ['first_name', 'business', 'bill_number', 'amount'], linkPath: '/i/' },
+  booking: { title: 'Booking confirmed', use: 'Confirms a booking from the counter or the chat', fields: ['first_name', 'customer_name', 'business', 'date_time', 'date', 'time', 'services', 'staff', 'visit'], usualFields: ['first_name', 'business', 'date_time', 'visit'] },
+  reminder: { title: 'Appointment reminder', use: 'About 2 hours before the appointment', fields: ['first_name', 'customer_name', 'business', 'time', 'date', 'services', 'staff', 'visit'], usualFields: ['first_name', 'business', 'time', 'services'] },
+  feedback: { title: 'Feedback request', use: 'Asks how the visit was, with a link to the feedback form', fields: ['first_name', 'customer_name', 'business', 'services', 'staff', 'link'], usualFields: ['first_name', 'business', 'services'], linkPath: '/f/' },
 }
 
 export const MESSAGE_PURPOSES = Object.keys(PURPOSES) as MessagePurpose[]
@@ -61,7 +58,7 @@ export type MessageTemplates = Partial<Record<MessagePurpose, MessageTemplateCho
 const NAME = /^[a-z0-9_]{1,512}$/
 const LANGUAGE = /^[a-z]{2,3}(_[A-Z]{2})?$/
 
-/** Check the choices sent from Setup. A message left out uses the built-in template. */
+/** Check the choices sent from Setup. A message left out has no template set up. */
 export function parseMessageTemplates(raw: unknown): { value: MessageTemplates } | { error: string } {
   if (raw === null || raw === undefined) return { value: {} }
   if (typeof raw !== 'object' || Array.isArray(raw)) return { error: 'Choose a template for each message.' }
@@ -115,7 +112,7 @@ export function templateBlanks(template: { components?: any[] }): { blanks: numb
 
 /** A sensible first guess at what fills each blank, for a template just picked. */
 export function guessFields(purpose: MessagePurpose, blanks: number): FieldKey[] {
-  const order = PURPOSES[purpose].defaultFields
+  const order = PURPOSES[purpose].usualFields
   const rest = PURPOSES[purpose].fields.filter((f) => f !== 'link' && !order.includes(f))
   return [...order, ...rest].slice(0, blanks)
 }

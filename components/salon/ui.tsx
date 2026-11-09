@@ -105,7 +105,7 @@ export function Modal({ title, subtitle, icon, onClose, children, footer, wide, 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${checked ? 'bg-[#00A884]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}>
+      className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${checked ? 'bg-[#1D5BEA]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}>
       <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
   )
@@ -113,9 +113,8 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
 
 // ── People and numbers ───────────────────────────────────────────────────────
 
-const AVATAR_TONES = [
-  'bg-[#1D5BEA]', 'bg-[#00A884]', 'bg-[#0E1B3D]', 'bg-[#4a5672]', 'bg-[#0891b2]', 'bg-[#047857]', 'bg-[#174bc4]',
-]
+/** One quiet look for everyone's initials */
+const AVATAR_TONES = ['bg-[#e8ecf3] text-[#0E1B3D] dark:bg-slate-700 dark:text-white']
 
 export function initials(name: string): string {
   const words = String(name || '').trim().split(/\s+/).filter(Boolean)
@@ -127,19 +126,16 @@ export function Avatar({ name, size = 36, className = '' }: { name: string; size
   let hash = 0
   for (const char of String(name || '')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
   return (
-    <span aria-hidden className={`shrink-0 inline-flex items-center justify-center rounded-full ${AVATAR_TONES[hash % AVATAR_TONES.length]} text-white font-bold ${className}`}
+    <span aria-hidden className={`shrink-0 inline-flex items-center justify-center rounded-full ${AVATAR_TONES[hash % AVATAR_TONES.length]} font-bold ${className}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}>{initials(name)}</span>
   )
 }
 
 /** A number with a label and an icon, for the top of a screen. */
 export function StatTile({ label, value, icon, tone = 'blue', hint }: { label: string; value: React.ReactNode; icon: React.ReactNode; tone?: 'blue' | 'green' | 'amber' | 'pink'; hint?: React.ReactNode }) {
-  const tones = {
-    blue: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
-    green: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300',
-    amber: 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300',
-    pink: 'bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300',
-  }
+  // One quiet look for every tile: the number is what matters
+  const neutral = 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100'
+  const tones = { blue: neutral, green: neutral, amber: neutral, pink: neutral }
   return (
     <div className={`${card} p-3.5 @xl:px-5 @xl:py-4 flex flex-col items-start @xl:flex-row @xl:items-center gap-2 @xl:gap-3`}>
       <span className={`h-8 w-8 @xl:h-11 @xl:w-11 shrink-0 rounded-lg @xl:rounded-xl flex items-center justify-center [&>svg]:h-[17px] [&>svg]:w-[17px] @xl:[&>svg]:h-5 @xl:[&>svg]:w-5 ${tones[tone]}`}>{icon}</span>

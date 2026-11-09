@@ -64,7 +64,7 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
     setMenuFor(null)
     try {
       const result = await api('/api/salon/act', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action: { ...action, invoice_id: invoice.id } }) })
-      if (result.whatsapp && !result.whatsapp.sent) flash('error', result.whatsapp.windowClosed ? 'Not sent: this customer has not messaged you in the last 24 hours. Copy the link and share it instead.' : result.whatsapp.error)
+      if (result.whatsapp && !result.whatsapp.sent) flash('error', result.whatsapp.windowClosed ? 'Not sent: this customer hasn\'t messaged you in 24 hours, and no approved bill template is set up (Setup → Templates). Copy the link and share it instead.' : result.whatsapp.error)
       else flash('success', result.message)
       await load()
     } catch (err: any) {
@@ -157,7 +157,7 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
                     </div>
                     <div className="text-right shrink-0">
                       <p className={`text-[16.5px] font-extrabold text-[#0E1B3D] dark:text-white ${invoice.status === 'void' ? 'line-through' : ''}`}>{formatRupees(Number(invoice.total))}</p>
-                      <span className={`mt-0.5 inline-flex items-center gap-1 h-6 px-2 rounded-md text-[12.5px] font-bold ${invoice.status === 'paid' ? 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'void' ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400' : 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'}`}>
+                      <span className={`mt-0.5 inline-flex items-center gap-1 h-6 px-2 rounded-md text-[12.5px] font-bold ${invoice.status === 'paid' ? 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' : invoice.status === 'void' ? 'bg-[#f4f6fa] text-[#8a94a8] dark:bg-slate-800 dark:text-slate-400' : 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300'}`}>
                         {invoice.status === 'paid' ? <CircleCheck size={13} /> : invoice.status === 'void' ? <Ban size={13} /> : <Clock size={13} />}
                         {invoice.status === 'paid' ? <>Paid{PAYMENT_LABELS[invoice.payment_method || ''] && <span className="hidden @xl:inline"> · {PAYMENT_LABELS[invoice.payment_method || '']}</span>}</> : invoice.status === 'void' ? 'Void' : 'Not paid'}
                       </span>
@@ -173,7 +173,7 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
                           {canWrite && invoice.customer_phone && invoice.status !== 'void' && <button type="button" onClick={() => act(invoice, { type: 'send_invoice' })} className={menuItem}><MessageCircle size={16} /> Send on WhatsApp</button>}
                           {canWrite && invoice.status === 'unpaid' && <div className="my-1 border-t border-[#eef1f6] dark:border-slate-800" />}
                           {canWrite && invoice.status === 'unpaid' && (['cash', 'upi', 'card'] as const).map((method) => (
-                            <button key={method} type="button" onClick={() => act(invoice, { type: 'pay_invoice', payment_method: method })} className={`${menuItem} text-[#047857] dark:text-emerald-300 hover:bg-[#e8f7f1] dark:hover:bg-emerald-950/30`}><CircleCheck size={16} /> Paid by {PAYMENT_LABELS[method]}</button>
+                            <button key={method} type="button" onClick={() => act(invoice, { type: 'pay_invoice', payment_method: method })} className={`${menuItem} text-[#0E1B3D] dark:text-slate-100 hover:bg-[#f4f6fa] dark:hover:bg-slate-800`}><CircleCheck size={16} /> Paid by {PAYMENT_LABELS[method]}</button>
                           ))}
                           {canVoid && invoice.status !== 'void' && <><div className="my-1 border-t border-[#eef1f6] dark:border-slate-800" /><button type="button" onClick={async () => { setMenuFor(null); if (await confirm({ title: `Cancel ${invoice.number}?`, message: 'The invoice stays on record, marked void. This cannot be undone.', confirmLabel: 'Cancel invoice', destructive: true })) act(invoice, { type: 'void_invoice' }) }} className={`${menuItem} text-[#b91c1c] dark:text-red-300 hover:bg-[#fdf0f0] dark:hover:bg-red-950/30`}><Ban size={16} /> Cancel invoice (void)</button></>}
                         </div>

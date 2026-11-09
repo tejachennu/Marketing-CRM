@@ -16,7 +16,7 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'templates'
+export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'templates'
 const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
   { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
   { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
@@ -125,13 +125,13 @@ function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.Reac
   )
 }
 
-export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash }) {
+export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 'services' }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash; initialSection?: Section }) {
   const confirm = useConfirm()
   const [serviceForm, setServiceForm] = useState<Partial<Service> | null>(null)
   const [staffForm, setStaffForm] = useState<Partial<StaffMember> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [settings, setSettings] = useState(setup.settings)
-  const [section, setSection] = useState<Section>('services')
+  const [section, setSection] = useState<Section>(initialSection)
 
   const categories = useMemo(() => {
     const groups = new Map<string, Service[]>()
@@ -246,7 +246,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       )}
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
-          <SectionHead icon={<Scissors size={21} />} tone="bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300" title="Services"
+          <SectionHead icon={<Scissors size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Services"
             subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
             action={<button type="button" onClick={() => setServiceForm({ category: categories[0]?.[0] || BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: BUSINESS_TYPES[type].kit?.taxRate ?? 18, active: true })} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
@@ -277,7 +277,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
 
       {/* Staff */}
       {section === 'team' && <section className={card}>
-        <SectionHead icon={<Users size={21} />} tone="bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300" title="Staff" subtitle="Who serves customers, and which services they do"
+        <SectionHead icon={<Users size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Staff" subtitle="Who serves customers, and which services they do"
           action={<button type="button" onClick={() => setStaffForm({ active: true, service_ids: [] })} className={secondaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add person</span><span className="@xl:hidden">Add</span></button>} />
         {setup.staff.length === 0 ? (
           <p className="px-5 py-8 text-center text-[15px] text-[#6B7894]"><Users size={22} className="inline mr-1.5 -mt-0.5" /> No staff yet. Add the people who serve customers.</p>
@@ -302,7 +302,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
 
       {/* Business details */}
       {section === 'business' && <section className={card}>
-        <SectionHead icon={<Store size={21} />} tone="bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
+        <SectionHead icon={<Store size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Business details on invoices" subtitle="Printed on every invoice. Changing them never changes invoices already sent." />
         <div className="p-4 @xl:p-5 grid grid-cols-1 @5xl:grid-cols-5 gap-6">
           <div className="@5xl:col-span-3 min-w-0">
             <div className="mb-5" role="group" aria-label="Kind of business">
@@ -363,7 +363,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash }: { orgId: string
       </section>}
 
       {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
-      {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} />}
+      {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} onSaved={(message_templates) => onChange({ ...setup, settings: { ...setup.settings, message_templates } })} />}
       </div>
       </div>
 

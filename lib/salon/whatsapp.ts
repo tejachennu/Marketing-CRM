@@ -10,7 +10,6 @@ import { sendWhatsAppMessage } from '../commerce/commerce-webhook-handler'
 import { formatRupees } from './invoice'
 import { formatIstDay, formatIstTime, istDate, phoneKey } from './spoken'
 import { chosenTemplatePayload, parseMessageTemplates, PURPOSES, type FieldKey, type MessagePurpose, type MessageTemplateChoice } from './message-templates'
-import { sendSalonTemplate } from './templates'
 
 export type SendOutcome = { sent: boolean; error?: string; windowClosed?: boolean }
 
@@ -50,17 +49,11 @@ async function chosenTemplate(db: any, organizationId: string, purpose: MessageP
   }
 }
 
-/** Send the template for this message: the business's own choice, or the built-in one. */
-export async function sendFallbackTemplate(db: any, organization: any, phone: string, template: TemplateFallback) {
+/** Send the template the business set up for this message. There is no default: none set up, nothing sent. */
+export async function sendFallbackTemplate(db: any, organization: any, phone: string, template: TemplateFallback): Promise<{ ok: boolean; messageId?: string | null; error?: string }> {
   const choice = await chosenTemplate(db, organization.id, template.purpose)
-  if (choice) {
-    const own = await sendWhatsAppMessage(organization, chosenTemplatePayload(choice, phone, template.values))
-    if (own.ok) return own
-    // Not approved yet, paused or changed on Meta: the built-in template goes instead
-    console.warn(`[Front Desk WhatsApp] The chosen ${template.purpose} template "${choice.name}" was refused, trying the built-in one:`, own.error)
-  }
-  const info = PURPOSES[template.purpose]
-  return sendSalonTemplate(organization, info.defaultKey, phone, info.defaultFields.map((field) => template.values[field] || '-'), { urlSuffix: template.values.link })
+  if (!choice) return { ok: false, error: `No ${PURPOSES[template.purpose].title.toLowerCase()} template is set up (Front Desk → Setup → Templates).` }
+  return sendWhatsAppMessage(organization, chosenTemplatePayload(choice, phone, template.values))
 }
 
 async function connectedOrganization(db: any, organizationId: string) {

@@ -58,7 +58,7 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
   return (
     <section className={card}>
       <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-3">
-        <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300 flex items-center justify-center"><MessageCircle size={21} /></span>
+        <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100 flex items-center justify-center"><MessageCircle size={21} /></span>
         <div className="min-w-0">
           <h2 className="text-[18px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">WhatsApp</h2>
           <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400">Answers, bookings, reminders and feedback on your WhatsApp number</p>

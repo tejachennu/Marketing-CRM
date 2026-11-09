@@ -33,7 +33,7 @@ const PAGE = 30
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <span className="inline-flex items-center gap-0.5 shrink-0" role="img" aria-label={`${rating} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={size} className={n <= Math.round(rating) ? 'fill-[#f59e0b] text-[#f59e0b]' : 'text-[#d5ddeb] dark:text-slate-700'} />)}
+      {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={size} className={n <= Math.round(rating) ? 'fill-[#0E1B3D] text-[#0E1B3D] dark:fill-slate-100 dark:text-slate-100' : 'text-[#d5ddeb] dark:text-slate-700'} />)}
     </span>
   )
 }
@@ -147,8 +147,8 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                   <li key={row.stars}>
                     <button type="button" onClick={() => focus({ show: show === row.stars ? 'all' : (row.stars as Show) })} aria-pressed={show === row.stars} aria-label={`${row.stars} stars: ${row.count}`}
                       className={`w-full flex items-center gap-2 h-7 px-1.5 rounded-lg cursor-pointer hover:bg-[#f4f6fa] dark:hover:bg-slate-800 ${show === row.stars ? 'bg-[#eef3fe] dark:bg-blue-950/40' : ''}`}>
-                      <span className="w-7 shrink-0 text-[13px] font-bold text-[#4a5672] dark:text-slate-300 inline-flex items-center gap-0.5">{row.stars}<Star size={11} className="fill-[#f59e0b] text-[#f59e0b]" /></span>
-                      <span className="flex-1 h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><span className={`block h-full rounded-full ${row.stars >= 4 ? 'bg-[#00A884]' : row.stars === 3 ? 'bg-[#f59e0b]' : 'bg-[#dc2626]'}`} style={{ width: `${Math.round((row.count / most) * 100)}%` }} /></span>
+                      <span className="w-7 shrink-0 text-[13px] font-bold text-[#4a5672] dark:text-slate-300 inline-flex items-center gap-0.5">{row.stars}<Star size={11} className="fill-[#0E1B3D] text-[#0E1B3D] dark:fill-slate-100 dark:text-slate-100" /></span>
+                      <span className="flex-1 h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><span className={`block h-full rounded-full bg-[#1D5BEA]`} style={{ width: `${Math.round((row.count / most) * 100)}%` }} /></span>
                       <span className="w-8 shrink-0 text-right text-[13px] font-semibold text-[#6B7894]">{row.count}</span>
                     </button>
                   </li>
@@ -212,7 +212,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
           <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
             <button type="button" aria-pressed={show === 'all'} onClick={() => setShow('all')} className={chip(show === 'all')}>All</button>
             {[5, 4, 3, 2, 1].map((n) => (
-              <button key={n} type="button" aria-pressed={show === n} aria-label={`${n} stars`} onClick={() => setShow(show === n ? 'all' : (n as Show))} className={chip(show === n)}>{n} <Star size={12} className="fill-[#f59e0b] text-[#f59e0b]" /></button>
+              <button key={n} type="button" aria-pressed={show === n} aria-label={`${n} stars`} onClick={() => setShow(show === n ? 'all' : (n as Show))} className={chip(show === n)}>{n} <Star size={12} className="fill-[#0E1B3D] text-[#0E1B3D] dark:fill-slate-100 dark:text-slate-100" /></button>
             ))}
             <button type="button" aria-pressed={show === 'call'} onClick={() => setShow(show === 'call' ? 'all' : 'call')} className={chip(show === 'call')}><Phone size={13} /> To call{summary?.toCall ? <span className="ml-0.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-[#b91c1c] text-white text-[11.5px] font-bold">{summary.toCall}</span> : null}</button>
             <button type="button" aria-pressed={show === 'comments'} onClick={() => setShow(show === 'comments' ? 'all' : 'comments')} className={chip(show === 'comments')}>With comments</button>
@@ -239,7 +239,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                 const call = needsCall(review)
                 const good = review.rating >= 4
                 return (
-                  <li key={review.id} className={`px-4 @xl:px-5 py-4 ${call ? 'bg-[#fdf6f6] dark:bg-red-950/10' : ''}`}>
+                  <li key={review.id} className={`px-4 @xl:px-5 py-4 ${call ? 'bg-[#f8fafc] dark:bg-red-950/10' : ''}`}>
                     <div className="flex items-start gap-3">
                       <Avatar name={review.customer_name || 'Customer'} size={40} className="hidden @xl:inline-flex" />
                       <div className="flex-1 min-w-0">
@@ -250,13 +250,13 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           <Stars rating={review.rating} size={16} />
-                          <span className={`text-[13.5px] font-bold ${good ? 'text-[#047857] dark:text-emerald-300' : review.rating === 3 ? 'text-[#b45309] dark:text-amber-300' : 'text-[#b91c1c] dark:text-red-300'}`}>{LABELS[review.rating]}</span>
+                          <span className={`text-[13.5px] font-bold text-[#4a5672] dark:text-slate-300`}>{LABELS[review.rating]}</span>
                           <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[11.5px] font-bold text-[#6B7894] dark:text-slate-400">{review.source === 'form' ? 'Form' : 'Chat'}</span>
                           {review.invoice && <a href={`/i/${review.invoice.public_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300 hover:text-[#1D5BEA]">{review.invoice.number} <ExternalLink size={12} /></a>}
                         </div>
                         {review.tags.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            {review.tags.map((tag) => <span key={tag} className={`inline-flex items-center h-6 px-2 rounded-md text-[12.5px] font-semibold ${good ? 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' : review.rating === 3 ? 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300' : 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300'}`}>{tag}</span>)}
+                            {review.tags.map((tag) => <span key={tag} className="inline-flex items-center h-6 px-2 rounded-md text-[12.5px] font-semibold bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300">{tag}</span>)}
                           </div>
                         )}
                         {review.comment && <p className="mt-2 text-[14.5px] leading-relaxed text-[#0E1B3D] dark:text-slate-200 whitespace-pre-line break-words">“{review.comment}”</p>}
@@ -272,7 +272,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                           <div className="mt-2.5">
                             {call
                               ? <button type="button" disabled={busyId === review.id} onClick={() => called(review)} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[14px] font-semibold text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50">{busyId === review.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Mark as called</button>
-                              : <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#047857] dark:text-emerald-300"><Check size={15} /> Called{review.followed_up_at ? ` · ${formatIstDay(istDate(review.followed_up_at), today)}` : ''}</p>}
+                              : <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-100"><Check size={15} /> Called{review.followed_up_at ? ` · ${formatIstDay(istDate(review.followed_up_at), today)}` : ''}</p>}
                           </div>
                         )}
                       </div>

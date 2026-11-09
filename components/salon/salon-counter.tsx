@@ -25,19 +25,19 @@ const LANES: { id: 'upcoming' | 'service' | 'done'; title: string; statuses: App
 ]
 
 const STATUS_PILL: Record<Appointment['status'], [string, string]> = {
-  requested: ['Requested', 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'],
+  requested: ['Requested', 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'],
   booked: ['Booked', 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300'],
-  arrived: ['Arrived', 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'],
-  in_service: ['In service', 'bg-[#fdeef6] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300'],
-  completed: ['Done', 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300'],
+  arrived: ['Arrived', 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'],
+  in_service: ['In service', 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'],
+  completed: ['Done', 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100'],
   cancelled: ['Cancelled', 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400'],
   no_show: ['No-show', 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400'],
 }
 
-const LANE_DOT: Record<string, string> = { upcoming: 'bg-[#1D5BEA]', service: 'bg-[#db2777]', done: 'bg-[#00A884]' }
+const LANE_DOT: Record<string, string> = { upcoming: 'bg-[#c0c8d8]', service: 'bg-[#1D5BEA]', done: 'bg-[#c0c8d8]' }
 const STRIPE: Record<Appointment['status'], string> = {
-  requested: 'bg-[#f59e0b]',
-  booked: 'bg-[#1D5BEA]', arrived: 'bg-[#f59e0b]', in_service: 'bg-[#db2777]', completed: 'bg-[#00A884]', cancelled: 'bg-[#c0c8d8]', no_show: 'bg-[#c0c8d8]',
+  requested: 'bg-[#1D5BEA]',
+  booked: 'bg-[#1D5BEA]', arrived: 'bg-[#1D5BEA]', in_service: 'bg-[#1D5BEA]', completed: 'bg-[#c0c8d8]', cancelled: 'bg-[#c0c8d8]', no_show: 'bg-[#c0c8d8]',
 }
 const PAID_BY: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
 const stepButton = 'flex-1 min-w-0 inline-flex items-center justify-center gap-2 h-11 px-3 rounded-xl text-[15px] font-bold whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50'
@@ -123,7 +123,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
 
   function afterBooking(result: any) {
     setSheet(null)
-    flash(result.warning ? 'error' : 'success', result.warning ? `Booked, but note: ${result.warning}` : result.whatsapp && !result.whatsapp.sent ? `${result.message}. WhatsApp confirmation not sent: ${result.whatsapp.windowClosed ? 'the 24-hour window is closed' : result.whatsapp.error}` : `${result.message}${result.whatsapp?.sent ? ' · confirmation sent on WhatsApp' : ''}`)
+    flash(result.warning ? 'error' : 'success', result.warning ? `Booked, but note: ${result.warning}` : result.whatsapp && !result.whatsapp.sent ? `${result.message}. WhatsApp confirmation not sent: ${result.whatsapp.windowClosed ? 'the customer hasn\'t messaged in 24 hours and no approved booking template is set up' : result.whatsapp.error}` : `${result.message}${result.whatsapp?.sent ? ' · confirmation sent on WhatsApp' : ''}`)
     setDate(istDate(result.appointment.starts_at))
     load().catch(() => {})
   }
@@ -165,7 +165,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
         </div>
         {canWrite && (
           <div className="grid grid-cols-2 gap-2 @2xl:flex @2xl:ml-auto">
-            <button type="button" onClick={quickBill} className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[15px] font-bold shadow-sm shadow-[#00A884]/25 transition-colors cursor-pointer whitespace-nowrap"><Zap size={18} /> Quick bill</button>
+            <button type="button" onClick={quickBill} className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 text-[#0E1B3D] dark:text-white text-[15px] font-bold transition-colors cursor-pointer whitespace-nowrap"><Zap size={18} /> Quick bill</button>
             <button type="button" onClick={newBooking} className={`${primaryButton} h-12 whitespace-nowrap`}><CalendarPlus size={18} /> New booking</button>
           </div>
         )}
@@ -210,7 +210,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                     <EmptyIcon size={26} className="mx-auto text-[#a3adc2]" />
                     <p className="mt-2 text-[14.5px] font-semibold text-[#6B7894]">{lane.id === 'upcoming' ? 'No one waiting' : lane.id === 'service' ? 'No one in service' : 'Nothing billed yet'}</p>
                     {lane.id === 'upcoming' && canWrite && date >= today && <button type="button" onClick={newBooking} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#1D5BEA] dark:text-blue-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><CalendarPlus size={16} /> New booking</button>}
-                    {lane.id === 'done' && canWrite && isToday && <button type="button" onClick={quickBill} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#047857] dark:text-emerald-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><Zap size={16} /> Quick bill a walk-in</button>}
+                    {lane.id === 'done' && canWrite && isToday && <button type="button" onClick={quickBill} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[14px] font-bold text-[#0E1B3D] dark:text-slate-100 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><Zap size={16} /> Quick bill a walk-in</button>}
                   </div>
                 )}
                 <ul className="space-y-2.5">
@@ -226,7 +226,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                     const minutes = Math.round((Date.parse(appointment.starts_at) - now) / 60_000)
                     const timing = isToday && appointment.status === 'booked'
                       ? minutes > 0 && minutes <= 90 ? ['In ' + (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`), 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
-                        : minutes < -5 ? [`${Math.min(-minutes, 999)} min late`, 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300']
+                        : minutes < -5 ? [`${Math.min(-minutes, 999)} min late`, 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300']
                         : minutes <= 0 ? ['Now', 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300'] : null
                       : null
                     return (
@@ -254,8 +254,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                         {canWrite && appointment.status !== 'completed' && (
                           <div className="mt-3 flex items-center gap-2">
                             {appointment.status === 'booked' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'arrived')} className={`${stepButton} bg-[#eef3fe] text-[#1D5BEA] hover:bg-[#dfe8fd] dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-900/50`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />} Arrived</button>}
-                            {appointment.status === 'arrived' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'in_service')} className={`${stepButton} bg-[#fdeef6] text-[#be185d] hover:bg-[#fbdcec] dark:bg-pink-950/50 dark:text-pink-200 dark:hover:bg-pink-900/50`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />} Start service</button>}
-                            {appointment.status === 'in_service' && <button type="button" onClick={() => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } })} className={`${stepButton} bg-[#00A884] text-white hover:bg-[#008f70] shadow-sm shadow-[#00A884]/30`}><Receipt size={18} /> Complete & bill</button>}
+                            {appointment.status === 'arrived' && <button type="button" disabled={busy} onClick={() => setStatus(appointment, 'in_service')} className={`${stepButton} bg-[#f4f6fa] text-[#4a5672] hover:bg-[#eef1f6] dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700`}>{busy ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />} Start service</button>}
+                            {appointment.status === 'in_service' && <button type="button" onClick={() => setSheet({ kind: 'bill', target: { kind: 'appointment', appointment } })} className={`${stepButton} bg-[#1D5BEA] text-white hover:bg-[#174bc4] shadow-sm shadow-[#1D5BEA]/20`}><Receipt size={18} /> Complete & bill</button>}
                             {['booked', 'arrived'].includes(appointment.status) && (
                               <div className="relative">
                                 <button type="button" aria-label={`More for ${appointment.customer_name}`} onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === appointment.id ? null : appointment.id) }} className="h-11 w-11 rounded-xl border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><MoreHorizontal size={20} /></button>
@@ -272,7 +272,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                         )}
                         {appointment.status === 'completed' && invoice && (
                           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-[#f8fafc] dark:bg-slate-900/60 px-3 py-2">
-                            <span className={`inline-flex items-center gap-1.5 text-[13.5px] font-bold ${invoice.status === 'paid' ? 'text-[#047857] dark:text-emerald-300' : invoice.status === 'void' ? 'text-[#6B7894]' : 'text-[#b45309] dark:text-amber-300'}`}>
+                            <span className={`inline-flex items-center gap-1.5 text-[13.5px] font-bold ${invoice.status === 'paid' ? 'text-[#0E1B3D] dark:text-slate-100' : invoice.status === 'void' ? 'text-[#6B7894]' : 'text-[#4a5672] dark:text-slate-300'}`}>
                               {invoice.status === 'paid' ? <CircleCheck size={16} /> : <Clock size={16} />}
                               {invoice.status === 'paid' ? `Paid${PAID_BY[invoice.payment_method] ? ` · ${PAID_BY[invoice.payment_method]}` : ''}` : invoice.status === 'void' ? 'Void' : 'Not paid yet'}
                             </span>

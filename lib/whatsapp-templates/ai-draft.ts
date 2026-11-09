@@ -107,7 +107,7 @@ export function draftFromAi(output: AiTemplateOutput, request: AiDraftRequest, o
   order.forEach((n, index) => {
     samples[String(index + 1)] = String(output.samples?.[n - 1] ?? output.samples?.[index] ?? '').trim().slice(0, 200) || `Sample ${index + 1}`
     const field = String(output.fields?.[n - 1] ?? output.fields?.[index] ?? '') as FieldKey
-    if (purpose) fields.push(purpose.fields.includes(field) && field !== 'link' ? field : purpose.defaultFields[index] || purpose.defaultFields[0])
+    if (purpose) fields.push(purpose.fields.includes(field) && field !== 'link' ? field : purpose.usualFields[index] || purpose.usualFields[0])
   })
   const base = origin.replace(/\/+$/, '')
   let buttons: ButtonDraft[] = (output.buttons || []).slice(0, 3).map((button) => {

@@ -327,7 +327,7 @@ function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staffIds, o
           <p className={sectionTitle}>Time</p>
           <span className="text-[12.5px] text-[#8a94a8] text-right">{chosenStaff.length ? 'Free for who you picked' : 'Free for anyone who does it'}</span>
         </div>
-        {closed && <p className="rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-3.5 py-2.5 text-[13.5px]">You are closed this day ({describeHours(hours).replace(/^Open /, 'open ')}). You can still pick a time.</p>}
+        {closed && <p className="rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-3.5 py-2.5 text-[13.5px]">You are closed this day ({describeHours(hours).replace(/^Open /, 'open ')}). You can still pick a time.</p>}
         {groups.length ? groups.map((group) => (
           <div key={group.label}>
             <p className="text-[12.5px] font-semibold text-[#8a94a8] mb-1.5">{group.label}</p>
@@ -344,8 +344,8 @@ function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staffIds, o
             </div>
           </div>
         )) : <p className="text-[14px] text-[#6B7894]">No more times this day. Pick another day, or type a time below.</p>}
-        {chosenSlot && !chosenSlot.free && <p className="text-[13.5px] font-medium text-[#b45309] dark:text-amber-300">Someone is already booked then. You can still book it.</p>}
-        {chosenSlot && chosenSlot.free && chosenSlot.late && <p className="text-[13.5px] font-medium text-[#b45309] dark:text-amber-300">This visit ends after closing time. You can still book it.</p>}
+        {chosenSlot && !chosenSlot.free && <p className="text-[13.5px] font-medium text-[#4a5672] dark:text-slate-300">Someone is already booked then. You can still book it.</p>}
+        {chosenSlot && chosenSlot.free && chosenSlot.late && <p className="text-[13.5px] font-medium text-[#4a5672] dark:text-slate-300">This visit ends after closing time. You can still book it.</p>}
         {other || (time && !chosenSlot)
           ? <input type="time" aria-label="Exact time" value={time} onChange={(e) => onTime(e.target.value)} className={`${input} w-40`} />
           : <button type="button" onClick={() => setOther(true)} className="text-[13.5px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:underline cursor-pointer">Another time</button>}
@@ -426,8 +426,8 @@ export function BookingSheet({ orgId, setup, draft, onClose, onBooked }: {
         <WhoDidIt planned setup={setup} lines={chosen.map((service) => ({ key: service.id, service_id: service.id, name: service.name }))} value={lineStaff} onChange={setLineStaff} />
         <DayAndTime orgId={orgId} setup={setup} date={date} time={time} minutes={minutes} serviceIds={serviceIds} staffIds={serviceIds.map((id) => lineStaff[id] || null)} onDate={setDate} onTime={setTime} />
         {customer.phone.trim() && (
-          <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#e8f7f1]/70 dark:bg-emerald-950/20 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
-            <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#00A884] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send confirmation on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400">With the day, time and services</span></span></span>
+          <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/40 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
+            <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#1D5BEA] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send confirmation on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400">With the day, time and services</span></span></span>
             <Toggle checked={sendWhatsApp} onChange={setSendWhatsApp} label="Send confirmation on WhatsApp" />
           </label>
         )}
@@ -505,7 +505,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
         </ul>
       ) : <p className="text-[14px] text-[#8a94a8]">Pick services to see the bill.</p>}
       <div className="mt-3 pt-3 border-t border-dashed border-[#c0c8d8] dark:border-slate-700 space-y-1.5 text-[14px] text-[#4a5672] dark:text-slate-400">
-        {bill.discount > 0 && <div className="flex justify-between gap-2"><span>Discount</span><span className="font-semibold text-[#047857] dark:text-emerald-300">− {formatRupees(bill.discount)}</span></div>}
+        {bill.discount > 0 && <div className="flex justify-between gap-2"><span>Discount</span><span className="font-semibold text-[#0E1B3D] dark:text-slate-100">− {formatRupees(bill.discount)}</span></div>}
         {registered && <div className="flex justify-between gap-2"><span>GST (CGST + SGST)</span><span>{formatRupees(bill.tax)}</span></div>}
         <div className="flex items-end justify-between gap-2 pt-1">
           <span className="text-[15px] font-bold text-[#0E1B3D] dark:text-white">Total</span>
@@ -526,7 +526,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           </div>
           <button type="button" onClick={onClose} className={`${secondaryButton} max-sm:hidden`}>Cancel</button>
           <button type="button" onClick={submit} disabled={saving || !lines.length}
-            className="inline-flex items-center justify-center gap-2 h-12 px-5 flex-1 sm:flex-none sm:min-w-[220px] rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[16px] font-bold shadow-sm shadow-[#00A884]/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            className="inline-flex items-center justify-center gap-2 h-12 px-5 flex-1 sm:flex-none sm:min-w-[220px] rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold shadow-sm shadow-[#1D5BEA]/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Receipt size={18} />} {payment ? 'Bill & mark paid' : 'Bill, pay later'}
           </button>
         </div>
@@ -586,8 +586,8 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
             </div>
           </section>
           {phone && (
-            <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#e8f7f1]/70 dark:bg-emerald-950/20 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
-              <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#00A884] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send the bill on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400 truncate">To {phone}</span></span></span>
+            <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/40 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
+              <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#1D5BEA] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send the bill on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400 truncate">To {phone}</span></span></span>
               <Toggle checked={sendWhatsApp} onChange={setSendWhatsApp} label="Send the bill on WhatsApp" />
             </label>
           )}
@@ -615,20 +615,20 @@ export function ResultSheet({ result, onClose, onCopied, onNext }: { result: any
       </>}>
       <div className="text-center pt-1 pb-2">
         <span className="relative mx-auto h-[72px] w-[72px] flex items-center justify-center">
-          <span aria-hidden className="absolute inset-0 rounded-full bg-[#00A884]/15" />
-          <span className="relative h-14 w-14 rounded-full bg-[#00A884] text-white flex items-center justify-center shadow-lg shadow-[#00A884]/30"><Check size={30} strokeWidth={3} /></span>
+          <span aria-hidden className="absolute inset-0 rounded-full bg-[#1D5BEA]/10" />
+          <span className="relative h-14 w-14 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center shadow-lg shadow-[#1D5BEA]/20"><Check size={30} strokeWidth={3} /></span>
         </span>
         <p className="text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white mt-3 leading-none">{formatRupees(Number(invoice?.total))}</p>
-        <p className={`mt-2 inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[13.5px] font-bold ${paid ? 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300'}`}>
+        <p className={`mt-2 inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[13.5px] font-bold ${paid ? 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' : 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}>
           {paid ? <Check size={14} strokeWidth={3} /> : <Clock size={14} />} {paid ? `Paid${invoice?.payment_method ? ` · ${({ cash: 'Cash', upi: 'UPI', card: 'Card' } as Record<string, string>)[invoice.payment_method] || ''}` : ''}` : 'Not paid yet'}
         </p>
-        {result.whatsapp?.sent && <p className="mt-3 flex items-center justify-center gap-1.5 text-[14px] font-semibold text-[#047857] dark:text-emerald-300"><MessageCircle size={15} /> Sent to the customer on WhatsApp</p>}
-        {result.whatsapp && !result.whatsapp.sent && <p className="mt-4 rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-4 py-2.5 text-[14px] text-left">{result.whatsapp.windowClosed ? 'WhatsApp could not deliver it: this customer has not messaged you in the last 24 hours. Share the link below instead.' : result.whatsapp.error}</p>}
+        {result.whatsapp?.sent && <p className="mt-3 flex items-center justify-center gap-1.5 text-[14px] font-semibold text-[#0E1B3D] dark:text-slate-100"><MessageCircle size={15} /> Sent to the customer on WhatsApp</p>}
+        {result.whatsapp && !result.whatsapp.sent && <p className="mt-4 rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-4 py-2.5 text-[14px] text-left">{result.whatsapp.windowClosed ? 'Not sent on WhatsApp: this customer hasn\'t messaged you in 24 hours, and that needs an approved bill template (Setup → Templates). Share the link below instead.' : result.whatsapp.error}</p>}
       </div>
       <div className={`grid ${phone ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mt-4`}>
         <a href={link} target="_blank" rel="noopener noreferrer" className={tile}><ExternalLink size={20} className="text-[#1D5BEA]" /> Open bill</a>
         <button type="button" onClick={() => { navigator.clipboard?.writeText(link).then(onCopied).catch(() => {}) }} className={tile}><Copy size={20} className="text-[#4a5672] dark:text-slate-300" /> Copy link</button>
-        {phone && <a href={`https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className={tile}><MessageCircle size={20} className="text-[#00A884]" /> WhatsApp</a>}
+        {phone && <a href={`https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className={tile}><MessageCircle size={20} className="text-[#1D5BEA]" /> WhatsApp</a>}
       </div>
     </Modal>
   )

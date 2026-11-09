@@ -13,7 +13,7 @@ import type { Appointment } from './types'
 type Flash = (tone: 'success' | 'error', text: string) => void
 
 function outcome(result: any): { tone: 'success' | 'error'; text: string } {
-  if (result.whatsapp && !result.whatsapp.sent) return { tone: 'error', text: `${result.message}. WhatsApp message not sent: ${result.whatsapp.windowClosed ? 'the 24-hour window is closed' : result.whatsapp.error}` }
+  if (result.whatsapp && !result.whatsapp.sent) return { tone: 'error', text: `${result.message}. WhatsApp message not sent: ${result.whatsapp.windowClosed ? 'the customer hasn\'t messaged in 24 hours and no approved booking template is set up' : result.whatsapp.error}` }
   return { tone: 'success', text: `${result.message}${result.whatsapp?.sent ? ' · customer told on WhatsApp' : ''}` }
 }
 
@@ -41,11 +41,11 @@ export function BookingRequests({ orgId, requests, canWrite, onDone, flash }: { 
   }
 
   return (
-    <section aria-label="WhatsApp booking requests" className={`${card} overflow-hidden border-[#f5d48a] dark:border-amber-900/60`}>
-      <div className="px-4 @xl:px-5 py-3.5 bg-[#fff8e8] dark:bg-amber-950/20 border-b border-[#f5e2b5] dark:border-amber-900/40 flex items-center gap-2.5">
-        <span className="h-9 w-9 rounded-xl bg-[#00A884] text-white flex items-center justify-center"><MessageCircle size={18} /></span>
+    <section aria-label="WhatsApp booking requests" className={`${card} overflow-hidden border-[#e3e8f2] dark:border-slate-800`}>
+      <div className="px-4 @xl:px-5 py-3.5 bg-[#f8fafc] dark:bg-slate-900/40 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2.5">
+        <span className="h-9 w-9 rounded-xl bg-[#1D5BEA] text-white flex items-center justify-center"><MessageCircle size={18} /></span>
         <div className="min-w-0">
-          <h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Booking requests from WhatsApp <span className="ml-1 inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded-full bg-[#f59e0b] text-white text-[12.5px] font-bold align-middle">{requests.length}</span></h2>
+          <h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Booking requests from WhatsApp <span className="ml-1 inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded-full bg-[#1D5BEA] text-white text-[12.5px] font-bold align-middle">{requests.length}</span></h2>
           <p className="text-[13px] text-[#6B7894] dark:text-slate-400">Approve to confirm on WhatsApp, or pick another time.</p>
         </div>
       </div>
@@ -60,11 +60,11 @@ export function BookingRequests({ orgId, requests, canWrite, onDone, flash }: { 
               <div className="flex flex-col @4xl:flex-row @4xl:items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-[16.5px] font-bold text-[#0E1B3D] dark:text-white">{request.customer_name}{request.customer_phone && <span className="ml-2 text-[13.5px] font-normal text-[#6B7894]">{request.customer_phone}</span>}</p>
-                  <p className="mt-0.5 text-[14.5px] text-[#0E1B3D] dark:text-slate-200 flex items-center gap-1.5"><CalendarClock size={16} className="text-[#b45309]" /> <strong>{formatIstDay(day, today)}, {formatIstTime(request.starts_at)}</strong> · {request.services.map((s) => s.name).join(', ')} · {formatRupees(total)}</p>
+                  <p className="mt-0.5 text-[14.5px] text-[#0E1B3D] dark:text-slate-200 flex items-center gap-1.5"><CalendarClock size={16} className="text-[#4a5672]" /> <strong>{formatIstDay(day, today)}, {formatIstTime(request.starts_at)}</strong> · {request.services.map((s) => s.name).join(', ')} · {formatRupees(total)}</p>
                 </div>
                 {canWrite && (
                   <div className="flex gap-2 shrink-0">
-                    <button type="button" disabled={busy} onClick={() => act(request, { type: 'approve_request' })} className="flex-1 @4xl:flex-none inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[15px] font-bold cursor-pointer disabled:opacity-50">{busy ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} strokeWidth={3} />} Approve</button>
+                    <button type="button" disabled={busy} onClick={() => act(request, { type: 'approve_request' })} className="flex-1 @4xl:flex-none inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold cursor-pointer disabled:opacity-50">{busy ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} strokeWidth={3} />} Approve</button>
                     <button type="button" disabled={busy} onClick={() => { setMovingId(moving ? null : request.id); setMoveDate(day < today ? today : day) }} aria-expanded={moving} className="flex-1 @4xl:flex-none inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50">Other time</button>
                     <button type="button" disabled={busy} aria-label={`Decline ${request.customer_name}'s request`} onClick={async () => {
                       if (await confirm({ title: `Decline ${request.customer_name}'s request?`, message: 'They will get a WhatsApp message asking them to pick another day or time.', confirmLabel: 'Decline', destructive: true })) act(request, { type: 'decline_request' })

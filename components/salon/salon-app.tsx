@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ConciergeBell, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { ConciergeBell, FileText, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
 import { announceFrontDeskTab, isFrontDeskTab, MANAGER_TABS, OPEN_TAB_EVENT, tabFromSearch, type FrontDeskTab } from '@/lib/front-desk-nav'
-import { api, card, Toast, useToast, useWorkspace } from './ui'
-import { SalonSetupTab } from './salon-setup'
+import { api, card, secondaryButton, Toast, useToast, useWorkspace } from './ui'
+import { SalonSetupTab, type Section } from './salon-setup'
 import { SalonCounter } from './salon-counter'
 import { SalonInvoices } from './salon-invoices'
 import { SalonReviews } from './salon-reviews'
@@ -24,6 +24,7 @@ export function SalonApp() {
   const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('counter')
   const scroller = useRef<HTMLDivElement>(null)
+  const [setupSection, setSetupSection] = useState<Section>('services')
   // One date range for Invoices, Reviews and Team, so switching tabs keeps the dates
   const [range, setRange] = useState<DateRange>(() => resolveRange('month'))
 
@@ -72,6 +73,9 @@ export function SalonApp() {
     return () => { window.removeEventListener(OPEN_TAB_EVENT, open); window.removeEventListener('popstate', back) }
   }, [go, allowed])
 
+  // Setup opens on Services unless asked for a section (the templates reminder opens Templates)
+  useEffect(() => { if (tab !== 'setup') setSetupSection('services') }, [tab])
+
   // Tell the bottom bar which tab is showing
   useEffect(() => { announceFrontDeskTab(tab) }, [tab])
   const tabs: { id: Tab; label: string; icon: typeof ConciergeBell }[] = [
@@ -87,6 +91,7 @@ export function SalonApp() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={30} /></div>
   }
 
+  const templatesSetUp = Object.values(setup.settings.message_templates || {}).filter(Boolean).length
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
 
   return (
@@ -120,11 +125,21 @@ export function SalonApp() {
           </div>
         </header>
 
-        {tab === 'setup' && canManage && <SalonSetupTab orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} />}
+        {tab === 'setup' && canManage && <SalonSetupTab key={setupSection} orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} initialSection={setupSection} />}
+        {/* Nothing is sent from a template until the business sets its templates up */}
+        {tab === 'counter' && canManage && setup.services.length > 0 && templatesSetUp < 4 && (
+          <div className={`${card} px-4 @xl:px-5 py-3.5 flex flex-col @xl:flex-row @xl:items-center gap-3`}>
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <span className="h-9 w-9 shrink-0 rounded-xl bg-[#f4f6fa] dark:bg-slate-800 text-[#0E1B3D] dark:text-white flex items-center justify-center"><FileText size={18} /></span>
+              <p className="text-[14px] text-[#4a5672] dark:text-slate-300"><span className="font-bold text-[#0E1B3D] dark:text-white">WhatsApp templates: {templatesSetUp} of 4 set up.</span> Bills, reminders and feedback reach customers who haven&apos;t messaged you in 24 hours only once their template is set up.</p>
+            </div>
+            <button type="button" onClick={() => { setSetupSection('templates'); go('setup') }} className={`${secondaryButton} shrink-0`}>Set up templates</button>
+          </div>
+        )}
         {tab === 'counter' && (setup.services.length === 0
           ? (
             <div className={`${card} px-6 py-12 text-center`}>
-              <span className="mx-auto h-14 w-14 rounded-2xl bg-[#fdeef6] dark:bg-pink-950/40 text-[#be185d] dark:text-pink-300 flex items-center justify-center"><Sparkles size={26} /></span>
+              <span className="mx-auto h-14 w-14 rounded-2xl bg-[#f4f6fa] dark:bg-slate-800 text-[#4a5672] dark:text-slate-300 flex items-center justify-center"><Sparkles size={26} /></span>
               <h2 className="mt-4 text-[19px] font-extrabold text-[#0E1B3D] dark:text-white">Add your services to open the counter</h2>
               <p className="mt-1 text-[15px] text-[#4a5672] dark:text-slate-400 max-w-md mx-auto">{canManage ? 'In Setup, pick your kind of business to add a starter list of services and team in one tap, or add your own. Change anything any time.' : 'Your manager needs to add services in Setup before the counter can be used.'}</p>
               {canManage && <button type="button" onClick={() => go('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
