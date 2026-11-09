@@ -55,7 +55,9 @@ class RangeBar extends StatelessWidget {
                 context: context,
                 firstDate: DateTime(today.year - 2),
                 lastDate: DateTime(today.year, today.month, today.day),
-                initialDateRange: DateTimeRange(start: DateTime(today.year, today.month, today.day).subtract(const Duration(days: 6)), end: DateTime(today.year, today.month, today.day)),
+                initialDateRange: value.preset == 'custom'
+                    ? DateTimeRange(start: DateTime.parse(value.from!), end: DateTime.parse(value.to!))
+                    : DateTimeRange(start: DateTime(today.year, today.month, today.day).subtract(const Duration(days: 6)), end: DateTime(today.year, today.month, today.day)),
               );
               if (picked == null) return;
               if (picked.end.difference(picked.start).inDays > 366) {

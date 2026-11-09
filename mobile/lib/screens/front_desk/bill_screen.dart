@@ -109,7 +109,10 @@ class BillScreen extends StatelessWidget {
                         ListTile(
                           title: Text('${x['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: '${x['staff_name'] ?? ''}'.isEmpty ? null : Text('by ${x['staff_name']}'),
-                          trailing: Text(formatRupees(x['price']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                          trailing: Text(
+                            formatRupees(x['price']),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Brand.text),
+                          ),
                         ),
                     ],
                   ),

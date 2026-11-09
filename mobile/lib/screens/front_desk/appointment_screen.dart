@@ -44,12 +44,13 @@ class AppointmentScreen extends StatelessWidget {
     }
 
     Future<void> checkout() async {
-      await Navigator.push(
+      final billed = await Navigator.push(
         context,
         MaterialPageRoute<bool>(
           builder: (_) => CheckoutScreen(appointment: a, date: date),
         ),
       );
+      if (billed == true && context.mounted) Navigator.pop(context);
     }
 
     return Scaffold(
@@ -105,12 +106,18 @@ class AppointmentScreen extends StatelessWidget {
                         ListTile(
                           title: Text('${s['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text('${s['duration_minutes']} min'),
-                          trailing: Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                          trailing: Text(
+                            formatRupees(s['price']),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Brand.text),
+                          ),
                         ),
                       const Divider(),
                       ListTile(
                         title: const Text('Total', style: TextStyle(fontWeight: FontWeight.w800)),
-                        trailing: Text(formatRupees(total), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                        trailing: Text(
+                          formatRupees(total),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Brand.text),
+                        ),
                       ),
                     ],
                   ),

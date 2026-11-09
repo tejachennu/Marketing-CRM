@@ -578,7 +578,7 @@ class StaffSetup extends StatelessWidget {
                         Text(
                           [
                             (m['service_ids'] as List? ?? const []).isEmpty ? 'All services' : '${(m['service_ids'] as List).length} services',
-                            if (((num.tryParse('${m['commission_percent'] ?? 0}') ?? 0)) > 0) '${m['commission_percent']}% commission',
+                            (((num.tryParse('${m['commission_percent'] ?? 0}') ?? 0)) > 0) ? '${m['commission_percent']}% commission' : 'No commission',
                             if (m['phone'] != null) '${m['phone']}',
                           ].join(' · '),
                           style: const TextStyle(fontSize: 12.5, color: Brand.muted),
@@ -1043,12 +1043,18 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
                 const Divider(),
                 toggle('Ask for feedback', 'After the bill, a link to rate the visit and the team.', _feedback, (v) => setState(() => _feedback = v)),
                 if (_feedback)
-                  Padding(
+                  Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Wrap(
                       spacing: 6,
                       runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        const Text(
+                          'Send it',
+                          style: TextStyle(fontSize: 13, color: Brand.muted, fontWeight: FontWeight.w600),
+                        ),
                         for (final (m, l) in [(30, '30 min'), (60, '1 hour'), (120, '2 hours'), (240, '4 hours'), (1440, 'Next day')])
                           ChoiceChip(label: Text(m == 1440 ? 'Next day' : 'After $l'), selected: _delay == m, onSelected: (_) => setState(() => _delay = m)),
                       ],

@@ -23,9 +23,13 @@ class _Stat extends StatelessWidget {
   Widget build(BuildContext context) => Expanded(
     child: Column(
       children: [
-        Text(
-          value,
-          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+          ),
         ),
         const SizedBox(height: 2),
         Text(
@@ -128,10 +132,11 @@ class _ReviewsTabState extends State<ReviewsTab> {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               ChoiceChip(label: const Text('All reviews'), selected: !_toCallOnly, onSelected: (_) => setState(() => _toCallOnly = false)),
-              const SizedBox(width: 8),
               ChoiceChip(label: Text('To call back · ${summary['toCall'] ?? 0}'), selected: _toCallOnly, onSelected: (_) => setState(() => _toCallOnly = true)),
             ],
           ),

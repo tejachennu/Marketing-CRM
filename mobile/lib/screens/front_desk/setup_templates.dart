@@ -146,6 +146,8 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
             fields.add(allowed[fields.length.clamp(0, allowed.length - 1)]);
           }
           if (fields.length > blanks) fields = fields.sublist(0, blanks);
+          // A saved field this screen does not offer would break the list; start it again
+          fields = [for (final f in fields) allowed.contains(f) ? f : allowed.first];
           return Padding(
             padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(sheet).viewInsets.bottom),
             child: SingleChildScrollView(
@@ -189,6 +191,7 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: DropdownButtonFormField<String>(
+                            key: ValueKey('${picked?['name']}:${picked?['language']}:$i'),
                             initialValue: fields[i],
                             decoration: InputDecoration(labelText: 'Blank {{${i + 1}}}'),
                             items: [for (final f in allowed) DropdownMenuItem(value: f, child: Text(fieldLabels[f]!))],

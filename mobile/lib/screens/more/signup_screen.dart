@@ -181,10 +181,10 @@ class _SignupScreenState extends State<SignupScreen> {
                 decoration: const InputDecoration(counterText: '', hintText: '······'),
               ),
               const SizedBox(height: 8),
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
                 children: [
                   TextButton(onPressed: _busy ? null : () => setState(() => _codeSent = false), child: const Text('Change details')),
-                  const Spacer(),
                   TextButton(onPressed: _busy || _resendIn > 0 ? null : _sendCode, child: Text(_resendIn > 0 ? 'Send again in ${_resendIn}s' : 'Send a new code')),
                 ],
               ),

@@ -11,6 +11,7 @@ import '../ai/assistant_screen.dart';
 import '../ai/knowledge_screen.dart';
 import '../front_desk/booking_flow_screen.dart';
 import '../front_desk/logic.dart';
+import '../front_desk/setup_screen.dart';
 import 'signup_screen.dart';
 
 /// Account, workspace, templates and the sync status.
@@ -107,12 +108,27 @@ class MoreScreen extends StatelessWidget {
                 if (app.frontDeskOn && app.can('manage')) ...[
                   const SectionLabel('Front Desk'),
                   Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.event_available_outlined, color: Brand.navy),
-                      title: const Text('Booking flow on WhatsApp', style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text(((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingFlowScreen())),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: FrontDeskIcon(size: 22, color: Brand.navy),
+                          ),
+                          title: const Text('Front Desk setup', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('Services, team, business details, WhatsApp, templates'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
+                        ),
+                        const Divider(indent: 56),
+                        ListTile(
+                          leading: const Icon(Icons.event_available_outlined, color: Brand.navy),
+                          title: const Text('Booking flow on WhatsApp', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingFlowScreen())),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -126,19 +142,21 @@ class MoreScreen extends StatelessWidget {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.pushNamed(context, '/templates'),
                       ),
-                      const Divider(indent: 56),
-                      ListTile(
-                        leading: const Padding(
-                          padding: EdgeInsets.only(left: 2),
-                          child: FrontDeskIcon(size: 22, color: Brand.navy),
+                      if (!app.frontDeskOn) ...[
+                        const Divider(indent: 56),
+                        const ListTile(
+                          leading: Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: FrontDeskIcon(size: 22, color: Brand.navy),
+                          ),
+                          title: Text('Front Desk', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('Off · an admin can switch it on in Connectors on the web'),
                         ),
-                        title: const Text('Front Desk', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text(app.frontDeskOn ? 'On' : 'Off · switch on in Connectors on the web'),
-                      ),
+                      ],
                       const Divider(indent: 56),
                       const ListTile(
                         leading: Icon(Icons.language, color: Brand.navy),
-                        title: Text('Setup, team and billing', style: TextStyle(fontWeight: FontWeight.w600)),
+                        title: Text('Team members, connectors and billing', style: TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text('On the web at wamacrm.magnetora.in'),
                       ),
                     ],
