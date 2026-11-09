@@ -18,6 +18,7 @@ import 'screens/chats/chats_screen.dart';
 import 'screens/contacts/contacts_screen.dart';
 import 'screens/front_desk/appointment_screen.dart';
 import 'screens/front_desk/bill_screen.dart';
+import 'screens/front_desk/catalog_history.dart';
 import 'screens/front_desk/checkout_screen.dart';
 import 'screens/front_desk/reviews_team.dart';
 import 'screens/front_desk/setup_screen.dart';
@@ -193,6 +194,8 @@ class WamaApp extends StatelessWidget {
       'team' => const TeamScreen(),
       'setup' => const SetupScreen(),
       'setup_services' => const ServicesSetup(),
+      'setup_catalog' => const CatalogScreen(),
+      'setup_history' => const HistoryScreen(),
       'setup_team' => const StaffSetup(),
       'setup_business' => const BusinessSetup(),
       'setup_whatsapp' => const WhatsAppSetup(),

@@ -5,6 +5,10 @@ import 'format.dart';
 class DemoFrontDesk {
   DemoFrontDesk({required this.setup, required this.invoices, required this.contacts, required this.templates, required this.id}) {
     choices; // seeds the saved choices so Setup counts them
+    // Lists that can take any row the app sends
+    for (final key in ['services', 'staff']) {
+      setup[key] = <Map<String, dynamic>>[for (final row in setup[key] as List) Map<String, dynamic>.from(row as Map)];
+    }
   }
   final Map<String, dynamic> setup;
   final List<Map<String, dynamic>> invoices;
@@ -17,6 +21,58 @@ class DemoFrontDesk {
   List<Map<String, dynamic>> get staff => List<Map<String, dynamic>>.from(setup['staff']);
 
   late final List<Map<String, dynamic>> reviews = _seedReviews();
+
+  /// The store's product catalog (E-commerce), for "Add from catalog".
+  late final List<Map<String, dynamic>> products = [
+    for (final (i, name, price, category) in [
+      (1, 'Keratin hair serum', 899, 'Hair care'),
+      (2, 'Argan oil shampoo', 649, 'Hair care'),
+      (3, 'Vitamin C face wash', 399, 'Skin care'),
+      (4, 'Sunscreen SPF 50', 549, 'Skin care'),
+      (5, 'Gift card', 1000, 'Gifts'),
+      (6, 'Bridal makeup trial', 2500, 'Services'),
+      (7, 'Nail art kit', 1299, 'Nails'),
+    ])
+      {'id': 'p$i', 'name': name, 'price': price, 'currency': 'INR', 'category': category, 'image_url': null, 'description': '', 'available': i != 7},
+  ];
+
+  /// What changed in Setup, newest first.
+  late final List<Map<String, dynamic>> history = () {
+    final now = DateTime.now().toUtc();
+    Map<String, dynamic> h(int minutes, String who, String area, String action, String? target, Map<String, dynamic>? details) => {
+      'id': id(),
+      'user_name': who,
+      'area': area,
+      'action': action,
+      'target': target,
+      'details': details,
+      'created_at': now.subtract(Duration(minutes: minutes)).toIso8601String(),
+    };
+    return [
+      h(35, 'Teja', 'service', 'changed', 'Hair spa', {
+        'price': {'from': 1200, 'to': 1400},
+      }),
+      h(80, 'Anitha', 'service', 'billing off', 'Free consultation', {
+        'billable': {'from': true, 'to': false},
+      }),
+      h(60 * 5, 'Teja', 'team', 'changed', 'Ravi', {
+        'commission_percent': {'from': 10, 'to': 15},
+      }),
+      h(60 * 26, 'Teja', 'category', 'renamed', 'Hair', {
+        'name': {'from': 'Haircut', 'to': 'Hair'},
+        'services': 3,
+      }),
+      h(60 * 30, 'Teja', 'whatsapp', 'changed', null, {
+        'reminders_enabled': {'from': false, 'to': true},
+      }),
+      h(60 * 50, 'Teja', 'business', 'changed', null, {
+        'invoice_note': {'from': null, 'to': 'Thank you! See you again soon.'},
+      }),
+    ];
+  }();
+
+  void log(String area, String action, String? target, [Map<String, dynamic>? details]) =>
+      history.insert(0, {'id': id(), 'user_name': 'Teja', 'area': area, 'action': action, 'target': target, 'details': details, 'created_at': DateTime.now().toUtc().toIso8601String()});
   Map<String, dynamic> get choices => settings['message_templates'] ??= <String, dynamic>{
     'bill': {
       'name': 'bill_ready',
@@ -54,6 +110,22 @@ class DemoFrontDesk {
 
   Map<String, dynamic>? get(String path, Map<String, String>? query) {
     switch (path) {
+      case '/api/salon/catalog':
+        return {
+          'success': true,
+          'products': [
+            for (final p in products)
+              () {
+                final linked = services.cast<Map<String, dynamic>?>().firstWhere((s) => s!['catalog_product_id'] == p['id'], orElse: () => null);
+                return {...p, 'service_id': linked?['id'], 'billable': linked == null ? null : linked['billable'] != false};
+              }(),
+          ],
+        };
+      case '/api/salon/history':
+        final area = query?['area'] ?? '';
+        final before = query?['before'];
+        final limit = int.tryParse(query?['limit'] ?? '') ?? 50;
+        return {'success': true, 'entries': history.where((e) => (area.isEmpty || e['area'] == area) && (before == null || '${e['created_at']}'.compareTo(before) < 0)).take(limit).toList()};
       case '/api/salon/customers':
         final q = (query?['q'] ?? '').toLowerCase();
         final digits = q.replaceAll(RegExp(r'\D'), '');
@@ -244,18 +316,57 @@ class DemoFrontDesk {
           ],
         });
         return {'success': true, 'status': 'PENDING'};
+      case '/api/salon/catalog':
+        if (body['action'] == 'refresh') return {'success': true, 'changed': []};
+        final ids = List<String>.from(body['product_ids'] as List? ?? const []);
+        if (ids.isEmpty) throw Exception('Tick at least one item from the catalog.');
+        final created = <Map<String, dynamic>>[];
+        for (final p in products.where((p) => ids.contains(p['id']))) {
+          if (services.any((s) => s['catalog_product_id'] == p['id'])) continue;
+          final service = <String, dynamic>{
+            'id': id(),
+            'name': p['name'],
+            'category': body['category'] ?? p['category'],
+            'price': p['price'],
+            'duration_minutes': body['duration_minutes'] ?? 30,
+            'tax_rate': body['tax_rate'] ?? 18,
+            'sac_code': null,
+            'active': true,
+            'billable': body['billable'] != false,
+            'source': 'catalog',
+            'catalog_product_id': p['id'],
+            'image_url': p['image_url'],
+          };
+          list('services').add(service);
+          created.add(service);
+        }
+        if (created.isNotEmpty) {
+          log('catalog', 'imported', '${created.length} item${created.length == 1 ? '' : 's'}', {'items': created.map((c) => c['name']).toList(), 'billable': body['billable'] != false});
+        }
+        return {'success': true, 'services': created, 'skipped': ids.length - created.length};
       case '/api/salon/services':
         if (method == 'DELETE') {
+          final gone = list('services').cast<Map?>().firstWhere((s) => s!['id'] == params['id'], orElse: () => null);
           list('services').removeWhere((s) => s['id'] == params['id']);
+          log('service', 'removed', '${gone?['name'] ?? 'A service'}');
           return {'success': true};
         }
         if (method == 'POST') {
-          final service = {'id': id(), 'active': true, 'tax_rate': 18, 'duration_minutes': 30, ...body}..remove('organizationId');
+          final service = {'id': id(), 'active': true, 'billable': true, 'tax_rate': 18, 'duration_minutes': 30, ...body}..remove('organizationId');
           list('services').add(service);
+          log('service', 'added', '${service['name']}', {'price': service['price']});
           return {'success': true, 'service': service};
         }
         final s = list('services').firstWhere((s) => s['id'] == body['id']) as Map;
+        final changes = <String, dynamic>{
+          for (final k in ['name', 'category', 'price', 'duration_minutes', 'tax_rate', 'active', 'billable'])
+            if (body.containsKey(k) && '${s[k] ?? (k == 'billable' ? true : null)}' != '${body[k]}') k: {'from': s[k] ?? (k == 'billable' ? true : null), 'to': body[k]},
+        };
         s.addAll(Map.from(body)..remove('organizationId'));
+        if (changes.isNotEmpty) {
+          final onlyBills = changes.length == 1 && changes.containsKey('billable');
+          log('service', onlyBills ? (body['billable'] == true ? 'billing on' : 'billing off') : 'changed', '${s['name']}', changes);
+        }
         return {'success': true, 'service': s};
       case '/api/salon/staff':
         if (method == 'DELETE') {

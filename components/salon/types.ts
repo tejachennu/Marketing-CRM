@@ -35,6 +35,12 @@ export interface Service {
   tax_rate: number | string
   sac_code: string | null
   active: boolean
+  /** false: the service can be booked but never goes on a bill */
+  billable?: boolean
+  /** 'catalog' when it came from the WhatsApp product catalog */
+  source?: 'own' | 'catalog'
+  catalog_product_id?: string | null
+  image_url?: string | null
 }
 
 export interface StaffMember {

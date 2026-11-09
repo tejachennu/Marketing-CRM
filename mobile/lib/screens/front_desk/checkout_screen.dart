@@ -125,7 +125,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 FormSection(
                   title: 'Anything extra?',
                   hint: 'Add services they had on top of the booking.',
-                  child: ServicePicker(desk: desk, selected: _extra, onChanged: (v) => setState(() => _extra = v)),
+                  child: ServicePicker(forBill: true, desk: desk, selected: _extra, onChanged: (v) => setState(() => _extra = v)),
                 ),
                 if (_extra.isNotEmpty && desk.staff.isNotEmpty)
                   FormSection(

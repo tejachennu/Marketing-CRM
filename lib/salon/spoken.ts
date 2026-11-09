@@ -104,11 +104,11 @@ export function formatIstTime(at: Date | string | number): string {
   return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
 
-/** "Today", "Tomorrow", or "Sat, 8 Nov" */
+/** "Today", "Tomorrow", or "Sat, 8 Nov" ('' for today: always the plain date) */
 export function formatIstDay(date: string, today = istDate()): string {
-  if (date === today) return 'Today'
-  if (date === addDays(today, 1)) return 'Tomorrow'
-  if (date === addDays(today, -1)) return 'Yesterday'
+  if (today && date === today) return 'Today'
+  if (today && date === addDays(today, 1)) return 'Tomorrow'
+  if (today && date === addDays(today, -1)) return 'Yesterday'
   const moment = fromIst(date, '12:00')
   return moment ? moment.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : date
 }

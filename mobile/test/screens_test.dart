@@ -4,7 +4,22 @@ import 'screen_check.dart';
 void main() {
   screenChecks(
     screens: [
-      'login', 'signup', 'signup_code', 'desk', 'requests', 'bills', 'reviews', 'team', 'contacts', 'splash', 'setup', 'setup_services', 'setup_team', 'setup_business', //
+      'login',
+      'signup',
+      'signup_code',
+      'desk',
+      'requests',
+      'bills',
+      'reviews',
+      'team',
+      'contacts',
+      'splash',
+      'setup',
+      'setup_services',
+      'setup_catalog',
+      'setup_history',
+      'setup_team',
+      'setup_business', //
       'setup_whatsapp', 'setup_templates', 'checkout', 'new_bill', 'new_booking', 'appointment', 'bill', 'booking_flow', 'chats', 'chat', //
       'chat_ai', 'chat_closed', 'booking_try', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
     ],
@@ -12,6 +27,9 @@ void main() {
       ('setup_services', ['Haircut (Women)']),
       ('setup_services', ['Categories']),
       ('setup_services', ['Add service']),
+      ('setup_catalog', ['Keratin hair serum', 'Gift card']),
+      ('setup_catalog', ['Tick all shown', 'Add 6 to services']),
+      ('setup_history', ['Services']),
       ('setup_team', ['Anitha']),
       ('setup_team', ['Add person']),
       ('setup_templates', ['Bill']),

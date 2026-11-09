@@ -169,12 +169,15 @@ export async function resolveCustomer(db: any, organizationId: string, customer:
   return { contact_id: created?.id || null, name: customer.name, phone: customer.phone }
 }
 
-async function loadServices(db: any, organizationId: string, ids: string[]) {
+async function loadServices(db: any, organizationId: string, ids: string[], forBill = false) {
   if (!ids.length) return []
   const rows = await checked(db.from('salon_services').select('*').eq('organization_id', organizationId).in('id', ids))
   const byId = new Map((rows || []).map((row: any) => [row.id, row]))
   const missing = ids.filter((id) => !byId.has(id))
   if (missing.length) throw new Error('One of those services is no longer on your list.')
+  // A service switched off for billing cannot go on a new bill
+  const offBills = forBill ? ids.map((id) => byId.get(id) as any).find((row) => row.billable === false) : null
+  if (offBills) throw new Error(`${offBills.name} is set not to go on bills. Switch on "Use in bills" for it in Setup → Services.`)
   return ids.map((id) => {
     const row: any = byId.get(id)
     return { service_id: row.id, name: row.name, price: Number(row.price) || 0, duration_minutes: Number(row.duration_minutes) || 30, tax_rate: Number(row.tax_rate) || 0, sac_code: row.sac_code || null }
@@ -309,7 +312,7 @@ export async function executeCounterAction(
         const existing = await checked(db.from('salon_invoices').select('*').eq('id', appointment.invoice_id).eq('organization_id', organizationId).maybeSingle())
         if (existing) return { appointment, invoice: existing, message: `${appointment.customer_name} is already billed (${existing.number})` }
       }
-      const extra = await loadServices(db, organizationId, action.extra_service_ids || [])
+      const extra = await loadServices(db, organizationId, action.extra_service_ids || [], true)
       const all: any[] = [...(appointment.services || []), ...extra]
       // Staff chosen now must be on the list; anyone booked earlier who has since left is simply left off
       const members = await loadStaffMembers(db, organizationId, action.staff_ids || [])
@@ -332,7 +335,7 @@ export async function executeCounterAction(
 
     case 'walk_in_bill': {
       const [loaded, members, customer] = await Promise.all([
-        loadServices(db, organizationId, action.service_ids),
+        loadServices(db, organizationId, action.service_ids, true),
         loadStaffMembers(db, organizationId, [action.staff_id, ...(action.staff_ids || [])]),
         resolveCustomer(db, organizationId, action.customer),
       ])

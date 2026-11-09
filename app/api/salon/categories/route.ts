@@ -3,6 +3,8 @@ import { badRequest, salonAccess, serverError } from '@/lib/salon/server'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { categoryName, cleanCategoryList, DEFAULT_CATEGORY, hasCategory, MAX_CATEGORIES, orderedCategories } from '@/lib/salon/categories'
 
+import { logChange } from '@/lib/salon/change-log'
+
 export const runtime = 'nodejs'
 
 /** The business's categories in order (saved list, then any a service uses), and the services. */
@@ -37,6 +39,7 @@ export async function POST(request: NextRequest) {
     if (hasCategory(categories, name)) return badRequest(`There is already a category called "${name}".`)
     if (categories.length >= MAX_CATEGORIES) return badRequest(`You can have up to ${MAX_CATEGORIES} categories.`)
     await saveList(db, organizationId, [...categories, name])
+    await logChange(access.ctx, { area: 'category', action: 'added', target: name })
     return NextResponse.json({ success: true, ...(await current(db, organizationId)) }, { status: 201 })
   } catch (error) {
     return serverError('categories', error)
@@ -57,6 +60,7 @@ export async function PUT(request: NextRequest) {
     }
     // Keep the saved spelling of each name
     await saveList(db, organizationId, given.map((name) => categories.find((c) => c.toLowerCase() === name.toLowerCase())!))
+    await logChange(access.ctx, { area: 'category', action: 'reordered', details: { order: given } })
     return NextResponse.json({ success: true, ...(await current(db, organizationId)) })
   } catch (error) {
     return serverError('categories', error)
@@ -83,6 +87,7 @@ export async function PATCH(request: NextRequest) {
       if (error) throw new Error(error.message)
     }
     await saveList(db, organizationId, categories.map((c) => (c === old ? to : c)))
+    await logChange(access.ctx, { area: 'category', action: 'renamed', target: to, details: { name: { from: old, to }, services: ids.length } })
     return NextResponse.json({ success: true, ...(await current(db, organizationId)) })
   } catch (error) {
     return serverError('categories', error)
@@ -111,6 +116,7 @@ export async function DELETE(request: NextRequest) {
       if (error) throw new Error(error.message)
     }
     await saveList(db, organizationId, list)
+    await logChange(access.ctx, { area: 'category', action: 'removed', target: old, details: { services_moved: ids.length } })
     return NextResponse.json({ success: true, ...(await current(db, organizationId)) })
   } catch (error) {
     return serverError('categories', error)

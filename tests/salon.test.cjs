@@ -203,7 +203,7 @@ test('Access: managers see Connectors, everyone sees the counter, Consular Helpd
 
 test('Setup checks: services, staff and business details', () => {
   const V = require('../lib/salon/validate.ts')
-  assert.deepEqual(V.parseService({ name: ' Haircut  (Men) ', price: '300', duration_minutes: 30 }).value, { name: 'Haircut (Men)', category: 'General', price: 300, duration_minutes: 30, tax_rate: 18, sac_code: null, active: true })
+  assert.deepEqual(V.parseService({ name: ' Haircut  (Men) ', price: '300', duration_minutes: 30 }).value, { name: 'Haircut (Men)', category: 'General', price: 300, duration_minutes: 30, tax_rate: 18, sac_code: null, active: true, billable: true })
   assert.match(V.parseService({ name: '', price: 100 }).error, /name/)
   assert.match(V.parseService({ name: 'Spa', price: -1 }).error, /price/)
   assert.match(V.parseService({ name: 'Spa', price: 100, duration_minutes: 2 }).error, /5 minutes/)

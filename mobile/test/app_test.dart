@@ -11,6 +11,7 @@ import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/campaigns/audience.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
+import 'package:wama_mobile/screens/front_desk/catalog_history.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
 import 'package:wama_mobile/screens/front_desk/pickers.dart';
 import 'package:wama_mobile/screens/templates/template_widgets.dart';
@@ -41,6 +42,58 @@ void main() {
     expect(joinPhone(fallback, typed), '+919876543210');
     expect(joinPhone(uae, '050 123 4567'), '+971501234567');
     expect(joinPhone(uae, ''), '');
+  });
+
+  test('Catalog: ticked items become services, once; "not on bills" keeps them off bills', () async {
+    final (app, backend) = await makeApp();
+    final catalog = await backend.get('/api/salon/catalog');
+    expect((catalog['products'] as List).length, 7);
+    final added = await app.ask('/api/salon/catalog', {
+      'product_ids': ['p1', 'p5'],
+      'billable': false,
+      'duration_minutes': 15,
+      'tax_rate': 5,
+    });
+    expect((added['services'] as List).map((s) => s['name']), ['Keratin hair serum', 'Gift card']);
+    final again = await app.ask('/api/salon/catalog', {
+      'product_ids': ['p1'],
+    });
+    expect(again['services'], isEmpty);
+    await app.load('setup', '/api/salon/setup', force: true);
+    final desk = FrontDesk(app);
+    expect(desk.services.any((s) => s['name'] == 'Gift card'), isTrue);
+    expect(desk.billServices.any((s) => s['name'] == 'Gift card'), isFalse);
+    expect(desk.billServices.length, desk.services.length - 2);
+    final linked = ((await backend.get('/api/salon/catalog'))['products'] as List).firstWhere((p) => p['id'] == 'p5');
+    expect(linked['service_id'], isNotNull);
+    expect(linked['billable'], isFalse);
+    final history = await backend.get('/api/salon/history', {'area': 'catalog'});
+    expect((history['entries'] as List).first['target'], '2 items');
+  });
+
+  test('Change history: plain lines for each change', () {
+    expect(
+      describeChange({
+        'price': {'from': 1200, 'to': 1400},
+        'billable': {'from': true, 'to': false},
+      }),
+      ['Price: ₹1,200 → ₹1,400', 'Use in bills: on → off'],
+    );
+    expect(
+      describeChange({
+        'items': ['Serum', 'Gift card'],
+        'billable': false,
+      }),
+      ['Serum, Gift card', 'Use in bills: off'],
+    );
+    expect(
+      describeChange({
+        'name': {'from': 'Haircut', 'to': 'Hair'},
+        'services': 3,
+      }),
+      ['Name: Haircut → Hair', 'Services moved: 3'],
+    );
+    expect(describeChange(null), isEmpty);
   });
 
   test('Rupees use Indian grouping', () {

@@ -169,10 +169,10 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
 // ── Services ─────────────────────────────────────────────────────────────────
 
 /** The service list as tappable rows, with a search box and categories once the list is long. */
-export function ServicePicker({ services, selected, onChange, order }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[] }) {
+export function ServicePicker({ services, selected, onChange, order, forBill }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[]; forBill?: boolean }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
-  const active = useMemo(() => services.filter((s) => s.active), [services])
+  const active = useMemo(() => services.filter((s) => s.active && (!forBill || s.billable !== false)), [services, forBill])
   const categories = useMemo(() => ['All', ...groupByCategory(order, active).filter(([, list]) => list.length > 0).map(([name]) => name)], [active, order])
   const words = query.trim().toLowerCase()
   const shown = active.filter((s) => (category === 'All' || (s.category || 'General').toLowerCase() === category.toLowerCase()) && (!words || s.name.toLowerCase().includes(words) || (s.category || '').toLowerCase().includes(words)))
@@ -539,19 +539,19 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
             <section className="space-y-2">
               <p className={sectionTitle}>Customer</p>
               <CustomerFields optional orgId={orgId} value={customer} onChange={setCustomer}
-                onRepeat={(ids, staff) => { const known = ids.filter((id) => setup.services.some((s) => s.id === id && s.active)); setServiceIds(known); setLineStaff(Object.fromEntries(known.map((id, i) => [`s:${id}`, staff[i] || null]))) }} />
+                onRepeat={(ids, staff) => { const known = ids.filter((id) => setup.services.some((s) => s.id === id && s.active && s.billable !== false)); setServiceIds(known); setLineStaff(Object.fromEntries(known.map((id, i) => [`s:${id}`, staff[i] || null]))) }} />
             </section>
           )}
           <section className="space-y-2">
             <p className={sectionTitle}>Services</p>
-            {walkIn ? <ServicePicker services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={setServiceIds} /> : (
+            {walkIn ? <ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={setServiceIds} /> : (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {target.appointment.services.map((s, i) => <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200">{s.name}</span>)}
                 </div>
                 {!addMore
                   ? <button type="button" onClick={() => setAddMore(true)} className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef] hover:text-[#1D5BEA] cursor-pointer"><Plus size={18} /> Add another service</button>
-                  : <div className="pt-1"><ServicePicker services={setup.services} order={setup.settings.service_categories} selected={extra} onChange={setExtra} /></div>}
+                  : <div className="pt-1"><ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={extra} onChange={setExtra} /></div>}
               </>
             )}
           </section>

@@ -95,14 +95,14 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null,
                     onChanged: (c) => setState(() => _customer = c),
                     onRepeat: (ids, staff) => setState(() {
-                      _services = ids.where((id) => desk.service(id) != null).toList();
+                      _services = ids.where((id) => desk.service(id) != null && desk.service(id)!['billable'] != false).toList();
                       _who = {for (var i = 0; i < ids.length; i++) ids[i]: i < staff.length && desk.staff.any((m) => m['id'] == staff[i]) ? staff[i] : null};
                     }),
                   ),
                 ),
                 FormSection(
                   title: 'Services',
-                  child: ServicePicker(desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v)),
+                  child: ServicePicker(forBill: true, desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v)),
                 ),
                 FormSection(
                   title: 'Who did it',

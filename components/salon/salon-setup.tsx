@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, Pencil, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, History, Package, Pencil, ReceiptText, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
@@ -13,13 +13,14 @@ import { PhoneField } from '../phone-field'
 import { WhatsAppSettings } from './salon-whatsapp-settings'
 import { BookingFlowSettingsSection } from './salon-booking-flow'
 import { SalonTemplates } from './salon-templates'
+import { CatalogPicker, ChangeHistory, ItemThumb } from './salon-catalog'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
 const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'booking' | 'templates'
+export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'booking' | 'templates' | 'history'
 const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
   { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
   { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
@@ -27,6 +28,7 @@ const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissor
   { id: 'whatsapp', label: 'WhatsApp', hint: 'Chat, bookings, feedback', icon: MessageCircle },
   { id: 'booking', label: 'Booking flow', hint: 'Book on WhatsApp in taps', icon: CalendarCheck2 },
   { id: 'templates', label: 'Templates', hint: 'Messages for Meta', icon: FileText },
+  { id: 'history', label: 'History', hint: 'Who changed what', icon: History },
 ]
 
 /** Shrink a picture to at most `max` pixels on its longest side, keeping transparency for PNGs. */
@@ -235,6 +237,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
   const [section, setSection] = useState<Section>(initialSection)
 
   const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
   const categories = useMemo(() => groupByCategory(setup.settings.service_categories, setup.services), [setup.settings.service_categories, setup.services])
   const newService = (category?: string) => setServiceForm({ category: category || categories[0]?.[0] || BUSINESS_TYPES[type].categories[0], duration_minutes: 30, tax_rate: BUSINESS_TYPES[type].kit?.taxRate ?? 18, active: true })
 
@@ -275,8 +278,8 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
     setServiceForm(null)
   })
 
-  const toggleService = (service: Service, active: boolean) => run(`act-${service.id}`, async () => {
-    const data = await api('/api/salon/services', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, id: service.id, active }) })
+  const toggleService = (service: Service, change: { active?: boolean; billable?: boolean }) => run(`act-${service.id}`, async () => {
+    const data = await api('/api/salon/services', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, id: service.id, ...change }) })
     onChange({ ...setup, services: setup.services.map((s) => (s.id === service.id ? data.service : s)) })
   })
 
@@ -341,14 +344,15 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       <div className="min-w-0 space-y-4 @xl:space-y-5">
       {/* Services */}
       {section === 'services' && setup.services.length === 0 && (
-        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>. You can also <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">create categories</button> first.</div>
+        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>, <button type="button" onClick={() => setCatalogOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">pick from your catalog</button>, or <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">create categories</button> first.</div>
       )}
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
           <SectionHead icon={<Scissors size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Services"
-            subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
+            subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer${setup.services.some((s) => s.billable === false) ? ` · ${setup.services.filter((s) => s.billable === false).length} not on bills` : ''} · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
             action={<div className="flex shrink-0 gap-2">
               <button type="button" onClick={() => setCategoriesOpen(true)} className={secondaryButton} aria-label="Categories"><Tags size={18} /> <span className="hidden @xl:inline">Categories</span></button>
+              <button type="button" onClick={() => setCatalogOpen(true)} className={secondaryButton} aria-label="From catalog"><Package size={18} /> <span className="hidden @xl:inline">From catalog</span></button>
               <button type="button" onClick={() => newService()} className={primaryButton}><Plus size={18} /> <span className="hidden @xl:inline">Add service</span><span className="@xl:hidden">Add</span></button>
             </div>} />
           <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
@@ -360,17 +364,23 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
                 )}
                 <ul>
                   {services.map((service) => (
-                    <li key={service.id} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-[#f8fafc] dark:hover:bg-slate-900/60">
+                    <li key={service.id} className="flex flex-wrap @xl:flex-nowrap items-center gap-x-3 gap-y-2 px-2 py-2.5 rounded-xl hover:bg-[#f8fafc] dark:hover:bg-slate-900/60">
+                      {(service.image_url || service.source === 'catalog') && <ItemThumb url={service.image_url} size={42} />}
                       <button type="button" onClick={() => setServiceForm(service)} className="flex-1 min-w-0 text-left cursor-pointer group">
                         <span className={`block text-[15.5px] font-semibold truncate group-hover:text-[#1D5BEA] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
                         <span className="mt-1 flex flex-wrap gap-1.5">
                           <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>
                           <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">GST {Number(service.tax_rate)}%</span>
+                          {service.billable === false && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#fdf0f0] dark:bg-red-950/30 text-[12px] font-semibold text-[#b91c1c] dark:text-red-300">Not on bills</span>}
+                          {service.source === 'catalog' && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#eef3fe] dark:bg-blue-950/40 text-[12px] font-semibold text-[#1D5BEA] dark:text-blue-300"><Package size={12} /> Catalog</span>}
                           {service.sac_code && <span className="hidden @xl:inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">SAC {service.sac_code}</span>}
                         </span>
                       </button>
-                      <span className={`text-[16.5px] font-extrabold ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8]'}`}>{formatRupees(Number(service.price))}</span>
-                      <Toggle checked={service.active} disabled={busy !== null} onChange={(value) => toggleService(service, value)} label={`${service.name} available`} />
+                      <span className="flex items-center gap-3 ml-auto">
+                        <span className={`text-[16.5px] font-extrabold ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8]'}`}>{formatRupees(Number(service.price))}</span>
+                        <span className="flex flex-col items-center gap-0.5"><Toggle checked={service.active} disabled={busy !== null} onChange={(value) => toggleService(service, { active: value })} label={`${service.name} on offer`} /><span className="text-[11px] font-semibold text-[#8a94a8]">Offer</span></span>
+                        <span className="flex flex-col items-center gap-0.5"><Toggle checked={service.billable !== false} disabled={busy !== null} onChange={(value) => toggleService(service, { billable: value })} label={`${service.name} in bills`} /><span className="text-[11px] font-semibold text-[#8a94a8]">Bills</span></span>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -469,6 +479,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
 
       {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'booking' && <BookingFlowSettingsSection orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
+      {section === 'history' && <ChangeHistory orgId={orgId} />}
       {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} onSaved={(message_templates) => onChange({ ...setup, settings: { ...setup.settings, message_templates } })} />}
       </div>
       </div>
@@ -493,8 +504,23 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
             <div className="flex flex-wrap gap-2">{DURATIONS.map((m) => <Chip key={m} selected={Number(serviceForm.duration_minutes) === m} onClick={() => setServiceForm({ ...serviceForm, duration_minutes: m })}>{m} min</Chip>)}</div>
             <Field group label="GST"><div className="flex flex-wrap gap-2">{GST_RATES.map((rate) => <Chip key={rate} selected={Number(serviceForm.tax_rate) === rate} onClick={() => setServiceForm({ ...serviceForm, tax_rate: rate })}>{rate}%</Chip>)}</div></Field>
             <Field label="SAC code (optional)" hint="The GST service code printed on invoices, if your accountant gives you one."><input className={input} value={serviceForm.sac_code || ''} onChange={(e) => setServiceForm({ ...serviceForm, sac_code: e.target.value })} inputMode="numeric" placeholder="999721" /></Field>
+            <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
+              <label className="flex items-center justify-between gap-4 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>On offer</strong><span className="block text-[13px] text-[#6B7894]">Off: hidden from new bookings and bills.</span></span><Toggle checked={serviceForm.active !== false} onChange={(value) => setServiceForm({ ...serviceForm, active: value })} label="On offer" /></label>
+              <label className="flex items-center justify-between gap-4 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white"><span className="flex items-start gap-2"><ReceiptText size={18} className="mt-0.5 shrink-0 text-[#6B7894]" /><span><strong>Use in bills</strong><span className="block text-[13px] text-[#6B7894]">Off: customers can still book it, but it never goes on a bill.</span></span></span><Toggle checked={serviceForm.billable !== false} onChange={(value) => setServiceForm({ ...serviceForm, billable: value })} label="Use in bills" /></label>
+            </div>
+            {serviceForm.source === 'catalog' && <p className="flex items-center gap-2 text-[13px] text-[#6B7894]"><Package size={15} /> From your catalog. “Update names and prices” in From catalog brings over catalog changes.</p>}
           </div>
         </Modal>
+      )}
+
+      {catalogOpen && (
+        <CatalogPicker orgId={orgId} categories={categories.map(([name]) => name)} flash={flash} onClose={() => setCatalogOpen(false)}
+          onAdded={async (added) => {
+            if (added.length) onChange({ ...setup, services: [...setup.services, ...added] })
+            else {
+              try { const data = await api(`/api/salon/setup?organizationId=${orgId}`); if (Array.isArray(data.services)) onChange({ ...setup, services: data.services }) } catch { /* the list refreshes on the next visit */ }
+            }
+          }} />
       )}
 
       {categoriesOpen && (

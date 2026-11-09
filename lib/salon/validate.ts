@@ -22,6 +22,7 @@ export interface ServiceInput {
   tax_rate: number
   sac_code: string | null
   active: boolean
+  billable: boolean
 }
 
 export function parseService(body: any, partial = false): Parsed<Partial<ServiceInput>> {
@@ -52,6 +53,8 @@ export function parseService(body: any, partial = false): Parsed<Partial<Service
     value.sac_code = sac || null
   }
   if (!partial || body?.active !== undefined) value.active = body?.active !== false
+  // Can it go on bills (a free consultation, or a product kept off bills, can be switched off)
+  if (!partial || body?.billable !== undefined) value.billable = body?.billable !== false
   return { value }
 }
 

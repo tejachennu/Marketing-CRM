@@ -38,6 +38,9 @@ class FrontDesk {
   bool get hasGst => (settings['gstin'] ?? '').toString().isNotEmpty;
 
   List<Map<String, dynamic>> get services => [for (final s in (_setup['services'] as List? ?? const [])) Map<String, dynamic>.from(s)].where((s) => s['active'] != false).toList();
+
+  /// Services that can go on a bill (the business can keep some for bookings only).
+  List<Map<String, dynamic>> get billServices => services.where((s) => s['billable'] != false).toList();
   List<Map<String, dynamic>> get staff => [for (final s in (_setup['staff'] as List? ?? const [])) Map<String, dynamic>.from(s)].where((s) => s['active'] != false).toList();
 
   /// Categories in the business's order (Setup → Categories), then any others a service uses.

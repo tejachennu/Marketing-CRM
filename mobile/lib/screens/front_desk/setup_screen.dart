@@ -7,6 +7,7 @@ import '../../ui/theme.dart';
 import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
 import 'booking_flow_screen.dart';
+import 'catalog_history.dart';
 import 'setup_templates.dart';
 
 /// Front Desk setup, as on the web: services and categories, the team, business details and
@@ -75,7 +76,9 @@ class SetupScreen extends StatelessWidget {
                       tile(
                         Icons.content_cut,
                         'Services',
-                        services.isEmpty ? 'No services yet' : '${services.where((s) => s['active'] != false).length} of ${services.length} on offer · categories',
+                        services.isEmpty
+                            ? 'No services yet'
+                            : '${services.where((s) => s['active'] != false).length} of ${services.length} on offer${services.any((s) => s['billable'] == false) ? ' · ${services.where((s) => s['billable'] == false).length} not on bills' : ''} · catalog',
                         const ServicesSetup(),
                         attention: services.isEmpty,
                       ),
@@ -104,6 +107,8 @@ class SetupScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                Card(child: tile(Icons.history, 'Change history', 'Who changed what, and when', const HistoryScreen())),
               ],
             ),
           ),
@@ -176,10 +181,15 @@ class ServicesSetup extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Services'),
         actions: [
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Add from catalog',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen())),
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
+          IconButton(
+            tooltip: 'Categories',
             onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, showDragHandle: true, builder: (_) => const _CategoriesSheet()),
-            icon: const Icon(Icons.label_outline, size: 18),
-            label: const Text('Categories'),
+            icon: const Icon(Icons.label_outline),
           ),
         ],
       ),
@@ -194,7 +204,27 @@ class ServicesSetup extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
-          if (services.isEmpty) const EmptyState(icon: Icons.content_cut, title: 'No services yet', text: 'Add what you offer, with prices and how long each takes.'),
+          if (services.isEmpty)
+            EmptyState(
+              icon: Icons.content_cut,
+              title: 'No services yet',
+              text: 'Add what you offer, with prices and how long each takes, or pick items from your product catalog.',
+              action: OutlinedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen())),
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: const Text('Add from catalog'),
+              ),
+            ),
+          if (services.isNotEmpty)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.inventory_2_outlined, color: Brand.blue),
+                title: const Text('Add from your catalog', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Tick many products at once'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen())),
+              ),
+            ),
           for (final category in order) ...[
             SectionLabel('$category · ${services.where((s) => '${s['category'] ?? 'General'}'.toLowerCase() == category.toLowerCase()).length}'),
             Card(
@@ -203,11 +233,29 @@ class ServicesSetup extends StatelessWidget {
                   for (final s in services.where((s) => '${s['category'] ?? 'General'}'.toLowerCase() == category.toLowerCase()))
                     ListTile(
                       onTap: () => _editService(context, s, order),
+                      leading: (s['image_url'] != null || s['source'] == 'catalog') ? ItemThumb(url: s['image_url'] as String?, size: 40) : null,
                       title: Text(
                         '${s['name']}',
                         style: TextStyle(fontWeight: FontWeight.w700, color: s['active'] == false ? Brand.faint : Brand.text, decoration: s['active'] == false ? TextDecoration.lineThrough : null),
                       ),
-                      subtitle: Text('${formatRupees(s['price'])} · ${s['duration_minutes']} min · GST ${s['tax_rate'] ?? 0}%'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${formatRupees(s['price'])} · ${s['duration_minutes']} min · GST ${s['tax_rate'] ?? 0}%'),
+                          if (s['billable'] == false || s['source'] == 'catalog')
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  if (s['billable'] == false) const Pill('Not on bills', tone: PillTone.red, icon: Icons.receipt_long_outlined),
+                                  if (s['source'] == 'catalog') const Pill('Catalog', tone: PillTone.blue, icon: Icons.inventory_2_outlined),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                       trailing: Switch(
                         value: s['active'] != false,
                         activeThumbColor: Colors.white,
@@ -240,6 +288,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
   var category = '${service?['category'] ?? (categories.isEmpty ? 'General' : categories.first)}';
   var tax = (num.tryParse('${service?['tax_rate'] ?? 18}') ?? 18).toInt();
   var active = service?['active'] != false;
+  var billable = service?['billable'] != false;
   var tried = false;
   await showModalBottomSheet<void>(
     context: context,
@@ -334,6 +383,28 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                   title: const Text('On offer', style: TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: const Text('Off: not offered for new bookings and bills'),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: billable,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: Brand.blue,
+                  onChanged: (v) => set(() => billable = v),
+                  title: const Text('Use in bills', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Off: customers can still book it, but it never goes on a bill'),
+                ),
+                if (service?['source'] == 'catalog')
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.inventory_2_outlined, size: 16, color: Brand.muted),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text('From your catalog. The sync button in Add from catalog brings over new names and prices.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -376,6 +447,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                             'tax_rate': tax,
                             'sac_code': sac.text.trim().isEmpty ? null : sac.text.trim(),
                             'active': active,
+                            'billable': billable,
                           };
                           if (await saveSetup(sheet, (app) => app.ask('/api/salon/services', body, method: editing ? 'PATCH' : 'POST'), done: '${name.text.trim()} saved.') && sheet.mounted) {
                             Navigator.pop(sheet);

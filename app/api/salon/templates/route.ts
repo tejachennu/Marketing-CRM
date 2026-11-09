@@ -6,6 +6,8 @@ import { listTemplates, type MetaTemplate } from '@/lib/whatsapp-templates/meta-
 import { MESSAGE_PURPOSES, parseMessageTemplates, templateBlanks } from '@/lib/salon/message-templates'
 import { withSalonSchema } from '@/lib/salon/schema'
 
+import { logChange } from '@/lib/salon/change-log'
+
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
@@ -63,5 +65,6 @@ export async function PUT(request: NextRequest) {
   const { error } = await withSalonSchema(() => db.from('salon_settings')
     .upsert({ organization_id: organizationId, message_templates: parsed.value, updated_at: new Date().toISOString() }, { onConflict: 'organization_id' }).select('organization_id').single())
   if (error) return NextResponse.json({ error: 'The choices could not be saved. Please try again.' }, { status: 500 })
+  await logChange(access.ctx, { area: 'templates', action: 'changed', details: Object.fromEntries(Object.entries(parsed.value).map(([k, v]: [string, any]) => [k, v?.name || 'none'])) })
   return NextResponse.json({ success: true, choices: parsed.value })
 }

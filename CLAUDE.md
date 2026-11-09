@@ -43,7 +43,7 @@ team roles, a Super Admin console, and a public REST API for integrators (`/api/
   Supabase (Postgres + auth + storage), deployed on Vercel. `lucide-react` icons.
 - Install: `npm install` (lockfiles for npm and pnpm both exist).
 - Dev: `npm run dev`
-- Tests: `npm test` → `node --test tests/*.test.cjs` (about 450 tests; they import `.ts` files through
+- Tests: `npm test` → `node --test tests/*.test.cjs` (about 495 tests; they import `.ts` files through
   `tests/register-typescript.cjs`; `tests/salon-fake-db.cjs` is an in-memory stand-in for Supabase).
 - Typecheck: `npx tsc --noEmit -p .` (then `git checkout -- tsconfig.tsbuildinfo` to keep the diff clean).
 - Production build check: `NEXT_PUBLIC_SUPABASE_URL=http://localhost:54329 NEXT_PUBLIC_SUPABASE_ANON_KEY=anon SUPABASE_SERVICE_ROLE_KEY=service npx next build`,
@@ -116,6 +116,18 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   front_desk read/write, leads read/write.
 
 ## What has been built (recent history, newest first)
+
+- **Front Desk: services from the catalog, "Use in bills", change history** (web and app): Setup →
+  Services → **From catalog** lists `commerce_products` with tick boxes (search, category chips, tick
+  all; minutes, GST, category and "Use in bills" for the ticked ones), `GET/POST /api/salon/catalog`
+  (`lib/salon/catalog.ts`; `action: 'refresh'` copies new catalog names and prices). New columns on
+  `salon_services`: `billable`, `source`, `catalog_product_id`, `image_url` (migration
+  `20261117_front_desk_catalog_and_history.sql`, also in `lib/salon/schema.ts`). A service with
+  `billable = false` can be booked but never billed (`loadServices(..., forBill)` refuses it; bill and
+  checkout pickers hide it). **Change history**: `salon_change_log` table, `logChange` in
+  `lib/salon/change-log.ts` (best effort, never fails a save) called from services, categories, staff,
+  settings, templates and catalog routes; `GET /api/salon/history`; web Setup → History, app Setup →
+  Change history (`catalog_history.dart`).
 
 - **App layout (owner, Nov 2026)**: bottom bar = Front Desk · Bills · Chats · More (WhatsApp's four);
   Contacts, Campaigns, Reviews and Team live in More. Front Desk has two WhatsApp-style tabs, **Bookings**

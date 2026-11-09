@@ -191,10 +191,13 @@ class _CustomerPickerState extends State<CustomerPicker> {
 
 /// Services by category, tap to add or remove.
 class ServicePicker extends StatefulWidget {
-  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged});
+  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged, this.forBill = false});
   final FrontDesk desk;
   final List<String> selected;
   final ValueChanged<List<String>> onChanged;
+
+  /// Leave out services set not to go on bills.
+  final bool forBill;
   @override
   State<ServicePicker> createState() => _ServicePickerState();
 }
@@ -204,8 +207,10 @@ class _ServicePickerState extends State<ServicePicker> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = ['All', ...widget.desk.categories];
-    final shown = widget.desk.services.where((s) => _category == 'All' || '${s['category'] ?? 'General'}'.toLowerCase() == _category.toLowerCase()).toList();
+    final list = widget.forBill ? widget.desk.billServices : widget.desk.services;
+    String cat(Map s) => '${s['category'] ?? 'General'}'.toLowerCase();
+    final categories = ['All', ...widget.desk.categories.where((c) => list.any((s) => cat(s) == c.toLowerCase()))];
+    final shown = list.where((s) => _category == 'All' || cat(s) == _category.toLowerCase()).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
