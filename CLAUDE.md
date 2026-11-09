@@ -117,6 +117,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: live chat and notifications**: Supabase realtime on `messages`/`conversations` (filter by
+  `organization_id`, `HttpBackend.live`); banner in the app, phone notification in the background
+  (`mobile/lib/data/notifier.dart`, `ui/notice_host.dart`); booking requests checked every 30 s and
+  after a customer writes. Notifications when the app is fully closed need Firebase push (not set up).
+  Front Desk: "Accept WhatsApp bookings on their own" + Accept all. Skeletons (`ui/skeleton.dart`)
+  and form checks (`ui/validate.dart`). Android compiles against SDK 37 with desugaring (notifications).
 - **Custom booking flow steps** (web Setup → Booking flow, and the app): the business arranges its own
   steps (`booking_flow.steps`: services, staff, choice = question with buttons, text = typed answer,
   message, datetime last; checked by `parseSteps`), and "Write with AI" drafts them
