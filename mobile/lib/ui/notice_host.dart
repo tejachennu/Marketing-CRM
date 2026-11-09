@@ -21,7 +21,7 @@ void openNotice(AppState app, String payload) {
     final conv = list.cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
     if (conv != null) nav.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(conv))));
   } else if (payload == 'bookings') {
-    nav.push(MaterialPageRoute(builder: (_) => const FrontDeskScreen()));
+    nav.push(MaterialPageRoute(builder: (_) => const FrontDeskScreen(initialTab: 1)));
   }
 }
 
@@ -122,7 +122,7 @@ class _NoticeHostState extends State<NoticeHost> with WidgetsBindingObserver {
                                       notice.title,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
                                     ),
                                     Text(
                                       notice.body,

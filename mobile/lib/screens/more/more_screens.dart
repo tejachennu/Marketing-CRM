@@ -11,8 +11,10 @@ import '../ai/assistant_screen.dart';
 import '../ai/knowledge_screen.dart';
 import '../front_desk/booking_flow_screen.dart';
 import '../front_desk/logic.dart';
+import '../campaigns/campaigns_screen.dart';
+import '../contacts/contacts_screen.dart';
+import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
-import 'signup_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -67,12 +69,17 @@ class MoreScreen extends StatelessWidget {
                   onTap: () => Navigator.pushNamed(context, '/sync'),
                 ),
                 const _Gap(),
+                _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
+                if (app.can('campaigns')) _Row(icon: Icons.campaign_outlined, title: 'Campaigns', subtitle: 'Send a WhatsApp template to many customers', onTap: () => open(const CampaignsScreen())),
+                const _Gap(),
                 const _Title('AI'),
                 _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
                 _Row(icon: Icons.smart_toy_outlined, title: 'Try the AI chatbot', subtitle: 'Ask like a customer, see its reply', onTap: () => open(const AssistantScreen())),
                 if (app.frontDeskOn && app.can('manage')) ...[
                   const _Gap(),
                   const _Title('Front Desk'),
+                  _Row(icon: Icons.star_outline_rounded, title: 'Reviews', subtitle: 'What customers said after their visit', onTap: () => open(const ReviewsScreen())),
+                  _Row(icon: Icons.groups_outlined, title: 'Team', subtitle: 'Sales, services and commission for each person', onTap: () => open(const TeamScreen())),
                   _Row(
                     leading: const FrontDeskIcon(size: 24, color: Brand.textSoft),
                     title: 'Front Desk setup',
@@ -233,7 +240,7 @@ class SyncScreen extends StatelessWidget {
                     Icon(app.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined, color: app.online ? Brand.blue : Brand.textSoft, size: 28),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(app.online ? 'Online' : 'No internet', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                      child: Text(app.online ? 'Online' : 'No internet', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),
@@ -376,12 +383,9 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Image.asset('assets/app_icon.png', width: 68, height: 68),
-                  ),
+                  Align(alignment: Alignment.centerLeft, child: Image.asset('assets/app_icon.png', width: 68, height: 68)),
                   const SizedBox(height: 22),
-                  const Text('Sign in to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                  const Text('Sign in to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
                   const SizedBox(height: 6),
                   const Text('Your Front Desk, chats, contacts and campaigns. After you sign in once, the app keeps working without internet.', style: TextStyle(color: Brand.textSoft, height: 1.4)),
                   const SizedBox(height: 26),
@@ -427,13 +431,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     'Use the same email and password as the web app. Forgot it? Reset it on wamacrm.magnetora.in.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12.5, color: Brand.muted),
-                  ),
-                  const SizedBox(height: 18),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  OutlinedButton(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
-                    child: const Text('New here? Create an account'),
                   ),
                 ],
               ),

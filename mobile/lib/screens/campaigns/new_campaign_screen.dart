@@ -293,7 +293,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(_picked == null ? 'Everyone with a number' : '${_picked!.length} chosen', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                              Text(_picked == null ? 'Everyone with a number' : '${_picked!.length} chosen', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                               Text(
                                 [
                                   '${list.recipients.length} will get it',
@@ -516,7 +516,7 @@ class _Step extends StatelessWidget {
           decoration: const BoxDecoration(color: Brand.navy, shape: BoxShape.circle),
           child: Text(
             '$number',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
           ),
         ),
         const SizedBox(width: 10),
@@ -524,7 +524,7 @@ class _Step extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               Text(hint, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
             ],
           ),
@@ -635,7 +635,7 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
               children: [
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Text('Tags', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                  child: Text('Tags', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
@@ -700,7 +700,7 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
               children: [
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Text('Past campaigns', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                  child: Text('Past campaigns', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
@@ -877,7 +877,7 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${list.recipients.length} will get it', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    Text('${list.recipients.length} will get it', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                     Text(
                       [if (hidden > 0) '$hidden ticked but not shown', if (list.invalid > 0) '${list.invalid} without a number', if (list.duplicates > 0) '${list.duplicates} repeated'].join(' · '),
                       style: const TextStyle(fontSize: 12, color: Brand.muted),

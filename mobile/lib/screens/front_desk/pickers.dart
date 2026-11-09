@@ -263,7 +263,7 @@ class _ServicePickerState extends State<ServicePicker> {
                 ],
               ),
             ),
-            Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           ],
         ),
       ),
@@ -300,7 +300,7 @@ class FormSection extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         if (hint != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),

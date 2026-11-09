@@ -204,18 +204,21 @@ class _DayChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: selected ? Brand.blue : Brand.border),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                today ? 'Today' : names[day.weekday - 1],
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted),
-              ),
-              Text(
-                '${day.day}',
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: selected ? Colors.white : Brand.navy),
-              ),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  today ? 'Today' : names[day.weekday - 1],
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted),
+                ),
+                Text(
+                  '${day.day}',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: selected ? Colors.white : Brand.navy),
+                ),
+              ],
+            ),
           ),
         ),
       ),

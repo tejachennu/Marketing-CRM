@@ -123,7 +123,7 @@ class _StarterKit extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('What kind of business is this?', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const Text('What kind of business is this?', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
             const Text('Pick one to start with a ready list of services, prices and a small team. Change anything later.', style: TextStyle(color: Brand.textSoft)),
             const SizedBox(height: 12),
@@ -141,7 +141,7 @@ class _StarterKit extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
                             Text(
                               e.value.$2,
                               style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
@@ -259,7 +259,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(editing ? 'Edit service' : 'Add a service', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                Text(editing ? 'Edit service' : 'Add a service', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: name,
@@ -437,7 +437,7 @@ class _CategoriesSheetState extends State<_CategoriesSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Categories', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+          const Text('Categories', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
           const Text('The order customers and the counter see them in.', style: TextStyle(color: Brand.muted)),
           const SizedBox(height: 10),
           Row(
@@ -575,7 +575,7 @@ class StaffSetup extends StatelessWidget {
                       children: [
                         Text(
                           '${m['name']}${m['active'] == false ? ' (away)' : ''}',
-                          style: TextStyle(fontWeight: FontWeight.w800, color: m['active'] == false ? Brand.faint : Brand.text),
+                          style: TextStyle(fontWeight: FontWeight.w700, color: m['active'] == false ? Brand.faint : Brand.text),
                         ),
                         Text(
                           [
@@ -624,7 +624,7 @@ Future<void> _editStaff(BuildContext context, Map<String, dynamic>? member, List
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(editing ? 'Edit ${member['name']}' : 'Add a person', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                Text(editing ? 'Edit ${member['name']}' : 'Add a person', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: name,
@@ -804,7 +804,7 @@ class _BusinessSetupState extends State<BusinessSetup> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Logo', style: TextStyle(fontWeight: FontWeight.w800)),
+                      const Text('Logo', style: TextStyle(fontWeight: FontWeight.w700)),
                       const Text('Printed at the top of every bill. A square PNG or JPG looks best.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
                       const SizedBox(height: 6),
                       Wrap(

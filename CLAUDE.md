@@ -117,13 +117,21 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App layout (owner, Nov 2026)**: bottom bar = Front Desk · Bills · Chats · More (WhatsApp's four);
+  Contacts, Campaigns, Reviews and Team live in More. Front Desk has two WhatsApp-style tabs, **Bookings**
+  (today first; calendar icon / date header picks another day) and **Requests** (WhatsApp booking requests
+  with a count, Accept all, auto-accept switch); `BillsScreen` is its own tab. Animated splash
+  (`lib/ui/splash.dart`, logo pops in on #008069) after the Android start screen in the same green
+  (`launch_background.xml`, `values-v31`). Text weights capped at w700 (no extra-bold). Sign-in has no
+  "Create an account" (sign-up stays on the web).
+
 - **App: WhatsApp colours** (owner's choice, Nov 2026; overrides "no green" for the **mobile app only**,
   the website keeps navy/blue): `Brand` in `mobile/lib/ui/theme.dart` now holds WhatsApp's palette
   (`blue` = action green #008069, `green` = unread badges #25D366, `bubble` = picked / own message
   #D9FDD3, `navy` = dark text #111B21, WhatsApp greys). Front Desk home redesigned like WhatsApp's
   home: green "Front Desk" title, days as status-style bubbles (`_DayStrip`), one numbers strip, visits
-  grouped In now / Coming up / Done as chat-like rows with the next step. Logo (owner's pick, "option 5"):
-  a shop front with a striped awning and a chat bubble in the window, white on WhatsApp dark green
+  grouped In now / Coming up / Done as chat-like rows with the next step. Logo (owner's pick, "option 5", window C):
+  a shop front with a striped awning and a receipt in the window, white on WhatsApp dark green
   #008069; no currency sign (the product is for any country). Used as the launcher icon (adaptive icon in
   `mipmap-anydpi-v26`, background colour in `values/colors.xml`), `assets/app_icon.png` on sign-in and
   the web favicon. Front Desk tab icon = `Icons.storefront` (outline, filled when picked).

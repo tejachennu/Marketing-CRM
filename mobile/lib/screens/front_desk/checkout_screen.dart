@@ -112,7 +112,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             Expanded(
                               child: Text('${_booked[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
                             ),
-                            Text(formatRupees(_booked[i]['price']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text(formatRupees(_booked[i]['price']), style: const TextStyle(fontWeight: FontWeight.w700)),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -180,7 +180,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       '${_booked.length + _extra.length} service${_booked.length + _extra.length == 1 ? '' : 's'}${desk.hasGst ? (desk.pricesIncludeTax ? ' · incl. GST' : ' · + GST') : ''}',
                       style: const TextStyle(fontSize: 12.5, color: Brand.muted),
                     ),
-                    Text(formatRupees(_total(desk)), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+                    Text(formatRupees(_total(desk)), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
                   ],
                 ),
               ),

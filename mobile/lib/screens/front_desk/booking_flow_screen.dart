@@ -77,7 +77,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                     onChanged: (v) => _set('enabled', v),
                     activeThumbColor: Colors.white,
                     activeTrackColor: Brand.blue,
-                    title: const Text('Book on WhatsApp in taps', style: TextStyle(fontWeight: FontWeight.w800)),
+                    title: const Text('Book on WhatsApp in taps', style: TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: const Text('Customers send a word like "Book" and pick service, day and time. No typing, no AI cost.'),
                   ),
                 ),
@@ -132,7 +132,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
                 Card(
                   clipBehavior: Clip.antiAlias,
                   child: ExpansionTile(
-                    title: const Text('More settings', style: TextStyle(fontWeight: FontWeight.w800)),
+                    title: const Text('More settings', style: TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: const Text('Start words, language, first message, how far ahead, more than one service', style: TextStyle(fontSize: 12.5)),
                     childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     expandedCrossAxisAlignment: CrossAxisAlignment.stretch,

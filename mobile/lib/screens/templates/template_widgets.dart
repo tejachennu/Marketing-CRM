@@ -68,7 +68,7 @@ class TemplateBubble extends StatelessWidget {
                     if (parts.header != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(parts.header!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        child: Text(parts.header!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                       ),
                     Text(parts.fill(values), style: const TextStyle(fontSize: 14.5, height: 1.35)),
                     if (parts.footer != null)
@@ -132,7 +132,7 @@ class _TemplatePickerState extends State<_TemplatePicker> {
           child: ListView(
             shrinkWrap: true,
             children: [
-              Text(parts == null ? 'Send a template' : _chosen!['name'], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+              Text(parts == null ? 'Send a template' : _chosen!['name'], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               Text(parts == null ? 'Only templates Meta approved can be sent.' : 'Fill the blanks. This is how it will look.', style: const TextStyle(color: Brand.muted)),
               const SizedBox(height: 14),

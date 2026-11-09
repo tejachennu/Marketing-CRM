@@ -42,7 +42,7 @@ class BillScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Paid ${formatRupees(i['total'])} by', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                Text('Paid ${formatRupees(i['total'])} by', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 14),
                 for (final m in ['upi', 'cash', 'card'])
                   Padding(
@@ -77,7 +77,7 @@ class BillScreen extends StatelessWidget {
                           Expanded(
                             child: Text(
                               desk.hasGst ? 'TAX INVOICE' : 'BILL',
-                              style: const TextStyle(fontSize: 11.5, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: Brand.blue),
+                              style: const TextStyle(fontSize: 11.5, letterSpacing: 1.4, fontWeight: FontWeight.w700, color: Brand.blue),
                             ),
                           ),
                           if (i['_changing'] == true)
@@ -94,7 +94,7 @@ class BillScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(formatRupees(i['total']), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -0.8)),
+                      Text(formatRupees(i['total']), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: -0.8)),
                       const SizedBox(height: 4),
                       Text('${i['customer_name']} · ${formatWhen(i['issued_at'])}', style: const TextStyle(color: Brand.muted)),
                       if (i['customer_phone'] != null) Text('${i['customer_phone']}', style: const TextStyle(color: Brand.muted)),
@@ -111,7 +111,7 @@ class BillScreen extends StatelessWidget {
                           subtitle: '${x['staff_name'] ?? ''}'.isEmpty ? null : Text('by ${x['staff_name']}'),
                           trailing: Text(
                             formatRupees(x['price']),
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Brand.text),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Brand.text),
                           ),
                         ),
                     ],

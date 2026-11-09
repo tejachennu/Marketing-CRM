@@ -162,7 +162,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     const TextSpan(text: 'We emailed a 6-digit code to '),
                     TextSpan(
                       text: _email.text.trim(),
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.text),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Brand.text),
                     ),
                     const TextSpan(text: '. It works for 10 minutes. Check spam if you do not see it.'),
                   ],
@@ -177,7 +177,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 textAlign: TextAlign.center,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 onChanged: (_) => setState(() {}),
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 12),
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: 12),
                 decoration: const InputDecoration(counterText: '', hintText: '······'),
               ),
               const SizedBox(height: 8),

@@ -19,6 +19,7 @@ import 'screens/contacts/contacts_screen.dart';
 import 'screens/front_desk/appointment_screen.dart';
 import 'screens/front_desk/bill_screen.dart';
 import 'screens/front_desk/checkout_screen.dart';
+import 'screens/front_desk/reviews_team.dart';
 import 'screens/front_desk/setup_screen.dart';
 import 'screens/front_desk/setup_templates.dart';
 import 'screens/front_desk/front_desk_screen.dart';
@@ -34,15 +35,21 @@ import 'screens/front_desk/booking_try_screen.dart';
 import 'screens/more/signup_screen.dart';
 import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
+import 'ui/splash.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final preview = AppConfig.demo ? Uri.base.queryParameters : const <String, String>{};
+  // The opening animation while the app gets ready (not on demo screenshots of other screens)
+  final splash = preview['screen'] == null || preview['screen'] == 'splash';
+  if (splash) runApp(const SplashApp());
+  if (preview['screen'] == 'splash') return;
+  final shown = Future<void>.delayed(Duration(milliseconds: splash ? 1300 : 0));
   final store = LocalStore();
   await store.open();
 
   final Backend backend;
-  final preview = AppConfig.demo ? Uri.base.queryParameters : const <String, String>{};
   if (AppConfig.demo) {
     backend = DemoBackend();
   } else {
@@ -62,6 +69,7 @@ Future<void> main() async {
     if (preview['offline'] == '1') await _demoOffline(app, backend as DemoBackend);
   }
   await app.start();
+  await shown;
   runApp(WamaApp(app: app, screen: preview['screen']));
   // Demo: a customer writes and a booking request comes in (notification screenshots)
   if (AppConfig.demo && preview['incoming'] == '1') {
@@ -163,6 +171,7 @@ class WamaApp extends StatelessWidget {
     final desk = FrontDesk(app);
     return switch (name) {
       'login' => const LoginScreen(),
+      'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),
       'chat_ai' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first), showSuggestions: true),
@@ -178,9 +187,10 @@ class WamaApp extends StatelessWidget {
         autoApprove: false,
       ),
       'desk' => const HomeShell(),
-      'bills' => const HomeShell(deskTab: 1),
-      'reviews' => const HomeShell(deskTab: 2),
-      'team' => const HomeShell(deskTab: 3),
+      'requests' => const HomeShell(deskTab: 1),
+      'bills' => const HomeShell(tab: 1),
+      'reviews' => const ReviewsScreen(),
+      'team' => const TeamScreen(),
       'setup' => const SetupScreen(),
       'setup_services' => const ServicesSetup(),
       'setup_team' => const StaffSetup(),
@@ -192,12 +202,12 @@ class WamaApp extends StatelessWidget {
       'new_booking' => const NewBookingScreen(),
       'appointment' => AppointmentScreen(appointmentId: '${desk.appointments.firstWhere((a) => a['status'] == 'in_service')['id']}'),
       'bill' => BillScreen(invoiceId: '${desk.invoices.firstWhere((i) => i['status'] == 'unpaid')['id']}'),
-      'chats' => const HomeShell(tab: 1),
+      'chats' => const HomeShell(tab: 2),
       'chat' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first)),
       'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),
-      'contacts' => const HomeShell(tab: 2),
+      'contacts' => const ContactsScreen(),
       'new_contact' => const NewContactScreen(),
-      'campaigns' => const HomeShell(tab: 3),
+      'campaigns' => const CampaignsScreen(),
       'new_campaign' => const NewCampaignScreen(),
       'campaign' => const CampaignScreen(campaignId: 'c1'),
       'campaign_scheduled' => const CampaignScreen(campaignId: 'c2'),
@@ -205,7 +215,7 @@ class WamaApp extends StatelessWidget {
       'choose_people' => const ChoosePeopleScreen(picked: null, filter: AudienceFilter()),
       'templates' => const TemplatesScreen(),
       'template' => TemplateScreen(template: Map<String, dynamic>.from((app.cached('templates')!['templates'] as List)[3])),
-      'more' => const HomeShell(tab: 4),
+      'more' => const HomeShell(tab: 3),
       'sync' => const SyncScreen(),
       _ => const HomeShell(),
     };
@@ -221,10 +231,13 @@ class _Root extends StatelessWidget {
   }
 }
 
-/// The five tabs at the bottom: Front Desk, Chats, Contacts, Campaigns, More.
+/// The tabs at the bottom, as WhatsApp's four: Front Desk, Bills, Chats, More (Contacts, Campaigns,
+/// Reviews and Team are in More). Without Front Desk: Chats and More.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, this.tab = 0, this.deskTab = 0});
   final int tab;
+
+  /// Front Desk's own tab: 0 Bookings, 1 Requests.
   final int deskTab;
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -237,32 +250,40 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final unread = ((app.cached('conversations') ?? const {})['conversations'] as List? ?? const []).where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
-    final pages = [FrontDeskScreen(initialTab: widget.deskTab), const ChatsScreen(), const ContactsScreen(), const CampaignsScreen(), const MoreScreen()];
+    final desk = app.frontDeskOn;
+    final requests = desk ? FrontDesk(app).requests.length : 0;
+    final pages = [
+      if (desk) ...[FrontDeskScreen(initialTab: widget.deskTab), const BillsScreen()],
+      const ChatsScreen(),
+      const MoreScreen(),
+    ];
+    final tab = _tab.clamp(0, pages.length - 1);
     return Scaffold(
-      body: IndexedStack(index: _tab, children: pages),
+      body: IndexedStack(index: tab, children: pages),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Brand.line)),
         ),
         child: NavigationBar(
-          selectedIndex: _tab,
+          selectedIndex: tab,
           onDestinationSelected: (i) => setState(() => _tab = i),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
-            const NavigationDestination(
-              icon: FrontDeskIcon(size: 24, color: Brand.muted),
-              selectedIcon: FrontDeskIcon(size: 24, color: Brand.navy, filled: true),
-              label: 'Front Desk',
-            ),
+            if (desk) ...[
+              NavigationDestination(
+                icon: Badge(isLabelVisible: requests > 0, label: Text('$requests'), backgroundColor: Brand.green, child: const FrontDeskIcon(size: 24)),
+                selectedIcon: Badge(isLabelVisible: requests > 0, label: Text('$requests'), backgroundColor: Brand.green, child: const FrontDeskIcon(size: 24, filled: true)),
+                label: 'Front Desk',
+              ),
+              const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Bills'),
+            ],
             NavigationDestination(
               icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline)),
-              selectedIcon: const Icon(Icons.chat_bubble),
+              selectedIcon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble)),
               label: 'Chats',
             ),
-            const NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Contacts'),
-            const NavigationDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: 'Campaigns'),
             NavigationDestination(
-              icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.menu)),
+              icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.more_horiz)),
               label: 'More',
             ),
           ],
@@ -289,7 +310,7 @@ class _NeedsInternetApp extends StatelessWidget {
             children: [
               const Icon(Icons.wifi_off, size: 40, color: Brand.navy),
               const SizedBox(height: 16),
-              const Text('Connect to the internet once', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const Text('Connect to the internet once', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               const Text('The first time, WAMA CRM needs the internet to set itself up and sign you in. After that it works offline too.', style: TextStyle(color: Brand.textSoft, height: 1.4)),
               const SizedBox(height: 20),

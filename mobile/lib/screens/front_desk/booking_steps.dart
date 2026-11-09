@@ -210,7 +210,7 @@ class _StepsEditorState extends State<StepsEditor> {
                 children: [
                   Icon(Icons.auto_awesome, size: 18, color: Brand.blue),
                   SizedBox(width: 6),
-                  Text('Write with AI', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  Text('Write with AI', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                 ],
               ),
               const SizedBox(height: 4),
@@ -431,7 +431,7 @@ class _StepSheetState extends State<_StepSheet> {
                 Icon(stepIcons[_type], color: Brand.navy),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(stepNames[_type] ?? _type, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  child: Text(stepNames[_type] ?? _type, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 ),
               ],
             ),

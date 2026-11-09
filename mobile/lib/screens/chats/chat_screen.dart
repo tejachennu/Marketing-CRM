@@ -204,7 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Rephrase with AI', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                child: Text('Rephrase with AI', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               ),
             ),
             for (final (id, label, hint, icon) in [
@@ -310,7 +310,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(contactName(c), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                        Text(contactName(c), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                         Text('${c['phone_number'] ?? ''}', style: const TextStyle(color: Brand.muted)),
                       ],
                     ),
@@ -583,7 +583,7 @@ class _SuggestionsPanel extends StatelessWidget {
                 const Icon(Icons.auto_awesome, size: 18, color: Brand.blue),
                 const SizedBox(width: 8),
                 const Expanded(
-                  child: Text('AI suggested replies', style: TextStyle(fontWeight: FontWeight.w800)),
+                  child: Text('AI suggested replies', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
                 IconButton(onPressed: onClose, icon: const Icon(Icons.close, size: 20)),
               ],
@@ -724,7 +724,7 @@ class _Bubble extends StatelessWidget {
                   padding: EdgeInsets.only(bottom: 2),
                   child: Text(
                     'AI reply',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.blue),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.blue),
                   ),
                 ),
               ),

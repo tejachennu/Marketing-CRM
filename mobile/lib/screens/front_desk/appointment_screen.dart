@@ -71,7 +71,7 @@ class AppointmentScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${a['customer_name']}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                            Text('${a['customer_name']}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 2),
                             Text('${a['customer_phone'] ?? 'No mobile number'}', style: const TextStyle(color: Brand.muted)),
                             const SizedBox(height: 8),
@@ -108,15 +108,15 @@ class AppointmentScreen extends StatelessWidget {
                           subtitle: Text('${s['duration_minutes']} min'),
                           trailing: Text(
                             formatRupees(s['price']),
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Brand.text),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Brand.text),
                           ),
                         ),
                       const Divider(),
                       ListTile(
-                        title: const Text('Total', style: TextStyle(fontWeight: FontWeight.w800)),
+                        title: const Text('Total', style: TextStyle(fontWeight: FontWeight.w700)),
                         trailing: Text(
                           formatRupees(total),
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Brand.text),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Brand.text),
                         ),
                       ),
                     ],

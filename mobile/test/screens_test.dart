@@ -4,9 +4,9 @@ import 'screen_check.dart';
 void main() {
   screenChecks(
     screens: [
-      'login', 'signup', 'signup_code', 'desk', 'bills', 'reviews', 'team', 'setup', 'setup_services', 'setup_team', 'setup_business', //
+      'login', 'signup', 'signup_code', 'desk', 'requests', 'bills', 'reviews', 'team', 'contacts', 'splash', 'setup', 'setup_services', 'setup_team', 'setup_business', //
       'setup_whatsapp', 'setup_templates', 'checkout', 'new_bill', 'new_booking', 'appointment', 'bill', 'booking_flow', 'chats', 'chat', //
-      'chat_ai', 'chat_closed', 'booking_try', 'contacts', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
+      'chat_ai', 'chat_closed', 'booking_try', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
     ],
     flows: [
       ('setup_services', ['Haircut (Women)']),
@@ -19,10 +19,11 @@ void main() {
       ('setup_templates', ['Booking confirmed', 'Use suggested']),
       ('new_bill', ['Haircut (Men)', 'Gold facial']),
       ('new_booking', ['Haircut (Men)']),
-      ('checkout', ['Manicure']),
+      ('checkout', ['Lakshmi']),
       ('bill', ['Cancel this bill']),
       ('appointment', ['Done · make the bill']),
       ('reviews', ['To call back · 1']),
+      ('desk', ['Requests']),
       ('booking_flow', ['2. Pick services']),
       ('booking_flow', ['6. Location']),
       ('booking_flow', ['7. Link button']),

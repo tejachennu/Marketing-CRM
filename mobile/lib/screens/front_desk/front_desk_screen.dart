@@ -13,51 +13,53 @@ import 'logic.dart';
 import 'new_bill_screen.dart';
 import 'new_booking_screen.dart';
 import 'range_bar.dart';
-import 'reviews_team.dart';
 import 'setup_screen.dart';
 
-/// Front Desk: today's visits and the bills, with New bill and Book at hand. Works offline.
+/// Front Desk: two tabs as in WhatsApp — Bookings (the day's visits) and Requests (WhatsApp bookings
+/// waiting for a yes). Today first; the calendar opens any other day. Works offline.
 class FrontDeskScreen extends StatefulWidget {
   const FrontDeskScreen({super.key, this.initialTab = 0});
+
+  /// 0 Bookings, 1 Requests.
   final int initialTab;
   @override
   State<FrontDeskScreen> createState() => _FrontDeskScreenState();
 }
 
-class _FrontDeskScreenState extends State<FrontDeskScreen> {
-  late int _tab = widget.initialTab;
+class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProviderStateMixin {
+  late final _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1))..addListener(() => setState(() {}));
   String _date = istToday();
-  DateRangeChoice _bills = const DateRangeChoice('week');
-
-  String get _billsKey => FrontDesk.billsKey(_bills.preset, from: _bills.from, to: _bills.to);
 
   void _showDay(String date) {
     setState(() => _date = date);
     AppScope.read(context).load(AppState.dayKey(date), '/api/salon/appointments', query: {'date': date}, force: true);
   }
 
-  void _showBills(DateRangeChoice range) {
-    setState(() => _bills = range);
-    AppScope.read(context).load(
-      FrontDesk.billsKey(range.preset, from: range.from, to: range.to),
-      '/api/salon/invoices',
-      query: range.query,
-      force: true,
-    );
+  Future<void> _pickDay() async {
+    final d = DateTime.parse(_date);
+    final today = DateTime.parse(istToday());
+    final picked = await showDatePicker(context: context, initialDate: d, firstDate: DateTime(today.year - 2), lastDate: DateTime(today.year + 1, 12, 31), helpText: 'Show bookings for');
+    if (picked != null) _showDay(DateFormat('yyyy-MM-dd').format(picked));
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final desk = FrontDesk(app, date: _date, invoicesKey: _billsKey);
+    final desk = FrontDesk(app, date: _date);
     final manage = app.can('manage');
-    if (!manage && _tab > 1) _tab = 0;
     if (!app.frontDeskOn) {
       return Scaffold(
         appBar: AppBar(title: const Text('Front Desk')),
         body: const EmptyState(icon: Icons.storefront_outlined, title: 'Front Desk is off', text: 'An admin can switch it on in Connectors on the web. Then bookings and bills appear here.'),
       );
     }
+    final requests = desk.requests.length;
     return Scaffold(
       appBar: AppBar(
         // Like WhatsApp's own name at the top of its home screen, in its green
@@ -69,13 +71,14 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
               style: TextStyle(color: Color(0xFF1DAA61), fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4),
             ),
             Text(
-              '${desk.businessName} · ${formatDay(istNow())}',
+              desk.businessName,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted),
             ),
           ],
         ),
         actions: [
+          IconButton(tooltip: 'Pick a day', onPressed: _pickDay, icon: const Icon(Icons.calendar_month_outlined)),
           if (manage)
             IconButton(
               tooltip: 'Setup',
@@ -88,42 +91,63 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
             icon: app.syncing || app.refreshing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: FilterChips(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-            children: [
-              for (final (i, label) in [
-                (0, 'Visits'),
-                (1, 'Bills'),
-                if (manage) ...[(2, 'Reviews'), (3, 'Team')],
-              ])
-                ChoiceChip(label: Text(label), selected: _tab == i, onSelected: (_) => setState(() => _tab = i)),
-            ],
-          ),
+        // Two clear tabs, as WhatsApp's tabs: a green line under the open one
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: Brand.blue,
+          indicatorWeight: 3,
+          indicatorSize: TabBarIndicatorSize.tab,
+          labelColor: Brand.blue,
+          unselectedLabelColor: Brand.muted,
+          labelStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
+          unselectedLabelStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+          dividerColor: Brand.line,
+          tabs: [
+            const Tab(text: 'Bookings'),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Requests'),
+                  if (requests > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                      decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(99)),
+                      child: Text(
+                        '$requests',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
       body: Column(
         children: [
           SyncBanner(cacheKey: AppState.dayKey(istToday())),
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: app.syncNow,
-              child: _tab == 2
-                  ? const ReviewsTab()
-                  : _tab == 3
-                  ? const TeamTab()
-                  : app.isLoading(_tab == 0 ? AppState.dayKey(_date) : _billsKey) || app.isLoading('setup')
-                  ? const SkeletonCards()
-                  : _tab == 0
-                  ? _Today(desk: desk, onDay: _showDay)
-                  : _Bills(desk: desk, range: _bills, onRange: _showBills),
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                RefreshIndicator(
+                  onRefresh: app.syncNow,
+                  child: app.isLoading(AppState.dayKey(_date)) || app.isLoading('setup') ? const SkeletonCards() : _Today(desk: desk, onDay: _showDay, onPick: _pickDay),
+                ),
+                RefreshIndicator(
+                  onRefresh: app.syncNow,
+                  child: _Requests(desk: desk),
+                ),
+              ],
             ),
           ),
         ],
       ),
       // The two counter actions, as WhatsApp's buttons in the corner
-      floatingActionButton: app.can('write') && _tab < 2
+      floatingActionButton: app.can('write') && _tabs.index == 0
           ? Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -151,15 +175,88 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
   }
 }
 
+/// WhatsApp booking requests: Approve or Decline each, Accept all, and the switch to accept them on their own.
+class _Requests extends StatelessWidget {
+  const _Requests({required this.desk});
+  final FrontDesk desk;
+  @override
+  Widget build(BuildContext context) {
+    final requests = desk.requests;
+    return ColoredBox(
+      color: Colors.white,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+        children: [
+          if (requests.isEmpty) ...[
+            const EmptyState(icon: Icons.mark_chat_read_outlined, title: 'No requests waiting', text: 'When customers book on WhatsApp, their requests wait here for you to approve.'),
+            if (AppScope.of(context).can('manage')) _AutoAccept(desk: desk),
+          ] else
+            _WhatsAppBookings(desk: desk, requests: requests),
+        ],
+      ),
+    );
+  }
+}
+
+/// The bills, on their own tab at the bottom: a date range, what came in, what is still to collect.
+class BillsScreen extends StatefulWidget {
+  const BillsScreen({super.key});
+  @override
+  State<BillsScreen> createState() => _BillsScreenState();
+}
+
+class _BillsScreenState extends State<BillsScreen> {
+  DateRangeChoice _range = const DateRangeChoice('week');
+  String get _key => FrontDesk.billsKey(_range.preset, from: _range.from, to: _range.to);
+
+  void _show(DateRangeChoice range) {
+    setState(() => _range = range);
+    AppScope.read(context).load(
+      FrontDesk.billsKey(range.preset, from: range.from, to: range.to),
+      '/api/salon/invoices',
+      query: range.query,
+      force: true,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final desk = FrontDesk(app, invoicesKey: _key);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Bills')),
+      body: Column(
+        children: [
+          SyncBanner(cacheKey: _key),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: app.syncNow,
+              child: app.isLoading(_key) ? const SkeletonCards() : _Bills(desk: desk, range: _range, onRange: _show),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: app.can('write')
+          ? FloatingActionButton.extended(
+              heroTag: 'fab-bills-new',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBillScreen())),
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('New bill'),
+            )
+          : null,
+    );
+  }
+}
+
 class _Today extends StatelessWidget {
-  const _Today({required this.desk, required this.onDay});
+  const _Today({required this.desk, required this.onDay, required this.onPick});
   final FrontDesk desk;
   final ValueChanged<String> onDay;
+  final VoidCallback onPick;
 
   @override
   Widget build(BuildContext context) {
     final appointments = desk.appointments;
-    final requests = desk.requests;
     final gone = ['cancelled', 'no_show', 'declined'];
     final visits = appointments.where((a) => !gone.contains(a['status'])).length;
     final waiting = appointments.where((a) => a['status'] == 'booked').length;
@@ -184,7 +281,7 @@ class _Today extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 150),
         children: [
-          _DayStrip(date: desk.date, onChanged: onDay),
+          _DayHeader(date: desk.date, onToday: () => onDay(istToday()), onPick: onPick),
           Container(
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -197,11 +294,6 @@ class _Today extends StatelessWidget {
               ],
             ),
           ),
-          if (requests.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _WhatsAppBookings(desk: desk, requests: requests),
-            ),
           if (appointments.isEmpty)
             EmptyState(icon: Icons.event_available_outlined, title: desk.isToday ? 'No visits today yet' : 'No visits this day', text: 'Tap Book to add one, or New bill for a walk-in.')
           else ...[
@@ -215,103 +307,60 @@ class _Today extends StatelessWidget {
   }
 }
 
-/// Days as round bubbles in a row, like WhatsApp's status bar: swipe to another day, or pick one.
-class _DayStrip extends StatefulWidget {
-  const _DayStrip({required this.date, required this.onChanged});
+/// Which day is shown: Today by default; the calendar picks another, and "Today" comes back.
+class _DayHeader extends StatelessWidget {
+  const _DayHeader({required this.date, required this.onToday, required this.onPick});
   final String date;
-  final ValueChanged<String> onChanged;
-  @override
-  State<_DayStrip> createState() => _DayStripState();
-}
-
-class _DayStripState extends State<_DayStrip> {
-  static const _before = 3, _after = 13;
-  final _scroll = ScrollController(initialScrollOffset: (_DayStripState._before - 0.6) * 68);
-
+  final VoidCallback onToday, onPick;
   @override
   Widget build(BuildContext context) {
-    final picked = DateTime.parse(widget.date);
-    final today = DateTime.parse(istToday());
-    final f = DateFormat('yyyy-MM-dd');
-    // Around the picked day, but always with today in it
-    final start = (picked.isBefore(today) ? picked : today).subtract(const Duration(days: _before));
-    final days = [for (var i = 0; i <= _before + _after + picked.difference(today).inDays.abs(); i++) start.add(Duration(days: i))];
-    return SizedBox(
-      height: 96,
-      child: ListView(
-        controller: _scroll,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+    final d = DateTime.parse(date);
+    final diff = d.difference(DateTime.parse(istToday())).inDays;
+    final name = diff == 0 ? 'Today' : (diff == 1 ? 'Tomorrow' : (diff == -1 ? 'Yesterday' : DateFormat('EEEE').format(d)));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+      child: Row(
         children: [
-          _Bubble(
-            top: Icons.calendar_month_outlined,
-            label: 'Pick day',
-            selected: false,
-            onTap: () async {
-              final day = await showDatePicker(context: context, initialDate: picked, firstDate: DateTime(today.year - 2), lastDate: DateTime(today.year + 1, 12, 31));
-              if (day != null) widget.onChanged(f.format(day));
-            },
-          ),
-          for (final d in days)
-            _Bubble(
-              number: '${d.day}',
-              label: d == today ? 'Today' : (d.difference(today).inDays == 1 ? 'Tomorrow' : DateFormat('EEE').format(d)),
-              selected: f.format(d) == widget.date,
-              today: d == today,
-              onTap: () => widget.onChanged(f.format(d)),
+          Expanded(
+            child: InkWell(
+              onTap: onPick,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: name,
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Brand.navy),
+                            ),
+                            TextSpan(
+                              text: '  ${DateFormat('d MMM').format(d)}',
+                              style: const TextStyle(fontSize: 15, color: Brand.muted),
+                            ),
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_drop_down, color: Brand.muted),
+                  ],
+                ),
+              ),
             ),
+          ),
+          if (diff != 0)
+            TextButton.icon(onPressed: onToday, icon: const Icon(Icons.today, size: 18), label: const Text('Today'))
+          else
+            TextButton.icon(onPressed: onPick, icon: const Icon(Icons.calendar_month_outlined, size: 18), label: const Text('Other day')),
         ],
       ),
     );
   }
-}
-
-class _Bubble extends StatelessWidget {
-  const _Bubble({this.number, this.top, required this.label, required this.selected, this.today = false, required this.onTap});
-  final String? number;
-  final IconData? top;
-  final String label;
-  final bool selected, today;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
-    child: SizedBox(
-      width: 68,
-      child: Column(
-        children: [
-          // The ring shows the picked day, as WhatsApp's ring shows a new status
-          Container(
-            width: 54,
-            height: 54,
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: selected ? Brand.green : (today ? Brand.border : Colors.transparent), width: 2.5),
-            ),
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: selected ? Brand.blue : Brand.page),
-              child: top != null
-                  ? Icon(top, color: Brand.textSoft, size: 22)
-                  : Text(
-                      number!,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: selected ? Colors.white : Brand.text),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? Brand.navy : Brand.muted),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 class _Mini extends StatelessWidget {
@@ -352,7 +401,7 @@ class _Tile extends StatelessWidget {
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Brand.muted),
         ),
         const SizedBox(height: 6),
-        Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
         const SizedBox(height: 2),
         Text(
           note,
@@ -642,7 +691,7 @@ class _BillRow extends StatelessWidget {
           ],
         ),
       ),
-      trailing: Text('${local ? '≈ ' : ''}${formatRupees(i['total'])}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+      trailing: Text('${local ? '≈ ' : ''}${formatRupees(i['total'])}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -657,7 +706,6 @@ class _WhatsAppBookings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final auto = desk.settings['auto_approve_bookings'] == true;
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Column(
@@ -674,7 +722,7 @@ class _WhatsAppBookings extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('${requests.length} booking request${requests.length == 1 ? '' : 's'} from WhatsApp', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                  child: Text('${requests.length} booking request${requests.length == 1 ? '' : 's'} from WhatsApp', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
                 ),
                 if (requests.length > 1)
                   TextButton.icon(
@@ -703,38 +751,47 @@ class _WhatsAppBookings extends StatelessWidget {
             ),
           ),
           for (final r in requests) _RequestCard(request: r),
-          if (app.can('manage'))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Accept new WhatsApp bookings on their own',
-                      style: TextStyle(fontSize: 13, color: Brand.textSoft, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Transform.scale(
-                    scale: 0.85,
-                    child: Switch(
-                      value: auto,
-                      activeThumbColor: Colors.white,
-                      activeTrackColor: Brand.blue,
-                      onChanged: (on) {
-                        app.enqueue(
-                          kind: 'settings',
-                          label: on ? 'Accept bookings on their own' : 'Accept bookings by hand',
-                          method: 'PATCH',
-                          path: '/api/salon/settings',
-                          body: {'organizationId': app.orgId, 'auto_approve_bookings': on},
-                        );
-                        toast(context, on ? 'New WhatsApp bookings are accepted on their own.' : 'New WhatsApp bookings wait for you to accept.');
-                      },
-                    ),
-                  ),
-                ],
-              ),
+          if (app.can('manage')) _AutoAccept(desk: desk),
+        ],
+      ),
+    );
+  }
+}
+
+/// The switch to accept WhatsApp bookings on their own (managers).
+class _AutoAccept extends StatelessWidget {
+  const _AutoAccept({required this.desk});
+  final FrontDesk desk;
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final auto = desk.settings['auto_approve_bookings'] == true;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 0, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Accept WhatsApp bookings on their own', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(auto ? 'On: a free time a customer picks is booked at once.' : 'Off: each booking waits here for you.', style: const TextStyle(fontSize: 13, color: Brand.muted)),
+              ],
             ),
+          ),
+          Switch(
+            value: auto,
+            onChanged: (on) {
+              app.enqueue(
+                kind: 'settings',
+                label: on ? 'Accept bookings on their own' : 'Accept bookings by hand',
+                method: 'PATCH',
+                path: '/api/salon/settings',
+                body: {'organizationId': app.orgId, 'auto_approve_bookings': on},
+              );
+              toast(context, on ? 'New WhatsApp bookings are accepted on their own.' : 'New WhatsApp bookings wait for you to accept.');
+            },
+          ),
         ],
       ),
     );

@@ -247,7 +247,7 @@ class _Stat extends StatelessWidget {
           fit: BoxFit.scaleDown,
           child: Text(
             value,
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: attention ? Brand.red : Brand.text),
           ),
         ),
         const SizedBox(height: 2),

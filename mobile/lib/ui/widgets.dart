@@ -169,7 +169,7 @@ class EmptyState extends StatelessWidget {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 6),
         Text(
@@ -287,7 +287,7 @@ class _PhoneFieldState extends State<PhoneField> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('Country code', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              child: Text('Country code', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             ),
             for (final c in countries)
               ListTile(

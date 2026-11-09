@@ -188,7 +188,7 @@ class _Message extends StatelessWidget {
                     SizedBox(width: 4),
                     Text(
                       'AI chatbot',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Brand.blue),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Brand.blue),
                     ),
                   ],
                 ),

@@ -324,7 +324,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                                   decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(99)),
                                   child: Text(
                                     '$unread',
-                                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                                   ),
                                 )
                               : const Pill('Answer', tone: PillTone.blue),
@@ -455,7 +455,7 @@ class _Num extends StatelessWidget {
           fit: BoxFit.scaleDown,
           child: Text(
             value,
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: attention ? Brand.red : Brand.text),
           ),
         ),
         const SizedBox(height: 2),

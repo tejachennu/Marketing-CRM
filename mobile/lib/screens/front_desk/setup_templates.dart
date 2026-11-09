@@ -104,7 +104,7 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                              Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
                               Text(e.value.$2, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
                               const SizedBox(height: 6),
                               choices[e.key] == null ? const Pill('Not set up', tone: PillTone.red) : Pill('${choices[e.key]['name']}', tone: PillTone.blue, icon: Icons.check),
@@ -154,7 +154,7 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(purposes[purpose]!.$1, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                  Text(purposes[purpose]!.$1, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
                   SegmentedButton<bool>(
                     showSelectedIcon: false,
@@ -185,15 +185,22 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                       ),
                     if (picked != null && blanks > 0) ...[
                       const SizedBox(height: 8),
-                      const Text('What fills each blank', style: TextStyle(fontWeight: FontWeight.w800)),
+                      const Text('What fills each blank', style: TextStyle(fontWeight: FontWeight.w700)),
                       for (var i = 0; i < blanks; i++)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: DropdownButtonFormField<String>(
                             key: ValueKey('${picked?['name']}:${picked?['language']}:$i'),
                             initialValue: fields[i],
+                            isExpanded: true,
                             decoration: InputDecoration(labelText: 'Blank {{${i + 1}}}'),
-                            items: [for (final f in allowed) DropdownMenuItem(value: f, child: Text(fieldLabels[f]!))],
+                            items: [
+                              for (final f in allowed)
+                                DropdownMenuItem(
+                                  value: f,
+                                  child: Text(fieldLabels[f]!, overflow: TextOverflow.ellipsis),
+                                ),
+                            ],
                             onChanged: (v) => set(() => fields[i] = v ?? fields[i]),
                           ),
                         ),

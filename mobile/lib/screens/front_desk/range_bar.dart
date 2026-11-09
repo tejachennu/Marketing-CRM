@@ -107,7 +107,7 @@ class DayBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(
                 children: [
-                  Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   Text(diff == 0 || diff.abs() == 1 ? DateFormat('EEE, d MMM').format(d) : 'Tap to pick a day', style: const TextStyle(fontSize: 12, color: Brand.muted)),
                 ],
               ),

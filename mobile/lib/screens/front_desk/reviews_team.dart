@@ -28,7 +28,7 @@ class _Stat extends StatelessWidget {
           child: Text(
             value,
             maxLines: 1,
-            style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: attention ? Brand.red : Brand.text),
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: attention ? Brand.red : Brand.text),
           ),
         ),
         const SizedBox(height: 2),
@@ -155,7 +155,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text('${r['customer_name'] ?? 'Customer'}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        child: Text('${r['customer_name'] ?? 'Customer'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                       ),
                       _stars(r['rating'] as num),
                     ],
@@ -283,7 +283,7 @@ class _TeamTabState extends State<TeamTab> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${m['name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                            Text('${m['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
                             Text(
                               '${m['services']} services · ${m['visits']} visits${m['averageRating'] != null ? ' · ${m['averageRating']}★ (${m['ratings']})' : ''}',
                               style: const TextStyle(fontSize: 12.5, color: Brand.muted),
@@ -291,12 +291,20 @@ class _TeamTabState extends State<TeamTab> {
                           ],
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(formatRupees(m['revenue']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                          Text('Commission ${formatRupees(((m['commission'] as num?) ?? 0).round())}', style: const TextStyle(fontSize: 12, color: Brand.muted)),
-                        ],
+                      const SizedBox(width: 8),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(formatRupees(m['revenue']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                              Text('Commission ${formatRupees(((m['commission'] as num?) ?? 0).round())}', style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -323,4 +331,24 @@ class _TeamTabState extends State<TeamTab> {
       ],
     );
   }
+}
+
+/// Reviews as its own page (opened from More).
+class ReviewsScreen extends StatelessWidget {
+  const ReviewsScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Reviews')),
+    body: const ReviewsTab(),
+  );
+}
+
+/// Team performance as its own page (opened from More).
+class TeamScreen extends StatelessWidget {
+  const TeamScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Team')),
+    body: const TeamTab(),
+  );
 }

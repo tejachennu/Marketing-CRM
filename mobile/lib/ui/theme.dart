@@ -36,7 +36,16 @@ ThemeData buildTheme() {
     borderSide: BorderSide(color: color, width: width),
   );
   return base.copyWith(
-    textTheme: base.textTheme.apply(bodyColor: Brand.text, displayColor: Brand.text),
+    // Roboto, as WhatsApp on Android: regular for reading, medium/bold only for names and titles
+    textTheme: base.textTheme
+        .copyWith(
+          bodyLarge: const TextStyle(fontSize: 16, height: 1.35),
+          bodyMedium: const TextStyle(fontSize: 15, height: 1.35),
+          bodySmall: const TextStyle(fontSize: 13, height: 1.3),
+          titleMedium: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          labelLarge: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        )
+        .apply(bodyColor: Brand.text, displayColor: Brand.text),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.white,
       foregroundColor: Brand.navy,
