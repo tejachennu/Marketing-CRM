@@ -19,8 +19,10 @@ class NewBillScreen extends StatefulWidget {
 class _NewBillScreenState extends State<NewBillScreen> {
   Map<String, dynamic> _customer = const {};
   List<String> _services = [];
-  String? _staff;
-  num _discountPercent = 0;
+  Map<String, String?> _who = {};
+  Map<String, num>? _discount;
+
+  num _total(FrontDesk desk) => desk.estimate(_services, discountPercent: _discount?['type'] == 0 ? _discount!['value']! : 0, discountAmount: _discount?['type'] == 1 ? _discount!['value']! : 0);
   String? _payment = 'upi';
   bool _whatsapp = true;
   bool _saving = false;
@@ -33,10 +35,12 @@ class _NewBillScreenState extends State<NewBillScreen> {
     if (_services.isEmpty) return toast(context, 'Choose at least one service.');
     setState(() => _saving = true);
     final name = '${_customer['name'] ?? ''}'.trim();
-    final total = desk.estimate(_services, discountPercent: _discountPercent);
+    final total = _total(desk);
     final items = [
-      for (final id in _services) {...?desk.service(id), 'staff_name': desk.staffName(_staff)},
+      for (final id in _services) {...?desk.service(id), 'staff_name': desk.staffName(_who[id])},
     ];
+    final staffIds = [for (final id in _services) _who[id]];
+    final oneStaff = staffIds.toSet().length == 1 ? staffIds.first : null;
     final localId = AppState.newLocalId();
     await app.counterAction(
       kind: 'bill',
@@ -47,8 +51,9 @@ class _NewBillScreenState extends State<NewBillScreen> {
         'type': 'walk_in_bill',
         'customer': {'contact_id': _customer['contact_id'], 'name': name, 'phone': _customer['phone']},
         'service_ids': _services,
-        'staff_id': _staff,
-        if (_discountPercent > 0) 'discount': {'type': 'percent', 'value': _discountPercent},
+        'staff_id': oneStaff,
+        'staff_ids': staffIds,
+        'discount': ?discountBody(_discount),
         'payment_method': _payment,
         'send_whatsapp': _whatsapp,
       },
@@ -71,7 +76,8 @@ class _NewBillScreenState extends State<NewBillScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final desk = FrontDesk(app);
-    final total = desk.estimate(_services, discountPercent: _discountPercent);
+    final total = _total(desk);
+    final subtotal = desk.estimate(_services);
     return Scaffold(
       appBar: AppBar(title: const Text('New bill')),
       body: Column(
@@ -84,7 +90,15 @@ class _NewBillScreenState extends State<NewBillScreen> {
                 FormSection(
                   title: 'Customer',
                   hint: 'Leave empty for a walk-in. Numbers from any country work.',
-                  child: CustomerPicker(optional: true, phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null, onChanged: (c) => setState(() => _customer = c)),
+                  child: CustomerPicker(
+                    optional: true,
+                    phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null,
+                    onChanged: (c) => setState(() => _customer = c),
+                    onRepeat: (ids, staff) => setState(() {
+                      _services = ids.where((id) => desk.service(id) != null).toList();
+                      _who = {for (var i = 0; i < ids.length; i++) ids[i]: i < staff.length && desk.staff.any((m) => m['id'] == staff[i]) ? staff[i] : null};
+                    }),
+                  ),
                 ),
                 FormSection(
                   title: 'Services',
@@ -92,16 +106,12 @@ class _NewBillScreenState extends State<NewBillScreen> {
                 ),
                 FormSection(
                   title: 'Who did it',
-                  child: StaffPicker(desk: desk, value: _staff, onChanged: (v) => setState(() => _staff = v)),
+                  hint: _services.length > 1 ? 'Picks for each service; it counts for their commission.' : null,
+                  child: WhoDidIt(desk: desk, serviceIds: _services, value: _who, onChanged: (v) => setState(() => _who = v)),
                 ),
                 FormSection(
                   title: 'Discount',
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final p in [0, 5, 10, 15, 20]) ChoiceChip(label: Text(p == 0 ? 'None' : '$p%'), selected: _discountPercent == p, onSelected: (_) => setState(() => _discountPercent = p)),
-                    ],
-                  ),
+                  child: DiscountPicker(value: _discount, max: subtotal, onChanged: (v) => setState(() => _discount = v)),
                 ),
                 FormSection(
                   title: 'Paid by',

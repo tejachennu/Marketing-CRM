@@ -107,6 +107,14 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
                     phoneError: _tried ? phoneError('${_customer['phone'] ?? ''}') : null,
                     nameError: _tried && '${_customer['name'] ?? ''}'.trim().isEmpty && '${_customer['phone'] ?? ''}'.isEmpty ? 'Give a name or a mobile number.' : null,
                     onChanged: (c) => setState(() => _customer = c),
+                    onRepeat: (ids, staff) => setState(() {
+                      _services = [
+                        for (final id in ids)
+                          if (desk.service(id) != null) id,
+                      ];
+                      final who = staff.whereType<String>().toSet();
+                      _staff = who.length == 1 ? who.first : _staff;
+                    }),
                   ),
                 ),
                 FormSection(

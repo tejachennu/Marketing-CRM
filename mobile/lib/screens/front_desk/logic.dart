@@ -4,8 +4,25 @@ import '../../data/format.dart';
 /// Front Desk data as the screens need it: the copy on the phone, with changes still waiting
 /// in the outbox laid over it, so the counter always shows what was done.
 class FrontDesk {
-  FrontDesk(this.app);
+  FrontDesk(this.app, {String? date, this.invoicesKey = 'invoices'}) : date = date ?? istToday();
   final AppState app;
+
+  /// The day shown (India date, like 2026-11-09).
+  final String date;
+
+  /// Which list of bills (a date range) is shown.
+  final String invoicesKey;
+
+  bool get isToday => date == istToday();
+
+  /// What the bills list (for a range) is called on the phone.
+  static String billsKey(String preset, {String? from, String? to}) => preset == 'week'
+      ? 'invoices'
+      : preset == 'custom'
+      ? 'invoices:$from:$to'
+      : 'invoices:$preset';
+
+  Map<String, dynamic> get billsSummary => Map<String, dynamic>.from((app.cached(invoicesKey) ?? const {})['summary'] as Map? ?? const {});
 
   Map<String, dynamic> get _setup => app.cached('setup') ?? const {};
   Map<String, dynamic> get settings {
@@ -44,8 +61,11 @@ class FrontDesk {
   String staffName(String? id) => (staff.cast<Map?>().firstWhere((s) => s!['id'] == id, orElse: () => null)?['name'] ?? '').toString();
 
   /// About what the bill comes to (the server works out the exact GST when it syncs).
-  num estimate(List<String> serviceIds, {num discountPercent = 0, num discountAmount = 0}) {
-    final items = serviceIds.map(service).whereType<Map<String, dynamic>>().toList();
+  num estimate(List<String> serviceIds, {num discountPercent = 0, num discountAmount = 0}) =>
+      estimateLines(serviceIds.map(service).whereType<Map<String, dynamic>>().toList(), discountPercent: discountPercent, discountAmount: discountAmount);
+
+  /// The same, for lines already on a visit (each with its own price and GST rate).
+  num estimateLines(List<Map<String, dynamic>> items, {num discountPercent = 0, num discountAmount = 0}) {
     final subtotal = items.fold<num>(0, (sum, s) => sum + (num.tryParse('${s['price']}') ?? 0));
     final discount = discountPercent > 0 ? subtotal * discountPercent / 100 : discountAmount.clamp(0, subtotal);
     final taxable = subtotal - discount;
@@ -56,7 +76,7 @@ class FrontDesk {
 
   // ── Today ──
 
-  Map<String, dynamic> get _day => app.cached(AppState.dayKey(istToday())) ?? const {};
+  Map<String, dynamic> get _day => app.cached(AppState.dayKey(date)) ?? const {};
 
   /// Pending status changes, laid over the appointment they are about.
   Map<String, String> get _pendingStatus {
@@ -77,7 +97,7 @@ class FrontDesk {
     final list = <Map<String, dynamic>>[
       for (final a in (_day['appointments'] as List? ?? const [])) Map<String, dynamic>.from(a),
       for (final item in app.pending('booking'))
-        if (item.body['_preview'] is Map && '${item.body['_preview']['day']}' == istToday())
+        if (item.body['_preview'] is Map && '${item.body['_preview']['day']}' == date)
           {...Map<String, dynamic>.from(item.body['_preview']), 'id': item.localId, '_outbox': item.id, '_failed': item.error != null && item.state.name == 'failed'},
     ];
     for (final a in list) {
@@ -105,7 +125,7 @@ class FrontDesk {
       for (final item in [...app.pending('bill'), ...app.pending('checkout')])
         if (item.body['_preview'] is Map) {...Map<String, dynamic>.from(item.body['_preview']), 'id': item.localId ?? item.id, '_outbox': item.id, '_failed': item.state.name == 'failed'},
     ];
-    final server = [for (final i in ((app.cached('invoices') ?? const {})['invoices'] as List? ?? const [])) Map<String, dynamic>.from(i)];
+    final server = [for (final i in ((app.cached(invoicesKey) ?? const {})['invoices'] as List? ?? const [])) Map<String, dynamic>.from(i)];
     for (final i in server) {
       final method = pendingPay['${i['id']}'];
       if (method != null) {

@@ -9,6 +9,7 @@ import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
+import 'package:wama_mobile/screens/front_desk/pickers.dart';
 import 'package:wama_mobile/screens/templates/template_widgets.dart';
 import 'package:wama_mobile/ui/validate.dart';
 import 'package:wama_mobile/ui/widgets.dart';
@@ -281,5 +282,72 @@ void main() {
     final (app, _) = await makeApp();
     expect(app.isLoading('contacts'), isFalse);
     expect(app.isLoading('never-loaded'), isFalse);
+  });
+
+  test('Checkout: extra services and a discount go on the bill', () async {
+    final (app, backend) = await makeApp();
+    final visit = FrontDesk(app).appointments.firstWhere((a) => a['status'] == 'in_service');
+    final booked = (visit['services'] as List).fold<num>(0, (s, x) => s + (x['price'] as num));
+    await app.counterAction(
+      kind: 'checkout',
+      label: 'Billed',
+      localId: AppState.newLocalId(),
+      resultIdPath: 'invoice.id',
+      action: {
+        'type': 'complete_and_bill',
+        'appointment_id': visit['id'],
+        'extra_service_ids': ['s-mani'],
+        'staff_ids': [null, 'st-anitha'],
+        'discount': discountBody({'type': 0, 'value': 10}),
+        'payment_method': 'upi',
+      },
+      preview: {'customer_name': visit['customer_name'], 'total': 0, 'status': 'paid', 'issued_at': DateTime.now().toUtc().toIso8601String()},
+    );
+    await app.flush();
+    await app.refreshAll();
+    final bill = FrontDesk(app).invoices.first;
+    expect((bill['items'] as List).length, (visit['services'] as List).length + 1);
+    expect(bill['total'], (booked + 500) * 0.9);
+    expect(FrontDesk(app).appointments.firstWhere((a) => a['id'] == visit['id'])['status'], 'completed');
+  });
+
+  test('Discounts: percent or rupees, never more than the bill', () async {
+    final (app, _) = await makeApp();
+    final desk = FrontDesk(app);
+    expect(discountBody(null), isNull);
+    expect(discountBody({'type': 1, 'value': 50}), {'type': 'amount', 'value': 50});
+    expect(discountBody({'type': 0, 'value': 10}), {'type': 'percent', 'value': 10});
+    final lines = [desk.service('s-menscut')!, desk.service('s-mani')!];
+    final full = desk.estimateLines(lines);
+    expect(desk.estimateLines(lines, discountAmount: 5000) < full, isTrue);
+    expect(desk.estimateLines(lines, discountAmount: 5000) >= 0, isTrue);
+    expect(desk.estimate(['s-menscut', 's-mani']), full);
+  });
+
+  test('Bill lists: each date range keeps its own copy', () {
+    expect(FrontDesk.billsKey('week'), 'invoices');
+    expect(FrontDesk.billsKey('today'), 'invoices:today');
+    expect(FrontDesk.billsKey('custom', from: '2026-11-01', to: '2026-11-05'), 'invoices:2026-11-01:2026-11-05');
+  });
+
+  test('Front Desk extras load: reviews, team, templates', () async {
+    final (app, backend) = await makeApp();
+    final reviews = await backend.get('/api/salon/reviews', {'preset': 'week'});
+    expect(reviews['reviews'], isNotEmpty);
+    final team = await backend.get('/api/salon/performance', {'preset': 'week'});
+    expect(team, contains('staff'));
+    final templates = await backend.get('/api/salon/templates', {});
+    expect(templates['choices'], isA<Map>());
+    await backend.send('PUT', '/api/salon/templates', {
+      'choices': {
+        'bill': {
+          'name': 'bill_v1',
+          'language': 'en',
+          'fields': ['first_name'],
+          'url_field': 'link',
+        },
+      },
+    });
+    expect((await backend.get('/api/salon/templates', {}))['choices']['bill']['name'], 'bill_v1');
   });
 }

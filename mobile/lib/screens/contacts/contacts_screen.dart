@@ -201,7 +201,7 @@ class _NewContactScreenState extends State<NewContactScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: [for (final t in known) FilterChip(label: Text(t), selected: _tags.contains(t), onSelected: (on) => setState(() => on ? _tags.add(t) : _tags.remove(t)))],
+                  children: [for (final t in known) ChoiceChip(label: Text(t), selected: _tags.contains(t), onSelected: (on) => setState(() => on ? _tags.add(t) : _tags.remove(t)))],
                 ),
                 const SizedBox(height: 10),
                 const Text('Tags let you send a campaign to a group, like VIP customers.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),

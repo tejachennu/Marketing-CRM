@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: every web Front Desk feature** (`mobile/lib/screens/front_desk/`): Visits / Bills / Reviews / Team
+  tabs; any day on Visits (`DayBar`), date ranges on Bills, Reviews and Team (`range_bar.dart`,
+  `FrontDesk.billsKey`); Setup (`setup_screen.dart`: services + categories, team with commission and
+  services, business details + logo + GSTIN, WhatsApp assistant / hours / reminders / feedback / review
+  link; `setup_templates.dart`: a template per message, or send the suggested one to Meta); checkout
+  (`checkout_screen.dart`: extras, who did each, discount); walk-in bills with who did each, discount and
+  "Same as last time" (customer lookup with visits); cancel a bill, copy bill link; Reviews (call back) and
+  Team (sales, commission). The app calls `/api/salon/tick` every 2 minutes, like the web counter. Setup
+  edits are online-only (`app.ask`); counter actions stay offline-capable. Demo answers in
+  `data/demo_front_desk.dart`.
+
 - **App: live chat and notifications**: Supabase realtime on `messages`/`conversations` (filter by
   `organization_id`, `HttpBackend.live`); banner in the app, phone notification in the background
   (`mobile/lib/data/notifier.dart`, `ui/notice_host.dart`); booking requests checked every 30 s and

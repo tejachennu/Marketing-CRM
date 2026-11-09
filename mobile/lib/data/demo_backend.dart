@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'backend.dart';
+import 'demo_front_desk.dart';
 import 'format.dart';
 
 /// Sample data that answers like the real server, so every screen can be tried and shown
@@ -53,6 +54,19 @@ class DemoBackend implements Backend {
     _setup = {
       'settings': {
         'business_name': 'Glow Salon',
+        'business_type': 'salon',
+        'address': 'Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034',
+        'email': 'hello@glowsalon.in',
+        'invoice_note': 'Thank you! See you again soon.',
+        'opens_at': '10:00',
+        'closes_at': '21:00',
+        'closed_weekdays': [0],
+        'chat_assistant': true,
+        'auto_approve_bookings': false,
+        'reminders_enabled': true,
+        'feedback_enabled': true,
+        'feedback_delay_minutes': 120,
+        'review_link': 'https://g.page/r/glowsalon/review',
         'gstin': '36ABCDE1234F1Z5',
         'prices_include_tax': true,
         'invoice_prefix': 'GLOW',
@@ -79,8 +93,8 @@ class DemoBackend implements Backend {
       },
       'services': services,
       'staff': [
-        {'id': 'st-anitha', 'name': 'Anitha', 'active': true, 'service_ids': []},
-        {'id': 'st-lakshmi', 'name': 'Lakshmi', 'active': true, 'service_ids': []},
+        {'id': 'st-anitha', 'name': 'Anitha', 'active': true, 'service_ids': [], 'commission_percent': 20, 'phone': '+919811100001'},
+        {'id': 'st-lakshmi', 'name': 'Lakshmi', 'active': true, 'service_ids': [], 'commission_percent': 15},
         {
           'id': 'st-ravi',
           'name': 'Ravi',
@@ -516,9 +530,16 @@ class DemoBackend implements Backend {
   @override
   Future<void> signOut() async => _signedIn = false;
 
+  late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
+
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
+    final desk = _desk.get(path, query);
+    if (desk != null) return desk;
+    if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
+      return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
+    }
     switch (path) {
       case '/api/mobile/me':
         return {
@@ -562,14 +583,20 @@ class DemoBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename) async {
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}}) async {
     await _wait();
+    if (path == '/api/salon/logo') {
+      (_setup['settings'] as Map)['logo_url'] = 'https://example.com/demo/logo.png';
+      return {'success': true, 'settings': _setup['settings']};
+    }
     return {'success': true, 'url': 'https://example.com/demo/$filename', 'filename': filename};
   }
 
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
+    final desk = _desk.send(method, path, body);
+    if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);
       return {'success': true};
@@ -717,7 +744,10 @@ class DemoBackend implements Backend {
     List<Map<String, dynamic>> lines(List ids) => [for (final id in ids) Map<String, dynamic>.from(services.firstWhere((s) => s['id'] == id))];
     Map<String, dynamic> apptById(String id) => [..._appointments, ..._requests].firstWhere((a) => a['id'] == id, orElse: () => throw ApiException(404, 'That appointment is not there any more.'));
     Map<String, dynamic> bill(String name, String? phone, List<Map<String, dynamic>> items, String? method) {
-      final total = items.fold<num>(0, (s, i) => s + (i['price'] as num));
+      final subtotal = items.fold<num>(0, (s, i) => s + (i['price'] as num));
+      final d = action['discount'] as Map?;
+      final off = d == null ? 0 : (d['type'] == 'amount' ? (d['value'] as num).clamp(0, subtotal) : subtotal * (d['value'] as num) / 100);
+      final total = subtotal - off;
       final invoice = {
         'id': _id(),
         'number': 'GLOW-${(_invoices.length + 39).toString().padLeft(4, '0')}',
@@ -763,7 +793,10 @@ class DemoBackend implements Backend {
         return {'success': true, 'appointment': appt, 'message': 'Updated'};
       case 'complete_and_bill':
         final appt = apptById(action['appointment_id']);
-        final invoice = bill(appt['customer_name'], appt['customer_phone'], List<Map<String, dynamic>>.from(appt['services']), action['payment_method']);
+        final invoice = bill(appt['customer_name'], appt['customer_phone'], [
+          ...List<Map<String, dynamic>>.from(appt['services']),
+          ...lines(action['extra_service_ids'] ?? const []),
+        ], action['payment_method']);
         appt['status'] = 'completed';
         appt['invoice_id'] = invoice['id'];
         return {'success': true, 'appointment': appt, 'invoice': invoice, 'message': 'Billed ${appt['customer_name']}'};
@@ -781,6 +814,10 @@ class DemoBackend implements Backend {
         invoice['status'] = 'paid';
         invoice['payment_method'] = action['payment_method'];
         return {'success': true, 'invoice': invoice, 'message': 'Marked paid'};
+      case 'void_invoice':
+        final invoice = _invoices.firstWhere((i) => i['id'] == action['invoice_id']);
+        invoice['status'] = 'void';
+        return {'success': true, 'invoice': invoice, 'message': 'Bill cancelled'};
       case 'send_invoice':
         return {'success': true, 'message': 'Bill sent on WhatsApp'};
     }

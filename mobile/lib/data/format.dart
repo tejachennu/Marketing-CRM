@@ -28,7 +28,7 @@ String formatRupees(Object? value) {
 String shortRupees(num amount) {
   if (amount >= 1e7) return '₹${(amount / 1e7).toStringAsFixed(amount >= 1e8 ? 0 : 1)}Cr';
   if (amount >= 1e5) return '₹${(amount / 1e5).toStringAsFixed(amount >= 1e6 ? 0 : 1)}L';
-  return formatRupees(amount);
+  return formatRupees(amount.round());
 }
 
 /// 4:30 pm, in India time.

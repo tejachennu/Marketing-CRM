@@ -15,6 +15,9 @@ import 'screens/chats/chats_screen.dart';
 import 'screens/contacts/contacts_screen.dart';
 import 'screens/front_desk/appointment_screen.dart';
 import 'screens/front_desk/bill_screen.dart';
+import 'screens/front_desk/checkout_screen.dart';
+import 'screens/front_desk/setup_screen.dart';
+import 'screens/front_desk/setup_templates.dart';
 import 'screens/front_desk/front_desk_screen.dart';
 import 'screens/front_desk/logic.dart';
 import 'screens/front_desk/new_bill_screen.dart';
@@ -165,6 +168,15 @@ class WamaApp extends StatelessWidget {
       'booking_flow' => const BookingFlowScreen(),
       'desk' => const HomeShell(),
       'bills' => const HomeShell(deskTab: 1),
+      'reviews' => const HomeShell(deskTab: 2),
+      'team' => const HomeShell(deskTab: 3),
+      'setup' => const SetupScreen(),
+      'setup_services' => const ServicesSetup(),
+      'setup_team' => const StaffSetup(),
+      'setup_business' => const BusinessSetup(),
+      'setup_whatsapp' => const WhatsAppSetup(),
+      'setup_templates' => const TemplatesSetup(),
+      'checkout' => CheckoutScreen(appointment: desk.appointments.firstWhere((a) => a['status'] == 'in_service')),
       'new_bill' => const NewBillScreen(),
       'new_booking' => const NewBookingScreen(),
       'appointment' => AppointmentScreen(appointmentId: '${desk.appointments.firstWhere((a) => a['status'] == 'in_service')['id']}'),

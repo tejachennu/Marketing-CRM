@@ -33,7 +33,7 @@ abstract class Backend {
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body);
 
   /// Send a file (a photo or document for a chat). Returns the server's reply ({ url, filename }).
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename);
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}});
   Future<void> signIn(String email, String password);
   Future<void> signOut();
   bool get signedIn;
@@ -92,9 +92,10 @@ class HttpBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename) {
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}}) {
     final request = http.MultipartRequest('POST', Uri.parse('${AppConfig.apiBase}$path'))
       ..headers.addAll({..._headers()}..remove('Content-Type'))
+      ..fields.addAll(fields)
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     return _read(request.send().then(http.Response.fromStream));
   }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../config.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
@@ -8,13 +11,16 @@ import 'logic.dart';
 
 /// One bill: what was done, the total, and Mark paid / Send on WhatsApp.
 class BillScreen extends StatelessWidget {
-  const BillScreen({super.key, required this.invoiceId});
+  const BillScreen({super.key, required this.invoiceId, this.invoicesKey = 'invoices'});
   final String invoiceId;
+
+  /// Which list of bills it was opened from.
+  final String invoicesKey;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final desk = FrontDesk(app);
+    final desk = FrontDesk(app, invoicesKey: invoicesKey);
     final i = desk.invoices.cast<Map<String, dynamic>?>().firstWhere((x) => '${x!['id']}' == invoiceId, orElse: () => null);
     if (i == null) {
       return Scaffold(
@@ -112,6 +118,45 @@ class BillScreen extends StatelessWidget {
                 if (status == 'unpaid' && i['_changing'] != true) ...[
                   FilledButton.icon(onPressed: pay, icon: const Icon(Icons.payments_outlined), label: const Text('Mark paid')),
                   const SizedBox(height: 10),
+                ],
+                if (status != 'void' && i['public_token'] != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: '${AppConfig.apiBase}/i/${i['public_token']}'));
+                      toast(context, 'Bill link copied. Paste it in any chat.');
+                    },
+                    icon: const Icon(Icons.link),
+                    label: const Text('Copy bill link'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (status != 'void' && app.can('manage') && i['_changing'] != true) ...[
+                  TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: Brand.red),
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (d) => AlertDialog(
+                          title: Text('Cancel bill ${i['number']}?'),
+                          content: const Text('It stays on record as cancelled and is left out of sales. This cannot be undone.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep it')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(d, true),
+                              style: TextButton.styleFrom(foregroundColor: Brand.red),
+                              child: const Text('Cancel bill'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (ok != true) return;
+                      app.counterAction(kind: 'payment', label: 'Cancel bill ${i['number']}', action: {'type': 'void_invoice', 'invoice_id': i['id']});
+                      if (context.mounted) toast(context, app.online ? 'Bill cancelled.' : 'Cancelled. It syncs when you are online.');
+                    },
+                    icon: const Icon(Icons.block, size: 18),
+                    label: const Text('Cancel this bill'),
+                  ),
+                  const SizedBox(height: 4),
                 ],
                 if (status != 'void' && i['customer_phone'] != null)
                   OutlinedButton.icon(

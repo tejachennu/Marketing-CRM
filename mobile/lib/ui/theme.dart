@@ -87,7 +87,7 @@ ThemeData buildTheme() {
       backgroundColor: Colors.white,
       selectedColor: Brand.navy,
       side: const BorderSide(color: Brand.border),
-      labelStyle: const TextStyle(color: Brand.textSoft, fontWeight: FontWeight.w600),
+      labelStyle: WidgetStateTextStyle.resolveWith((states) => TextStyle(color: states.contains(WidgetState.selected) ? Colors.white : Brand.textSoft, fontWeight: FontWeight.w600)),
       secondaryLabelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       showCheckmark: false,

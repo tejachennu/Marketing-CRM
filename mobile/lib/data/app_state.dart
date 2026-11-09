@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   Timer? _refreshTimer;
   Timer? _bookingTimer;
   Timer? _bookingSoon;
+  Timer? _jobsTimer;
   StreamSubscription? _connectivity;
 
   // ── Start up ──
@@ -75,6 +76,8 @@ class AppState extends ChangeNotifier {
     });
     // Booking requests arrive from WhatsApp: look for new ones every 30 seconds
     _bookingTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkBookings());
+    // As on the web counter: every 2 minutes, send what is due (reminders, feedback questions)
+    _jobsTimer = Timer.periodic(const Duration(minutes: 2), (_) => unawaited(runDueJobs()));
     unawaited(Notifier.instance.init());
     if (signedIn) {
       startLive();
@@ -87,6 +90,7 @@ class AppState extends ChangeNotifier {
     _timer?.cancel();
     _refreshTimer?.cancel();
     _bookingTimer?.cancel();
+    _jobsTimer?.cancel();
     backend.stopLive();
     _connectivity?.cancel();
     super.dispose();
@@ -133,9 +137,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> uploadFile(List<int> bytes, String filename) async {
+  Future<Map<String, dynamic>> uploadFile(List<int> bytes, String filename, {String path = '/api/media/upload', Map<String, String> fields = const {}}) async {
     try {
-      final data = await backend.upload('/api/media/upload', bytes, filename);
+      final data = await backend.upload(path, bytes, filename, fields: fields);
       _markOnline();
       return data;
     } on OfflineException {
@@ -501,6 +505,14 @@ extension LiveUpdates on AppState {
   }
 
   /// New booking requests (and bookings confirmed on their own) since last time: notify.
+  /// Sends the reminders and feedback questions that are due. Quietly does nothing offline.
+  Future<void> runDueJobs() async {
+    if (!backend.signedIn || !frontDeskOn || !online) return;
+    try {
+      await backend.send('POST', '/api/salon/tick', {'organizationId': orgId});
+    } catch (_) {}
+  }
+
   Future<void> checkBookings() async {
     if (!backend.signedIn || !frontDeskOn || !online) return;
     final key = AppState.dayKey(istToday());

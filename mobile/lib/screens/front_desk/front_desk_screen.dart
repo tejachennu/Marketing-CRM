@@ -11,6 +11,9 @@ import 'bill_screen.dart';
 import 'logic.dart';
 import 'new_bill_screen.dart';
 import 'new_booking_screen.dart';
+import 'range_bar.dart';
+import 'reviews_team.dart';
+import 'setup_screen.dart';
 
 /// Front Desk: today's visits and the bills, with New bill and Book at hand. Works offline.
 class FrontDeskScreen extends StatefulWidget {
@@ -22,11 +25,32 @@ class FrontDeskScreen extends StatefulWidget {
 
 class _FrontDeskScreenState extends State<FrontDeskScreen> {
   late int _tab = widget.initialTab;
+  String _date = istToday();
+  DateRangeChoice _bills = const DateRangeChoice('week');
+
+  String get _billsKey => FrontDesk.billsKey(_bills.preset, from: _bills.from, to: _bills.to);
+
+  void _showDay(String date) {
+    setState(() => _date = date);
+    AppScope.read(context).load(AppState.dayKey(date), '/api/salon/appointments', query: {'date': date}, force: true);
+  }
+
+  void _showBills(DateRangeChoice range) {
+    setState(() => _bills = range);
+    AppScope.read(context).load(
+      FrontDesk.billsKey(range.preset, from: range.from, to: range.to),
+      '/api/salon/invoices',
+      query: range.query,
+      force: true,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final desk = FrontDesk(app);
+    final desk = FrontDesk(app, date: _date, invoicesKey: _billsKey);
+    final manage = app.can('manage');
+    if (!manage && _tab > 1) _tab = 0;
     if (!app.frontDeskOn) {
       return Scaffold(
         appBar: AppBar(title: const Text('Front Desk')),
@@ -60,6 +84,12 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
           ],
         ),
         actions: [
+          if (manage)
+            IconButton(
+              tooltip: 'Setup',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
+              icon: const Icon(Icons.tune),
+            ),
           IconButton(
             tooltip: 'Sync now',
             onPressed: () => app.syncNow(),
@@ -77,9 +107,10 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
                 selectedForegroundColor: Colors.white,
                 side: const BorderSide(color: Brand.border),
               ),
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Today'), icon: Icon(Icons.event_note_outlined, size: 18)),
-                ButtonSegment(value: 1, label: Text('Bills'), icon: Icon(Icons.receipt_long_outlined, size: 18)),
+              segments: [
+                const ButtonSegment(value: 0, label: Text('Visits')),
+                const ButtonSegment(value: 1, label: Text('Bills')),
+                if (manage) ...[const ButtonSegment(value: 2, label: Text('Reviews')), const ButtonSegment(value: 3, label: Text('Team'))],
               ],
               selected: {_tab},
               onSelectionChanged: (s) => setState(() => _tab = s.first),
@@ -93,16 +124,20 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: app.syncNow,
-              child: app.isLoading(_tab == 0 ? AppState.dayKey(istToday()) : 'invoices') || app.isLoading('setup')
+              child: _tab == 2
+                  ? const ReviewsTab()
+                  : _tab == 3
+                  ? const TeamTab()
+                  : app.isLoading(_tab == 0 ? AppState.dayKey(_date) : _billsKey) || app.isLoading('setup')
                   ? const SkeletonCards()
                   : _tab == 0
-                  ? _Today(desk: desk)
-                  : _Bills(desk: desk),
+                  ? _Today(desk: desk, onDay: _showDay)
+                  : _Bills(desk: desk, range: _bills, onRange: _showBills),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: app.can('write')
+      bottomNavigationBar: app.can('write') && _tab < 2
           ? SafeArea(
               top: false,
               child: Container(
@@ -138,8 +173,9 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> {
 }
 
 class _Today extends StatelessWidget {
-  const _Today({required this.desk});
+  const _Today({required this.desk, required this.onDay});
   final FrontDesk desk;
+  final ValueChanged<String> onDay;
 
   @override
   Widget build(BuildContext context) {
@@ -148,12 +184,14 @@ class _Today extends StatelessWidget {
     final visits = appointments.where((a) => !['cancelled', 'no_show', 'declined'].contains(a['status'])).length;
     final waiting = appointments.where((a) => a['status'] == 'booked').length;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        DayBar(date: desk.date, onChanged: onDay),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
-              child: _Tile(label: 'Visits today', value: '$visits', note: '$waiting still to come'),
+              child: _Tile(label: desk.isToday ? 'Visits today' : 'Visits', value: '$visits', note: '$waiting still to come'),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -163,7 +201,7 @@ class _Today extends StatelessWidget {
         ),
         if (requests.isNotEmpty || AppScope.of(context).can('manage')) _WhatsAppBookings(desk: desk, requests: requests),
         for (final r in requests) _RequestCard(request: r),
-        SectionLabel('Today · ${appointments.length}'),
+        SectionLabel('${desk.isToday ? 'Today' : 'This day'} · ${appointments.length}'),
         if (appointments.isEmpty)
           const Panel(
             child: EmptyState(icon: Icons.event_busy_outlined, title: 'No bookings today', text: 'Tap Book to add one, or New bill for a walk-in.'),
@@ -219,7 +257,12 @@ class _AppointmentRow extends StatelessWidget {
     final staff = desk.staffName(a['staff_id']);
     final done = ['completed', 'cancelled', 'no_show'].contains(status);
     return InkWell(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AppointmentScreen(appointmentId: '${a['id']}'))),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AppointmentScreen(appointmentId: '${a['id']}', date: desk.date),
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         child: Row(
@@ -344,21 +387,30 @@ class _RequestCard extends StatelessWidget {
 }
 
 class _Bills extends StatelessWidget {
-  const _Bills({required this.desk});
+  const _Bills({required this.desk, required this.range, required this.onRange});
   final FrontDesk desk;
+  final DateRangeChoice range;
+  final ValueChanged<DateRangeChoice> onRange;
 
   @override
   Widget build(BuildContext context) {
     final invoices = desk.invoices;
     final paid = invoices.where((i) => i['status'] == 'paid');
     final unpaid = invoices.where((i) => i['status'] == 'unpaid');
+    final summary = desk.billsSummary;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        RangeBar(value: range, onChanged: onRange),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
-              child: _Tile(label: 'Collected', value: shortRupees(paid.fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0))), note: '${paid.length} paid · last 7 days'),
+              child: _Tile(
+                label: 'Collected',
+                value: shortRupees((summary['collected'] as num?) ?? paid.fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0))),
+                note: '${summary['paidCount'] ?? paid.length} paid · ${range.label.toLowerCase()}',
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -375,7 +427,7 @@ class _Bills extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                for (var i = 0; i < invoices.length; i++) ...[if (i > 0) const Divider(indent: 16), _BillRow(invoice: invoices[i])],
+                for (var i = 0; i < invoices.length; i++) ...[if (i > 0) const Divider(indent: 16), _BillRow(invoice: invoices[i], invoicesKey: desk.invoicesKey)],
               ],
             ),
           ),
@@ -385,8 +437,9 @@ class _Bills extends StatelessWidget {
 }
 
 class _BillRow extends StatelessWidget {
-  const _BillRow({required this.invoice});
+  const _BillRow({required this.invoice, required this.invoicesKey});
   final Map<String, dynamic> invoice;
+  final String invoicesKey;
   @override
   Widget build(BuildContext context) {
     final i = invoice;
@@ -394,7 +447,14 @@ class _BillRow extends StatelessWidget {
     final local = i['_outbox'] != null;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      onTap: local ? () => Navigator.pushNamed(context, '/sync') : () => Navigator.push(context, MaterialPageRoute(builder: (_) => BillScreen(invoiceId: '${i['id']}'))),
+      onTap: local
+          ? () => Navigator.pushNamed(context, '/sync')
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BillScreen(invoiceId: '${i['id']}', invoicesKey: invoicesKey),
+              ),
+            ),
       title: Text(
         '${i['customer_name']}',
         style: TextStyle(fontWeight: FontWeight.w700, color: status == 'void' ? Brand.faint : Brand.text, decoration: status == 'void' ? TextDecoration.lineThrough : null),

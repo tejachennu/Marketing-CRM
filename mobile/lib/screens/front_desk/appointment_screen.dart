@@ -4,17 +4,21 @@ import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'checkout_screen.dart';
 import 'logic.dart';
 
 /// One visit: who, what, when, and the next step (arrived, started, done and billed).
 class AppointmentScreen extends StatelessWidget {
-  const AppointmentScreen({super.key, required this.appointmentId});
+  const AppointmentScreen({super.key, required this.appointmentId, this.date});
   final String appointmentId;
+
+  /// The day it is on (today when not given).
+  final String? date;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final desk = FrontDesk(app);
+    final desk = FrontDesk(app, date: date);
     final a = desk.appointments.cast<Map<String, dynamic>?>().firstWhere((x) => '${x!['id']}' == appointmentId, orElse: () => null);
     if (a == null) {
       return Scaffold(
@@ -40,47 +44,11 @@ class AppointmentScreen extends StatelessWidget {
     }
 
     Future<void> checkout() async {
-      final method = await showModalBottomSheet<String>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Done · ${formatRupees(total)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                const Text('How did they pay? The bill goes to them on WhatsApp.', style: TextStyle(color: Brand.muted)),
-                const SizedBox(height: 16),
-                for (final m in ['upi', 'cash', 'card'])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton(onPressed: () => Navigator.pop(context, m), child: Text(paymentLabels[m]!)),
-                  ),
-                TextButton(onPressed: () => Navigator.pop(context, 'later'), child: const Text('They will pay later')),
-              ],
-            ),
-          ),
+      await Navigator.push(
+        context,
+        MaterialPageRoute<bool>(
+          builder: (_) => CheckoutScreen(appointment: a, date: date),
         ),
-      );
-      if (method == null) return;
-      final pay = method == 'later' ? null : method;
-      act(
-        'Billed',
-        {'type': 'complete_and_bill', 'payment_method': pay, 'send_whatsapp': true},
-        kind: 'checkout',
-        localId: AppState.newLocalId(),
-        preview: {
-          'customer_name': a['customer_name'],
-          'customer_phone': a['customer_phone'],
-          'total': total,
-          'status': pay == null ? 'unpaid' : 'paid',
-          'payment_method': pay,
-          'issued_at': DateTime.now().toUtc().toIso8601String(),
-          'items': services,
-        },
       );
     }
 
