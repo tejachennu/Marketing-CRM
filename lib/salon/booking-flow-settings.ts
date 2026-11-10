@@ -15,6 +15,12 @@ export interface BookingFlowSettings {
   ask_staff: boolean
   /** Let the customer pick more than one service ("Add another"), up to MAX_SERVICES. */
   multi_select: boolean
+  /**
+   * How customers pick services: 'form' = one WhatsApp form with tick boxes by category (needs
+   * more than one service allowed; falls back to the list when the form cannot be used),
+   * 'list' = WhatsApp lists with "Add another".
+   */
+  services_style: 'form' | 'list'
   /** How many days ahead customers can book (3 to 30). */
   days_ahead: number
   language: FlowLanguage
@@ -23,7 +29,7 @@ export interface BookingFlowSettings {
 }
 
 export const DEFAULT_TRIGGERS = ['book', 'booking', 'appointment', 'బుక్', 'बुक']
-export const DEFAULT_FLOW: BookingFlowSettings = { enabled: false, triggers: DEFAULT_TRIGGERS, welcome: '', ask_staff: false, multi_select: true, days_ahead: 7, language: 'en', steps: [{ id: 's1', type: 'services' }, { id: 's2', type: 'datetime' }] }
+export const DEFAULT_FLOW: BookingFlowSettings = { enabled: false, triggers: DEFAULT_TRIGGERS, welcome: '', ask_staff: false, multi_select: true, services_style: 'form', days_ahead: 7, language: 'en', steps: [{ id: 's1', type: 'services' }, { id: 's2', type: 'datetime' }] }
 export const DAYS_AHEAD_CHOICES = [3, 7, 14, 30]
 /** Most services in one booking (each rides in WhatsApp's 200-character button ids). */
 export const MAX_SERVICES = 5
@@ -41,6 +47,7 @@ export function parseBookingFlow(value: unknown): BookingFlowSettings {
     welcome: String(v.welcome ?? '').trim().slice(0, 600),
     ask_staff: Array.isArray(v.steps) && v.steps.length ? v.steps.some((step: any) => step?.type === 'staff') : v.ask_staff === true,
     multi_select: v.multi_select !== false,
+    services_style: v.services_style === 'list' ? 'list' : 'form',
     days_ahead: Number.isInteger(days) && days >= 3 && days <= 30 ? days : 7,
     language: (['en', 'te', 'hi'].includes(v.language) ? v.language : 'en') as FlowLanguage,
     steps: parseSteps(v.steps, v.ask_staff === true).steps,

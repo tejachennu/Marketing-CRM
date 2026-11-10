@@ -91,4 +91,58 @@ void main() {
     expect(shows('Saved on the booking: First visit: Yes · Allergies: No allergies'), isTrue);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('Try it with tick boxes: one form, several services, then the next step', (tester) async {
+    await loadFonts();
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    late AppState app;
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('wama_try_form');
+      final store = LocalStore();
+      await store.open(path: dir.path);
+      await store.clear();
+      app = AppState(backend: DemoBackend(), store: store);
+      await app.refreshAll();
+    });
+    await tester.pumpWidget(WamaApp(app: app, screen: 'booking_try_form'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    Future<void> tap(String startsWith) async {
+      final f = find.byWidgetPredicate((w) => w is Text && (w.data ?? '').startsWith(startsWith));
+      expect(f, findsWidgets, reason: 'No "$startsWith" on the screen');
+      await tester.ensureVisible(f.last);
+      await tester.pump();
+      await tester.tap(f.last);
+      await tester.pumpAndSettle();
+    }
+
+    bool shows(String part) => find.byWidgetPredicate((w) => w is Text && (w.data ?? '').contains(part), skipOffstage: false).evaluate().isNotEmpty;
+
+    await tap('Yes');
+    expect(shows("Can't open it? Reply LIST."), isTrue);
+    // Nothing ticked: asked again
+    await tap('Choose services');
+    await tap('Continue');
+    expect(shows('Please tick at least one service.'), isTrue);
+    await tap('Choose services');
+    await tap('Haircut (Women)');
+    await tap('Gold facial');
+    await tap('Continue');
+    expect(shows('You picked: Haircut (Women), Gold facial'), isTrue);
+    expect(shows('Any allergies'), isTrue);
+
+    // LIST while the form is open gives the list instead
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(WamaApp(app: app, screen: 'booking_try_form'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tap('Yes');
+    await tester.enterText(find.byType(TextField), 'list');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(shows('Choose a service'), isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

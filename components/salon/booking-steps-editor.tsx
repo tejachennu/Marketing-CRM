@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, CalendarDays, ExternalLink, ImagePlus, Link2, Loader2, MapPin, MessageSquareText, MousePointerClick, Plus, ScissorsLineDashed, Sparkles, TextCursorInput, Trash2, Upload, UserRound, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarDays, Check, ListChecks, ExternalLink, ImagePlus, Link2, Loader2, MapPin, MessageSquareText, MousePointerClick, Plus, ScissorsLineDashed, Sparkles, TextCursorInput, Trash2, Upload, UserRound, X } from 'lucide-react'
 import { mapsCoordinates, MAX_STEPS, stepProblem, STEP_NAMES, type FlowStep, type StepType } from '@/lib/salon/booking-flow-settings'
 import { formatRupees } from '@/lib/salon/invoice'
 import { api, input, primaryButton, secondaryButton } from './ui'
@@ -63,8 +63,12 @@ function OptionsEditor({ options, onChange }: { options: string[]; onChange: (op
   )
 }
 
-export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', address = '' }: {
+export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', address = '', servicesStyle, onServicesStyle, multiSelect = true }: {
   orgId: string
+  /** How customers pick services: one form with tick boxes, or the list */
+  servicesStyle?: 'form' | 'list'
+  onServicesStyle?: (style: 'form' | 'list') => void
+  multiSelect?: boolean
   business?: string
   /** The business's address, to fill a location step in one tap */
   address?: string
@@ -177,6 +181,25 @@ export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', ad
               {step.type === 'choice' && <div className="mt-2.5"><OptionsEditor options={step.options || []} onChange={(options) => update(index, { options })} /></div>}
               {step.type === 'message' && (
                 <textarea className={`${input} h-16 py-2.5 mt-3`} value={step.text || ''} maxLength={600} onChange={(e) => update(index, { text: e.target.value })} placeholder="Please come 10 minutes early." aria-label="Message" />
+              )}
+              {step.type === 'services' && servicesStyle && onServicesStyle && (
+                <div className="mt-3" role="radiogroup" aria-label="How customers pick services">
+                  <p className="text-[13px] font-bold text-[#0E1B3D] dark:text-white mb-1.5">How customers pick</p>
+                  <div className="grid gap-2 @xl:grid-cols-2">
+                    {([
+                      ['form', 'Tick boxes in one form', 'All services by category. Tick many, tap Continue.'],
+                      ['list', 'List, one at a time', 'Pick one, then “Add another” for more.'],
+                    ] as const).map(([id, title, note]) => (
+                      <button key={id} type="button" role="radio" aria-checked={servicesStyle === id} onClick={() => onServicesStyle(id)}
+                        className={`text-left rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${servicesStyle === id ? 'border-[#1D5BEA] bg-[#f5f8ff] dark:bg-blue-950/20' : 'border-[#d5ddeb] dark:border-slate-700 hover:border-[#9db5ef]'}`}>
+                        <span className="flex items-center gap-1.5 text-[14px] font-bold text-[#0E1B3D] dark:text-white">{servicesStyle === id ? <Check size={15} strokeWidth={3} className="text-[#1D5BEA]" /> : <ListChecks size={15} className="text-[#8a94a8]" />} {title}</span>
+                        <span className="block text-[12.5px] text-[#6B7894] mt-0.5">{note}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {servicesStyle === 'form' && !multiSelect && <p className="mt-1.5 text-[12.5px] font-semibold text-[#b91c1c]">Tick boxes need “More than one service” on (More settings). Until then customers get the list.</p>}
+                  {servicesStyle === 'form' && multiSelect && <p className="mt-1.5 text-[12.5px] text-[#6B7894]">Set up on your WhatsApp when you save. Customers on an old WhatsApp can reply LIST to get the list.</p>}
+                </div>
               )}
               {DEFAULT_QUESTION[step.type] && (
                 <input className={`${input} mt-3`} value={step.text || ''} maxLength={300} onChange={(e) => update(index, { text: e.target.value })}
@@ -295,7 +318,37 @@ function Choices({ text, button, rows, buttons }: { text: string; button?: strin
   )
 }
 
-export function StepsPreview({ steps, welcome, trigger, services, staff, multiSelect, autoApprove, business }: {
+/** The tick-box form as it opens in WhatsApp: services by category, two ticked. */
+function FormSheet({ services, picked }: { services: Service[]; picked: string[] }) {
+  const groups = new Map<string, Service[]>()
+  for (const s of services) groups.set(s.category || 'General', [...(groups.get(s.category || 'General') || []), s])
+  return (
+    <div className="mx-1 rounded-2xl bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12)] overflow-hidden">
+      <p className="px-3 py-2.5 text-[13.5px] font-bold text-[#111b21] border-b border-[#eef1f6]">Choose services</p>
+      <div className="px-3 py-2 space-y-2.5">
+        <p className="text-[12px] text-[#3b4a54]">Tick everything you would like, then tap Continue.</p>
+        {[...groups.entries()].slice(0, 3).map(([category, list]) => (
+          <div key={category}>
+            <p className="text-[12px] font-bold text-[#111b21] mb-1">{category}</p>
+            {list.slice(0, 3).map((s) => {
+              const on = picked.includes(s.id)
+              return (
+                <div key={s.id} className="flex items-center gap-2 py-1">
+                  <span className={`h-4 w-4 shrink-0 rounded-[4px] border flex items-center justify-center ${on ? 'bg-[#008069] border-[#008069] text-white' : 'border-[#8696a0]'}`}>{on && <Check size={11} strokeWidth={3.5} />}</span>
+                  <span className="min-w-0"><span className="block text-[12.5px] text-[#111b21] truncate">{s.name}</span><span className="block text-[11px] text-[#667781]">{formatRupees(Number(s.price))} · {s.duration_minutes} min</span></span>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+      <p className="mx-3 mb-3 rounded-full bg-[#008069] py-2 text-center text-[12.5px] font-bold text-white">Continue</p>
+    </div>
+  )
+}
+
+export function StepsPreview({ steps, welcome, trigger, services, staff, multiSelect, autoApprove, business, servicesStyle = 'list' }: {
+  servicesStyle?: 'form' | 'list'
   steps: FlowStep[]
   welcome: string
   trigger: string
@@ -315,7 +368,13 @@ export function StepsPreview({ steps, welcome, trigger, services, staff, multiSe
     const intro = i === 0 ? `${welcome}\n\n` : ''
     if (i === 0 && ['image', 'link', 'location'].includes(step.type)) out.push(<Bubble key={`${step.id}w`}>{welcome}</Bubble>)
     const introNoRepeat = (text: string) => (i === 0 && welcome.trim().endsWith('?') && step.type === 'services' ? welcome : `${intro}${text}`)
-    if (step.type === 'services') {
+    if (step.type === 'services' && servicesStyle === 'form' && multiSelect && services.length) {
+      const ticked = [first, second].filter(Boolean) as Service[]
+      out.push(<Choices key={step.id} text={`${introNoRepeat(ask(step))}\n\n(Can't open it? Reply LIST.)`} buttons={['Choose services']} />)
+      out.push(<FormSheet key={`${step.id}f`} services={services} picked={ticked.map((s) => s.id)} />)
+      out.push(<Bubble key={`${step.id}a`} mine>✓ Services ticked</Bubble>)
+      out.push(<Bubble key={`${step.id}b`}>{`You picked: ${ticked.map((s) => s.name).join(', ')} · ${formatRupees(ticked.reduce((sum, s) => sum + Number(s.price || 0), 0))}, about ${ticked.reduce((sum, s) => sum + Number(s.duration_minutes || 0), 0)} min.`}</Bubble>)
+    } else if (step.type === 'services') {
       out.push(<Choices key={step.id} text={introNoRepeat(ask(step))} button="Choose a service" rows={services.slice(0, 3).map((s) => ({ title: s.name, note: `${formatRupees(Number(s.price))} · ${s.duration_minutes} min` }))} />)
       out.push(<Bubble key={`${step.id}a`} mine>{first?.name || 'Haircut'}</Bubble>)
       if (multiSelect && second) {

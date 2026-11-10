@@ -15,7 +15,8 @@ import { describeCart } from '@/lib/chat-commerce'
 import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
 import { handleSlotPick, loadChatSetup, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
-import { handleBookingFlowButton, handleBookingStepButton, handleBookingText, isBookingRequest, parseBookingFlow, parseFlowButton, parseStepButton, startBookingFlow, waitingForAnswer } from '@/lib/salon/booking-flow'
+import { sessionFromToken } from '@/lib/salon/services-form'
+import { handleBookingFlowButton, handleBookingStepButton, handleBookingText, handleServicesForm, isBookingRequest, parseBookingFlow, parseFlowButton, parseStepButton, startBookingFlow, waitingForAnswer } from '@/lib/salon/booking-flow'
 import { handleFeedbackReply, parseFeedbackButton } from '@/lib/salon/jobs'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
@@ -409,7 +410,8 @@ async function processEvent(
           const respStr = interactive.nfm_reply?.response_json
           if (respStr) {
             flowSubmissionData = JSON.parse(respStr)
-            messageBody = `[Completed Native Form]: ${JSON.stringify(flowSubmissionData)}`
+            // The booking flow's services form reads as a plain line in the chat
+            messageBody = sessionFromToken(flowSubmissionData?.flow_token || interactive.nfm_reply?.flow_token) ? '[Ticked services in the booking form]' : `[Completed Native Form]: ${JSON.stringify(flowSubmissionData)}`
           }
         } catch (jsonErr) {
           console.warn('[Facebook Webhook] Error parsing nfm_reply response_json:', jsonErr)
@@ -716,6 +718,22 @@ async function processEvent(
         }
       } catch (salonErr: any) {
         console.error('[Facebook Webhook] Salon booking failed:', salonErr?.message || salonErr)
+      }
+    }
+
+    // ── Front Desk booking flow: the services ticked in the tick-box form (its token names the booking in progress)
+    if (flowSubmissionData && salonChatReady(orgData) && !previousMessage) {
+      const formToken = String(flowSubmissionData.flow_token || message.interactive?.nfm_reply?.flow_token || '')
+      if (sessionFromToken(formToken)) {
+        try {
+          const step = await handleServicesForm({ supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], token: formToken, response: flowSubmissionData })
+          if (step.handled) {
+            await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: step.step })
+          }
+        } catch (flowErr: any) {
+          console.error('[Facebook Webhook] Booking flow form failed:', flowErr?.message || flowErr)
+        }
       }
     }
 

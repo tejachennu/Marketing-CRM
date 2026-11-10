@@ -22,6 +22,7 @@ import { formatRupees } from './invoice'
 import { addDays, formatIstDay, istDate } from './spoken'
 import { MAX_SERVICES, parseBookingFlow, SAY_STEPS, type BookingFlowSettings, type FlowStep as SetupStep } from './booking-flow-settings'
 import { withSalonSchema } from './schema'
+import { buildFormMessage, ensureServicesForm, servicesFormData, sessionFromToken, tickedServices } from './services-form'
 import { phoneKey } from './spoken'
 
 export { DAYS_AHEAD_CHOICES, DEFAULT_FLOW, MAX_SERVICES, DEFAULT_TRIGGERS, isBookingRequest, parseBookingFlow, type BookingFlowSettings } from './booking-flow-settings'
@@ -52,6 +53,12 @@ const words = {
   typeAnswer: { en: '(Type your answer, or "cancel" to stop.)', te: '(Mee answer type cheyandi, aapadaniki "cancel".)', hi: '(Apna jawab likhiye, rokne ke liye "cancel".)' },
   pickService: { en: 'Which service would you like?', te: 'Ee service kavali?', hi: 'Kaunsi service chahiye?' },
   choose: { en: 'Choose', te: 'Enchukondi', hi: 'Chuniye' },
+  formButton: { en: 'Choose services', te: 'Services enchukondi', hi: 'Services chuniye' },
+  formIntro: { en: 'Tick everything you would like, then tap Continue.', te: 'Kavalsinavi anni tick chesi, Continue nokkandi.', hi: 'Jo chahiye sab tick kijiye, phir Continue dabaiye.' },
+  formHint: { en: '(Can\'t open it? Reply LIST.)', te: '(Open kakapothe LIST ani pampandi.)', hi: '(Nahi khul raha? LIST bhejiye.)' },
+  formNone: { en: 'Please tick at least one service.', te: 'Kaneesam okka service tick cheyandi.', hi: 'Kam se kam ek service tick kijiye.' },
+  formPicked: { en: 'You picked: {list} · {total}, about {minutes} min.', te: 'Meeru enchukunnavi: {list} · {total}, sumaru {minutes} min.', hi: 'Aapne chuna: {list} · {total}, lagbhag {minutes} min.' },
+  formTooMany: { en: 'One booking takes up to {max} services, so we kept the first {max}.', te: 'Okka booking lo {max} services varaku; modati {max} unchamu.', hi: 'Ek booking mein {max} services tak; pehli {max} rakhi hain.' },
   noServices: { en: 'Bookings are not open on WhatsApp yet. Please call us to book.', te: 'WhatsApp lo bookings inka start avvaledu andi. Call chesi book cheyandi.', hi: 'WhatsApp par booking abhi shuru nahi hui. Call karke book kijiye.' },
 }
 
@@ -271,7 +278,7 @@ async function afterPicking(input: SalonChatInput, setup: ChatSetup, flow: Booki
   return 'days'
 }
 
-export type FlowResult = { handled: true; step: 'started' | 'categories' | 'services' | 'added' | 'people' | 'days' | 'times' | 'expired' | 'closed' | 'question' | 'cancelled' } | { handled: false; reason: string }
+export type FlowResult = { handled: true; step: 'started' | 'form' | 'categories' | 'services' | 'added' | 'people' | 'days' | 'times' | 'expired' | 'closed' | 'question' | 'cancelled' } | { handled: false; reason: string }
 
 /** The first, stateless version of the flow (lists already sent in chats use its "bf:" ids). */
 export async function startStatelessFlow(input: SalonChatInput, setupIn?: ChatSetup): Promise<FlowResult> {
@@ -372,6 +379,7 @@ export async function handleBookingFlowButton(input: SalonChatInput & { buttonId
 
 const SESSION_HOURS = 24
 const CANCEL_WORDS = ['cancel', 'stop', 'exit', 'quit']
+const LIST_WORDS = ['list', 'menu', 'services', 'lista', 'list pampandi']
 
 interface Session {
   id: string
@@ -399,7 +407,7 @@ export function parseStepButton(id: unknown): StepTap | null {
 /** The answers, as written on the booking: "Gender: Female · Allergies: none". */
 export const answersNote = (answers: { label: string; answer: string }[]) => answers.map((a) => `${a.label}: ${a.answer}`).join(' · ')
 
-interface Run { input: SalonChatInput; setup: ChatSetup; flow: BookingFlowSettings; session: Session }
+interface Run { input: SalonChatInput; setup: ChatSetup; flow: BookingFlowSettings; session: Session; /** the customer asked for the list instead of the form */ listOnly?: boolean }
 
 const tapId = (run: Run, kind: StepTap['kind'], value?: string) => `bs:${packId(run.session.id)}:${run.session.step}:${kind}${value === undefined ? '' : `:${value}`}`
 
@@ -469,6 +477,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
     const left = setup.services.filter((s) => !picked.includes(s.id))
     // A welcome that already asks a question needs no second one
     const body = picked.length ? withIntro(say('whichMore', lang, { list: namesOf(pickedServices(run)) })) : intro?.trim().endsWith('?') ? intro : withIntro(step.text ? own(step.text) : say('pickService', lang))
+    if (!picked.length && flow.services_style === 'form' && flow.multi_select && !run.listOnly && (await sendServicesForm(run, body))) return { handled: true, step: 'form' }
     if (left.length <= 10) {
       await sendList(input, body, say('service', lang), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
       return { handled: true, step: 'services' }
@@ -515,6 +524,49 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
     return { id: tapId(run, 'd', d.replaceAll('-', '')), title, ...(title !== full ? { description: full } : {}) }
   }))
   return { handled: true, step: 'days' }
+}
+
+/** The tick-box form with every service by category. False when it cannot be used (the list goes instead). */
+async function sendServicesForm(run: Run, body: string): Promise<boolean> {
+  const { input, setup, flow } = run
+  const lang = flow.language
+  const data = servicesFormData(setup.services, setup.settings.service_categories, { intro: say('formIntro', lang), button: say('continue', lang) })
+  if (!data) return false
+  const form = await ensureServicesForm(input.supabase, input.organization, { now: input.now }).catch(() => null)
+  if (!form || !('id' in form)) return false
+  const text = `${body}\n\n${say('formHint', lang)}`
+  try {
+    await sendPayload(input, buildFormMessage(input.customerPhone, { formId: form.id, sessionId: run.session.id, body: text, button: say('formButton', lang), data }), `${text}\n[${say('formButton', lang)}]`)
+  } catch {
+    return false
+  }
+  await saveSession(run, { waiting: 'form' })
+  return true
+}
+
+/** The customer's ticks from the services form (`flow_token` "bk:<booking in progress>"). */
+export async function handleServicesForm(input: SalonChatInput & { token: string; response: Record<string, unknown> }): Promise<FlowResult> {
+  const sessionId = sessionFromToken(input.token)
+  if (!sessionId) return { handled: false, reason: 'not_a_booking_form' }
+  if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
+  const run = await loadRun(input, sessionId)
+  if (!run) {
+    const flow = parseBookingFlow((await loadChatSetup(input.supabase, input.organization.id)).settings.booking_flow)
+    await sendText(input, say('expired', flow.language))
+    return { handled: true, step: 'expired' }
+  }
+  const { flow, session } = run
+  const lang = flow.language
+  // A form sent before the customer moved on (or switched to the list)
+  if (flow.steps[session.step]?.type !== 'services' || session.waiting !== 'form') return runStep(run, say('oldList', lang))
+  const ticked = tickedServices(input.response, run.setup.services)
+  if (!ticked.length) return runStep(run, say('formNone', lang))
+  const ids = ticked.slice(0, MAX_SERVICES)
+  await saveSession(run, { service_ids: ids, waiting: null, step: session.step + 1 })
+  const picked = pickedServices(run)
+  const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0))
+  const intro = say('formPicked', lang, { list: namesOf(picked), total, minutes: String(minutesOf(picked)) }) + (ticked.length > MAX_SERVICES ? `\n${say('formTooMany', lang, { max: String(MAX_SERVICES) })}` : '')
+  return runStep(run, intro)
 }
 
 async function loadRun(input: SalonChatInput, sessionId: string): Promise<Run | null> {
@@ -634,7 +686,7 @@ export async function handleBookingStepButton(input: SalonChatInput & { buttonId
 
 /** The customer's booking waiting for a typed answer, if any. */
 export async function waitingForAnswer(db: any, organizationId: string, phone: string, now = Date.now()): Promise<string | null> {
-  const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, waiting, updated_at, customer_phone').eq('organization_id', organizationId).eq('waiting', 'text').order('updated_at', { ascending: false }).limit(20))
+  const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, waiting, updated_at, customer_phone').eq('organization_id', organizationId).in('waiting', ['text', 'form']).order('updated_at', { ascending: false }).limit(20))
   const session = (data || []).find((s: any) => phoneKey(s.customer_phone) === phoneKey(phone) && now - Date.parse(s.updated_at) <= SESSION_HOURS * 3600_000)
   return session?.id || null
 }
@@ -642,9 +694,22 @@ export async function waitingForAnswer(db: any, organizationId: string, phone: s
 /** A typed answer to the flow's question (or "cancel"). */
 export async function handleBookingText(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
   const run = await loadRun(input, input.sessionId)
-  if (!run || run.session.waiting !== 'text') return { handled: false, reason: 'not_waiting' }
+  if (!run || !['text', 'form'].includes(run.session.waiting || '')) return { handled: false, reason: 'not_waiting' }
   const text = String(input.message || '').trim()
   if (!text) return { handled: false, reason: 'empty' }
+  if (run.session.waiting === 'form') {
+    // Waiting for the form: "list" sends the list instead; anything else goes to the assistant
+    const said = text.toLowerCase()
+    if (CANCEL_WORDS.includes(said)) {
+      await input.supabase.from('salon_booking_sessions').delete().eq('id', run.session.id).eq('organization_id', run.session.organization_id)
+      await sendText(input, say('cancelled', run.flow.language))
+      return { handled: true, step: 'cancelled' }
+    }
+    if (!LIST_WORDS.includes(said)) return { handled: false, reason: 'not_waiting' }
+    await saveSession(run, { waiting: null })
+    run.listOnly = true
+    return runStep(run)
+  }
   if (CANCEL_WORDS.includes(text.toLowerCase())) {
     await input.supabase.from('salon_booking_sessions').delete().eq('id', run.session.id).eq('organization_id', run.session.organization_id)
     await sendText(input, say('cancelled', run.flow.language))

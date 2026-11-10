@@ -52,7 +52,8 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
     try {
       const data = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, booking_flow: flow, auto_approve_bookings: autoApprove }) })
       onChange({ ...setup, settings: { ...setup.settings, ...data.settings } })
-      flash('success', flow.enabled ? 'Booking flow saved. Customers can book by sending a trigger word.' : 'Booking flow saved (switched off).')
+      if (data.services_form && !data.services_form.ready) flash('error', `Booking flow saved. ${data.services_form.problem || 'The tick-box form could not be set up; customers get the list.'}`)
+      else flash('success', flow.enabled ? 'Booking flow saved. Customers can book by sending a trigger word.' : 'Booking flow saved (switched off).')
     } catch (err: any) {
       flash('error', err.message)
     } finally {
@@ -78,7 +79,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
           )}
 
           <Field group label="Steps" hint="The order customers go through. Add your own questions; answers are saved on the booking.">
-            <StepsEditor orgId={orgId} business={business} address={setup.settings.address || ''} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
+            <StepsEditor servicesStyle={flow.services_style} onServicesStyle={(services_style) => set({ services_style })} multiSelect={flow.multi_select} orgId={orgId} business={business} address={setup.settings.address || ''} steps={flow.steps} onChange={(steps) => set({ steps, ask_staff: steps.some((x) => x.type === 'staff') })}
               onDraft={({ welcome, language }) => set({ ...(welcome ? { welcome } : {}), ...(language ? { language } : {}) })} />
           </Field>
 
@@ -164,7 +165,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
             <div className="mx-auto max-w-[340px] rounded-[28px] border-[6px] border-[#0E1B3D] overflow-hidden">
               <div className="bg-[#0E1B3D] px-4 py-2.5 text-white text-[13.5px] font-bold truncate">{business}</div>
               <div className="bg-[#efeae2] p-3 space-y-2.5 max-h-[620px] overflow-y-auto">
-                <StepsPreview steps={flow.steps} welcome={welcome} trigger={flow.triggers[0] || 'book'} services={services} staff={setup.staff} multiSelect={flow.multi_select} autoApprove={autoApprove} business={business} />
+                <StepsPreview steps={flow.steps} welcome={welcome} trigger={flow.triggers[0] || 'book'} services={services} staff={setup.staff} multiSelect={flow.multi_select} servicesStyle={flow.services_style} autoApprove={autoApprove} business={business} />
               </div>
             </div>
             {!autoApprove && <p className="mt-2 text-center text-[12.5px] text-[#6B7894]">Requests appear on the Front Desk under Booking requests, to approve or decline.</p>}

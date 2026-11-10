@@ -107,8 +107,23 @@ String _summary(Map<String, dynamic> step) => switch (step['type']) {
 };
 
 class StepsEditor extends StatefulWidget {
-  const StepsEditor({super.key, required this.steps, required this.onChanged, required this.onDraft, this.business = '', this.address = ''});
+  const StepsEditor({
+    super.key,
+    required this.steps,
+    required this.onChanged,
+    required this.onDraft,
+    this.business = '',
+    this.address = '',
+    this.servicesStyle,
+    this.onServicesStyle,
+    this.multiSelect = true,
+  });
   final List<Map<String, dynamic>> steps;
+
+  /// How customers pick services: 'form' (tick boxes in one WhatsApp form) or 'list'.
+  final String? servicesStyle;
+  final ValueChanged<String>? onServicesStyle;
+  final bool multiSelect;
   final ValueChanged<List<Map<String, dynamic>>> onChanged;
   final void Function(String? welcome, String? language) onDraft;
   final String business;
@@ -142,9 +157,18 @@ class _StepsEditorState extends State<StepsEditor> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _StepSheet(step: Map<String, dynamic>.from(steps[index]), business: widget.business, address: widget.address),
+      builder: (_) => _StepSheet(
+        step: Map<String, dynamic>.from(steps[index]),
+        business: widget.business,
+        address: widget.address,
+        servicesStyle: widget.onServicesStyle == null ? null : widget.servicesStyle ?? 'form',
+        multiSelect: widget.multiSelect,
+      ),
     );
-    if (saved != null) widget.onChanged([...steps]..[index] = saved);
+    if (saved == null) return;
+    final style = saved.remove('_style');
+    if (style is String && style != widget.servicesStyle) widget.onServicesStyle?.call(style);
+    widget.onChanged([...steps]..[index] = saved);
   }
 
   Future<void> _add(String type) async {
@@ -273,7 +297,9 @@ class _StepsEditorState extends State<StepsEditor> {
                           )
                         else if (_summary(steps[i]).trim().isNotEmpty)
                           Text(
-                            _summary(steps[i]),
+                            steps[i]['type'] == 'services' && widget.onServicesStyle != null
+                                ? '${(widget.servicesStyle ?? 'form') == 'form' && widget.multiSelect ? 'Tick boxes in one form' : 'List, one at a time'} · ${_summary(steps[i])}'
+                                : _summary(steps[i]),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12.5, color: Brand.muted),
@@ -332,9 +358,13 @@ class _StepsEditorState extends State<StepsEditor> {
 
 /// Change one step: its words, and what that kind of step needs (answers, picture, link, place).
 class _StepSheet extends StatefulWidget {
-  const _StepSheet({required this.step, required this.business, required this.address});
+  const _StepSheet({required this.step, required this.business, required this.address, this.servicesStyle, this.multiSelect = true});
   final Map<String, dynamic> step;
   final String business, address;
+
+  /// Pick services only: how customers pick (null hides the choice).
+  final String? servicesStyle;
+  final bool multiSelect;
   @override
   State<_StepSheet> createState() => _StepSheetState();
 }
@@ -351,6 +381,7 @@ class _StepSheetState extends State<_StepSheet> {
   final _option = TextEditingController();
   bool _uploading = false;
   bool _tried = false;
+  late String? _style = widget.servicesStyle;
 
   String get _type => '${s['type']}';
 
@@ -380,6 +411,7 @@ class _StepSheetState extends State<_StepSheet> {
         });
       default:
         if (text.isNotEmpty) out['text'] = text;
+        if (_type == 'services' && _style != null) out['_style'] = _style;
     }
     return out;
   }
@@ -437,6 +469,52 @@ class _StepSheetState extends State<_StepSheet> {
             ),
             const SizedBox(height: 4),
             Text(stepHints[_type] ?? '', style: const TextStyle(fontSize: 13, color: Brand.muted)),
+            if (_type == 'services' && _style != null) ...[
+              const SizedBox(height: 14),
+              const Text('How customers pick', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              for (final (id, title, note) in [
+                ('form', 'Tick boxes in one form', 'All services by category. Tick many, tap Continue.'),
+                ('list', 'List, one at a time', 'Pick one, then "Add another" for more.'),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _style = id),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      decoration: BoxDecoration(
+                        color: _style == id ? Brand.bubble : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _style == id ? Brand.blue : Brand.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(_style == id ? Icons.radio_button_checked : Icons.radio_button_off, color: _style == id ? Brand.blue : Brand.faint, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                Text(note, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (_style == 'form' && !widget.multiSelect)
+                const Text(
+                  'Tick boxes need "More than one service" on (More settings). Until then customers get the list.',
+                  style: TextStyle(fontSize: 12.5, color: Brand.red, fontWeight: FontWeight.w600),
+                )
+              else if (_style == 'form')
+                const Text('Set up on your WhatsApp when you save. Customers on an old WhatsApp can reply LIST to get the list.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+            ],
             if (defaultQuestion.containsKey(_type)) ...[
               field(_text, 'Your own words (optional)', hint: defaultQuestion[_type], lines: 2, max: 300),
               const SizedBox(height: 4),
@@ -776,6 +854,98 @@ class MediaBubble extends StatelessWidget {
   }
 }
 
+/// The tick-box services form as it opens in WhatsApp: every service under its category.
+/// With [onChanged] the boxes can be ticked (Try it); [onContinue] is the Continue button.
+class ServicesFormCard extends StatelessWidget {
+  const ServicesFormCard({super.key, required this.services, required this.ticked, this.onChanged, this.onContinue});
+  final List<Map<String, dynamic>> services;
+  final Set<String> ticked;
+  final ValueChanged<Set<String>>? onChanged;
+  final VoidCallback? onContinue;
+  @override
+  Widget build(BuildContext context) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final sv in services) {
+      groups.putIfAbsent('${sv['category'] ?? 'General'}', () => []).add(sv);
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 2))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: Text('Choose services', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ),
+          const Divider(height: 1),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(14, 10, 14, 4),
+            child: Text('Tick everything you would like, then tap Continue.', style: TextStyle(fontSize: 13, color: Brand.textSoft)),
+          ),
+          for (final entry in groups.entries) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+              child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            ),
+            for (final sv in entry.value)
+              InkWell(
+                onTap: onChanged == null
+                    ? null
+                    : () {
+                        final next = {...ticked};
+                        if (!next.remove('${sv['id']}')) next.add('${sv['id']}');
+                        onChanged!(next);
+                      },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: ticked.contains('${sv['id']}'),
+                        activeColor: Brand.blue,
+                        visualDensity: VisualDensity.compact,
+                        onChanged: onChanged == null
+                            ? null
+                            : (_) {
+                                final next = {...ticked};
+                                if (!next.remove('${sv['id']}')) next.add('${sv['id']}');
+                                onChanged!(next);
+                              },
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${sv['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
+                            Text('${formatRupees(sv['price'])} · ${sv['duration_minutes']} min', style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: FilledButton(
+              onPressed: onContinue,
+              style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              child: const Text('Continue'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The words a step says, with {name}, {business} and {service} filled in.
 String stepWords(Map<String, dynamic> step, {required String name, required String business, required String service}) {
   final own = '${step['text'] ?? ''}'.trim();
@@ -793,6 +963,7 @@ List<Widget> stepsPreview({
   required bool multiSelect,
   required bool autoApprove,
   required String business,
+  bool tickBoxes = false,
 }) {
   final first = services.isEmpty ? null : services.first;
   final second = services.length > 1 ? services[1] : null;
@@ -804,6 +975,23 @@ List<Widget> stepsPreview({
     final intro = i == 0 ? '$welcome\n\n' : '';
     if (i == 0 && ['image', 'link', 'location'].contains(s['type'])) out.add(ChatBubble(text: welcome));
     switch (s['type']) {
+      case 'services' when tickBoxes && multiSelect && services.isNotEmpty:
+        final ticked = [first!, ?second];
+        out.add(
+          ListBubble(
+            text: '${i == 0 && welcome.trim().endsWith('?') && '${s['text'] ?? ''}'.trim().isEmpty ? welcome : '$intro${words(s)}'}\n\n(Can\'t open it? Reply LIST.)',
+            button: '',
+            rows: const ['Choose services'],
+          ),
+        );
+        out.add(ServicesFormCard(services: services.take(6).toList(), ticked: {for (final sv in ticked) '${sv['id']}'}));
+        out.add(const ChatBubble(text: '✓ Services ticked', mine: true));
+        out.add(
+          ChatBubble(
+            text:
+                'You picked: ${ticked.map((sv) => sv['name']).join(', ')} · ${formatRupees(ticked.fold<num>(0, (sum, sv) => sum + (num.tryParse('${sv['price']}') ?? 0)))}, about ${ticked.fold<num>(0, (sum, sv) => sum + (num.tryParse('${sv['duration_minutes']}') ?? 0))} min.',
+          ),
+        );
       case 'services':
         out.add(
           ListBubble(

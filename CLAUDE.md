@@ -117,6 +117,19 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Booking flow: pick services with tick boxes in one WhatsApp form** (owner's choice, web and app):
+  `booking_flow.services_style` = `'form'` (default) or `'list'`, chosen on the Pick services step.
+  `lib/salon/services-form.ts`: one Meta Flow per WhatsApp account (`servicesFormJson`: 10
+  CheckboxGroups shown/hidden by data, 20 services each), published once on save
+  (`ensureServicesForm`, Meta id in new column `salon_settings.services_form`, migration
+  `20261118_front_desk_services_form.sql`; a refusal is remembered and retried after an hour). The
+  services ride in the message (`flow_action_payload.data`), so service changes need no republish.
+  Token `bk:<session id>`; the webhook passes the `nfm_reply` to `handleServicesForm`, which saves the
+  ticks (max 5) and runs the next step with "You picked: …". Session `waiting = 'form'`; the customer
+  can reply LIST for the list. Falls back to the list when: style is list, "More than one service"
+  is off, not Meta Cloud API, publishing failed, or more than 10 groups. App: `ServicesFormCard`,
+  Try it (`tickBoxes`). **Needs a deploy, and has not been tried against Meta yet.**
+
 - **Front Desk: services from the catalog, "Use in bills", change history** (web and app): Setup →
   Services → **From catalog** lists `commerce_products` with tick boxes (search, category chips, tick
   all; minutes, GST, category and "Use in bills" for the ticked ones), `GET/POST /api/salon/catalog`

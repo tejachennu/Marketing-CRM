@@ -320,9 +320,18 @@ ALTER TABLE salon_change_log ENABLE ROW LEVEL SECURITY;
 NOTIFY pgrst, 'reload schema';
 `
 
+/** supabase/migrations/20261118_front_desk_services_form.sql word for word: the tick-box services form. */
+export const FRONT_DESK_SERVICES_FORM_SQL = `-- Front Desk booking flow: customers can tick several services in one WhatsApp form, grouped by
+-- category. The form is published on the business's WhatsApp account once; this remembers it.
+-- Safe to run more than once. The app runs it on its own the first time it is needed.
+ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS services_form JSONB;
+
+NOTIFY pgrst, 'reload schema';
+`
+
 const SALON_SCHEMA_LOCK = 724519002
 
-export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}\n${FRONT_DESK_BOOKING_FLOW_SQL}\n${FRONT_DESK_BOOKING_SESSIONS_SQL}\n${FRONT_DESK_CATALOG_SQL}`, SALON_SCHEMA_LOCK))
+export const salonSchemaSetup = createAutoSetup('Front Desk', (connectionString) => runMigrationSql(connectionString, `${SALON_SCHEMA_SQL}\n${SALON_LOGO_SQL}\n${SALON_WHATSAPP_SQL}\n${SALON_FEEDBACK_FORM_SQL}\n${FRONT_DESK_SQL}\n${FRONT_DESK_CATEGORIES_SQL}\n${FRONT_DESK_ACTION_LOG_SQL}\n${FRONT_DESK_BOOKING_FLOW_SQL}\n${FRONT_DESK_BOOKING_SESSIONS_SQL}\n${FRONT_DESK_CATALOG_SQL}\n${FRONT_DESK_SERVICES_FORM_SQL}`, SALON_SCHEMA_LOCK))
 
 /** True when an error means the salon tables (or the connectors column) are not there yet. */
 export function isMissingSalonSchema(error: any): boolean {

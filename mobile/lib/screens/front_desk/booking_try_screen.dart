@@ -10,10 +10,22 @@ import 'logic.dart';
 /// Try the booking flow as a customer: the same steps, words, buttons and lists the customer gets
 /// on WhatsApp, with your services, team and opening hours. Nothing is sent or booked.
 class BookingTryScreen extends StatefulWidget {
-  const BookingTryScreen({super.key, required this.steps, required this.welcome, required this.trigger, required this.multiSelect, required this.autoApprove, this.daysAhead = 7});
+  const BookingTryScreen({
+    super.key,
+    required this.steps,
+    required this.welcome,
+    required this.trigger,
+    required this.multiSelect,
+    required this.autoApprove,
+    this.daysAhead = 7,
+    this.tickBoxes = false,
+  });
   final List<Map<String, dynamic>> steps;
   final String welcome, trigger;
   final bool multiSelect, autoApprove;
+
+  /// Services are picked with tick boxes in one form (the business chose it).
+  final bool tickBoxes;
   final int daysAhead;
   @override
   State<BookingTryScreen> createState() => _BookingTryScreenState();
@@ -42,6 +54,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
   Map<String, dynamic>? _who;
   final List<String> _answers = [];
   bool _typing = false; // waiting for a typed answer
+  String? _formBody; // the services form is open: what to say if they ask for the list
   bool _done = false;
 
   late FrontDesk _desk;
@@ -64,6 +77,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
       _who = null;
       _answers.clear();
       _typing = false;
+      _formBody = null;
       _done = false;
       _chat.add(_Msg.mine(widget.trigger.isEmpty ? 'Book' : widget.trigger[0].toUpperCase() + widget.trigger.substring(1)));
     });
@@ -121,6 +135,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
         final body = _picked.isNotEmpty
             ? withIntro('Which other service would you like? (You have: $_names)')
             : (intro != null && intro.trim().endsWith('?') && own.isEmpty ? intro : withIntro(_words(s)));
+        if (widget.tickBoxes && widget.multiSelect && _picked.isEmpty) return _servicesForm(body);
         return _servicesList(body);
       case 'staff':
         final ids = _picked.map((x) => x['id']).toSet();
@@ -141,6 +156,46 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
       default:
         return _days(withIntro(_words(s)));
     }
+  }
+
+  /// The tick-box form: a button that opens every service by category.
+  void _servicesForm(String body) {
+    setState(() => _formBody = body);
+    _add(
+      _Msg.list('$body\n\n(Can\'t open it? Reply LIST.)', '', const ['Choose services'], (_) async {
+        var ticked = <String>{};
+        final sent = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          backgroundColor: Brand.chatBg,
+          builder: (sheet) => StatefulBuilder(
+            builder: (sheet, set) => SafeArea(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(sheet).size.height * 0.85),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: ServicesFormCard(services: _services, ticked: ticked, onChanged: (v) => set(() => ticked = v), onContinue: () => Navigator.pop(sheet, true)),
+                ),
+              ),
+            ),
+          ),
+        );
+        if (sent != true || !mounted) return;
+        _add(_Msg.mine('✓ Services ticked'));
+        final chosen = _services.where((sv) => ticked.contains('${sv['id']}')).toList();
+        if (chosen.isEmpty) return _servicesForm('Please tick at least one service.\n\nWhich service would you like?');
+        setState(() => _formBody = null);
+        _picked
+          ..clear()
+          ..addAll(chosen.take(5));
+        final total = _picked.fold<num>(0, (t, x) => t + (num.tryParse('${x['price']}') ?? 0));
+        final minutes = _picked.fold<num>(0, (t, x) => t + ((x['duration_minutes'] as num?) ?? 30));
+        final more = chosen.length > 5 ? '\nOne booking takes up to 5 services, so we kept the first 5.' : '';
+        _step++;
+        _run('You picked: $_names · ${formatRupees(total)}, about $minutes min.$more');
+      }),
+    );
   }
 
   void _servicesList(String body) {
@@ -256,6 +311,23 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
 
   void _send() {
     final text = _input.text.trim();
+    final form = _formBody;
+    if (text.isNotEmpty && form != null && !_typing) {
+      // Waiting for the form: LIST sends the list; other words would go to the WhatsApp assistant
+      _input.clear();
+      _add(_Msg.mine(text));
+      final said = text.toLowerCase();
+      if (said == 'cancel') {
+        _say('Booking cancelled. Send "Book" any time to start again.');
+        setState(() => _done = true);
+        return;
+      }
+      if (['list', 'menu', 'services'].contains(said)) {
+        setState(() => _formBody = null);
+        return _servicesList(form);
+      }
+      return _say('(On WhatsApp, other messages go to your WhatsApp assistant. Reply LIST for the list.)');
+    }
     if (text.isEmpty || !_typing) return;
     _input.clear();
     _add(_Msg.mine(text));
@@ -339,14 +411,14 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
                   Expanded(
                     child: TextField(
                       controller: _input,
-                      enabled: _typing,
+                      enabled: _typing || _formBody != null,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(hintText: _typing ? 'Type your answer' : 'Tap a button or list above', isDense: true),
+                      decoration: InputDecoration(hintText: _typing ? 'Type your answer' : (_formBody != null ? 'Or reply LIST' : 'Tap a button or list above'), isDense: true),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filled(onPressed: _typing ? _send : null, icon: const Icon(Icons.send)),
+                  IconButton.filled(onPressed: _typing || _formBody != null ? _send : null, icon: const Icon(Icons.send)),
                 ],
               ),
             ),

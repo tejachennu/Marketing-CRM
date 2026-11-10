@@ -3,6 +3,8 @@ import { badRequest, salonAccess, serverError } from '@/lib/salon/server'
 import { parseSettings, parseWhatsAppSettings } from '@/lib/salon/validate'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { changedFields, logChange, type ChangeArea } from '@/lib/salon/change-log'
+import { parseBookingFlow } from '@/lib/salon/booking-flow-settings'
+import { ensureServicesForm } from '@/lib/salon/services-form'
 
 export const runtime = 'nodejs'
 
@@ -59,5 +61,13 @@ export async function PATCH(request: NextRequest) {
     .select('*').single())
   if (error) return serverError('settings', error)
   await logSettings(access.ctx, previous, data, Object.keys(parsed.value), 'whatsapp')
-  return NextResponse.json({ success: true, settings: data })
+  // The tick-box services form is published on WhatsApp when the flow is saved to use it
+  let servicesForm: { ready: boolean; problem?: string } | undefined
+  const flow = 'booking_flow' in parsed.value ? parseBookingFlow(data.booking_flow) : null
+  if (flow?.enabled && flow.services_style === 'form' && flow.multi_select) {
+    const { data: organization } = await db.from('organizations').select('*').eq('id', organizationId).maybeSingle()
+    const form = organization ? await ensureServicesForm(db, organization, { force: true }).catch((e: any) => ({ problem: String(e?.message || e) })) : { problem: 'Workspace not found.' }
+    servicesForm = 'id' in form ? { ready: true } : { ready: false, problem: form.problem }
+  }
+  return NextResponse.json({ success: true, settings: data, ...(servicesForm ? { services_form: servicesForm } : {}) })
 }
