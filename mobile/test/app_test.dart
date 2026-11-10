@@ -10,6 +10,7 @@ import 'package:wama_mobile/data/local_store.dart';
 import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/campaigns/audience.dart';
+import 'package:wama_mobile/screens/chats/media.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/catalog_history.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
@@ -94,6 +95,21 @@ void main() {
       ['Name: Haircut → Hair', 'Services moved: 3'],
     );
     expect(describeChange(null), isEmpty);
+  });
+
+  test('Chat files: photos and files customers send are recognised and can be read', () async {
+    final photo = ChatMedia('data:image/jpeg;base64,${base64Encode([1, 2, 3])}');
+    expect(photo.isImage, isTrue);
+    expect(photo.label, 'Photo');
+    expect(await photo.bytes(), [1, 2, 3]);
+    expect(photo.fileName(DateTime(2026, 11, 10, 19, 34)), 'photo-20261110-1934.jpg');
+    final pdf = ChatMedia('data:application/pdf;base64,${base64Encode([9])}');
+    expect([pdf.isImage, pdf.label, pdf.fileName(DateTime(2026, 11, 10, 8))], [false, 'PDF', 'pdf-20261110-0800.pdf']);
+    expect(ChatMedia('data:audio/ogg; codecs=opus;base64,AA==').label, 'Voice note');
+    final link = ChatMedia('https://x.supabase.co/storage/v1/object/public/media/Price%20list.pdf');
+    expect([link.mime, link.label, link.fileName(null)], ['application/pdf', 'PDF', 'pdf-${link.fileName(null).split('-').skip(1).join('-')}']);
+    expect(ChatMedia('https://x.co/files/menu.docx').label, 'Word file');
+    expect(ChatMedia('https://x.co/files/notes.txt').label, 'notes.txt');
   });
 
   test('Rupees use Indian grouping', () {

@@ -27,6 +27,7 @@ import 'screens/front_desk/front_desk_screen.dart';
 import 'screens/front_desk/logic.dart';
 import 'screens/front_desk/new_bill_screen.dart';
 import 'screens/front_desk/new_booking_screen.dart';
+import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/templates/templates_screen.dart';
 import 'screens/ai/assistant_screen.dart';
@@ -216,6 +217,7 @@ class WamaApp extends StatelessWidget {
       'chats' => const HomeShell(tab: 2),
       'chat' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first)),
       'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),
+      'grow' => const GrowScreen(),
       'contacts' => const ContactsScreen(),
       'new_contact' => const NewContactScreen(),
       'campaigns' => const CampaignsScreen(),

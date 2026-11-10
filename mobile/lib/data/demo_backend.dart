@@ -1,3 +1,5 @@
+import 'demo_media.dart';
+
 import 'dart:async';
 
 import 'backend.dart';
@@ -296,11 +298,15 @@ class DemoBackend implements Backend {
       for (final r in rows) {'id': _id(), 'body': r[1], 'sender_type': r[0], 'created_at': now.subtract(Duration(minutes: r[2] as int)).toIso8601String(), 'status': r[0] == 'user' ? 'read' : null},
     ];
     _messages = {
-      'conv-5': thread([
-        ['contact', 'Hi, do you have a gold facial?', 30],
-        ['user', 'Yes! Gold facial is ₹1,500 and takes about an hour. Which day suits you?', 28],
-        ['contact', 'Can I book a facial tomorrow at 11?', 4],
-      ]),
+      'conv-5':
+          thread([
+            ['contact', 'Hi, do you have a gold facial?', 30],
+            ['user', 'Yes! Gold facial is ₹1,500 and takes about an hour. Which day suits you?', 28],
+            ['contact', 'Can I book a facial tomorrow at 11?', 4],
+          ])..addAll([
+            {'id': _id(), 'body': 'I want this hairstyle', 'media_url': demoPhoto, 'sender_type': 'contact', 'created_at': now.subtract(const Duration(minutes: 3)).toIso8601String()},
+            {'id': _id(), 'body': '', 'media_url': demoPdf, 'sender_type': 'contact', 'created_at': now.subtract(const Duration(minutes: 2)).toIso8601String()},
+          ]),
       'conv-0': thread([
         ['user', 'Hi Priya, thank you for visiting Glow Salon! 🙏 Your bill GLOW-0042: ₹1,500 (paid, thank you!)', 45],
         ['contact', 'Thank you! Loved the facial 😊', 38],

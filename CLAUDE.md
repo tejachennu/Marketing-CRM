@@ -117,6 +117,15 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: chat files you can open and save, and "Grow your business"** (owner, Nov 2026): files customers
+  send arrive as `data:` links (the webhook stores them in `messages.media_url`); `chats/media.dart`
+  (`ChatMedia`) reads their type, shows photos inline (`Image.memory`), labels PDF / Voice note / Video
+  / Word / Spreadsheet, and a tap opens the photo full screen (zoom, Share, Save) or a sheet with
+  "Open with an app" (`share_plus`) and "Save to phone" (`FilePicker.saveFile`). More → **Grow your
+  business with marketing** (`more/grow_screen.dart`): Magnetora's marketing services (Google
+  reviews, Google and Meta ads, video editing, photos, Instagram/Facebook promotion) with WhatsApp us
+  (+91 83676 29608, `url_launcher` to wa.me). New packages: `share_plus`, `url_launcher`.
+
 - **Booking flow: questions in the middle of a booking** (owner, web server + app): a customer who
   writes something during a booking (session moved in the last 60 minutes, `activeBookingSession`)
   gets the usual assistants (Front Desk assistant, shopping assistant, FAQ chatbot), then the step

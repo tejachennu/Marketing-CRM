@@ -21,7 +21,7 @@ void main() {
       'setup_team',
       'setup_business', //
       'setup_whatsapp', 'setup_templates', 'checkout', 'new_bill', 'new_booking', 'appointment', 'bill', 'booking_flow', 'chats', 'chat', //
-      'chat_ai', 'chat_closed', 'booking_try', 'booking_try_form', 'new_contact', 'templates', 'template', 'more', 'sync', 'knowledge', 'article', 'assistant',
+      'chat_ai', 'chat_closed', 'booking_try', 'booking_try_form', 'new_contact', 'templates', 'template', 'more', 'grow', 'sync', 'knowledge', 'article', 'assistant',
     ],
     flows: [
       ('setup_services', ['Haircut (Women)']),

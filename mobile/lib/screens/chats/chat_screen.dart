@@ -8,6 +8,7 @@ import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../templates/template_widgets.dart';
+import 'media.dart';
 
 /// One WhatsApp chat, with everything the web inbox has:
 /// - AI replies on/off for this chat (the chatbot answers from the knowledge base)
@@ -692,7 +693,6 @@ class _Bubble extends StatelessWidget {
     final waiting = message['_waiting'] == true;
     final failed = message['_failed'] == true;
     final media = '${message['media_url'] ?? ''}';
-    final isImage = RegExp(r'\.(jpe?g|png|webp|gif)(\?|$)', caseSensitive: false).hasMatch(media);
     final bot = message['sender_type'] == 'bot' || message['is_ai'] == true;
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -731,17 +731,26 @@ class _Bubble extends StatelessWidget {
             if (media.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: isImage && !waiting
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          media,
-                          height: 160,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const _FileChip(name: 'Photo'),
-                        ),
-                      )
-                    : _FileChip(name: Uri.tryParse(media)?.pathSegments.lastOrNull ?? 'Document'),
+                child: Builder(
+                  builder: (context) {
+                    final file = ChatMedia(media);
+                    final at = DateTime.tryParse('${message['created_at'] ?? ''}')?.toLocal();
+                    final chip = _FileChip(name: file.label, icon: file.icon);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: waiting ? null : () => showMedia(context, file, at),
+                      child: file.isImage && !waiting
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxHeight: 220, minWidth: 120),
+                                child: file.image(height: 200, onError: chip),
+                              ),
+                            )
+                          : chip,
+                    );
+                  },
+                ),
               ),
             if ('${message['body'] ?? ''}'.isNotEmpty)
               Align(
@@ -786,11 +795,12 @@ class _Bubble extends StatelessWidget {
 }
 
 class _FileChip extends StatelessWidget {
-  const _FileChip({required this.name});
+  const _FileChip({required this.name, this.icon = Icons.insert_drive_file_outlined});
   final String name;
+  final IconData icon;
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
     decoration: BoxDecoration(
       color: Colors.white.withValues(alpha: 0.7),
       borderRadius: BorderRadius.circular(8),
@@ -799,7 +809,7 @@ class _FileChip extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.insert_drive_file_outlined, size: 20, color: Brand.navy),
+        Icon(icon, size: 22, color: Brand.navy),
         const SizedBox(width: 8),
         Flexible(
           child: Text(
@@ -808,6 +818,8 @@ class _FileChip extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
+        const SizedBox(width: 10),
+        const Icon(Icons.download_for_offline_outlined, size: 22, color: Brand.blue),
       ],
     ),
   );

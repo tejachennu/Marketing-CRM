@@ -1,3 +1,5 @@
+import 'grow_screen.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
@@ -67,6 +69,14 @@ class MoreScreen extends StatelessWidget {
                   title: app.online ? 'Online' : 'Offline',
                   subtitle: app.waitingCount == 0 ? 'Everything is saved · synced ${formatAgo(app.lastSync)}' : '${app.waitingCount} change${app.waitingCount == 1 ? '' : 's'} waiting to sync',
                   onTap: () => Navigator.pushNamed(context, '/sync'),
+                ),
+                const _Gap(),
+                _Row(
+                  icon: Icons.trending_up,
+                  iconColor: Brand.blue,
+                  title: 'Grow your business with marketing',
+                  subtitle: 'More reviews, Google and Meta ads, photos and videos',
+                  onTap: () => open(const GrowScreen()),
                 ),
                 const _Gap(),
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
