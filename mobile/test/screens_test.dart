@@ -36,6 +36,7 @@ void main() {
       'template_insights',
       'more',
       'grow',
+      'billing',
       'tickets',
       'sync',
       'knowledge',

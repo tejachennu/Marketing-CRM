@@ -1,3 +1,4 @@
+import 'demo_billing.dart';
 import 'demo_templates.dart';
 import 'demo_media.dart';
 
@@ -565,12 +566,13 @@ class DemoBackend implements Backend {
 
   late final DemoCampaigns _camp = DemoCampaigns(campaigns: _campaigns, contacts: _contacts, conversations: _conversations);
   late final DemoTemplates _tpl = DemoTemplates(templates: _templates, id: _id);
+  final DemoBilling _billing = DemoBilling();
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
-    final desk = _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
+    final desk = _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
@@ -580,7 +582,7 @@ class DemoBackend implements Backend {
         return {
           'user': {'id': 'u1', 'name': 'Teja', 'email': 'owner@glowsalon.in', 'role': 'Admin'},
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
-          'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true},
+          'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true},
           'connectors': {'frontDesk': true},
         };
       case '/api/salon/setup':
@@ -665,7 +667,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
-    final desk = _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
+    final desk = _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

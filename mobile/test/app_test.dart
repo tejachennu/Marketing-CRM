@@ -132,6 +132,24 @@ void main() {
     expect(languageLabel('te'), 'Telugu');
   });
 
+  test('Billing: subscribe during the trial, then cancel auto-pay; AI credit top-up', () async {
+    final (app, backend) = await makeApp();
+    var billing = await backend.get('/api/billing', {'extras': '1'});
+    expect(billing['status'], 'trialing');
+    expect((billing['featureGroups'] as List).isNotEmpty, isTrue);
+    final start = await app.ask('/api/billing/subscribe', {});
+    expect(start['subscriptionId'], isNotNull);
+    await app.ask('/api/billing/subscribe', {'razorpay_payment_id': 'pay_1', 'razorpay_subscription_id': 'sub_demo', 'razorpay_signature': 'x'});
+    billing = await backend.get('/api/billing');
+    expect([billing['status'], billing['autoPayPending']], ['active', true]);
+    final cancelled = await app.ask('/api/billing/cancel', {});
+    expect(cancelled['trial'], isTrue);
+    final order = await app.ask('/api/billing/topup', {'amount': 1000});
+    expect(order['amount'], 100000, reason: 'Razorpay takes paise');
+    await app.ask('/api/billing/topup', {'razorpay_payment_id': 'pay_2', 'razorpay_order_id': 'order_demo', 'razorpay_signature': 'x'});
+    expect((await backend.get('/api/billing'))['aiPercentLeft'], 100);
+  });
+
   test('Rupees use Indian grouping', () {
     expect(formatRupees(150000), '₹1,50,000');
     expect(formatRupees(99.5), '₹99.50');

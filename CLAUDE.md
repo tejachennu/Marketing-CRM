@@ -117,6 +117,23 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: Tickets, Templates and Billing like the web** (owner: "without missing a single feature"):
+  - **Tickets** (`chats/tickets_screen.dart`, a "Tickets" chip in Chats): counts, Open/Resolved, search,
+    dates, Load more, assign (managers), open chat, move to Sales Pipeline, resolve / reopen. Server:
+    `GET /api/tickets?view=list` (status, q, from, to, offset, counts; `meta=1` adds team, stages, can)
+    and `POST /api/tickets/to-deal` (createLead + link conversation + resolve).
+  - **Templates** (`templates/`): list with filters, quality, rejected reason, status updates, 20 s
+    re-check while in review; create with AI (`/ai-draft`) or by hand (all 12 types); editor with every web
+    section (`template_editor.dart`), preview (`template_preview.dart`), library, insights, edit, add
+    language, duplicate, delete. The draft is the web's JSON (`template_model.dart` mirrors the
+    constants); the server reads Meta's templates into drafts (`GET ?drafts=1`) and checks a draft
+    (`POST {check: true}`), so the rules stay in one place (`validateDraft`). Upload reads the file
+    type from its name when the phone sends none.
+  - **Billing** (`more/billing_screen.dart`, More → Billing): the web's plan states, subscribe / cancel,
+    AI credit with top-ups, payments, plan features and use cases (`GET /api/billing?extras=1`), FAQ.
+    Payments use `razorpay_flutter` (native Checkout; the same confirm endpoints as the web; ProGuard
+    rules in `android/app/proguard-rules.pro`). `can.billing` added to `/api/mobile/me`.
+
 - **App: chat files you can open and save, and "Grow your business"** (owner, Nov 2026): files customers
   send arrive as `data:` links (the webhook stores them in `messages.media_url`); `chats/media.dart`
   (`ChatMedia`) reads their type, shows photos inline (`Image.memory`), labels PDF / Voice note / Video

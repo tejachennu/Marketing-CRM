@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       manage: can(user, 'automation.manage'),
       campaigns: can(user, 'campaigns.manage'),
       seeAll: canSeeAll(user),
+      billing: can(user, 'billing.manage'),
     },
     connectors: { frontDesk: isConnectorOn(organization, 'salon') },
   })

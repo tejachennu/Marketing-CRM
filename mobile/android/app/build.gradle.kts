@@ -54,6 +54,8 @@ android {
     buildTypes {
         release {
             signingConfig = if (keyProperties.isEmpty) signingConfigs.getByName("debug") else signingConfigs.getByName("release")
+            // Razorpay Checkout's keep rules (the code shrinker must not remove it)
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

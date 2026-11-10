@@ -28,6 +28,7 @@ import 'screens/front_desk/front_desk_screen.dart';
 import 'screens/front_desk/logic.dart';
 import 'screens/front_desk/new_bill_screen.dart';
 import 'screens/front_desk/new_booking_screen.dart';
+import 'screens/more/billing_screen.dart';
 import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/templates/template_create.dart';
@@ -223,6 +224,7 @@ class WamaApp extends StatelessWidget {
       'chat' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first)),
       'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),
       'grow' => const GrowScreen(),
+      'billing' => const BillingScreen(),
       'tickets' => const TicketsScreen(),
       'template_create' => TemplateSetupScreen(existing: [for (final t in (app.cached('templates')?['templates'] as List? ?? const [])) Map<String, dynamic>.from(t)]),
       'template_editor' => TemplateEditorScreen(draft: {...emptyDraft('MARKETING', 'custom'), 'name': 'weekend_offer'}),

@@ -1,3 +1,4 @@
+import 'billing_screen.dart';
 import 'grow_screen.dart';
 
 import 'package:flutter/material.dart';
@@ -117,7 +118,8 @@ class MoreScreen extends StatelessWidget {
                     title: 'Front Desk',
                     subtitle: 'Off · an admin can switch it on in Connectors on the web',
                   ),
-                const _Row(icon: Icons.language, title: 'Team members, connectors and billing', subtitle: 'On the web at wamacrm.magnetora.in'),
+                _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
+                const _Row(icon: Icons.language, title: 'Team members and connectors', subtitle: 'On the web at wamacrm.magnetora.in'),
                 const _Gap(),
                 _Row(
                   icon: Icons.logout,
