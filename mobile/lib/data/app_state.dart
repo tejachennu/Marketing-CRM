@@ -216,7 +216,7 @@ class AppState extends ChangeNotifier {
         ],
         load('contacts', '/api/contacts', query: {'limit': '500', 'fields': 'basic'}, force: true),
         load('conversations', '/api/conversations', query: {'limit': '50'}, force: true),
-        load('templates', '/api/whatsapp-templates', force: true),
+        load('templates', '/api/whatsapp-templates', query: const {'drafts': '1'}, force: true),
         if (can('campaigns')) load('campaigns', '/api/campaigns', query: {'limit': '30'}, force: true),
         load('knowledge', '/api/knowledge', force: true),
         load('tickets', '/api/tickets', force: true),

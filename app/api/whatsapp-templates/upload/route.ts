@@ -23,7 +23,10 @@ export async function POST(request: NextRequest) {
 
   const file = form?.get('file')
   if (!file || typeof file === 'string') return NextResponse.json({ error: 'Choose a file to upload.' }, { status: 400 })
-  const limit = ACCEPTED[file.type]
+  // The phone app sends no type with the file: then the name's ending says what it is
+  const byName: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', mp4: 'video/mp4', '3gp': 'video/3gpp', pdf: 'application/pdf' }
+  const type = ACCEPTED[file.type] ? file.type : byName[String(file.name).toLowerCase().split('.').pop() || ''] || file.type
+  const limit = ACCEPTED[type]
   if (!limit) return NextResponse.json({ error: 'Use a JPG or PNG image, an MP4 video, or a PDF document.' }, { status: 400 })
   if (file.size > limit) return NextResponse.json({ error: 'This sample is too large. Use a file under 4 MB; it is only an example for Meta\'s review.' }, { status: 400 })
 
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
   const appId = process.env.NEXT_PUBLIC_META_APP_ID || '1747554262928162'
   try {
-    const handle = await uploadSampleMedia(credentials, appId, { name: file.name, type: file.type, bytes: await file.arrayBuffer() })
+    const handle = await uploadSampleMedia(credentials, appId, { name: file.name, type, bytes: await file.arrayBuffer() })
     return NextResponse.json({ handle })
   } catch (err: any) {
     return NextResponse.json({ error: err?.details?.[0]?.error_user_msg || err?.message || 'Meta did not accept the file.' }, { status: 422 })

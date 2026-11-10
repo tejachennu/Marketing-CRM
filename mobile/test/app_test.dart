@@ -11,6 +11,7 @@ import 'package:wama_mobile/data/notifier.dart';
 import 'package:wama_mobile/screens/ai/knowledge_screen.dart';
 import 'package:wama_mobile/screens/campaigns/audience.dart';
 import 'package:wama_mobile/screens/chats/media.dart';
+import 'package:wama_mobile/screens/templates/template_model.dart';
 import 'package:wama_mobile/screens/front_desk/booking_steps.dart';
 import 'package:wama_mobile/screens/front_desk/catalog_history.dart';
 import 'package:wama_mobile/screens/front_desk/logic.dart';
@@ -110,6 +111,25 @@ void main() {
     expect([link.mime, link.label, link.fileName(null)], ['application/pdf', 'PDF', 'pdf-${link.fileName(null).split('-').skip(1).join('-')}']);
     expect(ChatMedia('https://x.co/files/menu.docx').label, 'Word file');
     expect(ChatMedia('https://x.co/files/notes.txt').label, 'notes.txt');
+  });
+
+  test('Templates: variables, samples and drafts follow the web', () {
+    expect(extractVariables('Hi {{1}}, your bill {{2}} from {{1}}'), ['1', '2']);
+    expect(nextVariable('Hi {{1}} and {{2}}', 'POSITIONAL'), '{{3}}');
+    expect(nextVariable('Hi {{variable_1}}', 'NAMED'), '{{variable_2}}');
+    expect(fillSamples('Hi {{1}}, {{2}}', {'1': 'Priya'}), 'Hi Priya, {{2}}');
+    expect(fillSamples('{{1}}', {'header:1': 'Glow'}, 'header:'), 'Glow');
+    expect(describeDuration(600), '10 minutes');
+    expect(describeDuration(2592000), '30 days');
+    final lto = emptyDraft('MARKETING', 'lto');
+    expect((lto['buttons'] as List).map((b) => b['type']), ['COPY_CODE', 'URL']);
+    expect((emptyDraft('MARKETING', 'carousel')['cards'] as List).length, 2);
+    final copy = copyDraft(lto);
+    (copy['buttons'] as List).clear();
+    expect((lto['buttons'] as List).length, 2, reason: 'a copy never changes the original');
+    expect(otpPreviewText(emptyDraft('AUTHENTICATION', 'otp')).footer, 'This code expires in 10 minutes.');
+    expect(typeTitle('UTILITY', 'order_details'), 'Order details');
+    expect(languageLabel('te'), 'Telugu');
   });
 
   test('Rupees use Indian grouping', () {

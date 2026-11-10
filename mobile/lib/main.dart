@@ -30,6 +30,9 @@ import 'screens/front_desk/new_bill_screen.dart';
 import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
+import 'screens/templates/template_create.dart';
+import 'screens/templates/template_editor.dart';
+import 'screens/templates/template_model.dart';
 import 'screens/templates/templates_screen.dart';
 import 'screens/ai/assistant_screen.dart';
 import 'screens/ai/knowledge_screen.dart';
@@ -221,6 +224,12 @@ class WamaApp extends StatelessWidget {
       'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),
       'grow' => const GrowScreen(),
       'tickets' => const TicketsScreen(),
+      'template_create' => TemplateSetupScreen(existing: [for (final t in (app.cached('templates')?['templates'] as List? ?? const [])) Map<String, dynamic>.from(t)]),
+      'template_editor' => TemplateEditorScreen(draft: {...emptyDraft('MARKETING', 'custom'), 'name': 'weekend_offer'}),
+      'template_editor_carousel' => TemplateEditorScreen(draft: {...emptyDraft('MARKETING', 'carousel'), 'name': 'new_looks'}),
+      'template_editor_otp' => TemplateEditorScreen(draft: {...emptyDraft('AUTHENTICATION', 'otp'), 'name': 'login_code'}),
+      'template_library' => const TemplateLibraryScreen(existing: {}),
+      'template_insights' => TemplateInsightsScreen(template: Map<String, dynamic>.from((app.cached('templates')!['templates'] as List).first as Map)),
       'contacts' => const ContactsScreen(),
       'new_contact' => const NewContactScreen(),
       'campaigns' => const CampaignsScreen(),

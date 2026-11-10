@@ -1,3 +1,4 @@
+import 'demo_templates.dart';
 import 'demo_media.dart';
 
 import 'dart:async';
@@ -323,6 +324,7 @@ class DemoBackend implements Backend {
         'id': 't1',
         'name': 'bill_ready',
         'status': 'APPROVED',
+        'quality_score': {'score': 'GREEN'},
         'category': 'UTILITY',
         'language': 'en',
         'components': [
@@ -383,7 +385,7 @@ class DemoBackend implements Backend {
         'status': 'REJECTED',
         'category': 'MARKETING',
         'language': 'en',
-        'rejected_reason': 'The message looks like spam. Add your business name and a clear offer.',
+        'rejected_reason': 'INVALID_FORMAT',
         'components': [
           {'type': 'BODY', 'text': 'HURRY!!! Sale today only!!!'},
         ],
@@ -562,12 +564,13 @@ class DemoBackend implements Backend {
   Future<void> signOut() async => _signedIn = false;
 
   late final DemoCampaigns _camp = DemoCampaigns(campaigns: _campaigns, contacts: _contacts, conversations: _conversations);
+  late final DemoTemplates _tpl = DemoTemplates(templates: _templates, id: _id);
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
-    final desk = _desk.get(path, query) ?? _camp.get(path, query);
+    final desk = _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
@@ -651,6 +654,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}}) async {
     await _wait();
+    if (path == '/api/whatsapp-templates/upload') return {'handle': '4::demo-sample-$filename'};
     if (path == '/api/salon/logo') {
       (_setup['settings'] as Map)['logo_url'] = 'https://example.com/demo/logo.png';
       return {'success': true, 'settings': _setup['settings']};
@@ -661,7 +665,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
-    final desk = _desk.send(method, path, body) ?? _camp.send(method, path, body);
+    final desk = _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

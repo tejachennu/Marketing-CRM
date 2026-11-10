@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getMetaCredentials, type MetaCredentials } from '@/lib/flows/meta-client'
 import { createTemplate, deleteTemplate, editTemplate, listTemplates } from '@/lib/whatsapp-templates/meta-templates'
-import { validateDraft, type TemplateDraft } from '@/lib/whatsapp-templates/template-model'
+import { draftFromMeta, validateDraft, type TemplateDraft } from '@/lib/whatsapp-templates/template-model'
 
 /** The organization's WhatsApp connection, or a message saying what is missing. */
 async function credentialsFor(organizationId: string): Promise<{ credentials?: MetaCredentials; error?: string; notConnected?: string }> {
@@ -35,7 +35,9 @@ export async function GET(request: NextRequest) {
   // Not an error to show in red: the page explains what to connect instead
   if (!credentials) return NextResponse.json({ error, notConnected, templates: [] }, { status: notConnected ? 200 : 400 })
   try {
-    const templates = await listTemplates(credentials)
+    const listed = await listTemplates(credentials)
+    // ?drafts=1 (the app): each template also as an editor draft, read the same way as the web
+    const templates = new URL(request.url).searchParams.get('drafts') === '1' ? listed.map((template) => ({ ...template, draft: draftFromMeta(template) })) : listed
     return NextResponse.json({ templates, syncedAt: new Date().toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (err) {
     return metaError(err)
@@ -54,6 +56,8 @@ export async function POST(request: NextRequest) {
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   const draft = body.draft as TemplateDraft
   const problems = draft ? validateDraft(draft) : [{ field: 'draft', message: 'Nothing to submit.' }]
+  // { check: true } (the app's editor): only say what still needs fixing, submit nothing
+  if (body.check === true) return NextResponse.json({ success: true, problems })
   if (problems.length) return NextResponse.json({ error: problems[0].message, problems }, { status: 400 })
   const { credentials, error } = await credentialsFor(body.organizationId)
   if (!credentials) return NextResponse.json({ error }, { status: 400 })
