@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -31,17 +32,64 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
   bool _busy = false;
   final _scroll = ScrollController();
 
+  bool _checked = false;
+  bool _checking = false;
+  Timer? _checkTimer;
+
   bool get _editing => widget.editing != null;
   String get _type => '${d['type']}';
-  void _set(void Function() change) => setState(change);
+  void _set(void Function() change) {
+    setState(change);
+    _scheduleCheck();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleCheck(const Duration(milliseconds: 300));
+  }
+
+  @override
+  void dispose() {
+    _checkTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Ask the server what still needs fixing (Meta's rules, the same as the web), a moment after typing stops.
+  void _scheduleCheck([Duration wait = const Duration(milliseconds: 900)]) {
+    _checkTimer?.cancel();
+    _checkTimer = Timer(wait, _check);
+  }
+
+  Future<void> _check() async {
+    if (!mounted) return;
+    final app = AppScope.read(context);
+    setState(() => _checking = true);
+    try {
+      final data = await app.ask('/api/whatsapp-templates', {'draft': d, 'check': true});
+      if (!mounted) return;
+      setState(() {
+        _problems = [for (final p in (data['problems'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)];
+        _checked = true;
+      });
+    } catch (_) {
+      // Offline or the server is older: checked again on Submit
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  bool _tried = false;
   List<String> _errors(String field) => [
-    for (final p in _problems)
-      if (p['field'] == field) '${p['message']}',
+    if (_tried)
+      for (final p in _problems)
+        if (p['field'] == field) '${p['message']}',
   ];
 
-  Future<void> _submit() async {
+  Future<void> _submit([TabController? tabs]) async {
     final app = AppScope.read(context);
     setState(() {
+      _tried = true;
       _busy = true;
       _submitError = '';
     });
@@ -49,8 +97,11 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
       final check = await app.ask('/api/whatsapp-templates', {'draft': d, 'check': true});
       final problems = [for (final p in (check['problems'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)];
       if (problems.isNotEmpty) {
-        setState(() => _problems = problems);
-        _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        setState(() {
+          _problems = problems;
+          _checked = true;
+        });
+        tabs?.animateTo(1);
         return;
       }
       setState(() => _problems = const []);
@@ -69,23 +120,87 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
     }
   }
 
-  void _preview() => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (_) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+  Widget _status(TabController? tabs) {
+    final ready = _checked && _problems.isEmpty;
+    final (bg, fg, icon, label) = _checking && !_checked
+        ? (Brand.page, Brand.muted, Icons.hourglass_empty, 'Checking')
+        : ready
+        ? (Brand.bubble, const Color(0xFF15603E), Icons.check_circle, 'Ready')
+        : _problems.isNotEmpty
+        ? (Brand.redSoft, Brand.red, Icons.error_outline, '${_problems.length} to fix')
+        : (Brand.page, Brand.muted, Icons.pending_outlined, 'Not checked');
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => tabs?.animateTo(1),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The preview tab: how it looks in WhatsApp, and Meta's checklist.
+  Widget _previewTab() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+    children: [
+      TemplatePreview(draft: d, localMedia: _media),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: _checked && _problems.isEmpty ? Brand.bubble : (_problems.isEmpty ? Brand.page : Brand.redSoft), borderRadius: BorderRadius.circular(14)),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Template preview', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 10),
-            TemplatePreview(draft: d, localMedia: _media),
+            Row(
+              children: [
+                Icon(
+                  _checked && _problems.isEmpty ? Icons.verified_outlined : (_problems.isEmpty ? Icons.pending_outlined : Icons.error_outline),
+                  color: _checked && _problems.isEmpty ? const Color(0xFF15603E) : (_problems.isEmpty ? Brand.muted : Brand.red),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _checked && _problems.isEmpty
+                        ? "Ready to submit. It follows Meta's rules."
+                        : _problems.isEmpty
+                        ? 'Checking it against Meta’s rules…'
+                        : 'Fix ${_problems.length == 1 ? 'this' : 'these ${_problems.length} things'} before submitting',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _problems.isEmpty ? Brand.text : Brand.red),
+                  ),
+                ),
+              ],
+            ),
+            if (_problems.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              for (final p in _problems.take(10))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('• ${p['message']}', style: const TextStyle(fontSize: 13)),
+                ),
+            ],
           ],
         ),
       ),
-    ),
+      if (_submitError.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text('Meta: $_submitError', style: const TextStyle(color: Brand.red)),
+        ),
+    ],
   );
 
   @override
@@ -93,77 +208,98 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
     final app = AppScope.of(context);
     final canManage = app.can('campaigns') || app.can('manage');
     final editing = widget.editing;
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_editing ? 'Edit ${d['name']}' : '${d['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(
-              '${categoryLabels[d['category']]?.title ?? d['category']} · ${typeTitle('${d['category']}', _type)} · ${languageLabel(d['language'])}',
-              style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
-            ),
-          ],
-        ),
-        actions: [TextButton.icon(onPressed: _preview, icon: const Icon(Icons.visibility_outlined, size: 18), label: const Text('Preview'))],
-      ),
-      body: ListView(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-        children: [
-          if (editing?['status'] == 'REJECTED')
-            _Banner(text: 'Rejected by Meta. ${rejectionReasons['${editing!['rejected_reason'] ?? 'NONE'}'] ?? editing['rejected_reason']} Fix the content below and submit it again.', danger: true),
-          if (_editing && editing!['status'] == 'APPROVED')
-            const _Banner(text: 'You can edit an approved template once a day and up to 10 times a month. After you submit, it goes back into review and you can keep sending it meanwhile.'),
-          ..._type == 'otp' ? _otpSections() : _sections(),
-          if (_problems.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Brand.redSoft, borderRadius: BorderRadius.circular(12)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return DefaultTabController(
+      length: 2,
+      child: Builder(
+        builder: (context) {
+          final tabs = DefaultTabController.of(context);
+          return Scaffold(
+            appBar: AppBar(
+              titleSpacing: 0,
+              title: Row(
                 children: [
-                  Text(
-                    'Fix ${_problems.length == 1 ? 'this' : 'these ${_problems.length} things'} before submitting',
-                    style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w700),
+                  CategoryIcon(category: '${d['category']}', size: 36),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_editing ? 'Edit ${d['name']}' : '${d['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text(
+                          '${typeTitle('${d['category']}', _type)} · ${languageLabel(d['language'])}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  for (final p in _problems.take(8)) Text('• ${p['message']}', style: const TextStyle(fontSize: 13)),
+                ],
+              ),
+              actions: [_status(tabs)],
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'Edit'),
+                  Tab(text: 'Preview'),
                 ],
               ),
             ),
-          if (_submitError.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text('Meta: $_submitError', style: const TextStyle(color: Brand.red)),
+            body: TabBarView(
+              children: [
+                ListView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                  children: [
+                    if (editing?['status'] == 'REJECTED')
+                      _Banner(
+                        text: 'Rejected by Meta. ${rejectionReasons['${editing!['rejected_reason'] ?? 'NONE'}'] ?? editing['rejected_reason']} Fix the content below and submit it again.',
+                        danger: true,
+                      ),
+                    if (_editing && editing!['status'] == 'APPROVED')
+                      const _Banner(text: 'You can edit an approved template once a day and up to 10 times a month. After you submit, it goes back into review and you can keep sending it meanwhile.'),
+                    ..._type == 'otp' ? _otpSections() : _sections(),
+                    if (_submitError.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text('Meta: $_submitError', style: const TextStyle(color: Brand.red)),
+                      ),
+                    if (!canManage)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('Only admins and managers can submit templates.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
+                      ),
+                  ],
+                ),
+                _previewTab(),
+              ],
             ),
-          if (!canManage)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text('Only admins and managers can submit templates.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
-            ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Discard')),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: FilledButton(
-                  onPressed: _busy || !canManage ? null : _submit,
-                  child: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(_editing ? 'Submit changes' : 'Submit for review'),
+            bottomNavigationBar: SafeArea(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Brand.line)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Discard')),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _busy || !canManage ? null : () => _submit(tabs),
+                        icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+                        label: Text(_editing ? 'Submit changes' : 'Submit for review'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -668,6 +804,22 @@ class _Banner extends StatelessWidget {
   );
 }
 
+const _sectionIcons = {
+  'Code delivery setup': Icons.phonelink_lock_outlined,
+  'Content': Icons.notes,
+  'Buttons': Icons.smart_button_outlined,
+  'Message validity period': Icons.timer_outlined,
+  'Variable type': Icons.data_object,
+  'Limited-time offer': Icons.local_offer_outlined,
+  'Header': Icons.title,
+  'Body': Icons.subject,
+  'Variable samples': Icons.edit_note,
+  'Product cards': Icons.view_carousel_outlined,
+  'Call permission request': Icons.phone_in_talk_outlined,
+  'Footer': Icons.short_text,
+  'Carousel cards': Icons.view_carousel_outlined,
+};
+
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.description, required this.children, this.optional = false, this.errors = const []});
   final String title, description;
@@ -690,10 +842,23 @@ class _Section extends StatelessWidget {
           children: [
             Row(
               children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(color: errors.isEmpty ? Brand.bubble : Brand.redSoft, borderRadius: BorderRadius.circular(9)),
+                  child: Icon(_sectionIcons[title] ?? Icons.tune, size: 17, color: errors.isEmpty ? Brand.blue : Brand.red),
+                ),
+                const SizedBox(width: 10),
                 Flexible(
                   child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
-                if (optional) const Text(' · Optional', style: TextStyle(fontSize: 13, color: Brand.muted)),
+                if (optional)
+                  Container(
+                    margin: const EdgeInsets.only(left: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(6)),
+                    child: const Text('Optional', style: TextStyle(fontSize: 11.5, color: Brand.muted)),
+                  ),
               ],
             ),
             const SizedBox(height: 2),

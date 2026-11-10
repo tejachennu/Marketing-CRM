@@ -128,7 +128,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     language, duplicate, delete. The draft is the web's JSON (`template_model.dart` mirrors the
     constants); the server reads Meta's templates into drafts (`GET ?drafts=1`) and checks a draft
     (`POST {check: true}`), so the rules stay in one place (`validateDraft`). Upload reads the file
-    type from its name when the phone sends none.
+    type from its name when the phone sends none. Design (owner, Nov 2026): number tiles that filter
+    (All / Active / In review / Rejected), one card per template with its languages as status chips,
+    category / type icons (`CategoryIcon`), a template page with Insights / Edit / Add language /
+    Duplicate / Delete buttons and details; the editor has Edit and Preview tabs, a live "Ready / N to
+    fix" check against the server (debounced `{check: true}`), and section icons. Section errors show
+    after the first Submit, like the web.
   - **Billing** (`more/billing_screen.dart`, More → Billing): the web's plan states, subscribe / cancel,
     AI credit with top-ups, payments, plan features and use cases (`GET /api/billing?extras=1`), FAQ.
     Payments use `razorpay_flutter` (native Checkout; the same confirm endpoints as the web; ProGuard

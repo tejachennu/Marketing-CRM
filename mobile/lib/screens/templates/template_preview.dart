@@ -5,6 +5,49 @@ import 'package:flutter/material.dart';
 import '../../ui/theme.dart';
 import 'template_model.dart';
 
+IconData categoryIcon(String category) => switch (category) {
+  'UTILITY' => Icons.build_outlined,
+  'AUTHENTICATION' => Icons.key_outlined,
+  _ => Icons.campaign_outlined,
+};
+
+IconData typeIcon(String type) => switch (type) {
+  'carousel' => Icons.view_carousel_outlined,
+  'catalog' => Icons.storefront_outlined,
+  'mpm' => Icons.grid_view,
+  'spm' => Icons.shopping_bag_outlined,
+  'product_carousel' => Icons.view_week_outlined,
+  'lto' => Icons.timer_outlined,
+  'coupon' => Icons.confirmation_number_outlined,
+  'flow' => Icons.checklist,
+  'call_permission' => Icons.phone_in_talk_outlined,
+  'order_details' => Icons.receipt_long_outlined,
+  'otp' => Icons.password,
+  _ => Icons.chat_outlined,
+};
+
+/// The category as a round icon: Marketing, Utility or Authentication (or the type's icon).
+class CategoryIcon extends StatelessWidget {
+  const CategoryIcon({super.key, required this.category, this.size = 44, this.type});
+  final String category;
+  final String? type;
+  final double size;
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = switch (category) {
+      'UTILITY' => (const Color(0xFFE7F0FD), const Color(0xFF0064E0)),
+      'AUTHENTICATION' => (const Color(0xFFFEF4D6), const Color(0xFF8A6100)),
+      _ => (Brand.bubble, Brand.blue),
+    };
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Icon(type == null ? categoryIcon(category) : typeIcon(type!), size: size * 0.5, color: fg),
+    );
+  }
+}
+
 /// WhatsApp text formatting: *bold*, _italic_, ~strike~ and ```mono```.
 class WaText extends StatelessWidget {
   const WaText(this.text, {super.key, this.style});

@@ -230,6 +230,47 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                         ],
                       ),
                     ),
+                  // The numbers, as filters: tap one to see only those
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Row(
+                      children: [
+                        for (final (i, (status, label, color)) in [
+                          ('', 'All', Brand.text),
+                          ('APPROVED', 'Active', const Color(0xFF15603E)),
+                          ('PENDING', 'In review', const Color(0xFF8A6100)),
+                          ('REJECTED', 'Rejected', Brand.red),
+                        ].indexed) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () => setState(() => _status = _status == status ? '' : status),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _status == status ? Brand.bubble : Brand.page,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: _status == status ? Brand.blue : Colors.transparent),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      '${status.isEmpty ? all.length : all.where((t) => t['status'] == status).length}',
+                                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: color),
+                                    ),
+                                    FittedBox(
+                                      child: Text(label, style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                   SearchField(hint: 'Search name or content', onChanged: (v) => setState(() => _query = v.trim())),
                   FilterChips(
                     children: [
@@ -282,7 +323,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                       ),
                     )
                   else
-                    for (final (i, t) in shown.indexed) _row(t, continued: i > 0 && shown[i - 1]['name'] == t['name'], canManage: canManage, all: all),
+                    for (final name in {for (final t in shown) '${t['name']}'})
+                      _card(
+                        [
+                          for (final t in shown)
+                            if (t['name'] == name) t,
+                        ],
+                        canManage: canManage,
+                        all: all,
+                      ),
                   if (all.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -300,61 +349,81 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     );
   }
 
-  Widget _row(Map<String, dynamic> t, {required bool continued, required bool canManage, required List<Map<String, dynamic>> all}) {
-    final status = '${t['status']}';
-    final quality = qualityLabels['${(t['quality_score'] as Map?)?['score'] ?? ''}'.toUpperCase()];
-    return FlatRow(
-      onTap: () => _open(TemplateScreen(template: t, flows: _flows)),
-      padding: EdgeInsets.fromLTRB(continued ? 40 : 16, continued ? 2 : 12, 4, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
+  /// One template (all its languages): what kind it is, its words, and each language with Meta's status.
+  Widget _card(List<Map<String, dynamic>> versions, {required bool canManage, required List<Map<String, dynamic>> all}) {
+    final t = versions.first;
+    final draft = t['draft'] as Map?;
+    final type = '${draft?['type'] ?? (t['category'] == 'AUTHENTICATION' ? 'otp' : 'custom')}';
+    final body = bodyOf(t);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Brand.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _open(TemplateScreen(template: t, flows: _flows)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (continued)
-                  Text('↳ ${languageLabel(t['language'])} version', style: const TextStyle(color: Brand.muted, fontSize: 13))
-                else
-                  Text('${t['name']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(
-                  bodyOf(t).isEmpty ? (t['category'] == 'AUTHENTICATION' ? 'One-time passcode' : '') : bodyOf(t),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.3),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TemplateStatusPill(status: status),
-                    if (status == 'APPROVED') Text(quality ?? 'Quality pending', style: const TextStyle(fontSize: 12, color: Brand.muted)),
-                    Text('${categoryLabels[t['category']]?.title ?? t['category']} · ${languageLabel(t['language'])}', style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                    CategoryIcon(category: '${t['category']}', type: type, size: 42),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${t['name']}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700)),
+                          Text('${categoryLabels[t['category']]?.title ?? t['category']} · ${typeTitle('${t['category']}', type)}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                        ],
+                      ),
+                    ),
+                    if (canManage) TemplateActions(template: t, all: all, flows: _flows, onDone: _open, onChanged: _sync),
                   ],
                 ),
-                if (status == 'REJECTED')
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text('${rejectionReasons['${t['rejected_reason'] ?? 'NONE'}'] ?? t['rejected_reason']} ', style: const TextStyle(color: Brand.red, fontSize: 12.5)),
-                        InkWell(
-                          onTap: () => launchUrl(Uri.parse('https://business.facebook.com/business-support-home'), mode: LaunchMode.externalApplication),
-                          child: const Text(
-                            'Request review ↗',
-                            style: TextStyle(color: Brand.blue, fontSize: 12.5, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(54, 6, 10, 0),
+                  child: Text(
+                    body.isEmpty ? (t['category'] == 'AUTHENTICATION' ? 'One-time passcode' : '') : body,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, height: 1.3),
                   ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(54, 8, 10, 0),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final v in versions)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => _open(TemplateScreen(template: v, flows: _flows)),
+                          child: _LanguageChip(template: v),
+                        ),
+                    ],
+                  ),
+                ),
+                for (final v in versions)
+                  if (v['status'] == 'REJECTED')
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(54, 6, 10, 0),
+                      child: Text(
+                        '${versions.length > 1 ? '${languageLabel(v['language'])}: ' : ''}${rejectionReasons['${v['rejected_reason'] ?? 'NONE'}'] ?? v['rejected_reason']}',
+                        style: const TextStyle(color: Brand.red, fontSize: 12.5),
+                      ),
+                    ),
                 if (t['previous_category'] != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.fromLTRB(54, 6, 10, 0),
                     child: Text(
                       'Category changed by Meta from ${categoryLabels[t['previous_category']]?.title ?? t['previous_category']}',
                       style: const TextStyle(color: Color(0xFF8A6100), fontSize: 12.5),
@@ -363,7 +432,45 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               ],
             ),
           ),
-          if (canManage) TemplateActions(template: t, all: all, flows: _flows, onDone: _open, onChanged: _sync),
+        ),
+      ),
+    );
+  }
+}
+
+/// A language version: the language and Meta's status (with quality when active).
+class _LanguageChip extends StatelessWidget {
+  const _LanguageChip({required this.template});
+  final Map<String, dynamic> template;
+  @override
+  Widget build(BuildContext context) {
+    final status = '${template['status']}';
+    final quality = '${(template['quality_score'] as Map?)?['score'] ?? ''}'.toUpperCase();
+    final dot = switch (statusInfo[status]?.tone) {
+      'green' => quality == 'RED' ? Brand.red : (quality == 'YELLOW' ? const Color(0xFFF7B928) : const Color(0xFF25D366)),
+      'yellow' => const Color(0xFFF7B928),
+      'red' => Brand.red,
+      _ => Brand.faint,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${languageLabel(template['language'])} · ${statusInfo[status]?.label ?? status}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
     );
@@ -420,7 +527,22 @@ class TemplateActions extends StatelessWidget {
     return d;
   }
 
-  Future<void> _delete(BuildContext context) async {
+  void addLanguage(Future<void> Function(Widget screen) open) {
+    final copy = _fresh(draftOf(template));
+    final used = {for (final t in all.where((t) => t['name'] == template['name'])) '${t['language']}'};
+    copy['language'] = templateLanguages.where((l) => !used.contains(l.$1)).map((l) => l.$1).firstOrNull ?? copy['language'];
+    open(TemplateSetupScreen(existing: all, flows: flows, start: copy, lockedName: '${template['name']}'));
+  }
+
+  void duplicate(Future<void> Function(Widget screen) open) {
+    final copy = _fresh(draftOf(template));
+    copy['name'] = '${template['name']}_copy';
+    open(TemplateSetupScreen(existing: all, flows: flows, start: copy));
+  }
+
+  Future<void> delete(BuildContext context, {VoidCallback? done}) => _delete(context, done: done);
+
+  Future<void> _delete(BuildContext context, {VoidCallback? done}) async {
     final app = AppScope.read(context);
     final languages = all.where((t) => t['name'] == template['name']).length;
     final choice = await showDialog<String>(
@@ -445,6 +567,7 @@ class TemplateActions extends StatelessWidget {
       await app.ask('/api/whatsapp-templates?$query', {}, method: 'DELETE');
       if (context.mounted) toast(context, '“${template['name']}” was deleted.');
       await onChanged();
+      done?.call();
     } catch (e) {
       if (context.mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
     }
@@ -461,14 +584,9 @@ class TemplateActions extends StatelessWidget {
         case 'edit':
           onDone(TemplateEditorScreen(draft: draftOf(template), editing: template, flows: flows));
         case 'language':
-          final copy = _fresh(draftOf(template));
-          final used = {for (final t in all.where((t) => t['name'] == template['name'])) '${t['language']}'};
-          copy['language'] = templateLanguages.where((l) => !used.contains(l.$1)).map((l) => l.$1).firstOrNull ?? copy['language'];
-          onDone(TemplateSetupScreen(existing: all, flows: flows, start: copy, lockedName: '${template['name']}'));
+          addLanguage(onDone);
         case 'duplicate':
-          final copy = _fresh(draftOf(template));
-          copy['name'] = '${template['name']}_copy';
-          onDone(TemplateSetupScreen(existing: all, flows: flows, start: copy));
+          duplicate(onDone);
         case 'delete':
           _delete(context);
       }
@@ -486,7 +604,7 @@ class TemplateActions extends StatelessWidget {
   );
 }
 
-/// One template: how it looks, its status, and what you can do with it.
+/// One template: how it looks, Meta's status, its details and everything you can do with it.
 class TemplateScreen extends StatelessWidget {
   const TemplateScreen({super.key, required this.template, this.flows = const []});
   final Map<String, dynamic> template;
@@ -496,62 +614,160 @@ class TemplateScreen extends StatelessWidget {
     final app = AppScope.of(context);
     final status = '${template['status']}';
     final all = templatesOf(app);
+    final draft = draftOf(template);
+    final type = '${draft['type']}';
+    final canManage = app.can('campaigns');
+    final editable = !['PENDING', 'IN_APPEAL', 'DISABLED', 'PENDING_DELETION', 'DELETED'].contains(status);
+    final quality = qualityLabels['${(template['quality_score'] as Map?)?['score'] ?? ''}'.toUpperCase()];
+    final others = all.where((t) => t['name'] == template['name'] && t['id'] != template['id']).toList();
+    final actions = TemplateActions(template: template, all: all, flows: flows, onDone: (_) async {}, onChanged: () async {});
+
     Future<void> open(Widget screen) async {
       final done = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => screen));
       if (done != null && context.mounted) Navigator.pop(context, done);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${template['name']}'),
-        actions: [
-          if (app.can('campaigns'))
-            TemplateActions(
-              template: template,
-              all: all,
-              flows: flows,
-              onDone: open,
-              onChanged: () async {
-                if (context.mounted) Navigator.pop(context, 'Done.');
-              },
-            ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
+    Widget action(IconData icon, String label, VoidCallback onTap, {Color? color}) => Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
             children: [
-              TemplateStatusPill(status: status),
-              Pill(categoryLabels[template['category']]?.title ?? '${template['category']}'),
-              Pill(languageLabel(template['language'])),
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: color == null ? Brand.bubble : Brand.redSoft,
+                child: Icon(icon, size: 20, color: color ?? Brand.blue),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color ?? Brand.text),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
+        ),
+      ),
+    );
+
+    Widget info(String label, String value) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: const TextStyle(color: Brand.muted)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: Text('${template['name']}')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        children: [
+          Row(
+            children: [
+              CategoryIcon(category: '${template['category']}', type: type, size: 48),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${categoryLabels[template['category']]?.title ?? template['category']} · ${typeTitle('${template['category']}', type)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        TemplateStatusPill(status: status),
+                        if (status == 'APPROVED') Text(quality ?? 'Quality pending', style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(statusInfo[status]?.help ?? '', style: const TextStyle(color: Brand.muted, fontSize: 13)),
           if (status == 'REJECTED') ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Brand.redSoft, borderRadius: BorderRadius.circular(12)),
-              child: Text(
-                'Rejected by Meta. ${rejectionReasons['${template['rejected_reason'] ?? 'NONE'}'] ?? template['rejected_reason']}',
-                style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rejected by Meta. ${rejectionReasons['${template['rejected_reason'] ?? 'NONE'}'] ?? template['rejected_reason']}',
+                    style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                    onPressed: () => launchUrl(Uri.parse('https://business.facebook.com/business-support-home'), mode: LaunchMode.externalApplication),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Request review with Meta'),
+                  ),
+                ],
               ),
             ),
           ],
-          const SectionLabel('Template preview'),
-          TemplatePreview(draft: draftOf(template)),
-          if (status == 'APPROVED') ...[
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: () => open(TemplateInsightsScreen(template: template)),
-              icon: const Icon(Icons.bar_chart),
-              label: const Text('View insights'),
+          if (template['previous_category'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Category changed by Meta from ${categoryLabels[template['previous_category']]?.title ?? template['previous_category']}',
+                style: const TextStyle(color: Color(0xFF8A6100), fontSize: 13),
+              ),
             ),
+          if (canManage) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (status == 'APPROVED') action(Icons.bar_chart, 'Insights', () => open(TemplateInsightsScreen(template: template))),
+                if (editable) action(Icons.edit_outlined, 'Edit', () => open(TemplateEditorScreen(draft: draft, editing: template, flows: flows))),
+                action(Icons.translate, 'Add language', () => actions.addLanguage(open)),
+                action(Icons.copy_all_outlined, 'Duplicate', () => actions.duplicate(open)),
+                action(Icons.delete_outline, 'Delete', () => actions.delete(context, done: () => Navigator.pop(context, 'Deleted.')), color: Brand.red),
+              ],
+            ),
+          ],
+          const SectionLabel('How customers see it'),
+          TemplatePreview(draft: draft),
+          const SectionLabel('Details'),
+          info('Name', '${template['name']}'),
+          info('Language', languageLabel(template['language'])),
+          info('Category', categoryLabels[template['category']]?.title ?? '${template['category']}'),
+          info('Type', typeTitle('${template['category']}', type)),
+          if (extractVariables('${draft['body']}').isNotEmpty) info('Blanks', '${extractVariables('${draft['body']}').map((v) => '{{$v}}').join(', ')}, filled in when it is sent'),
+          if (template['message_send_ttl_seconds'] is num) info('Valid for', describeDuration((template['message_send_ttl_seconds'] as num).toInt())),
+          if (others.isNotEmpty) ...[
+            const SectionLabel('Other languages'),
+            for (final o in others)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.translate),
+                title: Text(languageLabel(o['language'])),
+                trailing: TemplateStatusPill(status: '${o['status']}'),
+                onTap: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TemplateScreen(template: o, flows: flows),
+                  ),
+                ),
+              ),
           ],
         ],
       ),

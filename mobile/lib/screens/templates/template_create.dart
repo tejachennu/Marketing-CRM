@@ -86,11 +86,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(switch (c) {
-                                'MARKETING' => Icons.campaign_outlined,
-                                'UTILITY' => Icons.build_outlined,
-                                _ => Icons.key_outlined,
-                              }, color: c == category ? Brand.blue : Brand.muted),
+                              CategoryIcon(category: c, size: 40),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
@@ -108,26 +104,41 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
                     ),
                   ),
                 const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                const Text('Type of message', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
                 for (final t in templateTypes[category]!)
-                  InkWell(
-                    onTap: _locked ? null : () => _setType(category, t.type),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(d['type'] == t.type ? Icons.radio_button_checked : Icons.radio_button_off, size: 20, color: d['type'] == t.type ? Brand.blue : Brand.faint),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                Text(t.description, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
-                              ],
-                            ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: d['type'] == t.type ? Brand.bubble : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: d['type'] == t.type ? Brand.blue : Brand.line),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _locked ? null : () => _setType(category, t.type),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CategoryIcon(category: category, type: t.type, size: 38),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(t.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    Text(t.description, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                                  ],
+                                ),
+                              ),
+                              if (d['type'] == t.type) const Icon(Icons.check_circle, color: Brand.blue, size: 20),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
