@@ -393,14 +393,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Open ticket: ${ticket['title'] ?? 'Needs a reply'}',
+                        'Open ticket: ${ticket['subject'] ?? ticket['title'] ?? 'Needs a reply'}',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     TextButton(
                       onPressed: () {
-                        app.enqueue(kind: 'ticket', label: 'Resolve ticket: ${ticket['title'] ?? ''}', method: 'PATCH', path: '/api/tickets', body: {'ticketId': ticket['id'], 'status': 'resolved'});
+                        app.enqueue(
+                          kind: 'ticket',
+                          label: 'Resolve ticket: ${ticket['subject'] ?? ticket['title'] ?? ''}',
+                          method: 'PATCH',
+                          path: '/api/tickets',
+                          body: {'ticketId': ticket['id'], 'status': 'resolved'},
+                        );
                         toast(context, 'Ticket resolved.');
                       },
                       child: const Text('Resolve'),

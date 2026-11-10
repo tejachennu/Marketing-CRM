@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
+    // The Tickets screen (the app): either list, search, dates, a page, the counts, and the team and stages
+    if (searchParams.get('view') === 'list') return listTickets(supabase, orgId, authResult.user, searchParams)
+
     let query = supabase
       .from('tickets')
       .select(`
@@ -69,6 +72,59 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+const PAGE = 20
+const clean = (value: string | null) => String(value || '').replace(/[%,()*\\]/g, ' ').trim().slice(0, 60)
+
+async function listTickets(supabase: any, orgId: string, user: any, params: URLSearchParams) {
+  const status = params.get('status') === 'resolved' ? 'resolved' : 'open'
+  const offset = Math.max(0, Number(params.get('offset')) || 0)
+  const own = !canSeeAll(user)
+  const mine = (query: any) => (own ? query.eq('assigned_to', user.id) : query)
+  const count = (state?: string) => {
+    let query = mine(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('organization_id', orgId))
+    if (state) query = query.eq('status', state)
+    return query
+  }
+
+  let query = mine(supabase.from('tickets')
+    .select('id, subject, status, created_at, updated_at, conversation_id, contact_id, assigned_to, contacts ( first_name, last_name, phone_number, email )', { count: 'exact' })
+    .eq('organization_id', orgId).eq('status', status))
+  const search = clean(params.get('q'))
+  if (search) {
+    const { data: people } = await supabase.from('contacts').select('id').eq('organization_id', orgId)
+      .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%`).limit(200)
+    const ids = (people || []).map((c: any) => c.id)
+    query = ids.length ? query.or(`subject.ilike.%${search}%,contact_id.in.(${ids.join(',')})`) : query.ilike('subject', `%${search}%`)
+  }
+  const from = params.get('from')
+  const to = params.get('to')
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) query = query.gte('created_at', new Date(`${from}T00:00:00+05:30`).toISOString())
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) query = query.lte('created_at', new Date(`${to}T23:59:59.999+05:30`).toISOString())
+
+  const [list, total, open, resolved] = await Promise.all([
+    query.order('created_at', { ascending: false }).range(offset, offset + PAGE - 1),
+    count(), count('open'), count('resolved'),
+  ])
+  if (list.error) throw list.error
+  const tickets = (list.data || []).map((t: any) => ({ ...t, contacts: Array.isArray(t.contacts) ? t.contacts[0] : t.contacts }))
+  const result: Record<string, any> = {
+    success: true,
+    tickets,
+    more: Math.max(0, (list.count || 0) - offset - tickets.length),
+    counts: { total: total.count || 0, open: open.count || 0, resolved: resolved.count || 0 },
+  }
+  if (params.get('meta') === '1') {
+    const [team, stages] = await Promise.all([
+      supabase.from('users').select('id, full_name, email').eq('organization_id', orgId),
+      supabase.from('pipeline_stages').select('id, name, position').eq('organization_id', orgId).order('position'),
+    ])
+    result.team = (team.data || []).map((u: any) => ({ id: u.id, name: u.full_name || u.email }))
+    result.stages = stages.data || []
+    result.can = { assign: can(user, 'records.assign'), write: can(user, 'records.write') }
+  }
+  return NextResponse.json(result)
 }
 
 export async function PATCH(request: NextRequest) {

@@ -6,6 +6,7 @@ import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'chat_screen.dart';
+import 'tickets_screen.dart';
 
 /// WhatsApp chats, newest first, with unread counts. Read from the phone when offline.
 class ChatsScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       return contactName(c['contact']).toLowerCase().contains(q) || '${c['contact']?['phone_number'] ?? ''}'.contains(q);
     }).toList();
     final unread = all.where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
+    final openTickets = ((app.cached('tickets') ?? const {})['tickets'] as List? ?? const []).where((t) => t['status'] == 'open').length;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Chats')),
@@ -40,6 +42,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
             children: [
               ChoiceChip(label: const Text('All'), selected: !_unreadOnly, onSelected: (_) => setState(() => _unreadOnly = false)),
               ChoiceChip(label: Text(unread > 0 ? 'Unread $unread' : 'Unread'), selected: _unreadOnly, onSelected: (_) => setState(() => _unreadOnly = true)),
+              ActionChip(
+                avatar: const Icon(Icons.confirmation_number_outlined, size: 17),
+                label: Text(openTickets > 0 ? 'Tickets $openTickets' : 'Tickets'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TicketsScreen())),
+              ),
             ],
           ),
           Expanded(

@@ -482,16 +482,27 @@ class DemoBackend implements Backend {
         'created_at': now.subtract(const Duration(days: 1)).toIso8601String(),
       },
     ];
+    Map<String, dynamic> ticket(String id, int person, String subject, int hoursAgo, {String status = 'open', String? assigned}) {
+      final c = _contacts[person];
+      return {
+        'id': id,
+        'conversation_id': 'conv-$person',
+        'contact_id': c['id'],
+        'status': status,
+        'subject': subject,
+        'title': subject,
+        'assigned_to': assigned,
+        'created_at': now.subtract(Duration(hours: hoursAgo)).toIso8601String(),
+        'contacts': {'first_name': c['first_name'], 'last_name': c['last_name'], 'phone_number': c['phone_number'], 'email': c['email']},
+      };
+    }
+
     _tickets = [
-      {
-        'id': 'tk1',
-        'conversation_id': 'conv-6',
-        'status': 'open',
-        'title': 'Bill not received',
-        'description': 'Customer says the bill did not come on WhatsApp.',
-        'priority': 'medium',
-        'created_at': now.subtract(const Duration(hours: 30)).toIso8601String(),
-      },
+      ticket('tk1', 6, 'Bill not received', 30, assigned: 'u1'),
+      ticket('tk2', 3, 'Wants to move her colour appointment', 5, assigned: 'u2'),
+      ticket('tk3', 2, 'Asking for a bridal package price', 52),
+      ticket('tk4', 0, 'Refund for a cancelled booking', 75, status: 'resolved', assigned: 'u1'),
+      ticket('tk5', 4, 'Complaint about waiting time', 120, status: 'resolved', assigned: 'u2'),
     ];
   }
 
@@ -598,6 +609,40 @@ class DemoBackend implements Backend {
       case '/api/knowledge':
         return {'articles': _articles};
       case '/api/tickets':
+        if (query?['view'] == 'list') {
+          final status = query?['status'] == 'resolved' ? 'resolved' : 'open';
+          final q = (query?['q'] ?? '').toLowerCase();
+          final from = query?['from'];
+          final to = query?['to'];
+          final list = _tickets.where((t) {
+            if (t['status'] != status) return false;
+            final day = '${t['created_at']}'.substring(0, 10);
+            if (from != null && day.compareTo(from) < 0) return false;
+            if (to != null && day.compareTo(to) > 0) return false;
+            if (q.isEmpty) return true;
+            final c = t['contacts'] as Map;
+            return '${t['subject']} ${c['first_name']} ${c['last_name']} ${c['phone_number']}'.toLowerCase().contains(q);
+          }).toList();
+          return {
+            'success': true,
+            'tickets': list,
+            'more': 0,
+            'counts': {'total': _tickets.length, 'open': _tickets.where((t) => t['status'] == 'open').length, 'resolved': _tickets.where((t) => t['status'] == 'resolved').length},
+            if (query?['meta'] == '1') ...{
+              'team': [
+                {'id': 'u1', 'name': 'Teja'},
+                {'id': 'u2', 'name': 'Anitha'},
+                {'id': 'u3', 'name': 'Ravi'},
+              ],
+              'stages': [
+                {'id': 'st1', 'name': 'New', 'position': 1},
+                {'id': 'st2', 'name': 'Talking', 'position': 2},
+                {'id': 'st3', 'name': 'Quote sent', 'position': 3},
+              ],
+              'can': {'assign': true, 'write': true},
+            },
+          };
+        }
         return {'success': true, 'tickets': _tickets.where((t) => t['status'] == 'open').toList()};
     }
     throw ApiException(404, 'Not in the demo: $path');
@@ -686,7 +731,17 @@ class DemoBackend implements Backend {
       case '/api/tickets':
         final ticket = _tickets.firstWhere((t) => t['id'] == body['ticketId'], orElse: () => throw ApiException(404, 'That ticket is not there any more.'));
         if (body['status'] != null) ticket['status'] = body['status'];
+        if (body.containsKey('assignedTo')) ticket['assigned_to'] = body['assignedTo'];
         return {'success': true, 'ticket': ticket};
+      case '/api/tickets/to-deal':
+        final moved = _tickets.firstWhere((t) => t['id'] == body['ticketId'], orElse: () => throw ApiException(404, 'That ticket is not there any more.'));
+        if ('${body['title'] ?? ''}'.trim().isEmpty) throw ApiException(400, 'Give the deal a name, like "500 shirts for Mehta Exports".');
+        if (body['resolve'] != false) moved['status'] = 'resolved';
+        return {
+          'success': true,
+          'lead': {'id': _id(), 'title': body['title']},
+          'resolved': body['resolve'] != false,
+        };
       case '/api/knowledge':
         if (method == 'POST') {
           final article = {'id': _id(), 'type': 'manual', 'title': body['title'], 'content': body['content'], 'created_at': DateTime.now().toIso8601String()};

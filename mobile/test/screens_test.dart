@@ -21,7 +21,7 @@ void main() {
       'setup_team',
       'setup_business', //
       'setup_whatsapp', 'setup_templates', 'checkout', 'new_bill', 'new_booking', 'appointment', 'bill', 'bill_paid', 'booking_flow', 'chats', 'chat', //
-      'chat_ai', 'chat_closed', 'booking_try', 'booking_try_form', 'new_contact', 'templates', 'template', 'more', 'grow', 'sync', 'knowledge', 'article', 'assistant',
+      'chat_ai', 'chat_closed', 'booking_try', 'booking_try_form', 'new_contact', 'templates', 'template', 'more', 'grow', 'tickets', 'sync', 'knowledge', 'article', 'assistant',
     ],
     flows: [
       ('setup_services', ['Haircut (Women)']),
@@ -30,6 +30,9 @@ void main() {
       ('setup_catalog', ['Keratin hair serum', 'Gift card']),
       ('setup_catalog', ['Tick all shown']),
       ('setup_history', ['Services']),
+      ('tickets', ['Bill not received']),
+      ('tickets', ['Resolved 2']),
+      ('tickets', ['Bill not received', 'Move to Sales Pipeline']),
       ('setup_team', ['Anitha']),
       ('setup_team', ['Add person']),
       ('setup_templates', ['Bill']),
@@ -38,7 +41,7 @@ void main() {
       ('new_bill', ['Haircut (Men)', 'Gold facial']),
       ('new_booking', ['Haircut (Men)']),
       ('checkout', ['Lakshmi']),
-      ('bill', ['Cancel this bill']),
+      ('bill_paid', ['Cancel this bill']),
       ('appointment', ['Done · make the bill']),
       ('reviews', ['To call back · 1']),
       ('desk', ['Requests']),
