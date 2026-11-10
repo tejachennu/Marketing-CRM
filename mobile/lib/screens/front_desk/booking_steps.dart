@@ -946,6 +946,21 @@ class ServicesFormCard extends StatelessWidget {
   }
 }
 
+/// A message that asks something rather than answering (the same rule as the server's
+/// `looksLikeQuestion`): the assistant answers it and the booking carries on.
+bool looksLikeQuestion(String message) {
+  final text = message.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (text.isEmpty) return false;
+  if (text.contains('?')) return true;
+  final first = text.split(' ').first;
+  const words = {
+    'what', 'whats', "what's", 'how', 'when', 'where', 'which', 'who', 'why', 'do', 'does', 'is', 'are', 'can', 'could', 'will', 'would', 'should', //
+    'price', 'cost', 'timings', 'timing', 'enti', 'ela', 'ekkada', 'eppudu', 'entha', 'enni', 'evaru', 'kya', 'kaise', 'kab', 'kahan', 'kitna', 'kitne', 'kaun', 'kyun',
+  };
+  if (words.contains(first)) return true;
+  return RegExp(r'\b(unda|untaya|untara|hai kya|milega|kitna|entha)$').hasMatch(text);
+}
+
 /// The words a step says, with {name}, {business} and {service} filled in.
 String stepWords(Map<String, dynamic> step, {required String name, required String business, required String service}) {
   final own = '${step['text'] ?? ''}'.trim();

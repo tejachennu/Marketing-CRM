@@ -46,6 +46,8 @@ export interface SalonChatInput {
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   fetcher?: typeof fetch
   now?: number
+  /** Try it (setup preview): the replies are collected here instead of being sent on WhatsApp. */
+  collect?: string[]
 }
 
 export type SalonChatResult = { handled: true; action: 'replied' | 'offered_times' | 'requested' | 'booked' | 'expired' | 'taken' } | { handled: false; reason: string }
@@ -311,7 +313,7 @@ export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, arg
 
 /** Answer a customer message. Not handled: the next assistant in the chain answers instead. */
 export async function runSalonAssistant(input: SalonChatInput, setupIn?: ChatSetup): Promise<SalonChatResult> {
-  if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
+  if (!input.collect && !salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const access = input.ai
   if (!access?.allowed || !access.apiKey) return { handled: false, reason: 'ai_unavailable' }
   const setup = setupIn || await loadChatSetup(input.supabase, input.organization.id)
@@ -344,10 +346,15 @@ export async function runSalonAssistant(input: SalonChatInput, setupIn?: ChatSet
       if (tool === 'reply_to_customer') {
         const text = String(args.message || '').trim()
         if (!text) return { handled: false, reason: 'empty_reply' }
-        await sendText(input, text)
+        if (input.collect) input.collect.push(text)
+        else await sendText(input, text)
         return { handled: true, action: 'replied' }
       }
       let result: unknown
+      if (tool === 'offer_times' && input.collect) {
+        input.collect.push('(Here WhatsApp shows the free times for what they asked.)')
+        return { handled: true, action: 'offered_times' }
+      }
       if (tool === 'offer_times') {
         const outcome = await offerTimes(input, setup, args)
         if ('sent' in outcome) return { handled: true, action: 'offered_times' }

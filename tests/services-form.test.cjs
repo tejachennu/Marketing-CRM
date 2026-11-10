@@ -179,3 +179,48 @@ test('Form: "LIST" sends the list instead; other words go to the assistant; the 
     wa.restore()
   }
 })
+
+test('Questions in the middle of a booking: answered by the assistant, then the booking carries on', async () => {
+  // A question is told apart from an answer
+  for (const q of ['How much is hair spa?', 'do you have parking', 'parking unda', 'kitna time lagega', 'enti price']) assert.equal(F.looksLikeQuestion(q), true, q)
+  for (const a of ['No allergies', 'Instagram', 'KA 01 AB 1234', 'Priya Sharma']) assert.equal(F.looksLikeQuestion(a), false, a)
+
+  const db = seed({ flow: { services_style: 'list', steps: [{ type: 'text', text: 'Any allergies?', label: 'Allergies' }, { type: 'services' }, { type: 'datetime' }] } })
+  const wa = whatsapp()
+  try {
+    await F.startBookingFlow(input(db))
+    const sessionId = await F.waitingForAnswer(db, ORG, '+919876543210', NOW)
+    // A question on a typed-answer step is not saved as the answer
+    assert.deepEqual(await F.handleBookingText(input(db, { sessionId, message: 'Do you have parking?' })), { handled: false, reason: 'question' })
+    assert.deepEqual(db.tables.salon_booking_sessions[0].answers, [])
+    // After the answer, the same step again
+    assert.equal(await F.activeBookingSession(db, ORG, '+919876543210', NOW), sessionId)
+    await F.resumeBooking(input(db, { sessionId }))
+    assert.equal(wa.sent.at(-1).text.body, 'To carry on with your booking:\n\nAny allergies?\n(Type your answer, or "cancel" to stop.)')
+    // A real answer moves on
+    assert.equal((await F.handleBookingText(input(db, { sessionId, message: 'No allergies' }))).step, 'services')
+    // Long after: not carried on
+    assert.equal(await F.activeBookingSession(db, ORG, '+919876543210', NOW + 2 * 3600_000), null)
+    // Cancel at any step
+    assert.equal(F.isCancelWord(' Cancel '), true)
+    assert.deepEqual(await F.cancelBooking(input(db, { sessionId })), { handled: true, step: 'cancelled' })
+    assert.equal(db.tables.salon_booking_sessions.length, 0)
+  } finally {
+    wa.restore()
+  }
+})
+
+test('Try it: the assistant\'s answer is collected, nothing is sent on WhatsApp', async () => {
+  const C = require('../lib/salon/chat.ts')
+  const db = seed()
+  const calls = []
+  const fetcher = async (url, init) => {
+    calls.push(url)
+    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', tool_calls: [{ id: 't1', function: { name: 'reply_to_customer', arguments: JSON.stringify({ message: 'Hair spa is ₹1,200 and takes an hour.' }) } }] } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }))
+  }
+  const collect = []
+  const result = await C.runSalonAssistant({ ...input(db, { message: 'How much is hair spa?' }), organization: { ...organization, whatsapp_api_token: '' }, ai: { allowed: true, apiKey: 'k', source: 'own' }, fetcher, collect })
+  assert.deepEqual(result, { handled: true, action: 'replied' })
+  assert.deepEqual(collect, ['Hair spa is ₹1,200 and takes an hour.'])
+  assert.ok(calls.every((u) => u.includes('openai.com')), 'nothing sent to WhatsApp')
+})

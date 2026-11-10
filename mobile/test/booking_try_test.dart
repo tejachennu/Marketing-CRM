@@ -145,4 +145,38 @@ void main() {
     expect(shows('Choose a service'), isTrue);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('Try it: a question gets the assistant\'s answer, then the booking carries on', (tester) async {
+    await loadFonts();
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    late AppState app;
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('wama_try_ask');
+      final store = LocalStore();
+      await store.open(path: dir.path);
+      await store.clear();
+      app = AppState(backend: DemoBackend(), store: store);
+      await app.refreshAll();
+    });
+    await tester.pumpWidget(WamaApp(app: app, screen: 'booking_try'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    bool shows(String part) => find.byWidgetPredicate((w) => w is Text && (w.data ?? '').contains(part), skipOffstage: false).evaluate().isNotEmpty;
+    Future<void> type(String text) async {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 600)));
+      await tester.pumpAndSettle();
+    }
+
+    await type('How much is gold facial?');
+    expect(shows('Gold facial is ₹1,500 and takes about 60 minutes.'), isTrue);
+    expect(shows('To carry on with your booking:'), isTrue);
+    expect(find.byWidgetPredicate((w) => w is Text && (w.data ?? '').contains('Is this your first visit?')), findsNWidgets(2));
+    expect(looksLikeQuestion('parking unda'), isTrue);
+    expect(looksLikeQuestion('No allergies'), isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

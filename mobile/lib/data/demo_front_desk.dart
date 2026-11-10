@@ -316,6 +316,12 @@ class DemoFrontDesk {
           ],
         });
         return {'success': true, 'status': 'PENDING'};
+      case '/api/salon/booking-flow/try-question':
+        final q = '${body['message']}'.toLowerCase();
+        final service = services.cast<Map<String, dynamic>?>().firstWhere((s) => q.contains('${s!['name']}'.toLowerCase().split(' ').first), orElse: () => null);
+        if (service != null) return {'success': true, 'reply': '${service['name']} is ${formatRupees(service['price'])} and takes about ${service['duration_minutes']} minutes.'};
+        if (q.contains('open') || q.contains('time') || q.contains('timing')) return {'success': true, 'reply': 'We are open 10 am to 9 pm, Monday to Saturday.'};
+        return {'success': true, 'reply': null};
       case '/api/salon/catalog':
         if (body['action'] == 'refresh') return {'success': true, 'changed': []};
         final ids = List<String>.from(body['product_ids'] as List? ?? const []);

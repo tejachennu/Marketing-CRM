@@ -59,6 +59,7 @@ const words = {
   formNone: { en: 'Please tick at least one service.', te: 'Kaneesam okka service tick cheyandi.', hi: 'Kam se kam ek service tick kijiye.' },
   formPicked: { en: 'You picked: {list} · {total}, about {minutes} min.', te: 'Meeru enchukunnavi: {list} · {total}, sumaru {minutes} min.', hi: 'Aapne chuna: {list} · {total}, lagbhag {minutes} min.' },
   formTooMany: { en: 'One booking takes up to {max} services, so we kept the first {max}.', te: 'Okka booking lo {max} services varaku; modati {max} unchamu.', hi: 'Ek booking mein {max} services tak; pehli {max} rakhi hain.' },
+  carryOn: { en: 'To carry on with your booking:', te: 'Mee booking continue cheyadaniki:', hi: 'Booking aage badhane ke liye:' },
   noServices: { en: 'Bookings are not open on WhatsApp yet. Please call us to book.', te: 'WhatsApp lo bookings inka start avvaledu andi. Call chesi book cheyandi.', hi: 'WhatsApp par booking abhi shuru nahi hui. Call karke book kijiye.' },
 }
 
@@ -684,6 +685,46 @@ export async function handleBookingStepButton(input: SalonChatInput & { buttonId
   return runStep(run, say('oldList', flow.language))
 }
 
+/**
+ * A message that asks something ("How much is hair spa?", "parking unda?") rather than answering:
+ * the assistant answers it and the booking carries on, instead of saving it as the answer.
+ */
+export function looksLikeQuestion(message: unknown): boolean {
+  const text = String(message ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!text) return false
+  if (text.includes('?')) return true
+  const first = text.split(' ')[0]
+  const english = ['what', 'whats', "what's", 'how', 'when', 'where', 'which', 'who', 'why', 'do', 'does', 'is', 'are', 'can', 'could', 'will', 'would', 'should', 'price', 'cost', 'timings', 'timing']
+  const indian = ['enti', 'ela', 'ekkada', 'eppudu', 'entha', 'enni', 'evaru', 'kya', 'kaise', 'kab', 'kahan', 'kitna', 'kitne', 'kaun', 'kyun']
+  if (english.includes(first) || indian.includes(first)) return true
+  return /\b(unda|untaya|untara|hai kya|milega|kitna|entha)\b$/.test(text)
+}
+
+/** The customer's booking in progress, if they moved in it lately (for carrying on after an answer). */
+export async function activeBookingSession(db: any, organizationId: string, phone: string, now = Date.now(), withinMinutes = 60): Promise<string | null> {
+  const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, updated_at, customer_phone').eq('organization_id', organizationId).order('updated_at', { ascending: false }).limit(20))
+  const session = (data || []).find((s: any) => phoneKey(s.customer_phone) === phoneKey(phone) && now - Date.parse(s.updated_at) <= withinMinutes * 60_000)
+  return session?.id || null
+}
+
+/** After the assistant answered a question: the step they were on, again, so the booking carries on. */
+export async function resumeBooking(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
+  const run = await loadRun(input, input.sessionId)
+  if (!run) return { handled: false, reason: 'no_booking' }
+  if (run.session.waiting === 'form') await saveSession(run, { waiting: null })
+  return runStep(run, say('carryOn', run.flow.language))
+}
+
+/** "Cancel" while a booking is in progress (any step). */
+export async function cancelBooking(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
+  const run = await loadRun(input, input.sessionId)
+  if (!run) return { handled: false, reason: 'no_booking' }
+  await input.supabase.from('salon_booking_sessions').delete().eq('id', run.session.id).eq('organization_id', run.session.organization_id)
+  await sendText(input, say('cancelled', run.flow.language))
+  return { handled: true, step: 'cancelled' }
+}
+export const isCancelWord = (message: unknown) => CANCEL_WORDS.includes(String(message ?? '').trim().toLowerCase())
+
 /** The customer's booking waiting for a typed answer, if any. */
 export async function waitingForAnswer(db: any, organizationId: string, phone: string, now = Date.now()): Promise<string | null> {
   const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, waiting, updated_at, customer_phone').eq('organization_id', organizationId).in('waiting', ['text', 'form']).order('updated_at', { ascending: false }).limit(20))
@@ -715,6 +756,8 @@ export async function handleBookingText(input: SalonChatInput & { sessionId: str
     await sendText(input, say('cancelled', run.flow.language))
     return { handled: true, step: 'cancelled' }
   }
+  // A question is answered by the assistant (then the question is asked again), not saved as the answer
+  if (looksLikeQuestion(text)) return { handled: false, reason: 'question' }
   const step = run.flow.steps[run.session.step]
   await saveSession(run, { answers: [...run.session.answers, { label: step?.label || 'Answer', answer: text.slice(0, 300) }], step: run.session.step + 1, waiting: null })
   return runStep(run)

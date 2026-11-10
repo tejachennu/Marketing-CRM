@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Booking flow: questions in the middle of a booking** (owner, web server + app): a customer who
+  writes something during a booking (session moved in the last 60 minutes, `activeBookingSession`)
+  gets the usual assistants (Front Desk assistant, shopping assistant, FAQ chatbot), then the step
+  they were on again with "To carry on with your booking:" (`resumeBooking`, run from POST through
+  `options.afterReply` / `carryOnBooking`; not when the Front Desk assistant moved to offering times).
+  "cancel" stops the booking at any step (`cancelBooking`). A typed-answer step no longer saves a
+  question as the answer (`looksLikeQuestion`, English + Tenglish/Hinglish words; mirrored in Dart).
+  Try it: typed questions get a real answer (`POST /api/salon/booking-flow/try-question` runs the
+  Front Desk assistant with `collect`, nothing sent; falls back to `/api/ai/playground-chat`), then
+  the step again.
+
 - **Booking flow: pick services with tick boxes in one WhatsApp form** (owner's choice, web and app):
   `booking_flow.services_style` = `'form'` (default) or `'list'`, chosen on the Pick services step.
   `lib/salon/services-form.ts`: one Meta Flow per WhatsApp account (`servicesFormJson`: 10

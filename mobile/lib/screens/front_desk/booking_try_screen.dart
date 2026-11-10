@@ -55,6 +55,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
   final List<String> _answers = [];
   bool _typing = false; // waiting for a typed answer
   String? _formBody; // the services form is open: what to say if they ask for the list
+  bool _thinking = false; // the assistant is answering a question
   bool _done = false;
 
   late FrontDesk _desk;
@@ -78,6 +79,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
       _answers.clear();
       _typing = false;
       _formBody = null;
+      _thinking = false;
       _done = false;
       _chat.add(_Msg.mine(widget.trigger.isEmpty ? 'Book' : widget.trigger[0].toUpperCase() + widget.trigger.substring(1)));
     });
@@ -309,37 +311,62 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
     );
   }
 
+  /// Whatever the customer types: an answer to a typed question, LIST or cancel, or a question that
+  /// the WhatsApp assistant answers (for real, nothing is sent) before the booking carries on.
   void _send() {
     final text = _input.text.trim();
-    final form = _formBody;
-    if (text.isNotEmpty && form != null && !_typing) {
-      // Waiting for the form: LIST sends the list; other words would go to the WhatsApp assistant
-      _input.clear();
-      _add(_Msg.mine(text));
-      final said = text.toLowerCase();
-      if (said == 'cancel') {
-        _say('Booking cancelled. Send "Book" any time to start again.');
-        setState(() => _done = true);
-        return;
-      }
-      if (['list', 'menu', 'services'].contains(said)) {
-        setState(() => _formBody = null);
-        return _servicesList(form);
-      }
-      return _say('(On WhatsApp, other messages go to your WhatsApp assistant. Reply LIST for the list.)');
-    }
-    if (text.isEmpty || !_typing) return;
+    if (text.isEmpty || _done || _thinking) return;
     _input.clear();
     _add(_Msg.mine(text));
-    setState(() => _typing = false);
-    if (text.toLowerCase() == 'cancel') {
+    final said = text.toLowerCase();
+    if (said == 'cancel') {
       _say('Booking cancelled. Send "Book" any time to start again.');
       setState(() => _done = true);
       return;
     }
-    final s = widget.steps[_step];
-    _answers.add('${'${s['label'] ?? ''}'.trim().isEmpty ? 'Answer' : s['label']}: $text');
-    _next();
+    final form = _formBody;
+    if (form != null && ['list', 'menu', 'services'].contains(said)) {
+      setState(() => _formBody = null);
+      return _servicesList(form);
+    }
+    if (_typing && !looksLikeQuestion(text)) {
+      setState(() => _typing = false);
+      final s = widget.steps[_step];
+      _answers.add('${'${s['label'] ?? ''}'.trim().isEmpty ? 'Answer' : s['label']}: $text');
+      return _next();
+    }
+    _askAssistant(text);
+  }
+
+  Future<void> _askAssistant(String question) async {
+    final app = AppScope.read(context);
+    setState(() => _thinking = true);
+    var reply = '';
+    try {
+      final data = await app.ask('/api/salon/booking-flow/try-question', {'message': question});
+      reply = '${data['reply'] ?? ''}'.trim();
+      if (reply.isEmpty) {
+        // Not about the services: on WhatsApp the FAQ chatbot answers from the knowledge base
+        final faq = await app.ask('/api/ai/playground-chat', {
+          'action': 'send_message',
+          'message': question,
+          'chatHistory': [
+            {'role': 'user', 'content': question},
+          ],
+        });
+        reply = '${faq['reply'] ?? ''}'.trim();
+      }
+    } catch (e) {
+      reply = '(${'$e'.replaceFirst('Exception: ', '')})';
+    }
+    if (!mounted) return;
+    setState(() {
+      _thinking = false;
+      _typing = false;
+      _formBody = null;
+    });
+    _say(reply.isEmpty ? 'Our team will reply to you soon.' : reply);
+    _run('To carry on with your booking:');
   }
 
   @override
@@ -411,14 +438,24 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
                   Expanded(
                     child: TextField(
                       controller: _input,
-                      enabled: _typing || _formBody != null,
+                      enabled: !_done,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(hintText: _typing ? 'Type your answer' : (_formBody != null ? 'Or reply LIST' : 'Tap a button or list above'), isDense: true),
+                      decoration: InputDecoration(
+                        hintText: _thinking
+                            ? 'Answering…'
+                            : _typing
+                            ? 'Type your answer'
+                            : (_formBody != null ? 'Ask a question, or reply LIST' : 'Ask a question, or tap above'),
+                        isDense: true,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filled(onPressed: _typing || _formBody != null ? _send : null, icon: const Icon(Icons.send)),
+                  IconButton.filled(
+                    onPressed: _done || _thinking ? null : _send,
+                    icon: _thinking ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+                  ),
                 ],
               ),
             ),

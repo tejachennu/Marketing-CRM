@@ -16,7 +16,7 @@ import { getMessagePreview } from '@/lib/chat-message-format'
 import { runShoppingAssistant, shoppingAssistantEnabled } from '@/lib/commerce/shopping-assistant'
 import { handleSlotPick, loadChatSetup, parseSlotButton, runSalonAssistant, salonChatReady } from '@/lib/salon/chat'
 import { sessionFromToken } from '@/lib/salon/services-form'
-import { handleBookingFlowButton, handleBookingStepButton, handleBookingText, handleServicesForm, isBookingRequest, parseBookingFlow, parseFlowButton, parseStepButton, startBookingFlow, waitingForAnswer } from '@/lib/salon/booking-flow'
+import { activeBookingSession, cancelBooking, handleBookingFlowButton, isCancelWord, resumeBooking, handleBookingStepButton, handleBookingText, handleServicesForm, isBookingRequest, parseBookingFlow, parseFlowButton, parseStepButton, startBookingFlow, waitingForAnswer } from '@/lib/salon/booking-flow'
 import { handleFeedbackReply, parseFeedbackButton } from '@/lib/salon/jobs'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import {
@@ -217,7 +217,7 @@ async function findEventOwner(supabase: ReturnType<typeof getSupabaseClient>, wa
 async function processEvent(
   request: NextRequest,
   { params }: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } },
-  options: { signed: boolean }
+  options: { signed: boolean; afterReply?: () => Promise<void> }
 ) {
   try {
     // Resolve dynamic path params and extract organization UUID
@@ -807,6 +807,25 @@ async function processEvent(
         }
       } catch (feedbackErr: any) {
         console.error('[Facebook Webhook] Salon feedback failed:', feedbackErr?.message || feedbackErr)
+      }
+    }
+
+    // ── Front Desk booking flow in progress and the customer wrote something else: "cancel" stops it;
+    //    anything else (a question) goes to the assistants below, then the step they were on is sent
+    //    again so the booking carries on (see POST)
+    if (!interactiveButtonId && !flowSubmissionData && messageBody && conversation.auto_reply_enabled !== false && salonChatReady(orgData) && !previousMessage) {
+      try {
+        const sessionId = await activeBookingSession(supabase, orgId, phoneNumber)
+        if (sessionId) {
+          const bookingInput = { supabase, organization: orgData, contact, conversationId: conversation.id, customerPhone: phoneNumber, ai, message: messageBody, history: [], sessionId }
+          if (isCancelWord(messageBody)) {
+            const cancelled = await cancelBooking(bookingInput)
+            if (cancelled.handled) return NextResponse.json({ success: true, messageId: savedMessage.id, handled_by: 'salon_booking_flow', step: cancelled.step })
+          }
+          options.afterReply = async () => { await resumeBooking(bookingInput) }
+        }
+      } catch (flowErr: any) {
+        console.error('[Facebook Webhook] Booking in progress could not be checked:', flowErr?.message || flowErr)
       }
     }
 
@@ -1482,6 +1501,20 @@ async function fallbackKeywordSearch(
   return []
 }
 
+/**
+ * A question asked in the middle of a booking was answered: send the booking step again. Not when the
+ * Front Desk assistant moved to times of its own (it took the booking over from there).
+ */
+async function carryOnBooking(response: Response, afterReply: () => Promise<void>) {
+  try {
+    const result = await response.clone().json().catch(() => ({}))
+    if (result?.handled_by === 'salon_assistant' && result?.action !== 'replied') return
+    await afterReply()
+  } catch (error: any) {
+    console.error('[Facebook Webhook] Booking could not carry on after the answer:', error?.message || error)
+  }
+}
+
 export async function POST(request: NextRequest, context: { params: Promise<{ orgIdAndSlug: string }> | { orgIdAndSlug: string } }) {
   // Read raw body for signature verification
   const rawBody = await request.text()
@@ -1516,9 +1549,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
         ...(value.messages || []).map((message: any) => ({ ...value, statuses: undefined, messages: [message], contacts: (value.contacts || []).filter((contact: any) => contact.wa_id === message.from) })),
       ]
       for (const event of events) {
+        const options: { signed: boolean; afterReply?: () => Promise<void> } = { signed }
         const response = await processEvent(new NextRequest(request.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context, { signed })
+          body: JSON.stringify({ ...payload, entry: [{ ...entry, changes: [{ ...change, value: event }] }] }) }), context, options)
         if (!response.ok) return response
+        if (options.afterReply) await carryOnBooking(response, options.afterReply)
       }
     }
   }
