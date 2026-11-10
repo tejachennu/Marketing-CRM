@@ -5,8 +5,7 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 
-/// "Grow your business": Magnetora's marketing services for businesses on WAMA (more Google
-/// reviews, Google and Meta ads, photo and video, Instagram and Facebook promotion), with one tap
+/// "Grow your business": Magnetora's marketing services for businesses on WAMA (Google and Meta ads, photo and video, Instagram and Facebook promotion), with one tap
 /// to WhatsApp the team.
 const growWhatsApp = '918367629608';
 
@@ -14,12 +13,11 @@ class GrowScreen extends StatelessWidget {
   const GrowScreen({super.key});
 
   static const _services = [
-    (Icons.star_rate_rounded, 'More Google reviews', 'We ask your happy customers at the right time, so your rating and reviews keep growing.'),
     (Icons.ads_click, 'Google and Meta ads', 'Ads on Google, Instagram and Facebook that bring calls, chats and bookings, within your budget.'),
     (Icons.videocam_outlined, 'Video editing', 'Reels and short videos of your work, edited to look professional.'),
     (Icons.photo_camera_outlined, 'Photos', 'Good photos of your shop, team and work for Google, Instagram and your catalog.'),
     (Icons.campaign_outlined, 'Instagram and Facebook promotion', 'Regular posts, offers and festival creatives that keep customers coming back.'),
-    (Icons.hub_outlined, 'Everything in one place', 'WhatsApp, ads, reviews and content working together to grow your business.'),
+    (Icons.hub_outlined, 'Everything in one place', 'WhatsApp, ads and content working together to grow your business.'),
   ];
 
   Future<void> _chat(BuildContext context) async {
@@ -54,12 +52,12 @@ class GrowScreen extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               const Text(
-                'More reviews.\nMore customers.',
+                'More customers.\nMore business.',
                 style: TextStyle(color: Colors.white, fontSize: 26, height: 1.2, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               Text(
-                'We run your marketing end to end: Google reviews, ads on Google, Instagram and Facebook, and photos and videos of your work.',
+                'We run your marketing end to end: ads on Google, Instagram and Facebook, and photos and videos of your work.',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 14.5, height: 1.4),
               ),
               const SizedBox(height: 16),

@@ -75,7 +75,7 @@ class MoreScreen extends StatelessWidget {
                   icon: Icons.trending_up,
                   iconColor: Brand.blue,
                   title: 'Grow your business with marketing',
-                  subtitle: 'More reviews, Google and Meta ads, photos and videos',
+                  subtitle: 'Google and Meta ads, photos, videos, Instagram',
                   onTap: () => open(const GrowScreen()),
                 ),
                 const _Gap(),

@@ -214,6 +214,7 @@ class WamaApp extends StatelessWidget {
       'new_booking' => const NewBookingScreen(),
       'appointment' => AppointmentScreen(appointmentId: '${desk.appointments.firstWhere((a) => a['status'] == 'in_service')['id']}'),
       'bill' => BillScreen(invoiceId: '${desk.invoices.firstWhere((i) => i['status'] == 'unpaid')['id']}'),
+      'bill_paid' => BillScreen(invoiceId: '${desk.invoices.firstWhere((i) => i['status'] == 'paid')['id']}'),
       'chats' => const HomeShell(tab: 2),
       'chat' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first)),
       'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),

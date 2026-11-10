@@ -231,6 +231,8 @@ class DemoBackend implements Backend {
         'customer_name': 'Divya Menon',
         'customer_phone': '+919123456780',
         'total': 3200,
+        'subtotal': 3400,
+        'discount': 200,
         'status': 'unpaid',
         'payment_method': null,
         'issued_at': at(19, 40, -1),
