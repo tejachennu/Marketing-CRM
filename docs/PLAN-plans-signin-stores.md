@@ -47,36 +47,95 @@ Plan ids: `starter`, `growth`, `pro_1`, `pro_2`, `pro_3`. The old `pro_monthly` 
 
 ### Phase 1: Plans and billing (web + server)
 
-Server
-- `lib/plans.ts`: `PLANS` (id, name, price paise, features list for the page, limits, `whatsapp: 'shared' | 'own'`),
-  `planOf(row)`, `limitsOf(org)` (plan limits + Super Admin overrides), `can(org, feature)`.
-- Database (auto-migration + `supabase/migrations/` file, new lock id): `organization_billing.plan`
-  holds the plan id; new columns `plan_overrides jsonb`, `pending_plan text` (downgrade at the end of the
-  period), `message_balance numeric`, `whatsapp_mode text` (`shared` | `own`).
-  New table `message_charges` (org, message id, kind, price paise, status `charged` | `refunded`, created_at).
-- Razorpay: one Razorpay plan per WAMA plan. Env names (values in Vercel only):
-  `RAZORPAY_PLAN_STARTER`, `RAZORPAY_PLAN_GROWTH`, `RAZORPAY_PLAN_PRO_1`, `RAZORPAY_PLAN_PRO_2`,
-  `RAZORPAY_PLAN_PRO_3`. `RAZORPAY_PLAN_ID` keeps working as Growth.
-- `POST /api/billing/subscribe` takes `plan`. **Upgrade** = new subscription now (Razorpay charges the
-  new price; the unused part of the old month is not refunded, said clearly on the page). **Downgrade** =
-  `pending_plan`, switched when the current period ends (webhook `subscription.charged`).
-- Migration of existing customers: `pro_monthly` → `growth`; their Razorpay subscription is moved to the
-  Growth plan at the next renewal (Razorpay "update subscription" with `schedule_change_at: cycle_end`).
-- **Message wallet** (Starter, and anyone on WAMA's number): top-ups through the same Razorpay order flow
-  as the AI wallet (`/api/billing/topup` with `wallet: 'messages'`). Price per message = Meta's rate for
-  the category and country (`lib/message-prices.ts`, a table with the date it was checked; Super Admin can
-  edit). Charge when Meta accepts the message; refund on a `failed` status webhook. Below ₹100: email +
-  in-app notice. At zero: messages stop, bookings carry on, the counter says "Top up to send WhatsApp messages".
-- Access: `layout.tsx` and the API helpers use `can(org, feature)` instead of "has a plan". Pages a plan
-  does not include show an "Upgrade to Growth" card instead of the page.
+How billing works today (read before changing): `lib/billing.ts` (one `PLAN`, `billingState`,
+`getBilling`, AI prices), `lib/billing-service.ts` (subscription status from Razorpay, top-ups,
+`billingSummary`), `lib/razorpay.ts` (`ensurePlan` finds or creates the Razorpay plan by its notes),
+`app/api/billing/*` (GET summary, subscribe, cancel, topup, webhook), `lib/ai-access.ts` (AI wallet),
+`app/dashboard/layout.tsx` (menu, `isFeatureEnabled`, paywall), `app/dashboard/billing/page.tsx`,
+Super Admin (`lib/superadmin-workspaces.ts`). The workspace's current subscription id is saved before
+Checkout opens; webhook events for any other subscription are ignored.
 
-Web
-- `/pricing` (public) and Settings → Billing: plan cards, monthly price + GST, "messages at Meta's price",
-  compare table, FAQ, upgrade / downgrade / cancel, message wallet with top-ups and a usage list.
-- Super Admin: change a workspace's plan, overrides, wallet credit.
+**1a. Plans in code** (`lib/plans.ts`, browser-safe, no server imports)
+- `PLANS`: `starter`, `growth`, `pro_1`, `pro_2`, `pro_3` with name, `amountPaise`, `whatsapp: 'shared' | 'own'`,
+  page features (plain words) and `limits`: `messaging` (inbox, AI replies, tickets, campaigns, templates,
+  flows, public API), `connectors` (number, or Starter = Front Desk only), `team`, `aiMonthly` (₹),
+  `ads` (boolean), `videos` (per month).
+- `planOf(row)`: `pro_monthly` (old) → `growth`; unknown → `growth`. `limitsOf(planId, overrides)`.
+- `planAllows(limits, feature)`, `connectorAllowed(limits, onConnectors, key)`.
+- Exempt workspaces: every feature, no limits (as today).
 
-Tests: plan limits, upgrade/downgrade dates, wallet charge/refund exactly once, old plan id mapping,
-access per plan.
+**1b. Database** (new `supabase/migrations/20261111_plans_and_message_wallet.sql`, auto-run through
+`createAutoSetup` with lock **724519013**, same text as the constant; tests compare)
+- `organization_billing`: `plan` default becomes `growth`; existing `pro_monthly` rows → `growth`.
+  New: `plan_overrides JSONB DEFAULT '{}'`, `pending_plan TEXT`, `pending_subscription_id TEXT`,
+  `whatsapp_mode TEXT DEFAULT 'own'`, `message_balance NUMERIC(14,4) DEFAULT 0`.
+- Existing paying and trial workspaces keep every connector they use: the migration sets
+  `plan_overrides = {"connectors": 3}` for them (owner can remove it in Super Admin).
+- `message_wallet_transactions` (org, kind `topup | usage | refund | adjustment`, amount, `message_id`
+  UNIQUE for usage, category, `razorpay_payment_id` UNIQUE, created_at).
+- RPCs (service role only): `message_wallet_charge(org, amount, message_ref, category)` → true when the
+  balance covered it (never goes below zero; refuses instead, so nothing is sent unpaid),
+  `message_wallet_refund(message_ref)` (once), `message_wallet_credit(org, amount, kind, payment_id, by)` (once per payment).
+
+**1c. Razorpay**
+- `ensurePlan(planId)`: env `RAZORPAY_PLAN_STARTER | _GROWTH | _PRO_1 | _PRO_2 | _PRO_3` if set
+  (`RAZORPAY_PLAN_ID` still counts as Growth), else find by notes `{app, plan}` + amount, else create.
+  So the owner does not have to create plans by hand.
+- `createSubscription(org, {plan, startAt})` writes `notes.plan`.
+- Subscriptions carry the plan in their notes; the workspace's plan follows the subscription that is
+  actually charging.
+
+**1d. Changing plans** (`POST /api/billing/subscribe { plan }`, `POST /api/billing/change-plan`)
+- **On trial**: pick any plan, free. Subscribing during the trial sets auto-pay for that plan, first
+  charge when the trial ends (as today).
+- **Upgrade while paying**: pay only the difference for the days left this month (one-time Razorpay
+  order, notes `purpose: 'upgrade'`), the new plan starts at once; a new subscription for the new plan
+  starts on the old bill date; the old subscription is cancelled at its cycle end. (Razorpay cannot
+  change the amount of a UPI auto-pay, so a new subscription is the reliable way.)
+- **Downgrade**: nothing to pay; `pending_plan` is set and a new subscription for the smaller plan starts
+  on the bill date; the old one is cancelled at cycle end; the plan switches when the new one charges.
+  If the smaller plan allows fewer team members or connectors, the page says what will be switched off.
+- Webhook: a charge on `pending_subscription_id` makes it current and applies `pending_plan`.
+- **Existing ₹3,000 customers**: plan becomes Growth at once. Super Admin → "Move to ₹2,500 auto-pay"
+  sends them a link to set up the new auto-pay (starts on their bill date) and cancels the ₹3,000 one at
+  cycle end. Until they do, the ₹3,000 auto-pay carries on (owner decides when to send the links).
+
+**1e. Monthly AI credit**: each plan charge (`subscription.charged`) credits the plan's `aiMonthly` to
+the AI wallet (`kind: 'plan_grant'`, once per payment). The ₹300 welcome credit stays.
+
+**1f. Message wallet** (used by WAMA's number in Phase 3)
+- `lib/message-prices.ts`: Meta's per-message price in India by category (utility, authentication,
+  marketing, service) with the date checked; env overrides `META_PRICE_UTILITY_INR` etc.; no markup.
+- `chargeMessage(db, org, ref, category)` / `refundMessage(db, ref)`: charge before sending; refund when
+  Meta refuses or reports `failed`.
+- Top-ups: `POST /api/billing/topup { wallet: 'messages', amount }` (same Razorpay order flow, notes
+  `purpose: 'message_topup'`), ₹200–₹50,000. Webhook credits it too.
+- Low balance (< ₹100): banner in the dashboard; email in Phase 3 once sending is wired.
+
+**1g. Enforcing the plan**
+- `GET /api/billing` returns `plan` (id, name, price, whatsapp), `limits`, `allows` (feature → true/false),
+  `plans` (all five for the picker), `messageBalance`, `pendingPlan`.
+- `verifyOrgAccess(request, org, { feature })`: refuses with 402 and "Your plan does not include …" for
+  campaigns, templates, flows, AI replies, tickets, public API keys when the plan has no messaging.
+- Connectors page: turning on more connectors than the plan allows asks to upgrade.
+- Team invites (`/api/teammates`): stop at the plan's team size.
+- Layout: pages the plan does not include show an "Upgrade" card (not hidden, so people see what they
+  could have); the menu marks them with a small lock.
+
+**1h. Web pages**
+- Public `/pricing`: five plans (Pro as one card with 3 levels), monthly + GST, 14-day trial,
+  "WhatsApp messages at Meta's price, no extra charge", compare table, FAQ. Linked from the landing page.
+- Dashboard Billing: current plan + status, plan picker (upgrade / downgrade / what changes), AI wallet,
+  message wallet with top-ups and recent charges, payments.
+- Super Admin: workspace plan dropdown, overrides (team, connectors, AI monthly, videos), message
+  wallet credit, revenue by plan, "Move ₹3,000 customers" list.
+
+**1i. App (minimal in Phase 1)**: Billing screen reads the new fields (plan, limits, message wallet) and
+can switch plans in non-store builds. Store builds come in Phase 7.
+
+**Tests**: plan mapping and limits, connector/team limits, upgrade difference by days left, downgrade
+dates, pending plan applied on charge, monthly AI grant once, wallet charge refuses when short and
+refunds once, migration file = constant, Razorpay plan lookup per plan, API refusals by plan.
 
 ### Phase 2: Google and Apple sign-in
 
@@ -196,7 +255,8 @@ delete account. Then closed testing (Play) and TestFlight, then submission.
 
 ## 4. What the owner does (cannot be done from code)
 
-1. Razorpay: create the five plans (amounts above, monthly) and add their ids to Vercel.
+1. Razorpay: nothing new to create (the app creates the five plans itself on first use). Optional:
+   put their ids in Vercel (`RAZORPAY_PLAN_STARTER` … `RAZORPAY_PLAN_PRO_3`).
 2. Meta: WAMA's own WhatsApp account and number (company email), add its ids/token to Vercel.
 3. Google Cloud: OAuth clients (Web, Android with package `com.magnetora.wamacrm` + SHA-1 of the
    permanent key, iOS). Supabase → Authentication → Providers → Google.
