@@ -1,7 +1,9 @@
 import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { billingLimits, getBilling } from '@/lib/billing'
 import { sendEmail } from '@/lib/email'
+import { teamBlockReason } from '@/lib/plans'
 import { getRoleDisplay, getTeamChangeError, isAdmin, isSuperAdmin, storedTeammateRole } from '@/lib/rbac'
 import { isUuid } from '@/lib/record-visibility'
 import { escapeHtml } from '@/lib/utils'
@@ -78,10 +80,21 @@ async function countOrgAdmins(supabase: any, organizationId: string): Promise<nu
   return (data || []).filter((member: any) => isAdmin(member) && !isSuperAdmin(member)).length
 }
 
-/** The most people the workspace may have, or null for no limit. */
+/** The plan's team size, or null for no limit (exempt, no billing yet, or a billing read error). */
+async function planSeatLimit(supabase: any, organizationId: string): Promise<number | null> {
+  try {
+    return billingLimits(await getBilling(supabase, organizationId)).team
+  } catch {
+    return null
+  }
+}
+
+/** The most people the workspace may have, or null for no limit: the smaller of WAMA CRM's own limit and the plan's. */
 async function seatLimit(supabase: any, organizationId: string): Promise<number | null> {
   const { data } = await supabase.from('organizations').select('max_teammates').eq('id', organizationId).maybeSingle()
-  return data?.max_teammates && data.max_teammates > 0 ? data.max_teammates : null
+  const own = data?.max_teammates && data.max_teammates > 0 ? data.max_teammates : null
+  const plan = await planSeatLimit(supabase, organizationId)
+  return own === null ? plan : plan === null ? own : Math.min(own, plan)
 }
 
 async function loadTeammate(supabase: any, userId: string, organizationId: string) {
@@ -186,7 +199,10 @@ export async function POST(request: NextRequest) {
 
     if (orgError) throw orgError
 
-    const limit = orgData?.max_teammates && orgData.max_teammates > 0 ? orgData.max_teammates : null
+    const ownLimit = orgData?.max_teammates && orgData.max_teammates > 0 ? orgData.max_teammates : null
+    const planLimit = await planSeatLimit(supabase, organizationId)
+    const limit = ownLimit === null ? planLimit : planLimit === null ? ownLimit : Math.min(ownLimit, planLimit)
+    const byPlan = planLimit !== null && limit === planLimit
 
     // 2. Fetch current teammate count
     const { count, error: countError } = await supabase
@@ -198,7 +214,7 @@ export async function POST(request: NextRequest) {
 
     if (limit !== null && count !== null && count >= limit) {
       return NextResponse.json(
-        { error: `This workspace can have up to ${limit} people. Remove someone first, or contact support for more.` },
+        { error: byPlan ? teamBlockReason({ team: limit } as any, count) : `This workspace can have up to ${limit} people. Remove someone first, or contact support for more.` },
         { status: 400 }
       )
     }

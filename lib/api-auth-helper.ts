@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { can, canAccessAssigned, describeDenied, isSuperAdmin, type Permission } from './rbac'
+import { billingLimits, getBilling } from './billing'
+import { planAllows, upgradeMessage, type PlanFeature } from './plans'
 
 export function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -116,6 +118,24 @@ export interface AccessOptions {
    * work is refused records assigned to anyone else.
    */
   assignedColumn?: string
+  /** A feature the workspace's plan must include (lib/plans.ts); refused with 402 when it does not. */
+  feature?: PlanFeature
+}
+
+/**
+ * A 402 when the organization's plan does not include `feature`, otherwise null. Super admins, exempt
+ * workspaces and databases without billing are never refused; a billing read error lets the call through.
+ */
+export async function denyByPlan(user: any, organizationId: string | null | undefined, feature: PlanFeature | undefined): Promise<AccessResult | null> {
+  if (!feature || !organizationId || isSuperAdmin(user)) return null
+  try {
+    const billing = await getBilling(getSupabaseAdminClient(), organizationId)
+    if (planAllows(billingLimits(billing), feature)) return null
+    return { authorized: false, error: upgradeMessage(feature), status: 402, user }
+  } catch (error: any) {
+    console.error('[api-auth] Plan check failed:', error?.message)
+    return null
+  }
 }
 
 type AccessResult =
@@ -143,7 +163,7 @@ export async function verifyOrgAccess(request: NextRequest, targetOrgId: string 
     return { authorized: false, error: 'Forbidden: You do not have access to this organization\'s data', status: 403, user }
   }
 
-  return denyByPermission(user, options.permission) || { authorized: true, user }
+  return denyByPermission(user, options.permission) || await denyByPlan(user, targetOrgId, options.feature) || { authorized: true, user }
 }
 
 export async function verifyRecordAccess(request: NextRequest, table: string, recordId: string | null, options: AccessOptions = {}): Promise<AccessResult> {
@@ -187,7 +207,7 @@ export async function verifyRecordAccess(request: NextRequest, table: string, re
       return { authorized: false, error: describeDenied('records.view_all'), status: 403, user }
     }
 
-    return { authorized: true, user }
+    return await denyByPlan(user, record.organization_id, options.feature) || { authorized: true, user }
   } catch (err) {
     console.error('[api-auth] verifyRecordAccess error:', err)
     return { authorized: false, error: 'Internal server error during record validation', status: 500, user }

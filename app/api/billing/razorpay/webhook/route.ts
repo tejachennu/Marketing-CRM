@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
-import { applySubscription, creditTopup, recordPayment, topupNotes } from '@/lib/billing-service'
+import { applySubscription, creditTopup, grantMonthlyAi, recordPayment, subscriptionPlan, topupNotes } from '@/lib/billing-service'
+import { getBilling } from '@/lib/billing'
+import { getPlan } from '@/lib/plans'
 import { verifyWebhookSignature } from '@/lib/razorpay'
 
 /**
  * Razorpay webhook for WAMA CRM's own billing (set it up in Razorpay → Settings → Webhooks with
  * RAZORPAY_WEBHOOK_SECRET). Keeps subscriptions in step (renewals, failures, cancellations) and adds
- * AI credit for top-ups even when the customer closed the page before Checkout returned.
+ * AI credit, message wallet top-ups and upgrades even when the customer closed the page before Checkout returned.
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text()
@@ -29,11 +31,17 @@ export async function POST(request: NextRequest) {
       const organizationId = String(subscription.notes.organization_id)
       await applySubscription(db, organizationId, subscription)
       if (event.event === 'subscription.charged' && payment?.id) {
-        await recordPayment(db, { organization_id: organizationId, purpose: 'subscription', amount_paise: Number(payment.amount) || 0, razorpay_payment_id: payment.id, razorpay_subscription_id: subscription.id })
+        const plan = subscriptionPlan(subscription)
+        const fresh = await recordPayment(db, { organization_id: organizationId, purpose: 'subscription', amount_paise: Number(payment.amount) || getPlan(plan).amountPaise, razorpay_payment_id: payment.id, razorpay_subscription_id: subscription.id, plan })
+        // Each month's payment brings the plan's AI credit, once
+        if (fresh) {
+          const billing = await getBilling(db, organizationId)
+          if (billing && billing.razorpay_subscription_id === subscription.id) await grantMonthlyAi(db, organizationId, billing.plan, String(payment.id), billing.plan_overrides)
+        }
       }
     } else if (event.event === 'payment.captured' && payment?.id) {
       const notes = await topupNotes(payment)
-      if (notes?.app === 'wamacrm' && notes.purpose === 'ai_topup' && notes.organization_id) {
+      if (notes?.app === 'wamacrm' && ['ai_topup', 'message_topup', 'upgrade'].includes(String(notes.purpose)) && notes.organization_id) {
         await creditTopup(db, String(notes.organization_id), String(payment.id))
       }
     }

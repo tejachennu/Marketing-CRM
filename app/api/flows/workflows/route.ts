@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
     }
 
-    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage' })
+    const authResult = await verifyOrgAccess(request, organizationId, { permission: 'automation.manage', feature: 'flows' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

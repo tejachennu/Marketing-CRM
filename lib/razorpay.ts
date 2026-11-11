@@ -1,13 +1,13 @@
 /**
- * Razorpay for WAMA CRM's own billing: the monthly plan (Subscriptions API) and AI wallet top-ups
- * (Orders API). Keys come from the environment only: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and, for
+ * Razorpay for WAMA CRM's own billing: the monthly plans (Subscriptions API), and wallet top-ups and
+ * upgrade differences (Orders API). Keys come from the environment only: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and, for
  * the webhook, RAZORPAY_WEBHOOK_SECRET.
  *
  * This is separate from the stores' own Razorpay (WhatsApp Pay), which never uses these keys.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { PLAN } from './billing'
+import { getPlan, PLAN_CURRENCY, PLAN_INTERVAL, type PlanId } from './plans'
 
 const API = 'https://api.razorpay.com/v1'
 
@@ -38,21 +38,33 @@ async function call(path: string, init: { method?: string; body?: unknown } = {}
   return data
 }
 
-/** The Razorpay plan for WAMA CRM Pro: found by its notes, created once if missing. */
-export async function ensurePlan(fetcher: typeof fetch = fetch): Promise<string> {
-  const configured = String(process.env.RAZORPAY_PLAN_ID || '').trim()
+/**
+ * The env name for a WAMA plan's Razorpay plan id (RAZORPAY_PLAN_GROWTH…), set in Vercel only to pin one.
+ * The old RAZORPAY_PLAN_ID was the ₹3,000 plan, so it is no longer used.
+ */
+export function planEnvName(planId: PlanId): string {
+  return `RAZORPAY_PLAN_${planId.toUpperCase()}`
+}
+
+/**
+ * The Razorpay plan for a WAMA plan: the id set in the environment, else found by its notes and price,
+ * else created once. So nothing has to be set up by hand in Razorpay.
+ */
+export async function ensurePlan(planId: PlanId = 'growth', fetcher: typeof fetch = fetch): Promise<string> {
+  const configured = String(process.env[planEnvName(planId)] || '').trim()
   if (configured) return configured
+  const plan = getPlan(planId)
   const plans = await call('/plans?count=100', {}, fetcher)
-  const existing = (plans.items || []).find((plan: any) =>
-    plan.notes?.app === 'wamacrm' && plan.notes?.plan === PLAN.id && Number(plan.item?.amount) === PLAN.amountPaise && plan.period === PLAN.interval)
+  const existing = (plans.items || []).find((item: any) =>
+    item.notes?.app === 'wamacrm' && item.notes?.plan === plan.id && Number(item.item?.amount) === plan.amountPaise && item.period === PLAN_INTERVAL)
   if (existing) return existing.id
   const created = await call('/plans', {
     method: 'POST',
     body: {
-      period: PLAN.interval,
+      period: PLAN_INTERVAL,
       interval: 1,
-      item: { name: PLAN.name, amount: PLAN.amountPaise, currency: PLAN.currency, description: 'WAMA CRM, every feature, billed monthly' },
-      notes: { app: 'wamacrm', plan: PLAN.id },
+      item: { name: `WAMA CRM ${plan.name}`, amount: plan.amountPaise, currency: PLAN_CURRENCY, description: `WAMA CRM ${plan.name}, billed monthly` },
+      notes: { app: 'wamacrm', plan: plan.id },
     },
   }, fetcher)
   return created.id
@@ -60,17 +72,18 @@ export async function ensurePlan(fetcher: typeof fetch = fetch): Promise<string>
 
 /**
  * A subscription for one workspace, set up in Razorpay Checkout. With `startAt` (Unix seconds) the
- * customer only authorises auto-pay now and the first ₹3,000 is charged on that date, so subscribing
+ * customer only authorises auto-pay now and the first charge happens on that date, so subscribing
  * during the trial (or before a paid month runs out) never costs them the days they already have.
  */
-export async function createSubscription(organizationId: string, options: { startAt?: number } = {}, fetcher: typeof fetch = fetch): Promise<{ id: string; status: string; start_at?: number; short_url?: string }> {
-  const planId = await ensurePlan(fetcher)
+export async function createSubscription(organizationId: string, options: { startAt?: number; plan?: PlanId } = {}, fetcher: typeof fetch = fetch): Promise<{ id: string; status: string; start_at?: number; short_url?: string }> {
+  const plan = options.plan || 'growth'
+  const planId = await ensurePlan(plan, fetcher)
   return call('/subscriptions', {
     method: 'POST',
     body: {
       plan_id: planId, total_count: 120, quantity: 1, customer_notify: 1,
       ...(options.startAt ? { start_at: options.startAt } : {}),
-      notes: { app: 'wamacrm', organization_id: organizationId },
+      notes: { app: 'wamacrm', organization_id: organizationId, plan },
     },
   }, fetcher)
 }
@@ -84,15 +97,18 @@ export function cancelSubscription(id: string, fetcher: typeof fetch = fetch, at
   return call(`/subscriptions/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: { cancel_at_cycle_end: atCycleEnd ? 1 : 0 } }, fetcher)
 }
 
-/** An order for an AI wallet top-up. */
-export function createTopupOrder(organizationId: string, rupees: number, fetcher: typeof fetch = fetch): Promise<{ id: string; amount: number; currency: string }> {
+export type OrderPurpose = 'ai_topup' | 'message_topup' | 'upgrade'
+
+/** A one-time order: an AI or message wallet top-up, or the difference for an upgrade (`plan` in its notes). */
+export function createTopupOrder(organizationId: string, rupees: number, fetcher: typeof fetch = fetch, purpose: OrderPurpose = 'ai_topup', extraNotes: Record<string, string> = {}): Promise<{ id: string; amount: number; currency: string }> {
+  const prefix = purpose === 'ai_topup' ? 'ai' : purpose === 'message_topup' ? 'msg' : 'up'
   return call('/orders', {
     method: 'POST',
     body: {
       amount: Math.round(rupees * 100),
       currency: 'INR',
-      receipt: `ai_${organizationId.slice(0, 8)}_${Date.now()}`,
-      notes: { app: 'wamacrm', purpose: 'ai_topup', organization_id: organizationId },
+      receipt: `${prefix}_${organizationId.slice(0, 8)}_${Date.now()}`,
+      notes: { app: 'wamacrm', purpose, organization_id: organizationId, ...extraNotes },
     },
   }, fetcher)
 }

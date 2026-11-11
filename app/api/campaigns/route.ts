@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const authResult = await verifyOrgAccess(request, resolvedOrgId, { permission: 'campaigns.manage' })
+    const authResult = await verifyOrgAccess(request, resolvedOrgId, { permission: 'campaigns.manage', feature: 'campaigns' })
     if (!authResult.authorized) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status })
     }

@@ -4,6 +4,8 @@ import { CONNECTORS, isConnectorOn, withConnector, type ConnectorKey } from '@/l
 import { withPipelineSchema } from '@/lib/pipeline/schema'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
+import { billingLimits, getBilling } from '@/lib/billing'
+import { connectorBlockReason } from '@/lib/plans'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -39,6 +41,14 @@ export async function POST(request: NextRequest) {
   const { data: organization, error } = await loadOrganization(db, organizationId)
   if (error || !organization) return NextResponse.json({ error: error?.message || 'Workspace not found' }, { status: 500 })
   if (isConsularHelpdesk(organization)) return NextResponse.json({ error: 'Connectors are not available for this workspace.' }, { status: 403 })
+
+  // The plan decides how many connectors may be on (switching off is always allowed)
+  if (enabled && !isConnectorOn(organization, key)) {
+    const billing = await getBilling(db, organizationId).catch(() => null)
+    const on = CONNECTORS.map((connector) => connector.key).filter((k) => isConnectorOn(organization, k))
+    const blocked = connectorBlockReason(billingLimits(billing), on, key)
+    if (blocked) return NextResponse.json({ error: blocked, upgrade: true }, { status: 402 })
+  }
 
   const update = key === 'ecommerce' ? { enable_commerce: enabled } : key === 'pipeline' ? { enable_pipeline: enabled } : { enabled_connectors: withConnector(organization.enabled_connectors, key, enabled) }
   const save = () => db.from('organizations').update(update).eq('id', organizationId).select('*').single()

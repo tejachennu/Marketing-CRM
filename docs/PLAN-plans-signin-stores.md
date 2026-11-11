@@ -104,7 +104,7 @@ Checkout opens; webhook events for any other subscription are ignored.
 the AI wallet (`kind: 'plan_grant'`, once per payment). The ₹300 welcome credit stays.
 
 **1f. Message wallet** (used by WAMA's number in Phase 3)
-- `lib/message-prices.ts`: Meta's per-message price in India by category (utility, authentication,
+- `lib/message-wallet.ts`: Meta's per-message price in India by category (utility, authentication,
   marketing, service) with the date checked; env overrides `META_PRICE_UTILITY_INR` etc.; no markup.
 - `chargeMessage(db, org, ref, category)` / `refundMessage(db, ref)`: charge before sending; refund when
   Meta refuses or reports `failed`.
@@ -273,7 +273,7 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 - **Meta and a shared number**: messages for many businesses from one number must be clearly utility
   (booking/bill), name the business, and never be marketing. Marketing campaigns need the business's
   own number. Quality rating of WAMA's number must be watched (Super Admin page shows it).
-- **Meta prices change**: `lib/message-prices.ts` keeps the date checked; Super Admin can update.
+- **Meta prices change**: `lib/message-wallet.ts` keeps the date checked; Super Admin can update.
 - **Store review**: no in-app purchase of plans in store builds; reviewer demo account must work
   without a real WhatsApp number (demo workspace).
 - **Apple** requires Sign in with Apple, account deletion, and a working demo login.
@@ -283,7 +283,7 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 
 | Phase | Status |
 |---|---|
-| 1 Plans and billing | not started |
+| 1 Plans and billing | server done (plans, limits, plan changes, wallets, checks); pages next |
 | 2 Google / Apple sign-in | not started |
 | 3 WAMA's number + booking page | not started |
 | 4 App for three account kinds | not started |

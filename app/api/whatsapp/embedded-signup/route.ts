@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Target organization ID is required' }, { status: 400 })
     }
 
-    const accessCheck = await verifyOrgAccess(request, targetOrgId, { permission: 'settings.manage' })
+    const accessCheck = await verifyOrgAccess(request, targetOrgId, { permission: 'settings.manage', feature: 'inbox' })
     if (!accessCheck.authorized) {
       return NextResponse.json({ success: false, error: accessCheck.error }, { status: accessCheck.status })
     }

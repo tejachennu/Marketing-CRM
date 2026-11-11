@@ -18,7 +18,7 @@ const ACCEPTED: Record<string, number> = {
 export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null)
   const organizationId = String(form?.get('organizationId') || '')
-  const access = await verifyOrgAccess(request, organizationId, { permission: 'campaigns.manage' })
+  const access = await verifyOrgAccess(request, organizationId, { permission: 'campaigns.manage', feature: 'templates' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const file = form?.get('file')

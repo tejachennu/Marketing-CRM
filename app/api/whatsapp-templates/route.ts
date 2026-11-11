@@ -52,7 +52,7 @@ async function readBody(request: NextRequest) {
 // POST: submit a new template for review
 export async function POST(request: NextRequest) {
   const body = await readBody(request)
-  const access = await verifyOrgAccess(request, body.organizationId, { permission: 'campaigns.manage' })
+  const access = await verifyOrgAccess(request, body.organizationId, { permission: 'campaigns.manage', feature: 'templates' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   const draft = body.draft as TemplateDraft
   const problems = draft ? validateDraft(draft) : [{ field: 'draft', message: 'Nothing to submit.' }]
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 // PATCH: edit a template's content (name and language stay)
 export async function PATCH(request: NextRequest) {
   const body = await readBody(request)
-  const access = await verifyOrgAccess(request, body.organizationId, { permission: 'campaigns.manage' })
+  const access = await verifyOrgAccess(request, body.organizationId, { permission: 'campaigns.manage', feature: 'templates' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   const templateId = String(body.templateId || '')
   if (!/^\d+$/.test(templateId)) return NextResponse.json({ error: 'Template not found' }, { status: 404 })

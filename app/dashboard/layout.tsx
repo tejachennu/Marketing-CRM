@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock } from 'lucide-react'
 import { FrontDeskIcon } from '@/components/salon/front-desk-icon'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
@@ -13,6 +13,8 @@ import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
 import { BADGES_EVENT, CONNECTOR_APPS, connectorAppAt, connectorTabFromSearch, onConnectorEvent, openConnectorTab, TAB_SHOWN_EVENT } from '@/lib/connector-nav'
 import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modules'
+import { activeConnectors, FEATURE_NAMES, type PlanFeature, type PlanLimits } from '@/lib/plans'
+import type { ConnectorKey } from '@/lib/connectors'
 
 export default function DashboardLayout({
   children,
@@ -671,7 +673,7 @@ export default function DashboardLayout({
   }
 
   // The plan and AI credit: drives the Billing menu item, reminders and the paywall when a trial ends
-  const [billing, setBilling] = useState<{ exempt: boolean; hasAccess: boolean; status: string; trialDaysLeft: number | null; aiPercentLeft: number | null; aiPaused: boolean; onTrial?: boolean } | null>(null)
+  const [billing, setBilling] = useState<{ exempt: boolean; hasAccess: boolean; status: string; trialDaysLeft: number | null; aiPercentLeft: number | null; aiPaused: boolean; onTrial?: boolean; plan?: { id: string; name: string; price: number }; limits?: PlanLimits; allows?: Record<PlanFeature, boolean>; messageLow?: boolean } | null>(null)
   useEffect(() => {
     if (!orgId || isSuperAdmin({ role: userRole })) return
     let cancelled = false
@@ -734,6 +736,24 @@ export default function DashboardLayout({
     return true
   }
 
+  // What the plan leaves out (lib/plans.ts). The page stays in the menu with a lock, and opens an
+  // "Upgrade" card, so people see what a bigger plan gives them.
+  const planOff = (path: string): string | null => {
+    if (!billing || billing.exempt || isPlatformAdmin || !billing.allows || !billing.limits) return null
+    const featureAt: [string, PlanFeature][] = [['/dashboard/tickets', 'tickets'], ['/dashboard/campaigns', 'campaigns'], ['/dashboard/templates', 'templates'], ['/dashboard/flows', 'flows'], ['/dashboard/playground', 'ai_replies']]
+    if (path === '/dashboard' && !billing.allows.inbox) return FEATURE_NAMES.inbox
+    for (const [base, feature] of featureAt) {
+      if ((path === base || path.startsWith(`${base}/`)) && !billing.allows[feature]) return FEATURE_NAMES[feature]
+    }
+    const connectorAt: [string, ConnectorKey, string][] = [['/dashboard/front-desk', 'salon', 'Front Desk'], ['/dashboard/salon', 'salon', 'Front Desk'], ['/dashboard/commerce', 'ecommerce', 'E-commerce'], ['/dashboard/leads', 'pipeline', 'Sales Pipeline']]
+    const on = ([['salon', features.enabled_connectors.includes('salon')], ['ecommerce', features.enable_commerce], ['pipeline', features.enable_pipeline]] as [ConnectorKey, boolean][]).filter(([, enabled]) => enabled).map(([key]) => key)
+    const active = activeConnectors(billing.limits, on)
+    for (const [base, key, name] of connectorAt) {
+      if ((path === base || path.startsWith(`${base}/`)) && on.includes(key) && !active.includes(key)) return name
+    }
+    return null
+  }
+
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
   const filteredNavItems = profileLoaded
     ? navItems.filter(
@@ -780,7 +800,7 @@ export default function DashboardLayout({
   // Once a trial or plan has ended, only Billing and the profile stay open
   const billingLocked = Boolean(billing && !billing.exempt && !billing.hasAccess && !isPlatformAdmin)
     && !pathname.startsWith('/dashboard/billing') && !pathname.startsWith('/dashboard/profile')
-  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' = !profileLoaded || (isModulePage(pathname) && !workspaceModules.loaded && !isPlatformAdmin)
+  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' | 'plan' = !profileLoaded || (isModulePage(pathname) && !workspaceModules.loaded && !isPlatformAdmin)
     ? 'loading'
     : !canAccessPage(currentUser, pathname)
       ? 'role'
@@ -788,7 +808,9 @@ export default function DashboardLayout({
         ? 'feature'
         : billingLocked
           ? 'billing'
-          : 'allowed'
+          : planOff(pathname)
+            ? 'plan'
+            : 'allowed'
   // A short reminder above the page: trial ending, payment failed, AI credits low or used up
   const billingBanner = !billing || billing.exempt || isPlatformAdmin || pageAccess === 'billing' || pathname.startsWith('/dashboard/billing')
     ? null
@@ -796,11 +818,15 @@ export default function DashboardLayout({
       ? { tone: 'red', text: 'Your last payment failed. Update your payment to keep using WAMA CRM.' }
       : billing.status === 'trialing' && billing.trialDaysLeft !== null && billing.trialDaysLeft <= 5
         ? { tone: 'blue', text: `Your free trial ends in ${billing.trialDaysLeft} day${billing.trialDaysLeft === 1 ? '' : 's'}. Subscribe to keep everything running.` }
-        : billing.aiPaused
-          ? { tone: 'red', text: 'AI credits are used up, so AI replies are paused. Add credits to switch them back on.' }
-          : billing.aiPercentLeft !== null && billing.aiPercentLeft <= 15
-            ? { tone: 'amber', text: `Only ${billing.aiPercentLeft}% of your AI credits are left.` }
-            : null
+        : billing.messageLow
+          ? { tone: 'red', text: 'Your message wallet is almost empty. Top it up so booking messages keep going out.' }
+          : billing.allows?.ai_replies === false
+            ? null
+            : billing.aiPaused
+              ? { tone: 'red', text: 'AI credits are used up, so AI replies are paused. Add credits to switch them back on.' }
+              : billing.aiPercentLeft !== null && billing.aiPercentLeft <= 15
+                ? { tone: 'amber', text: `Only ${billing.aiPercentLeft}% of your AI credits are left.` }
+                : null
 
   if (isStandalone) {
     return (
@@ -911,6 +937,7 @@ export default function DashboardLayout({
                           }`}
                         />
                         <span className="text-[13px] truncate tracking-tight">{item.label}</span>
+                        {planOff(item.href) && <Lock size={12} className="ml-auto shrink-0 text-[#8a94a8]" aria-label="Not on your plan" />}
                       </div>
 
                       {/* Right-aligned live badge counters */}
@@ -1316,6 +1343,7 @@ export default function DashboardLayout({
                     >
                       <Icon size={18} className={isActive ? 'text-[#00a884]' : 'text-slate-400 dark:text-slate-500'} />
                       {item.label}
+                      {planOff(item.href) && <Lock size={12} className="ml-auto shrink-0 text-[#8a94a8]" aria-label="Not on your plan" />}
                     </Link>
                   )
                 })}
@@ -1390,11 +1418,25 @@ export default function DashboardLayout({
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{billing?.onTrial ? 'Your free trial has ended' : billing?.status === 'past_due' ? 'Your payment did not go through' : 'Your WAMA CRM plan has ended'}</h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
                     {canManageBilling
-                      ? 'Subscribe to WAMA CRM Pro (₹3,000 a month, every feature) to continue. Your chats, contacts and settings are safe.'
+                      ? 'Choose a plan to continue. Your chats, contacts and settings are safe.'
                       : 'Your workspace admin needs to renew the plan. Your chats, contacts and settings are safe.'}
                   </p>
                   {canManageBilling && (
                     <Link href="/dashboard/billing" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Subscribe now</Link>
+                  )}
+                </div>
+              </div>
+            ) : pageAccess === 'plan' ? (
+              <div className="flex items-center justify-center h-full p-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-8 max-w-md w-full text-center">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#1D5BEA] mb-4"><Lock size={20} /></div>
+                  <h2 className="text-lg font-bold text-[#0E1B3D] dark:text-white mb-2">Not on your {billing?.plan?.name || ''} plan</h2>
+                  <p className="text-sm text-[#4a5672] dark:text-slate-400 mb-6 leading-relaxed">
+                    {`Your plan does not include ${planOff(pathname)}. `}
+                    {canManageBilling ? 'Upgrade to use it. Everything you have now stays as it is.' : 'Ask your workspace admin to upgrade the plan.'}
+                  </p>
+                  {canManageBilling && (
+                    <Link href="/dashboard/billing?change=1" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">See plans</Link>
                   )}
                 </div>
               </div>

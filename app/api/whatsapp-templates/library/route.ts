@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 // POST: create a template from the library
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
-  const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'campaigns.manage' })
+  const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'campaigns.manage', feature: 'templates' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   const name = String(body.name || '')
   const libraryName = String(body.libraryName || '')

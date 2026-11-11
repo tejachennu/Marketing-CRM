@@ -7,6 +7,7 @@
 
 import { Client } from 'pg'
 import { runMigrationSql } from './schema-setup'
+import { PLANS_SQL } from './plans-schema'
 
 export const BILLING_MIGRATION_SQL = `-- WAMA CRM billing: one plan (₹3,000 a month, every feature) paid through Razorpay Subscriptions,
 -- and an AI wallet: every workspace starts with ₹300 of AI usage and tops up when it runs out.
@@ -152,7 +153,7 @@ export { migrationConnectionString } from './schema-setup'
 
 const MIGRATION_LOCK = 724519001
 
-/** Run the migration in one transaction: all of it applies, or none of it. */
+/** Run the migration (billing, then plans and the message wallet) in one transaction: all of it applies, or none of it. */
 export async function runBillingMigration(connectionString: string, ClientClass: typeof Client = Client): Promise<void> {
-  await runMigrationSql(connectionString, BILLING_MIGRATION_SQL, MIGRATION_LOCK, ClientClass)
+  await runMigrationSql(connectionString, `${BILLING_MIGRATION_SQL}\n${PLANS_SQL}`, MIGRATION_LOCK, ClientClass)
 }

@@ -4,7 +4,8 @@
  * credit, change the seat limit or end access. Pure apart from the database client passed in.
  */
 
-import { billingState, getBilling, PLAN, type BillingRow } from './billing'
+import { billingState, getBilling, type BillingRow } from './billing'
+import { getPlan } from './plans'
 
 const DAY = 86_400_000
 
@@ -106,7 +107,7 @@ export interface WorkspaceSummary {
   members: number
   max_teammates: number | null
   enable_ai: boolean
-  billing: ReturnType<typeof billingState> & { configured: boolean; aiBalance: number | null; hasSubscription: boolean }
+  billing: ReturnType<typeof billingState> & { configured: boolean; aiBalance: number | null; hasSubscription: boolean; plan: string; planName: string; price: number; pendingPlan: string | null; whatsappMode: 'own' | 'shared'; messageBalance: number; overrides: Record<string, unknown> }
 }
 
 /** One row per workspace for the console list. */
@@ -129,11 +130,18 @@ export function summarizeWorkspace(organization: any, billing: BillingRow | null
       configured: billing !== null,
       aiBalance: billing && !billing.billing_exempt ? Math.round(Number(billing.ai_balance) * 100) / 100 : null,
       hasSubscription: Boolean(billing?.razorpay_subscription_id) && ['active', 'past_due'].includes(String(billing?.status)),
+      plan: getPlan(billing?.plan).id,
+      planName: getPlan(billing?.plan).name,
+      price: getPlan(billing?.plan).amountPaise / 100,
+      pendingPlan: billing?.pending_plan || null,
+      whatsappMode: billing?.whatsapp_mode === 'shared' ? 'shared' : 'own',
+      messageBalance: Math.round((Number(billing?.message_balance) || 0) * 100) / 100,
+      overrides: billing?.plan_overrides && typeof billing.plan_overrides === 'object' ? billing.plan_overrides : {},
     },
   }
 }
 
-/** Totals for the console's overview. Monthly revenue counts workspaces on the paid plan. */
+/** Totals for the console's overview. Monthly revenue adds up the plan price of every paying workspace. */
 export function workspaceTotals(workspaces: WorkspaceSummary[]) {
   const billed = workspaces.filter((w) => w.billing.configured && !w.billing.exempt)
   const paying = billed.filter((w) => w.billing.status === 'active' || w.billing.status === 'past_due')
@@ -146,7 +154,7 @@ export function workspaceTotals(workspaces: WorkspaceSummary[]) {
     exempt: workspaces.filter((w) => w.billing.configured && w.billing.exempt).length,
     pastDue: billed.filter((w) => w.billing.status === 'past_due').length,
     aiPaused: billed.filter((w) => w.billing.aiPaused).length,
-    monthlyRevenue: paying.length * (PLAN.amountPaise / 100),
+    monthlyRevenue: paying.reduce((sum, w) => sum + w.billing.price, 0),
     people: workspaces.reduce((sum, w) => sum + w.members, 0),
   }
 }

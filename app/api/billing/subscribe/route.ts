@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { getBilling } from '@/lib/billing'
+import { isPlanId, planIdOf } from '@/lib/plans'
 import { activateSubscription, subscriptionStartAt } from '@/lib/billing-service'
 import { cancelSubscription, createSubscription, fetchSubscription, razorpayKeys, verifySubscriptionSignature } from '@/lib/razorpay'
 
 /**
- * POST { organizationId }: start (or reuse) a Razorpay subscription for Checkout.
+ * POST { organizationId, plan? }: start (or reuse) a Razorpay subscription for Checkout, for the
+ * workspace's plan (or `plan`, which becomes the workspace's plan; only before paying, see change-plan).
  * POST { organizationId, razorpay_payment_id, razorpay_subscription_id, razorpay_signature }: Checkout
  * finished; verify the signature and switch the workspace to the paid plan.
  */
@@ -39,13 +41,23 @@ export async function POST(request: NextRequest) {
     if (billing.status === 'active' && billing.razorpay_subscription_id && !billing.cancel_at_period_end) {
       return NextResponse.json({ error: 'Auto-pay is already set up for this workspace.' }, { status: 400 })
     }
+    // Choosing a plan while subscribing (trial, or after the plan ended)
+    let plan = planIdOf(billing.plan)
+    if (isPlanId(body.plan) && body.plan !== plan) {
+      // In a month already paid for, a different plan goes through change-plan (an upgrade pays the difference)
+      const paidMonthRunning = ['active', 'past_due'].includes(billing.status) && billing.current_period_end && Date.parse(billing.current_period_end) > Date.now()
+      if (paidMonthRunning) return NextResponse.json({ error: 'To change plan, use Change plan in Billing.' }, { status: 400 })
+      plan = body.plan
+      const { error } = await db.from('organization_billing').update({ plan, updated_at: new Date().toISOString() }).eq('organization_id', organizationId)
+      if (error) throw new Error(error.message)
+    }
     // The first charge waits for the end of the trial or of the month already paid for
     const startAt = subscriptionStartAt(billing)
     let subscriptionId = billing.razorpay_subscription_id
     if (subscriptionId) {
       const existing = await fetchSubscription(subscriptionId).catch(() => null)
       // One created earlier for the same start and never paid can be used again
-      const reusable = existing?.status === 'created' && (Number(existing.start_at) || undefined) === startAt
+      const reusable = existing?.status === 'created' && (Number(existing.start_at) || undefined) === startAt && planIdOf(existing.notes?.plan) === plan && Boolean(existing.notes?.plan)
       if (!reusable) {
         // A failing one is stopped so Razorpay does not keep retrying it next to the new one
         if (existing && ['pending', 'halted'].includes(String(existing.status))) {
@@ -55,7 +67,7 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!subscriptionId) {
-      const created = await createSubscription(organizationId, { startAt })
+      const created = await createSubscription(organizationId, { startAt, plan })
       subscriptionId = created.id
       const { error } = await db.from('organization_billing').update({ razorpay_subscription_id: subscriptionId, updated_at: new Date().toISOString() }).eq('organization_id', organizationId)
       if (error) throw new Error(error.message)

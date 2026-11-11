@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 // POST { organizationId, name, scopes }: a new key. It is shown this once; only its hash is kept.
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
-  const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'settings.manage' })
+  const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'settings.manage', feature: 'api' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   const name = String(body?.name || '').replace(/\s+/g, ' ').trim().slice(0, 60)
   if (!name) return NextResponse.json({ error: 'Give the key a name, like "Website booking form", so you know what uses it.' }, { status: 400 })

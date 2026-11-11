@@ -1,25 +1,24 @@
 /**
- * WAMA CRM billing: one plan with every feature, a free trial, and an AI wallet.
+ * WAMA CRM billing: plans (lib/plans.ts), a free trial, an AI wallet and a message wallet.
  *
  * A workspace may use the app while it is exempt, in its trial, or paid up (with a few days of grace
  * when a renewal fails). The AI wallet is separate: AI features run while the wallet has credit.
  * Customers only ever see the wallet as a percentage left, never an amount spent.
  */
 
+import { getPlan, limitsOf, PLAN_CURRENCY, PLAN_INTERVAL, UNLIMITED, type PlanLimits } from './plans'
+import { plansSchemaSetup } from './plans-schema'
+
+const GROWTH = getPlan('growth')
+
+/** The plan the old single-plan code meant: Growth (it replaced the ₹3,000 plan). Prefer lib/plans.ts. */
 export const PLAN = {
-  id: 'pro_monthly',
-  name: 'WAMA CRM Pro',
-  amountPaise: 300000, // ₹3,000 a month
-  currency: 'INR',
-  interval: 'monthly',
-  features: [
-    'Unlimited team members and roles',
-    'Shared WhatsApp inbox and AI replies',
-    'Campaigns and every Meta template type',
-    'WhatsApp shop, payments and orders',
-    'Flow builder and WhatsApp forms',
-    'Sales pipeline, tickets and reports',
-  ],
+  id: GROWTH.id,
+  name: `WAMA CRM ${GROWTH.name}`,
+  amountPaise: GROWTH.amountPaise,
+  currency: PLAN_CURRENCY,
+  interval: PLAN_INTERVAL,
+  features: GROWTH.features,
 } as const
 
 export const TRIAL_DAYS = 14
@@ -45,6 +44,18 @@ export interface BillingRow {
   razorpay_subscription_id: string | null
   ai_balance: number | string
   ai_allowance: number | string
+  /** Added by the plans migration; missing on databases that have not run it yet */
+  plan_overrides?: Record<string, unknown> | null
+  pending_plan?: string | null
+  pending_subscription_id?: string | null
+  whatsapp_mode?: 'own' | 'shared' | string | null
+  message_balance?: number | string | null
+}
+
+/** A workspace's plan limits: its plan with Super Admin's changes; no limits when exempt or before billing. */
+export function billingLimits(row: BillingRow | null | undefined): PlanLimits {
+  if (!row || row.billing_exempt) return { ...UNLIMITED, connectorKeys: [] }
+  return limitsOf(row.plan, row.plan_overrides)
 }
 
 export interface BillingState {
@@ -135,7 +146,14 @@ export async function getBilling(db: any, organizationId: string): Promise<Billi
     if (/organization_billing/.test(found.error.message || '') || found.error.code === '42P01') return null
     throw new Error(found.error.message)
   }
-  if (found.data) return found.data
+  if (found.data) {
+    // Billing from before the plans: add the plan columns once, then read again
+    if (!('whatsapp_mode' in found.data) && await plansSchemaSetup.ensure()) {
+      const again = await db.from('organization_billing').select('*').eq('organization_id', organizationId).maybeSingle()
+      if (!again.error && again.data) return again.data
+    }
+    return found.data
+  }
   const { data: organization } = await db.from('organizations').select('id, name, slug, whatsapp_provider, twilio_account_sid').eq('id', organizationId).maybeSingle()
   const created = await db.from('organization_billing').insert({ organization_id: organizationId, billing_exempt: isExemptOrganization(organization) }).select('*').single()
   if (created.error) {

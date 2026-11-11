@@ -57,6 +57,30 @@ function database(seed = {}) {
       tables.ai_wallet_transactions.push({ organization_id: args.p_org, kind: args.p_kind, amount: args.p_amount, razorpay_payment_id: args.p_payment_id })
       return { data: billing.ai_balance, error: null }
     }
+    // The message wallet, as the SQL functions do it
+    tables.message_wallet_transactions = tables.message_wallet_transactions || []
+    const ledger = tables.message_wallet_transactions
+    if (fn === 'message_wallet_charge') {
+      if (ledger.some((t) => t.message_ref === args.p_ref && t.kind === 'usage')) return { data: true, error: null }
+      if (!billing || Number(billing.message_balance || 0) < args.p_amount) return { data: false, error: null }
+      billing.message_balance = Number(billing.message_balance) - args.p_amount
+      ledger.push({ organization_id: args.p_org, kind: 'usage', amount: -args.p_amount, message_ref: args.p_ref, category: args.p_category })
+      return { data: true, error: null }
+    }
+    if (fn === 'message_wallet_refund') {
+      const charge = ledger.find((t) => t.message_ref === args.p_ref && t.kind === 'usage')
+      if (!charge || ledger.some((t) => t.message_ref === args.p_ref && t.kind === 'refund')) return { data: 0, error: null }
+      const owner = tables.organization_billing.find((r) => r.organization_id === charge.organization_id)
+      owner.message_balance = Number(owner.message_balance) - charge.amount
+      ledger.push({ organization_id: charge.organization_id, kind: 'refund', amount: -charge.amount, message_ref: args.p_ref })
+      return { data: -charge.amount, error: null }
+    }
+    if (fn === 'message_wallet_credit') {
+      if (args.p_payment_id && ledger.some((t) => t.razorpay_payment_id === args.p_payment_id)) return { data: billing.message_balance, error: null }
+      billing.message_balance = Math.max(0, Number(billing.message_balance || 0) + args.p_amount)
+      ledger.push({ organization_id: args.p_org, kind: args.p_kind, amount: args.p_amount, razorpay_payment_id: args.p_payment_id })
+      return { data: billing.message_balance, error: null }
+    }
     return { data: null, error: { message: `unknown function ${fn}` } }
   }
   return { from, rpc, tables }
@@ -86,8 +110,9 @@ function withEnv(values, fn) {
 
 // ── The plan and the trial ──────────────────────────────────────────────────
 
-test('Billing: one plan at ₹3,000 a month', () => {
-  assert.equal(B.PLAN.amountPaise, 300000)
+test('Billing: the old single plan now means Growth at ₹2,500 a month', () => {
+  assert.equal(B.PLAN.amountPaise, 250000)
+  assert.equal(B.PLAN.id, 'growth')
   assert.equal(B.PLAN.currency, 'INR')
   assert.equal(B.PLAN.interval, 'monthly')
   assert.equal(B.FREE_AI_CREDIT, 300)
@@ -241,12 +266,15 @@ test('Razorpay: Checkout and webhook signatures are checked with the right secre
 test('Razorpay: the plan is found by its notes in a shared account, or created once', async () => {
   await withEnv(KEYS, async () => {
     const other = { id: 'plan_other', period: 'monthly', item: { amount: 300000 }, notes: { app: 'another-app' } }
-    const ours = { id: 'plan_ours', period: 'monthly', item: { amount: 300000 }, notes: { app: 'wamacrm', plan: 'pro_monthly' } }
-    assert.equal(await R.ensurePlan(fakeFetch({ 'GET /plans?count=100': { items: [other, ours] } })), 'plan_ours')
-    const created = fakeFetch({ 'GET /plans?count=100': { items: [other] }, 'POST /plans': { id: 'plan_new' } })
-    assert.equal(await R.ensurePlan(created), 'plan_new')
+    const old = { id: 'plan_old', period: 'monthly', item: { amount: 300000 }, notes: { app: 'wamacrm', plan: 'pro_monthly' } }
+    const ours = { id: 'plan_ours', period: 'monthly', item: { amount: 250000 }, notes: { app: 'wamacrm', plan: 'growth' } }
+    assert.equal(await R.ensurePlan('growth', fakeFetch({ 'GET /plans?count=100': { items: [other, old, ours] } })), 'plan_ours')
+    const created = fakeFetch({ 'GET /plans?count=100': { items: [other, old] }, 'POST /plans': { id: 'plan_new' } })
+    assert.equal(await R.ensurePlan('starter', created), 'plan_new')
     const body = JSON.parse(created.calls[1].init.body)
-    assert.deepEqual([body.period, body.item.amount, body.item.currency, body.notes.app], ['monthly', 300000, 'INR', 'wamacrm'])
+    assert.deepEqual([body.period, body.item.amount, body.item.currency, body.notes.app, body.notes.plan], ['monthly', 99900, 'INR', 'wamacrm', 'starter'])
+    // A plan pinned in the environment is used as it is
+    await withEnv({ RAZORPAY_PLAN_PRO_2: 'plan_pinned' }, async () => assert.equal(await R.ensurePlan('pro_2', fakeFetch({})), 'plan_pinned'))
   })
 })
 
@@ -264,8 +292,8 @@ test('Top-ups: a captured payment for this workspace is credited exactly once', 
     const db = database({ organization_billing: [row({ ai_balance: 12, ai_allowance: 300 })] })
     const payment = { id: 'pay_1', status: 'captured', amount: 100000, order_id: 'order_1', notes: {} }
     const fetcher = fakeFetch({ 'GET /payments/pay_1': payment, 'GET /orders/order_1': { id: 'order_1', notes: { app: 'wamacrm', purpose: 'ai_topup', organization_id: 'org-1' } } })
-    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: true, amount: 1000 })
-    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: false, amount: 1000 })
+    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: true, amount: 1000, purpose: 'ai_topup' })
+    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: false, amount: 1000, purpose: 'ai_topup' })
     const billing = db.tables.organization_billing[0]
     assert.equal(billing.ai_balance, 1012)
     // The new balance counts as 100%
@@ -294,7 +322,7 @@ test('Top-ups: an authorized payment is captured before the credit is added', as
       'GET /payments/pay_1': { id: 'pay_1', status: 'authorized', amount: 50000, notes },
       'POST /payments/pay_1/capture': (init) => [200, { id: 'pay_1', status: 'captured', amount: JSON.parse(init.body).amount, notes }],
     })
-    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: true, amount: 500 })
+    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_1', fetcher), { credited: true, amount: 500, purpose: 'ai_topup' })
     assert.equal(JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/capture')).init.body).amount, 50000)
   })
 })
@@ -405,18 +433,18 @@ test('Console: extending a paying workspace\'s trial keeps it on its plan', asyn
   assert.equal(db.tables.organization_billing[0].status, 'active')
 })
 
-test('Console: totals count paying workspaces at ₹3,000 each', () => {
+test('Console: totals add up each paying workspace\'s plan price', () => {
   const org = (id, extra = {}) => ({ id, name: id, slug: id, created_at: iso(-1), ...extra })
   const list = [
     W.summarizeWorkspace(org('a', { whatsapp_provider: 'facebook', whatsapp_phone_number_id: '1' }), row({ status: 'active', current_period_end: iso(10) }), 3, NOW),
-    W.summarizeWorkspace(org('b'), row({ status: 'past_due', current_period_end: iso(-1) }), 1, NOW),
+    W.summarizeWorkspace(org('b'), row({ plan: 'pro_1', status: 'past_due', current_period_end: iso(-1) }), 1, NOW),
     W.summarizeWorkspace(org('c'), row(), 2, NOW),
     W.summarizeWorkspace(org('d'), row({ trial_ends_at: iso(-2), ai_balance: 0 }), 1, NOW),
     W.summarizeWorkspace(org('e', { twilio_account_sid: 'AC1' }), row({ billing_exempt: true }), 5, NOW),
   ]
   assert.equal(list[0].whatsapp, 'meta')
   assert.equal(list[4].whatsapp, 'twilio')
-  assert.deepEqual(W.workspaceTotals(list), { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 6000, people: 12 })
+  assert.deepEqual(W.workspaceTotals(list), { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 8500, people: 12 })
 })
 
 // ── When the first charge happens ───────────────────────────────────────────
@@ -605,4 +633,223 @@ test('AI prices: speech-to-text models have their own price (US$ per million tok
   assert.equal(aiCostInr('gpt-4o-mini-transcribe', 1_000_000, 0), 396)
   assert.equal(aiCostInr('gpt-4o-transcribe', 1_000_000, 0), 792)
   assert.equal(aiCostInr('gpt-4o-mini', 1_000_000, 0), 19.8)
+})
+
+// ── Plans (lib/plans.ts) ────────────────────────────────────────────────────
+
+const P = require('../lib/plans.ts')
+const MW = require('../lib/message-wallet.ts')
+
+test('Plans: five plans at the agreed prices; the old ₹3,000 plan reads as Growth', () => {
+  assert.deepEqual(P.PLANS.map((p) => [p.id, p.amountPaise / 100, p.whatsapp]), [
+    ['starter', 999, 'shared'], ['growth', 2500, 'own'], ['pro_1', 6000, 'own'], ['pro_2', 9000, 'own'], ['pro_3', 12000, 'own'],
+  ])
+  assert.equal(P.planIdOf('pro_monthly'), 'growth')
+  assert.equal(P.planIdOf(undefined), 'growth')
+  assert.equal(P.getPlan('pro_2').limits.videos, 4)
+})
+
+test('Plans: Starter has no inbox or campaigns and Front Desk only; Growth has one connector', () => {
+  const starter = P.limitsOf('starter')
+  assert.equal(P.planAllows(starter, 'campaigns'), false)
+  assert.equal(P.planAllows(starter, 'inbox'), false)
+  assert.match(P.connectorBlockReason(starter, [], 'ecommerce'), /Front Desk only/)
+  assert.equal(P.connectorBlockReason(starter, [], 'salon'), null)
+  const growth = P.limitsOf('growth')
+  assert.equal(P.planAllows(growth, 'campaigns'), true)
+  assert.equal(P.connectorBlockReason(growth, ['salon'], 'pipeline') !== null, true)
+  // E-commerce and Sales Pipeline start switched on: on Growth only the first one counts
+  assert.deepEqual(P.activeConnectors(growth, ['ecommerce', 'pipeline']), ['ecommerce'])
+  assert.deepEqual(P.activeConnectors(starter, ['salon', 'ecommerce', 'pipeline']), ['salon'])
+  assert.deepEqual(P.activeConnectors(P.limitsOf('pro_1'), ['salon', 'ecommerce', 'pipeline']), ['salon', 'ecommerce', 'pipeline'])
+})
+
+test('Plans: Super Admin overrides change one workspace\'s limits; bad values are ignored', () => {
+  const limits = P.limitsOf('growth', { connectors: 3, team: 50, aiMonthly: 'lots', videos: -1 })
+  assert.deepEqual([limits.connectors, limits.team, limits.aiMonthly, limits.videos], [3, 50, 300, 0])
+  assert.equal(P.limitsOf('pro_1', { team: null }).team, null)
+  // A connector number opens Starter up to every connector
+  assert.deepEqual(P.limitsOf('starter', { connectors: 2 }).connectorKeys, [])
+  assert.equal(P.teamBlockReason(P.limitsOf('growth'), 4), null)
+  assert.match(P.teamBlockReason(P.limitsOf('growth'), 5), /up to 5 team members/)
+  assert.equal(P.teamBlockReason(P.limitsOf('pro_3'), 500), null)
+})
+
+test('Plans: an upgrade costs the difference for the days left, in whole rupees', () => {
+  // Growth → Pro 1 with 15 of 30 days left: (6,000 − 2,500) × 15/30 = ₹1,750
+  assert.equal(P.upgradeDifferencePaise('growth', 'pro_1', iso(15), NOW), 175000)
+  assert.equal(P.upgradeDifferencePaise('pro_1', 'growth', iso(15), NOW), 0)
+  assert.equal(P.upgradeDifferencePaise('growth', 'pro_1', iso(-1), NOW), 0)
+  assert.equal(P.planDirection('starter', 'growth'), 'up')
+  assert.equal(P.planDirection('pro_3', 'pro_2'), 'down')
+})
+
+test('Plans: the migration file is the same SQL the app runs', () => {
+  const S2 = require('../lib/plans-schema.ts')
+  const file = require('fs').readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20261111_plans_and_message_wallet.sql'), 'utf8')
+  assert.equal(S2.PLANS_SQL, file)
+  assert.equal(S2.PLANS_LOCK, 724519013)
+  assert.match(file, /UPDATE organization_billing SET plan = 'growth' WHERE plan = 'pro_monthly'/)
+})
+
+test('Billing summary: plan, limits, what is allowed and the message wallet', async () => {
+  const db = database({ organization_billing: [row({ plan: 'starter', whatsapp_mode: 'shared', message_balance: 40 })] })
+  const summary = await S.billingSummary(db, 'org-1')
+  assert.equal(summary.plan.id, 'starter')
+  assert.equal(summary.allows.campaigns, false)
+  assert.equal(summary.plans.length, 5)
+  assert.equal(summary.whatsappMode, 'shared')
+  assert.equal(summary.messageBalance, 40)
+  assert.equal(summary.messageLow, true)
+})
+
+// ── Message wallet ──────────────────────────────────────────────────────────
+
+test('Message wallet: Meta\'s price with no markup, changeable in the environment', async () => {
+  assert.equal(MW.messagePrice('utility', {}), 0.115)
+  assert.equal(MW.messagePrice('service', {}), 0)
+  assert.equal(MW.messagePrice('utility', { META_PRICE_UTILITY_INR: '0.13' }), 0.13)
+  assert.equal(MW.messagePrice('utility', { META_PRICE_UTILITY_INR: 'abc' }), 0.115)
+})
+
+test('Message wallet: a message is paid once, refused when the wallet is short, refunded once', async () => {
+  await withEnv({ META_PRICE_UTILITY_INR: '0.5' }, async () => {
+    const db = database({ organization_billing: [row({ message_balance: 1 })] })
+    assert.equal(await MW.chargeMessage(db, 'org-1', 'msg-1'), true)
+    assert.equal(await MW.chargeMessage(db, 'org-1', 'msg-1'), true)
+    assert.equal(db.tables.organization_billing[0].message_balance, 0.5)
+    assert.equal(await MW.chargeMessage(db, 'org-1', 'msg-2'), true)
+    assert.equal(await MW.chargeMessage(db, 'org-1', 'msg-3'), false)
+    assert.equal(db.tables.organization_billing[0].message_balance, 0)
+    assert.equal(await MW.refundMessage(db, 'msg-1'), 0.5)
+    assert.equal(await MW.refundMessage(db, 'msg-1'), 0)
+    assert.equal(db.tables.organization_billing[0].message_balance, 0.5)
+  })
+})
+
+test('Message wallet: a top-up payment is added once', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ message_balance: 0 })] })
+    const notes = { app: 'wamacrm', purpose: 'message_topup', organization_id: 'org-1' }
+    const fetcher = fakeFetch({ 'GET /payments/pay_m': { id: 'pay_m', status: 'captured', amount: 50000, notes } })
+    assert.deepEqual(await S.creditTopup(db, 'org-1', 'pay_m', fetcher, 'message_topup'), { credited: true, amount: 500, purpose: 'message_topup' })
+    await S.creditTopup(db, 'org-1', 'pay_m', fetcher, 'message_topup')
+    assert.equal(db.tables.organization_billing[0].message_balance, 500)
+    // A message top-up is not AI credit
+    await assert.rejects(S.creditTopup(db, 'org-1', 'pay_m', fetcher, 'ai_topup'), /not an AI credit top-up/)
+  })
+})
+
+// ── Changing plan ───────────────────────────────────────────────────────────
+
+const sub = (id, extra = {}) => ({ id, status: 'active', paid_count: 1, current_end: Math.floor(Date.parse(iso(15)) / 1000), notes: { app: 'wamacrm', organization_id: 'org-1', plan: 'growth' }, ...extra })
+
+test('Change plan: on the trial it switches at once, and old-price auto-pay is stopped', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ plan: 'growth', status: 'active', razorpay_subscription_id: 'sub_t', current_period_end: iso(10) })] })
+    const fetcher = fakeFetch({
+      'GET /subscriptions/sub_t': sub('sub_t', { status: 'authenticated', paid_count: 0 }),
+      'POST /subscriptions/sub_t/cancel': { id: 'sub_t', status: 'cancelled' },
+    })
+    const result = await S.changePlan(db, 'org-1', 'pro_1', fetcher, NOW)
+    assert.deepEqual(result, { kind: 'switched', plan: 'pro_1', autoPayCleared: true })
+    const billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.plan, billing.razorpay_subscription_id, billing.status], ['pro_1', null, 'trialing'])
+  })
+})
+
+test('Change plan: an upgrade while paying asks for the difference first', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ plan: 'growth', status: 'active', razorpay_subscription_id: 'sub_g', current_period_end: iso(15) })] })
+    const fetcher = fakeFetch({
+      'GET /subscriptions/sub_g': sub('sub_g'),
+      'POST /orders': (init) => [200, { id: 'order_up', amount: JSON.parse(init.body).amount, currency: 'INR', notes: JSON.parse(init.body).notes }],
+    })
+    const result = await S.changePlan(db, 'org-1', 'pro_1', fetcher, NOW)
+    assert.equal(result.kind, 'pay_difference')
+    assert.equal(result.amount, 175000)
+    const order = JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/orders')).init.body)
+    assert.deepEqual([order.notes.purpose, order.notes.plan], ['upgrade', 'pro_1'])
+    // Nothing changes until it is paid
+    assert.equal(db.tables.organization_billing[0].plan, 'growth')
+  })
+})
+
+test('Change plan: once the difference is paid the bigger plan starts, then auto-pay for the new price waits for the bill date', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ plan: 'growth', status: 'active', razorpay_subscription_id: 'sub_g', current_period_end: iso(15) })] })
+    const notes = { app: 'wamacrm', purpose: 'upgrade', organization_id: 'org-1', plan: 'pro_1' }
+    const fetcher = fakeFetch({
+      'GET /payments/pay_up': { id: 'pay_up', status: 'captured', amount: 175000, order_id: 'order_up', notes },
+      'GET /subscriptions/sub_g': sub('sub_g'),
+      'GET /plans?count=100': { items: [] },
+      'POST /plans': { id: 'plan_pro_1' },
+      'POST /subscriptions': (init) => [200, { id: 'sub_p', status: 'created', ...JSON.parse(init.body) }],
+    })
+    const paid = await S.creditTopup(db, 'org-1', 'pay_up', fetcher, 'upgrade')
+    assert.equal(paid.plan, 'pro_1')
+    assert.equal(db.tables.organization_billing[0].plan, 'pro_1')
+    const next = await S.changePlan(db, 'org-1', 'pro_1', fetcher, NOW)
+    assert.equal(next.kind, 'auto_pay')
+    assert.equal(next.startsAt, iso(15).replace(/\.\d{3}Z$/, '.000Z'))
+    const created = JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/subscriptions') && c.init.method === 'POST').init.body)
+    assert.deepEqual([created.plan_id, created.notes.plan], ['plan_pro_1', 'pro_1'])
+    assert.deepEqual([db.tables.organization_billing[0].pending_subscription_id, db.tables.organization_billing[0].pending_plan], ['sub_p', 'pro_1'])
+  })
+})
+
+test('Change plan: a downgrade keeps the plan until the bill date, then the new auto-pay takes over', async () => {
+  await withEnv(KEYS, async () => {
+    const db = database({ organization_billing: [row({ plan: 'pro_2', status: 'active', razorpay_subscription_id: 'sub_old', current_period_end: iso(15) })] })
+    const cancels = []
+    const fetcher = fakeFetch({
+      'GET /subscriptions/sub_old': sub('sub_old', { notes: { app: 'wamacrm', organization_id: 'org-1', plan: 'pro_2' } }),
+      'GET /plans?count=100': { items: [] },
+      'POST /plans': { id: 'plan_growth' },
+      'POST /subscriptions': (init) => [200, { id: 'sub_new', status: 'created', ...JSON.parse(init.body) }],
+    })
+    const result = await S.changePlan(db, 'org-1', 'growth', fetcher, NOW)
+    assert.equal(result.kind, 'auto_pay')
+    let billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.plan, billing.pending_plan], ['pro_2', 'growth'])
+
+    // The customer approves the new auto-pay: the old one stops at the end of its month
+    const cancel = async (id, _f, atCycleEnd) => { cancels.push([id, atCycleEnd]) }
+    await S.applySubscription(db, 'org-1', sub('sub_new', { status: 'authenticated', paid_count: 0, notes: { app: 'wamacrm', organization_id: 'org-1', plan: 'growth' } }), { cancel })
+    assert.deepEqual(cancels, [['sub_old', true]])
+    assert.equal(db.tables.organization_billing[0].plan, 'pro_2')
+
+    // The old one ends: nothing changes while the new one waits
+    await S.applySubscription(db, 'org-1', sub('sub_old', { status: 'cancelled' }))
+    billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.status, billing.plan, billing.razorpay_subscription_id], ['active', 'pro_2', 'sub_old'])
+
+    // First charge of the new one: it becomes the subscription and Growth applies
+    await S.applySubscription(db, 'org-1', sub('sub_new', { notes: { app: 'wamacrm', organization_id: 'org-1', plan: 'growth' }, current_end: Math.floor(Date.parse(iso(45)) / 1000) }))
+    billing = db.tables.organization_billing[0]
+    assert.deepEqual([billing.plan, billing.razorpay_subscription_id, billing.pending_subscription_id, billing.status, billing.cancel_at_period_end], ['growth', 'sub_new', null, 'active', false])
+  })
+})
+
+test('Change plan: an upgrade whose new auto-pay was never set up ends when the old plan renews', async () => {
+  const db = database({ organization_billing: [row({ plan: 'pro_1', status: 'active', razorpay_subscription_id: 'sub_g', current_period_end: iso(1) })] })
+  await S.applySubscription(db, 'org-1', sub('sub_g', { paid_count: 2 }))
+  assert.equal(db.tables.organization_billing[0].plan, 'growth')
+})
+
+test('Change plan: exempt workspaces and the same plan are refused', async () => {
+  await withEnv(KEYS, async () => {
+    const exempt = database({ organization_billing: [row({ billing_exempt: true })] })
+    await assert.rejects(S.changePlan(exempt, 'org-1', 'pro_1', fakeFetch({}), NOW), /does not need a plan/)
+    const paying = database({ organization_billing: [row({ plan: 'growth', status: 'active', razorpay_subscription_id: 'sub_g', current_period_end: iso(15) })] })
+    await assert.rejects(S.changePlan(paying, 'org-1', 'growth', fakeFetch({ 'GET /subscriptions/sub_g': sub('sub_g') }), NOW), /already on Growth/)
+  })
+})
+
+test('Monthly AI credit: each plan payment adds the plan\'s credit once', async () => {
+  const db = database({ organization_billing: [row({ plan: 'pro_1', ai_balance: 10, ai_allowance: 300 })] })
+  assert.equal(await S.grantMonthlyAi(db, 'org-1', 'pro_1', 'pay_9'), 500)
+  await S.grantMonthlyAi(db, 'org-1', 'pro_1', 'pay_9')
+  assert.equal(db.tables.organization_billing[0].ai_balance, 510)
+  assert.equal(await S.grantMonthlyAi(db, 'org-1', 'starter', 'pay_10'), 0)
 })
