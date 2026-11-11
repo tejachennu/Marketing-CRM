@@ -853,3 +853,18 @@ test('Monthly AI credit: each plan payment adds the plan\'s credit once', async 
   assert.equal(db.tables.organization_billing[0].ai_balance, 510)
   assert.equal(await S.grantMonthlyAi(db, 'org-1', 'starter', 'pay_10'), 0)
 })
+
+test('Console: set a plan, limits, WAMA\'s number and message wallet money by hand', async () => {
+  const W2 = require('../lib/superadmin-workspaces.ts')
+  assert.deepEqual(W2.parseWorkspaceAction({ action: 'set_plan', plan: 'pro_3' }), { action: { action: 'set_plan', plan: 'pro_3' } })
+  assert.ok('error' in W2.parseWorkspaceAction({ action: 'set_plan', plan: 'gold' }))
+  assert.deepEqual(W2.parseWorkspaceAction({ action: 'set_overrides', overrides: { connectors: 9, team: '', aiMonthly: 700, ads: true } }), { action: { action: 'set_overrides', overrides: { connectors: 3, aiMonthly: 700, ads: true } } })
+  assert.ok('error' in W2.parseWorkspaceAction({ action: 'set_overrides', overrides: { team: -2 } }))
+  const db = database({ organization_billing: [row({ plan: 'growth', message_balance: 0 })] })
+  await W2.applyWorkspaceAction(db, 'org-1', { action: 'set_plan', plan: 'starter' }, 'admin-1', NOW)
+  assert.deepEqual([db.tables.organization_billing[0].plan, db.tables.organization_billing[0].whatsapp_mode], ['starter', 'shared'])
+  await W2.applyWorkspaceAction(db, 'org-1', { action: 'add_message_credit', amount: 250 }, 'admin-1', NOW)
+  assert.equal(db.tables.organization_billing[0].message_balance, 250)
+  const summary = W2.summarizeWorkspace({ id: 'org-1', name: 'x', slug: 'x', created_at: iso(-1) }, db.tables.organization_billing[0], 1, NOW)
+  assert.deepEqual([summary.billing.plan, summary.billing.price, summary.billing.messageBalance], ['starter', 999, 250])
+})

@@ -6,6 +6,7 @@ import {
   AlertTriangle, ArrowUpRight, Building2, CalendarPlus, Check, ChevronRight, CreditCard, IndianRupee, Loader2, Mail, Plus,
   RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, X,
 } from 'lucide-react'
+import { PLANS } from '@/lib/plans'
 import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
 import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
@@ -26,6 +27,13 @@ interface WorkspaceBilling {
   aiBalance: number | null
   hasSubscription: boolean
   onTrial: boolean
+  plan: string
+  planName: string
+  price: number
+  pendingPlan: string | null
+  whatsappMode: 'own' | 'shared'
+  messageBalance: number
+  overrides: Record<string, unknown>
 }
 
 interface Workspace {
@@ -176,6 +184,9 @@ export default function SuperAdminConsole() {
   const [creditAmount, setCreditAmount] = useState('')
   const [paidUntil, setPaidUntil] = useState('')
   const [seatLimit, setSeatLimit] = useState('')
+  const [planChoice, setPlanChoice] = useState('growth')
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const [messageAmount, setMessageAmount] = useState('')
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false)
   const [newPersonOpen, setNewPersonOpen] = useState(false)
   // Whether this console can switch billing on itself (the server has a database connection)
@@ -265,6 +276,9 @@ export default function SuperAdminConsole() {
       const data: WorkspaceDetails = await api(`/api/superadmin/workspaces/${id}`)
       setDetails(data)
       setSeatLimit(data.workspace.max_teammates ? String(data.workspace.max_teammates) : '')
+      setPlanChoice(data.workspace.billing.plan || 'growth')
+      const saved = data.workspace.billing.overrides || {}
+      setOverrides(Object.fromEntries(['connectors', 'team', 'aiMonthly', 'videos'].map((key) => [key, saved[key] === undefined || saved[key] === null ? '' : String(saved[key])])))
     } catch (err: any) {
       flash('error', err.message)
       setOpenId(null)
@@ -405,7 +419,7 @@ export default function SuperAdminConsole() {
         ) : tab === 'overview' ? (
           <div className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Stat label="Monthly revenue" value={rupees(totals?.monthlyRevenue || 0)} hint={`${totals?.paying || 0} paying × ₹3,000`} tone="green" />
+              <Stat label="Monthly revenue" value={rupees(totals?.monthlyRevenue || 0)} hint={`${totals?.paying || 0} paying, by their plan`} tone="green" />
               <Stat label="On free trial" value={String(totals?.trialing || 0)} tone="blue" />
               <Stat label="Trial or plan ended" value={String(totals?.expired || 0)} tone={totals?.expired ? 'red' : undefined} />
               <Stat label="Payment failed" value={String(totals?.pastDue || 0)} tone={totals?.pastDue ? 'red' : undefined} />
@@ -616,7 +630,7 @@ export default function SuperAdminConsole() {
                       <div className="flex flex-wrap gap-2 pt-1">
                         <button type="button" disabled={busy !== null} onClick={async () => {
                           const exempt = !details.workspace.billing.exempt
-                          if (await confirm({ title: exempt ? 'Exempt this workspace from billing?' : 'Start billing this workspace?', message: exempt ? 'It keeps every feature with no plan, and uses its own AI key when it has one (otherwise WAMA CRM\'s, free).' : 'It needs the ₹3,000 plan (or a trial) to keep access, and AI comes out of its AI credit.', confirmLabel: exempt ? 'Exempt' : 'Start billing' })) {
+                          if (await confirm({ title: exempt ? 'Exempt this workspace from billing?' : 'Start billing this workspace?', message: exempt ? 'It keeps every feature with no plan, and uses its own AI key when it has one (otherwise WAMA CRM\'s, free).' : 'It needs a plan (or a trial) to keep access, and AI comes out of its AI credit.', confirmLabel: exempt ? 'Exempt' : 'Start billing' })) {
                             act({ action: 'set_exempt', exempt }, exempt ? 'Workspace is now exempt.' : 'Workspace is now billed.')
                           }
                         }} className={`${secondary} h-9 px-3`}><ShieldCheck size={15} /> {details.workspace.billing.exempt ? 'Start billing' : 'Make exempt'}</button>
@@ -629,6 +643,54 @@ export default function SuperAdminConsole() {
                     </>
                   )}
                 </section>
+
+                {/* Plan, limits and the message wallet */}
+                {details.workspace.billing.configured && !details.workspace.billing.exempt && (
+                  <section className={`${card} p-4 space-y-3`}>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#1D5BEA]" /> Plan</h3>
+                    <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
+                      {details.workspace.billing.planName} · {rupees(details.workspace.billing.price)} a month · {details.workspace.billing.whatsappMode === 'shared' ? 'WAMA\'s number' : 'own WhatsApp number'}
+                      {details.workspace.billing.pendingPlan ? ` · changing to ${PLANS.find((plan) => plan.id === details.workspace.billing.pendingPlan)?.name || details.workspace.billing.pendingPlan} on the bill date` : ''}
+                    </p>
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={async (e) => {
+                      e.preventDefault()
+                      if (await confirm({ title: 'Change the plan by hand?', message: 'The plan changes now. Razorpay auto-pay is not changed, so use this for offline arrangements.', confirmLabel: 'Change plan' })) act({ action: 'set_plan', plan: planChoice }, 'Plan changed.')
+                    }}>
+                      <select value={planChoice} onChange={(e) => setPlanChoice(e.target.value)} className={`${field} h-9`} aria-label="Plan">
+                        {PLANS.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · ₹{(plan.amountPaise / 100).toLocaleString('en-IN')}</option>)}
+                      </select>
+                      <button type="submit" disabled={busy !== null || planChoice === details.workspace.billing.plan} className={`${secondary} h-9 px-3`}>Set plan</button>
+                      <button type="button" disabled={busy !== null} onClick={() => act({ action: 'set_whatsapp_mode', mode: details.workspace.billing.whatsappMode === 'shared' ? 'own' : 'shared' }, 'WhatsApp setting changed.')} className={`${secondary} h-9 px-3`}>
+                        {details.workspace.billing.whatsappMode === 'shared' ? 'Use own number' : 'Use WAMA\'s number'}
+                      </button>
+                    </form>
+                    <form className="space-y-2" onSubmit={(e) => {
+                      e.preventDefault()
+                      const body: Record<string, number | null> = {}
+                      for (const [key, value] of Object.entries(overrides)) if (value.trim() !== '') body[key] = Number(value)
+                      act({ action: 'set_overrides', overrides: body }, 'Limits saved.')
+                    }}>
+                      <div className="text-[12.5px] font-semibold text-[#6B7894]">Limits for this workspace (empty = the plan&apos;s own)</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[['connectors', 'Connectors (max 3)'], ['team', 'Team members'], ['aiMonthly', 'AI credit ₹/month'], ['videos', 'Videos/month']].map(([key, label]) => (
+                          <label key={key} className="block min-w-0">
+                            <span className="block text-[12px] text-[#6B7894] mb-0.5 truncate">{label}</span>
+                            <input type="number" min={0} value={overrides[key] || ''} onChange={(e) => setOverrides((current) => ({ ...current, [key]: e.target.value }))} placeholder="Plan" className={`${field} h-9 w-full`} />
+                          </label>
+                        ))}
+                      </div>
+                      <button type="submit" disabled={busy !== null} className={`${secondary} h-9 px-3`}>Save limits</button>
+                    </form>
+                    <form className="flex flex-wrap items-center gap-2 border-t border-[#eef1f6] dark:border-slate-800 pt-3" onSubmit={(e) => { e.preventDefault(); act({ action: 'add_message_credit', amount: Number(messageAmount) }, `${rupees(Number(messageAmount))} added to the message wallet.`); setMessageAmount('') }}>
+                      <span className="text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200 mr-1">Message wallet {rupees(details.workspace.billing.messageBalance || 0)}</span>
+                      <span className="relative">
+                        <IndianRupee size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
+                        <input type="number" min={1} max={100000} required value={messageAmount} onChange={(e) => setMessageAmount(e.target.value)} placeholder="200" className={`${field} w-28 h-9 pl-8`} aria-label="Amount for the message wallet" />
+                      </span>
+                      <button type="submit" disabled={busy !== null || !messageAmount} className={`${primary} h-9 px-3`}><Plus size={15} /> Add free</button>
+                    </form>
+                  </section>
+                )}
 
                 {/* AI credit */}
                 {details.workspace.billing.configured && !details.workspace.billing.exempt && (

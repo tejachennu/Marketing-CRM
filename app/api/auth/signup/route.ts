@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { startPlan } from '@/lib/billing-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { isSuperAdminEmail } from '@/lib/api-auth-helper'
@@ -95,6 +96,8 @@ export async function POST(request: NextRequest) {
     createdOrgId = null
     createdAuthUserId = null
     await clearSignupCode(supabase, email).catch(() => {})
+    // The plan picked on the pricing page (?plan=…): the trial starts on it
+    await startPlan(supabase, orgData.id, body.plan)
 
     // Create demo data
     const { data: stagesData } = await supabase

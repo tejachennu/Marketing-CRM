@@ -6,6 +6,7 @@
 import { billingLimits, billingState, getBilling, MAX_AI_TOPUP, MIN_AI_TOPUP, TRIAL_DAYS, type BillingRow } from './billing'
 import { allowsMap, getPlan, isPlanId, limitsOf, planDirection, planIdOf, PLAN_CURRENCY, PLAN_INTERVAL, PLANS, upgradeDifferencePaise, type PlanId } from './plans'
 import { cancelSubscription, capturePayment, createSubscription, createTopupOrder, fetchOrder, fetchPayment, fetchSubscription, type OrderPurpose } from './razorpay'
+import { withPlansSchema } from './plans-schema'
 import { creditMessages, LOW_MESSAGE_BALANCE, MAX_MESSAGE_TOPUP, messageHistory, messagePrices, MIN_MESSAGE_TOPUP } from './message-wallet'
 
 async function checked(query: any) {
@@ -347,4 +348,23 @@ export async function confirmPlanAutoPay(db: any, organizationId: string, subscr
   const subscription = await fetchSubscription(subscriptionId, fetcher)
   if (subscription.notes?.organization_id && subscription.notes.organization_id !== organizationId) throw new Error('This subscription belongs to another workspace.')
   await applySubscription(db, organizationId, subscription, { cancel: (id, _fetcher, atCycleEnd) => cancelSubscription(id, fetcher, atCycleEnd) })
+}
+
+/**
+ * A new workspace starts its trial on the plan picked on the pricing page. Starter uses WAMA's number
+ * and Front Desk only, so the other connectors (on by default) are switched off. Best effort: a
+ * failure leaves the default plan (Growth) and never fails the sign-up.
+ */
+export async function startPlan(db: any, organizationId: string, plan: unknown): Promise<void> {
+  if (!isPlanId(plan)) return
+  try {
+    const billing = await getBilling(db, organizationId)
+    if (!billing || billing.billing_exempt) return
+    const shared = getPlan(plan).whatsapp === 'shared'
+    const { error } = await withPlansSchema(() => db.from('organization_billing').update({ plan, whatsapp_mode: shared ? 'shared' : 'own', updated_at: new Date().toISOString() }).eq('organization_id', organizationId))
+    if (error) throw new Error(error.message)
+    if (shared) await db.from('organizations').update({ enabled_connectors: ['salon'], enable_commerce: false, enable_pipeline: false }).eq('id', organizationId)
+  } catch (error: any) {
+    console.error('[Billing] Could not start the chosen plan:', error?.message)
+  }
 }

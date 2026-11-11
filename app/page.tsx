@@ -191,6 +191,9 @@ export default function LandingPage() {
               <Users size={14} className="text-[#008069]" />
               <span>Team Inbox</span>
             </a>
+            <Link href="/pricing" className="hover:text-[#008069] transition">
+              Pricing
+            </Link>
             <a href="#faq" className="hover:text-[#008069] transition">
               FAQ
             </a>
@@ -238,6 +241,9 @@ export default function LandingPage() {
             >
               🛍️ WhatsApp Commerce &amp; Payments <span className="rounded-full bg-[#D6336C] text-white text-[9px] font-bold uppercase px-1.5 py-px">New</span>
             </a>
+            <Link href="/pricing" className="block text-sm font-semibold text-slate-800">
+              Pricing
+            </Link>
             <a 
               href="#showcase" 
               onClick={() => setMobileMenuOpen(false)}

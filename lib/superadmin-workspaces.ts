@@ -5,7 +5,9 @@
  */
 
 import { billingState, getBilling, type BillingRow } from './billing'
-import { getPlan } from './plans'
+import { getPlan, isPlanId, type PlanId } from './plans'
+import { creditMessages } from './message-wallet'
+import { withPlansSchema } from './plans-schema'
 
 const DAY = 86_400_000
 
@@ -16,6 +18,10 @@ export type WorkspaceAction =
   | { action: 'add_ai_credit'; amount: number }
   | { action: 'set_seat_limit'; limit: number | null }
   | { action: 'end_access' }
+  | { action: 'set_plan'; plan: PlanId }
+  | { action: 'set_overrides'; overrides: Record<string, number | boolean | null> }
+  | { action: 'add_message_credit'; amount: number }
+  | { action: 'set_whatsapp_mode'; mode: 'own' | 'shared' }
 
 async function checked(query: any) {
   const result = await query
@@ -53,6 +59,30 @@ export function parseWorkspaceAction(body: any): { action: WorkspaceAction } | {
     }
     case 'end_access':
       return { action: { action: 'end_access' } }
+    case 'set_plan':
+      return isPlanId(body.plan) ? { action: { action: 'set_plan', plan: body.plan } } : { error: 'Choose a plan.' }
+    case 'set_overrides': {
+      // Empty or missing = use the plan's own number; team null = no limit
+      const source = body.overrides && typeof body.overrides === 'object' ? body.overrides : {}
+      const overrides: Record<string, number | boolean | null> = {}
+      for (const key of ['connectors', 'team', 'aiMonthly', 'videos']) {
+        const value = source[key]
+        if (value === undefined || value === '') continue
+        if (key === 'team' && value === null) { overrides.team = null; continue }
+        const number = Math.round(Number(value))
+        if (!(number >= 0 && number <= 100000)) return { error: `Enter a whole number for ${key}.` }
+        overrides[key] = key === 'connectors' ? Math.min(3, number) : number
+      }
+      for (const key of ['messaging', 'ads']) if (typeof source[key] === 'boolean') overrides[key] = source[key]
+      return { action: { action: 'set_overrides', overrides } }
+    }
+    case 'add_message_credit': {
+      const amount = Math.round(Number(body.amount) * 100) / 100
+      if (!(amount > 0 && amount <= 100000)) return { error: 'Enter an amount between ₹1 and ₹1,00,000.' }
+      return { action: { action: 'add_message_credit', amount } }
+    }
+    case 'set_whatsapp_mode':
+      return body.mode === 'shared' || body.mode === 'own' ? { action: { action: 'set_whatsapp_mode', mode: body.mode } } : { error: 'Choose own or shared.' }
     default:
       return { error: 'Unknown action.' }
   }
@@ -66,8 +96,10 @@ export async function applyWorkspaceAction(db: any, organizationId: string, chan
   }
   const billing = await getBilling(db, organizationId)
   if (!billing) throw new Error('Billing is not set up in the database yet. Run the billing migration first.')
-  const update = (values: Partial<BillingRow> & Record<string, unknown>) =>
-    checked(db.from('organization_billing').update({ ...values, updated_at: new Date(now).toISOString() }).eq('organization_id', organizationId))
+  const update = async (values: Partial<BillingRow> & Record<string, unknown>) => {
+    const result = await withPlansSchema(() => db.from('organization_billing').update({ ...values, updated_at: new Date(now).toISOString() }).eq('organization_id', organizationId))
+    if (result.error) throw new Error(result.error.message)
+  }
 
   switch (change.action) {
     case 'extend_trial': {
@@ -94,6 +126,19 @@ export async function applyWorkspaceAction(db: any, organizationId: string, chan
       await update({ status: 'cancelled', current_period_end: ended, trial_ends_at: ended, cancel_at_period_end: true })
       return
     }
+    case 'set_plan':
+      // By hand (an offline arrangement): the plan changes now; Razorpay auto-pay is not touched
+      await update({ plan: change.plan, whatsapp_mode: getPlan(change.plan).whatsapp })
+      return
+    case 'set_overrides':
+      await update({ plan_overrides: change.overrides })
+      return
+    case 'add_message_credit':
+      await creditMessages(db, organizationId, change.amount, 'adjustment', null, actorId)
+      return
+    case 'set_whatsapp_mode':
+      await update({ whatsapp_mode: change.mode })
+      return
   }
 }
 

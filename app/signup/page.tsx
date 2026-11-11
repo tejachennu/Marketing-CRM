@@ -91,6 +91,8 @@ export default function SignupPage() {
           fullName,
           companyName,
           code,
+          // Picked on the pricing page
+          plan: new URLSearchParams(window.location.search).get('plan') || undefined,
         }),
       })
 

@@ -13,6 +13,7 @@ import { can, type RoleSubject } from '@/lib/rbac'
 import { openRazorpay } from '@/lib/use-razorpay'
 import { useConfirm } from '@/lib/dialog-context'
 import { FEATURE_GROUPS, USE_CASES } from '@/lib/product-features'
+import { MessageWallet, PlanPicker, type PlanView } from '@/components/billing/plan-picker'
 
 interface Billing {
   configured: boolean
@@ -30,8 +31,15 @@ interface Billing {
   cancelAtPeriodEnd: boolean
   aiPercentLeft: number | null
   aiPaused: boolean
-  plan: { name: string; price: number; interval: string; features: string[] }
-  payments: { purpose: string; amount: number; date: string }[]
+  plan: PlanView & { interval: string }
+  plans: PlanView[]
+  pendingPlan: PlanView | null
+  whatsappMode: 'own' | 'shared'
+  messageBalance: number
+  messagePrices: { utility: number }
+  messages: { kind: string; amount: number; category: string | null; date: string }[]
+  messageTopupOptions: number[]
+  payments: { purpose: string; amount: number; date: string; plan?: string | null }[]
   topupOptions: number[]
   minTopup: number
   maxTopup: number
@@ -61,10 +69,12 @@ const TINTS = [
 const AI_USES = ['WhatsApp AI replies', 'Shopping assistant', 'Reply suggestions', 'Lead scoring', 'Writing help']
 
 const FAQ = [
-  { q: 'When am I charged?', a: 'If you subscribe during your free trial, the first ₹3,000 is charged on the day the trial ends, not before. After that it renews automatically every month on the same date.' },
+  { q: 'When am I charged?', a: 'If you subscribe during your free trial, the first month is charged on the day the trial ends, not before. After that it renews automatically every month on the same date. Prices are plus 18% GST.' },
+  { q: 'How does changing plan work?', a: 'On the free trial you can switch plans as often as you like, for free. While paying, an upgrade starts straight away and you pay only the difference for the days left in the month. A downgrade starts on your next bill date, so you keep what you paid for.' },
+  { q: 'What is the message wallet?', a: 'On Starter, WAMA\'s own WhatsApp number sends your booking confirmations and reminders. Each message is paid from the wallet at exactly Meta\'s price, with nothing added. A message that does not reach the customer is not charged.' },
   { q: 'What happens when the trial ends?', a: 'If no plan is set up, the workspace pauses until you subscribe. Nothing is deleted: your chats, contacts, campaigns and settings are all kept.' },
   { q: 'How do AI credits work?', a: 'Every workspace starts with free AI credit. AI replies, reply suggestions, lead scoring and writing help use it. When it runs out, only AI pauses; everything else keeps working. Add credit any time and the meter goes back to 100%. Credit does not expire.' },
-  { q: 'Can I stop the plan?', a: 'Yes. Stop auto-renew any time and you keep every feature until the end of the month you paid for. You can turn it back on before then and nothing changes.' },
+  { q: 'Can I stop the plan?', a: 'Yes. Stop auto-renew any time and you keep your plan until the end of the month you paid for. You can turn it back on before then and nothing changes.' },
   { q: 'How do I pay?', a: 'Through Razorpay with UPI autopay, debit or credit card, or net banking. Razorpay emails a receipt for every payment.' },
 ]
 
@@ -86,6 +96,8 @@ interface StatusView {
 
 function statusView(billing: Billing): StatusView {
   const until = formatDate(billing.accessUntil)
+  const price = `₹${billing.plan.price.toLocaleString('en-IN')}`
+  const planName = `WAMA CRM ${billing.plan.name}`
   if (!billing.configured) return { tone: 'neutral', icon: Clock, eyebrow: 'Setting up', title: 'Billing is being set up', body: 'Everything keeps working in the meantime. There is nothing for you to do.' }
   if (billing.exempt) return { tone: 'neutral', icon: ShieldCheck, eyebrow: 'Custom arrangement', title: 'Nothing to pay here', body: 'Your workspace is covered by an arrangement with Magnetora. Every feature is included.' }
 
@@ -96,35 +108,35 @@ function statusView(billing: Billing): StatusView {
         tone: 'brand', icon: Clock, eyebrow: 'Free trial',
         title: left <= 1 ? 'Your free trial ends today' : `${left} days left in your free trial`,
         body: `Your trial ends on ${until}. Subscribe now so your inbox, campaigns and AI keep running without a break.`,
-        action: { label: `Subscribe · ₹3,000 / month`, kind: 'subscribe', caption: `First charge on ${until}, when the trial ends.` },
+        action: { label: `Subscribe · ${price} / month`, kind: 'subscribe', caption: `First charge on ${until}, when the trial ends.` },
         progress: Math.min(100, Math.max(4, ((billing.trialDays - left) / billing.trialDays) * 100)),
-        facts: [{ label: 'Plan', value: 'WAMA CRM Pro' }, { label: 'Trial ends', value: until }, { label: 'After the trial', value: '₹3,000 / month' }],
+        facts: [{ label: 'Plan', value: planName }, { label: 'Trial ends', value: until }, { label: 'After the trial', value: `${price} / month` }],
       }
     }
     case 'active':
       if (billing.cancelAtPeriodEnd) {
         return { tone: 'amber', icon: CalendarClock, eyebrow: 'Auto-renew is off', title: `Your plan ends on ${until}`, body: 'You keep every feature until then. Turn auto-renew back on and nothing changes for your team.', action: { label: 'Turn auto-renew on', kind: 'subscribe', caption: `Next charge on ${until}.` },
-          facts: [{ label: 'Access until', value: until }, { label: 'Next charge', value: 'None' }, { label: 'Plan', value: 'WAMA CRM Pro' }] }
+          facts: [{ label: 'Access until', value: until }, { label: 'Next charge', value: 'None' }, { label: 'Plan', value: planName }] }
       }
       if (billing.autoPayPending) {
-        return { tone: 'green', icon: BadgeCheck, eyebrow: 'Auto-pay is set up', title: "You're all set", body: `Your free trial carries on until ${until}. The first ₹3,000 is charged on that day, then every month. Nothing has been charged yet.`, action: { label: 'Cancel auto-pay', kind: 'cancel' },
-          facts: [{ label: 'Trial ends', value: until }, { label: 'First charge', value: `₹3,000 · ${until}` }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
+        return { tone: 'green', icon: BadgeCheck, eyebrow: 'Auto-pay is set up', title: "You're all set", body: `Your free trial carries on until ${until}. The first ${price} is charged on that day, then every month. Nothing has been charged yet.`, action: { label: 'Cancel auto-pay', kind: 'cancel' },
+          facts: [{ label: 'Trial ends', value: until }, { label: 'First charge', value: `${price} · ${until}` }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
       }
-      return { tone: 'green', icon: BadgeCheck, eyebrow: 'Active', title: 'WAMA CRM Pro is active', body: 'Your plan renews automatically every month. Every feature is on for your whole team.', action: { label: 'Stop auto-renew', kind: 'cancel' },
-        facts: [{ label: 'Plan', value: 'WAMA CRM Pro' }, { label: 'Next charge', value: until ? `₹3,000 · ${until}` : '₹3,000 monthly' }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
+      return { tone: 'green', icon: BadgeCheck, eyebrow: 'Active', title: `${planName} is active`, body: billing.pendingPlan ? `Your change to ${billing.pendingPlan.name} starts on ${until}.` : 'Your plan renews automatically every month for your whole team.', action: { label: 'Stop auto-renew', kind: 'cancel' },
+        facts: [{ label: 'Plan', value: planName }, { label: 'Next charge', value: until ? `${billing.pendingPlan ? `₹${billing.pendingPlan.price.toLocaleString('en-IN')}` : price} · ${until}` : `${price} monthly` }, { label: 'Pay with', value: 'Razorpay auto-pay' }] }
     case 'past_due':
-      return { tone: 'red', icon: AlertTriangle, eyebrow: 'Payment failed', title: 'Your last payment did not go through', body: 'Razorpay will try again. To avoid any interruption, pay now with another card or UPI.', action: { label: 'Pay ₹3,000 now', kind: 'subscribe', caption: 'Then monthly through auto-pay.' },
-        facts: [{ label: 'Amount due', value: '₹3,000' }, ...(until ? [{ label: 'Access until', value: until }] : []), { label: 'Plan', value: 'WAMA CRM Pro' }] }
+      return { tone: 'red', icon: AlertTriangle, eyebrow: 'Payment failed', title: 'Your last payment did not go through', body: 'Razorpay will try again. To avoid any interruption, pay now with another card or UPI.', action: { label: `Pay ${price} now`, kind: 'subscribe', caption: 'Then monthly through auto-pay.' },
+        facts: [{ label: 'Amount due', value: price }, ...(until ? [{ label: 'Access until', value: until }] : []), { label: 'Plan', value: planName }] }
     case 'cancelled':
-      if (billing.hasAccess) return { tone: 'amber', icon: CalendarClock, eyebrow: 'Plan cancelled', title: `Your plan ends on ${until}`, body: 'You keep every feature until then.', action: { label: 'Subscribe again', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
-      return { tone: 'brand', icon: Lock, eyebrow: 'Plan ended', title: 'Subscribe to unlock your workspace', body: 'Your chats, contacts and settings are safe and waiting for you.', action: { label: 'Subscribe · ₹3,000 / month', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
+      if (billing.hasAccess) return { tone: 'amber', icon: CalendarClock, eyebrow: 'Plan cancelled', title: `Your plan ends on ${until}`, body: 'You keep your plan until then.', action: { label: 'Subscribe again', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
+      return { tone: 'brand', icon: Lock, eyebrow: 'Plan ended', title: 'Subscribe to unlock your workspace', body: 'Your chats, contacts and settings are safe and waiting for you.', action: { label: `Subscribe · ${price} / month`, kind: 'subscribe', caption: 'Charged today, then monthly.' } }
     default:
-      return { tone: 'brand', icon: Lock, eyebrow: billing.onTrial ? 'Trial ended' : 'Plan ended', title: 'Subscribe to unlock your workspace', body: 'Your chats, contacts and settings are safe and waiting for you.', action: { label: 'Subscribe · ₹3,000 / month', kind: 'subscribe', caption: 'Charged today, then monthly.' } }
+      return { tone: 'brand', icon: Lock, eyebrow: billing.onTrial ? 'Trial ended' : 'Plan ended', title: 'Subscribe to unlock your workspace', body: 'Your chats, contacts and settings are safe and waiting for you.', action: { label: `Subscribe · ${price} / month`, kind: 'subscribe', caption: 'Charged today, then monthly.' } }
   }
 }
 
 const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title: string; body: string }> = {
-  brand: { panel: 'bg-gradient-to-br from-[#0E1B3D] via-[#132a63] to-[#1D5BEA] border-transparent text-white', icon: 'bg-white/10 text-[#7CF0A8]', eyebrow: 'bg-white/10 text-[#7CF0A8]', title: 'text-white', body: 'text-white/75' },
+  brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#7CF0A8]', eyebrow: 'bg-white/10 text-[#7CF0A8]', title: 'text-white', body: 'text-white/75' },
   green: { panel: 'bg-white dark:bg-[#111b21] border-[#cfeee2] dark:border-emerald-900/60', icon: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/50 dark:text-emerald-300', eyebrow: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/50 dark:text-emerald-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   amber: { panel: 'bg-[#fffbf3] dark:bg-amber-950/20 border-[#f6e1b5] dark:border-amber-900/60', icon: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', eyebrow: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   red: { panel: 'bg-[#fff8f8] dark:bg-red-950/20 border-[#f5cccc] dark:border-red-900/60', icon: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', eyebrow: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
@@ -165,8 +177,6 @@ export default function BillingPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [amount, setAmount] = useState<number | 'other'>(1000)
   const [customAmount, setCustomAmount] = useState('')
-  const [featureTab, setFeatureTab] = useState(FEATURE_GROUPS[0].id)
-  const featureGroup = FEATURE_GROUPS.find((group) => group.id === featureTab) || FEATURE_GROUPS[0]
 
   const load = useCallback(async (organizationId: string) => {
     const res = await fetch(`/api/billing?organizationId=${organizationId}`, { cache: 'no-store' })
@@ -195,22 +205,30 @@ export default function BillingPage() {
 
   const canPay = can(viewer, 'billing.manage')
 
+  // From an "Upgrade" card (?change=1): go straight to the plans
+  const loaded = billing !== null
+  useEffect(() => {
+    if (loaded && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('change') === '1') {
+      document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [loaded])
+
   async function subscribe() {
     setBusy('subscribe'); setError(''); setNotice('')
     try {
-      const res = await fetch('/api/billing/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId }) })
+      const res = await fetch('/api/billing/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, plan: billing?.plan.id }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The subscription could not be started.')
       const paid = await openRazorpay({
         key: data.keyId, subscription_id: data.subscriptionId, name: 'WAMA CRM',
-        description: data.startsAt ? `₹3,000 a month · first charge on ${formatDate(data.startsAt)}` : '₹3,000 a month',
+        description: data.startsAt ? `${billing ? rupees(billing.plan.price) : ''} a month · first charge on ${formatDate(data.startsAt)}` : `${billing ? rupees(billing.plan.price) : ''} a month`,
         notes: { organization_id: orgId }, onFailure: (message: string) => setError(message),
       })
       if (!paid) return
       const verify = await fetch('/api/billing/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, ...paid }) })
       const result = await verify.json().catch(() => ({}))
       if (!verify.ok) throw new Error(result.error || 'The payment could not be confirmed.')
-      setNotice(data.startsAt ? `Auto-pay is set up. Your first ₹3,000 is charged on ${formatDate(data.startsAt)}.` : 'Payment received. Your plan is active. Thank you!')
+      setNotice(data.startsAt ? `Auto-pay is set up. Your first ${billing ? rupees(billing.plan.price) : 'payment'} is charged on ${formatDate(data.startsAt)}.` : 'Payment received. Your plan is active. Thank you!')
       await load(orgId)
       // Let the rest of the app pick up the new access
       window.dispatchEvent(new Event('billing:changed'))
@@ -237,6 +255,87 @@ export default function BillingPage() {
         : `Auto-renew is off. You keep access until ${formatDate(data.accessUntil)}.`)
       window.dispatchEvent(new Event('billing:changed'))
       await load(orgId)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** Open Razorpay for a plan change's auto-pay, then confirm it. Returns true when set up. */
+  async function approveAutoPay(subscriptionId: string, keyId: string, plan: PlanView, startsAt: string | null): Promise<boolean> {
+    const paid = await openRazorpay({
+      key: keyId, subscription_id: subscriptionId, name: 'WAMA CRM',
+      description: `${plan.name} · ${rupees(plan.price)} a month${startsAt ? ` from ${formatDate(startsAt)}` : ''}`,
+      notes: { organization_id: orgId }, onFailure: (message: string) => setError(message),
+    })
+    if (!paid) return false
+    const res = await fetch('/api/billing/change-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, ...paid }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'The auto-pay could not be confirmed.')
+    return true
+  }
+
+  async function choosePlan(plan: PlanView) {
+    if (!billing) return
+    const up = plan.price > billing.plan.price
+    const paying = billing.hasSubscription && !billing.autoPayPending
+    const ok = await confirmDialog(paying
+      ? up
+        ? { title: `Upgrade to ${plan.name}?`, message: `${plan.name} starts as soon as you pay the difference for the days left this month. From your next bill date it is ${rupees(plan.price)} a month.`, confirmLabel: 'Continue' }
+        : { title: `Move to ${plan.name}?`, message: `You keep ${billing.plan.name} until your next bill date (${formatDate(billing.accessUntil)}). From then it is ${rupees(plan.price)} a month. Anything ${plan.name} does not include is switched off then.`, confirmLabel: 'Continue' }
+      : { title: `Switch to ${plan.name}?`, message: `${plan.name} is ${rupees(plan.price)} a month after your free trial. You can switch again any time.`, confirmLabel: 'Switch' })
+    if (!ok) return
+    setBusy(plan.id); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/billing/change-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, plan: plan.id }) })
+      let data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The plan could not be changed.')
+      if (data.kind === 'switched') {
+        setNotice(data.autoPayCleared ? `You are on ${plan.name}. Set up auto-pay again for the new price.` : `You are on ${plan.name}.`)
+      } else {
+        if (data.kind === 'pay_difference') {
+          const paid = await openRazorpay({
+            key: data.keyId, order_id: data.orderId, amount: data.amount, currency: data.currency, name: 'WAMA CRM',
+            description: `Upgrade to ${plan.name} for the rest of this month`, onFailure: (message: string) => setError(message),
+          })
+          if (!paid) return
+          const verify = await fetch('/api/billing/change-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, ...paid }) })
+          data = await verify.json().catch(() => ({}))
+          if (!verify.ok) throw new Error(data.error || 'The payment could not be confirmed.')
+          setNotice(`You are on ${plan.name}. Approve the new monthly auto-pay to keep it after this month.`)
+        }
+        if (data.kind === 'auto_pay' && data.subscriptionId) {
+          const done = await approveAutoPay(data.subscriptionId, data.keyId, plan, data.startsAt)
+          if (done) setNotice(up ? `You are on ${plan.name}. ${rupees(plan.price)} a month from ${formatDate(data.startsAt) || 'today'}.` : `Done. ${plan.name} starts on ${formatDate(data.startsAt) || 'your next bill date'}.`)
+        }
+      }
+      await load(orgId)
+      window.dispatchEvent(new Event('billing:changed'))
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function topupMessages(value: number) {
+    setBusy('messages'); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/billing/topup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, amount: value, wallet: 'messages' }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'The top-up could not be started.')
+      const paid = await openRazorpay({
+        key: data.keyId, order_id: data.orderId, amount: data.amount, currency: data.currency, name: 'WAMA CRM', description: 'Message wallet',
+        onFailure: (message: string) => setError(message),
+      })
+      if (!paid) return
+      const verify = await fetch('/api/billing/topup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, wallet: 'messages', ...paid }) })
+      const result = await verify.json().catch(() => ({}))
+      if (!verify.ok) throw new Error(result.error || 'The payment could not be confirmed.')
+      setNotice(`${rupees(value)} added to your message wallet.`)
+      await load(orgId)
+      window.dispatchEvent(new Event('billing:changed'))
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -304,7 +403,6 @@ export default function BillingPage() {
 
         {/* Where the workspace stands, and the one thing to do next */}
         <section className={`relative overflow-hidden rounded-2xl border ${tone.panel}`}>
-          {view.tone === 'brand' && <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#00A884]/25 blur-3xl pointer-events-none" />}
           <div className="relative p-5 sm:p-7 flex flex-col md:flex-row md:items-center gap-5 md:gap-8">
             <div className="flex items-start gap-4 flex-1 min-w-0">
               <span className={`h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center ${tone.icon}`}><StatusIcon size={24} /></span>
@@ -360,6 +458,10 @@ export default function BillingPage() {
           )}
         </section>
 
+        {!billing.exempt && billing.configured && (
+          <PlanPicker plans={billing.plans} currentId={billing.plan.id} pendingId={billing.pendingPlan?.id} canChange={canPay && paymentsOn} busyId={busy} onChoose={choosePlan} />
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           <div className="lg:col-span-7">
           {/* The plan: everything included */}
@@ -374,48 +476,16 @@ export default function BillingPage() {
                   <p className="text-right"><span className="text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{rupees(billing.plan.price)}</span><span className="text-[15px] font-semibold text-[#6B7894]"> / month</span></p>
                 )}
               </div>
-              <p className="text-[14.5px] text-[#4a5672] dark:text-slate-400 mt-1">Everything below is included for your whole team. No per-user fees and no add-ons.</p>
+              <p className="text-[14.5px] text-[#4a5672] dark:text-slate-400 mt-1">{billing.plan.tagline}. Plus 18% GST.</p>
             </div>
 
-            <div className="md:grid md:grid-cols-[256px_1fr]">
-              <div role="tablist" aria-label="What is included" aria-orientation="vertical" className="flex md:flex-col gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-3 border-b md:border-b-0 md:border-r border-[#eef1f6] dark:border-slate-800">
-                {FEATURE_GROUPS.map((group) => {
-                  const Icon = GROUP_ICONS[group.id] || CheckCircle2
-                  const selected = group.id === featureGroup.id
-                  return (
-                    <button key={group.id} id={`feature-tab-${group.id}`} type="button" role="tab" aria-selected={selected} onClick={() => setFeatureTab(group.id)}
-                      className={`shrink-0 flex items-center gap-2.5 h-11 px-3 rounded-xl text-left text-[14px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${selected ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'text-[#4a5672] dark:text-slate-400 hover:bg-[#f6f8fc] hover:text-[#0E1B3D] dark:hover:bg-slate-800 dark:hover:text-white'}`}>
-                      <Icon size={17} className="shrink-0" /> {group.title}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div role="tabpanel" className="p-5 sm:p-6">
-                {(() => {
-                  const Icon = GROUP_ICONS[featureGroup.id] || CheckCircle2
-                  const index = FEATURE_GROUPS.findIndex((group) => group.id === featureGroup.id)
-                  const next = FEATURE_GROUPS[(index + 1) % FEATURE_GROUPS.length]
-                  return (
-                    <>
-                      <span className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#00A884] to-[#1D5BEA] text-white flex items-center justify-center"><Icon size={23} /></span>
-                      <h3 className="text-[20px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">{featureGroup.title}</h3>
-                      <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1">{featureGroup.summary}</p>
-                      <ul className="mt-5 space-y-3.5">
-                        {featureGroup.points.map((point) => (
-                          <li key={point} className="flex items-start gap-3 text-[15px] leading-snug text-[#0E1B3D] dark:text-slate-200">
-                            <CheckCircle2 size={19} className="shrink-0 mt-px text-[#00A884]" /> {point}
-                          </li>
-                        ))}
-                      </ul>
-                      <button type="button" onClick={() => { setFeatureTab(next.id); document.getElementById(`feature-tab-${next.id}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }) }} className="mt-6 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#1D5BEA] hover:underline cursor-pointer">
-                        Next: {next.title} <ArrowRight size={15} />
-                      </button>
-                    </>
-                  )
-                })()}
-              </div>
-            </div>
+            <ul className="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+              {billing.plan.features.map((feature) => (
+                <li key={feature} className="flex items-start gap-3 text-[15px] leading-snug text-[#0E1B3D] dark:text-slate-200">
+                  <CheckCircle2 size={19} className="shrink-0 mt-px text-[#1D5BEA]" /> {feature}
+                </li>
+              ))}
+            </ul>
 
             <div className="border-t border-[#eef1f6] dark:border-slate-800 px-5 sm:px-6 py-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] text-[#4a5672] dark:text-slate-400">
               <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#00A884]" /> UPI, cards and net banking</span>
@@ -424,7 +494,10 @@ export default function BillingPage() {
             </div>
           </section>
           </div>
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 space-y-5">
+          {(billing.whatsappMode === 'shared' || billing.messageBalance > 0) && (
+            <MessageWallet balance={billing.messageBalance} price={billing.messagePrices.utility} history={billing.messages || []} options={billing.messageTopupOptions || []} canPay={canPay && paymentsOn} busy={busy !== null} onTopup={topupMessages} />
+          )}
           {/* AI credit */}
           <section className={`${card} p-5 sm:p-6`}>
             <div className="flex items-center justify-between gap-3">
@@ -549,7 +622,7 @@ export default function BillingPage() {
                           {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
                         </span>
                         <span className="flex-1 min-w-0">
-                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{isPlan ? 'WAMA CRM Pro · monthly' : 'AI credit'}</span>
+                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{isPlan ? `WAMA CRM ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'plan'} · monthly` : payment.purpose === 'upgrade' ? `Upgrade to ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'a bigger plan'}` : payment.purpose === 'message_topup' ? 'Message wallet' : 'AI credit'}</span>
                           <span className="block text-[13px] text-[#6B7894]">{formatDate(payment.date)}</span>
                         </span>
                         <span className="text-right">

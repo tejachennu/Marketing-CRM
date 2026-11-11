@@ -6,6 +6,7 @@ import { razorpayKeys } from '@/lib/razorpay'
 import { can } from '@/lib/rbac'
 import { AI_TOPUP_OPTIONS, MAX_AI_TOPUP, MIN_AI_TOPUP } from '@/lib/billing'
 import { FEATURE_GROUPS, USE_CASES } from '@/lib/product-features'
+import { MESSAGE_TOPUP_OPTIONS } from '@/lib/message-wallet'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       topupOptions: AI_TOPUP_OPTIONS,
       minTopup: MIN_AI_TOPUP,
       maxTopup: MAX_AI_TOPUP,
+      messageTopupOptions: MESSAGE_TOPUP_OPTIONS,
       // The public key Razorpay Checkout needs; the secret never leaves the server
       razorpayKeyId: razorpayKeys()?.keyId || null,
       // ?extras=1 (the app): what the plan includes and how businesses use it, as the web shows
