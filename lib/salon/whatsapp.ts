@@ -7,6 +7,7 @@
 
 import { buildTextMessage } from '../commerce/commerce-messages'
 import { sendWhatsAppMessage } from '../commerce/commerce-webhook-handler'
+import { sendShared } from '../shared-whatsapp'
 import { formatRupees } from './invoice'
 import { formatIstDay, formatIstTime, istDate, phoneKey } from './spoken'
 import { chosenTemplatePayload, parseMessageTemplates, PURPOSES, type FieldKey, type MessagePurpose, type MessageTemplateChoice } from './message-templates'
@@ -79,6 +80,16 @@ async function logInChat(db: any, organizationId: string, phone: string, body: s
   }
 }
 
+/** Does WAMA's number send this business's messages (Starter)? A billing read error means no. */
+export async function usesSharedNumber(db: any, organizationId: string): Promise<boolean> {
+  try {
+    const { data } = await db.from('organization_billing').select('*').eq('organization_id', organizationId).maybeSingle()
+    return data?.whatsapp_mode === 'shared' && data?.billing_exempt !== true
+  } catch {
+    return false
+  }
+}
+
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
 /**
@@ -123,6 +134,12 @@ export function windowIsClosed(lastAt: string | null | undefined, now = Date.now
  * template (if the business set one up) goes instead, and otherwise nothing is sent.
  */
 export async function sendToCustomer(db: any, organizationId: string, phone: string, message: { text?: string; payload?: unknown; logBody: string }, template?: TemplateFallback): Promise<SendOutcome & { viaTemplate?: boolean }> {
+  // Starter: the business has no WhatsApp of its own; WAMA's number sends the approved message for it
+  if (await usesSharedNumber(db, organizationId)) {
+    if (!template) return { sent: false, error: "On your plan, WAMA's number sends booking messages only. Connect your own WhatsApp (Growth or Pro) to chat with customers." }
+    const shared = await sendShared(db, organizationId, phone, template.purpose, template.values)
+    return shared.sent ? { sent: true, viaTemplate: true } : { sent: false, error: shared.error }
+  }
   const organization = await connectedOrganization(db, organizationId)
   if (!organization) return { sent: false, error: 'WhatsApp is not connected for this workspace. Connect it in Settings.' }
   if (windowIsClosed(await lastCustomerMessageAt(db, organizationId, phone))) {

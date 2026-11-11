@@ -125,6 +125,26 @@ GRANT EXECUTE ON FUNCTION message_wallet_charge(UUID, NUMERIC, TEXT, TEXT) TO se
 GRANT EXECUTE ON FUNCTION message_wallet_refund(TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION message_wallet_credit(UUID, NUMERIC, TEXT, TEXT, UUID) TO service_role;
 
+-- Messages sent from WAMA's own WhatsApp number for a business (Starter): which business a customer's
+-- reply belongs to, and which wallet charge to give back when Meta reports a message failed
+CREATE TABLE IF NOT EXISTS shared_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  phone TEXT NOT NULL,
+  -- booking | reminder | bill | feedback | auto_reply
+  purpose TEXT NOT NULL,
+  -- The wallet charge's reference (message_wallet_transactions.message_ref)
+  charge_ref TEXT,
+  meta_message_id TEXT UNIQUE,
+  -- sent | delivered | read | failed
+  status TEXT NOT NULL DEFAULT 'sent',
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_shared_messages_phone ON shared_messages (phone, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_shared_messages_org ON shared_messages (organization_id, created_at DESC);
+ALTER TABLE shared_messages ENABLE ROW LEVEL SECURITY;
+
 -- Payments now also cover upgrades and message top-ups; AI credit can come with each plan payment
 ALTER TABLE billing_payments ADD COLUMN IF NOT EXISTS plan TEXT;
 
@@ -136,7 +156,7 @@ export const PLANS_LOCK = 724519013
 export const plansSchemaSetup = createAutoSetup('Plans', (connectionString) => runMigrationSql(connectionString, PLANS_SQL, PLANS_LOCK))
 
 export function isMissingPlansSchema(error: any): boolean {
-  return isMissingSchemaError(error, /plan_overrides|pending_plan|pending_subscription_id|subscription_plan|whatsapp_mode|message_balance|message_wallet/)
+  return isMissingSchemaError(error, /plan_overrides|pending_plan|pending_subscription_id|subscription_plan|whatsapp_mode|message_balance|message_wallet|shared_messages/)
 }
 
 /** Run a database step; if the plan columns are missing, set them up and try again. */

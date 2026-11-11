@@ -7,6 +7,7 @@ import {
   RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, X,
 } from 'lucide-react'
 import { PLANS } from '@/lib/plans'
+import { SharedNumberPanel } from '@/components/superadmin/shared-number'
 import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
 import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
@@ -418,6 +419,7 @@ export default function SuperAdminConsole() {
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
         ) : tab === 'overview' ? (
           <div className="space-y-6">
+            <SharedNumberPanel api={api} />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat label="Monthly revenue" value={rupees(totals?.monthlyRevenue || 0)} hint={`${totals?.paying || 0} paying, by their plan`} tone="green" />
               <Stat label="On free trial" value={String(totals?.trialing || 0)} tone="blue" />
