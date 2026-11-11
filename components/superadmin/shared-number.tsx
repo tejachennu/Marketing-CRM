@@ -65,7 +65,7 @@ export function SharedNumberPanel({ api }: { api: Api }) {
         <div className="py-4"><Loader2 size={18} className="animate-spin text-[#1D5BEA]" /></div>
       ) : !data.configured ? (
         <p className="mt-3 text-[13.5px] rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-3 py-2.5">
-          Not set up. In Vercel add WAMA_SHARED_PHONE_NUMBER_ID, WAMA_SHARED_WABA_ID, WAMA_SHARED_ACCESS_TOKEN and WAMA_SHARED_VERIFY_TOKEN, then point the number&apos;s webhook at /api/webhooks/wama-shared. Until then Starter workspaces send nothing.
+          Not set up. It uses WAMA CRM&apos;s own WhatsApp number (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_API_TOKEN in Vercel, on Meta Cloud API). Until then Starter workspaces send nothing.
         </p>
       ) : (
         <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">

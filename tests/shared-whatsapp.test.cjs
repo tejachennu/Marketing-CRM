@@ -151,9 +151,9 @@ test('Shared number: a customer who replies gets the business\'s phone, once a d
     const fetch = mockFetch([[200, { messages: [{ id: 'auto' }] }]])
     try {
       const now = Date.parse('2026-11-11T12:00:00Z')
-      assert.deepEqual(await SW.handleSharedIncoming(db, '919000011111', now), { replied: true })
+      assert.deepEqual(await SW.handleSharedIncoming(db, '919000011111', now), { replied: true, known: true })
       assert.match(fetch.calls[0].body.text.body, /Glow Salon.*\+91 98480 12345/)
-      assert.deepEqual(await SW.handleSharedIncoming(db, '919000011111', now + 3600_000), { replied: false })
+      assert.deepEqual(await SW.handleSharedIncoming(db, '919000011111', now + 3600_000), { replied: false, known: true })
       // A stranger we never wrote to gets nothing
       assert.deepEqual(await SW.handleSharedIncoming(db, '919999999999', now), { replied: false })
       assert.equal(fetch.calls.length, 1)
@@ -168,4 +168,13 @@ test('Shared number: a plain text (not a booking message) is not sent from WAMA\
     assert.equal(result.sent, false)
     assert.match(result.error, /booking messages only/)
   })
+})
+
+test('Shared number: WAMA CRM\'s own WhatsApp settings are used when no separate number is set', () => {
+  const own = { WHATSAPP_PHONE_NUMBER_ID: '111', WHATSAPP_BUSINESS_ACCOUNT_ID: '222', WHATSAPP_API_TOKEN: 'tok', WHATSAPP_GRAPH_API_VERSION: 'v21.0' }
+  assert.deepEqual(SW.sharedConfig(own), { phoneNumberId: '111', wabaId: '222', token: 'tok', graphVersion: 'v21.0' })
+  assert.equal(SW.sharedConfig({ ...own, WAMA_SHARED_PHONE_NUMBER_ID: '999', WAMA_SHARED_ACCESS_TOKEN: 't2' }).phoneNumberId, '999')
+  // The platform number on Twilio cannot send Meta templates
+  assert.equal(SW.sharedConfig({ ...own, WHATSAPP_PROVIDER: 'twilio' }), null)
+  assert.equal(SW.sharedConfig({}), null)
 })

@@ -123,8 +123,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   sending, refunded on refusal/failure; `shared_messages` table), `sendToCustomer` routes Starter
   (`whatsapp_mode = shared`) there, webhook `/api/webhooks/wama-shared` (failed → refund; a customer reply
   gets the business's phone once a day), Super Admin "WAMA's WhatsApp number" panel (submit templates).
-  Env: `WAMA_SHARED_PHONE_NUMBER_ID`, `WAMA_SHARED_WABA_ID`, `WAMA_SHARED_ACCESS_TOKEN`,
-  `WAMA_SHARED_VERIFY_TOKEN`, optional `WAMA_SHARED_APP_SECRET`. Growth/Pro: inbox, campaigns, templates,
+  Uses WAMA CRM's own number from the existing `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_BUSINESS_ACCOUNT_ID` /
+  `WHATSAPP_API_TOKEN` (owner: "take from the env"); its events arrive at the platform workspace's normal
+  webhook, which hands statuses and Starter customers' replies to `handleSharedStatus` / `handleSharedIncoming`
+  (those replies skip the platform chatbot). Optional separate number: `WAMA_SHARED_*` + `/api/webhooks/wama-shared`. Growth/Pro: inbox, campaigns, templates,
   flows, tickets show "Connect your WhatsApp first" until a number is connected; Starter lands on Front Desk.
   Public booking page `/b/<org slug>` (`lib/salon/booking-page.ts`, `app/b/[slug]`, APIs
   `/api/public/booking/[slug]` and `/times`; `?p=` person, `?s=` service; rate-limited; booked or request

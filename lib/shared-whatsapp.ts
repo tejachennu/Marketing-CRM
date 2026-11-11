@@ -8,9 +8,10 @@
  *   message Meta refuses (or later reports failed) is given back.
  * - A customer who replies gets one short automatic answer a day with the business's phone number.
  *
- * Settings (Vercel only, never in the repo): WAMA_SHARED_PHONE_NUMBER_ID, WAMA_SHARED_WABA_ID,
- * WAMA_SHARED_ACCESS_TOKEN, optional WAMA_SHARED_GRAPH_VERSION, and WAMA_SHARED_VERIFY_TOKEN for the
- * webhook (/api/webhooks/wama-shared).
+ * Settings (Vercel only, never in the repo): WAMA CRM's own WhatsApp number (WHATSAPP_PHONE_NUMBER_ID,
+ * WHATSAPP_BUSINESS_ACCOUNT_ID, WHATSAPP_API_TOKEN), or a separate number with WAMA_SHARED_PHONE_NUMBER_ID,
+ * WAMA_SHARED_WABA_ID and WAMA_SHARED_ACCESS_TOKEN. Its events reach the platform workspace's webhook,
+ * which passes them here; a separate number can use /api/webhooks/wama-shared instead.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -26,12 +27,18 @@ export interface SharedConfig {
   graphVersion: string
 }
 
+/**
+ * WAMA's number: the WAMA_SHARED_* settings when set, otherwise WAMA CRM's own WhatsApp number (the
+ * WHATSAPP_* settings the platform workspace already uses on Meta Cloud API).
+ */
 export function sharedConfig(env: Record<string, string | undefined> = process.env): SharedConfig | null {
-  const phoneNumberId = String(env.WAMA_SHARED_PHONE_NUMBER_ID || '').trim()
-  const wabaId = String(env.WAMA_SHARED_WABA_ID || '').trim()
-  const token = String(env.WAMA_SHARED_ACCESS_TOKEN || '').trim()
+  const own = (name: string) => String(env[name] || '').trim()
+  const platformOnMeta = (own('WHATSAPP_PROVIDER') || 'facebook') === 'facebook'
+  const phoneNumberId = own('WAMA_SHARED_PHONE_NUMBER_ID') || (platformOnMeta ? own('WHATSAPP_PHONE_NUMBER_ID') : '')
+  const wabaId = own('WAMA_SHARED_WABA_ID') || (platformOnMeta ? own('WHATSAPP_BUSINESS_ACCOUNT_ID') : '')
+  const token = own('WAMA_SHARED_ACCESS_TOKEN') || (platformOnMeta ? own('WHATSAPP_API_TOKEN') : '')
   if (!phoneNumberId || !token) return null
-  return { phoneNumberId, wabaId, token, graphVersion: String(env.WAMA_SHARED_GRAPH_VERSION || '').trim() || 'v25.0' }
+  return { phoneNumberId, wabaId, token, graphVersion: own('WAMA_SHARED_GRAPH_VERSION') || own('WHATSAPP_GRAPH_API_VERSION') || 'v25.0' }
 }
 
 /** WAMA's number in the shape the WhatsApp sender takes. */
@@ -242,16 +249,16 @@ const DAY = 86_400_000
  * A customer wrote to WAMA's number: answer once a day with the business they last heard from and its
  * phone number. Free for the business (a reply within 24 hours of the customer writing is free on Meta).
  */
-export async function handleSharedIncoming(db: any, from: string, now = Date.now()): Promise<{ replied: boolean }> {
+export async function handleSharedIncoming(db: any, from: string, now = Date.now()): Promise<{ replied: boolean; known?: boolean }> {
   const config = sharedConfig()
   const key = phoneKey(from)
   if (!config || key.length < 6) return { replied: false }
   const { data: recent } = await db.from('shared_messages').select('organization_id, purpose, created_at').eq('phone', key).order('created_at', { ascending: false }).limit(20)
   const rows = recent || []
-  if (rows.some((row: any) => row.purpose === 'auto_reply' && now - Date.parse(row.created_at) < DAY)) return { replied: false }
   const last = rows.find((row: any) => row.purpose !== 'auto_reply')
-  // Someone we never sent a message to: nothing to point them to
-  if (!last) return { replied: false }
+  // Someone we never sent a booking message to (or not in the last 30 days): not a business's customer
+  if (!last || now - Date.parse(last.created_at) > 30 * DAY) return { replied: false }
+  if (rows.some((row: any) => row.purpose === 'auto_reply' && now - Date.parse(row.created_at) < DAY)) return { replied: false, known: true }
   let business: string | null = null
   let phone: string | null = null
   {
@@ -264,5 +271,5 @@ export async function handleSharedIncoming(db: any, from: string, now = Date.now
   {
     await db.from('shared_messages').insert({ organization_id: last.organization_id, phone: key, purpose: 'auto_reply', meta_message_id: result.ok ? result.messageId || null : null, status: result.ok ? 'sent' : 'failed' }).then(() => undefined, () => undefined)
   }
-  return { replied: result.ok }
+  return { replied: result.ok, known: true }
 }

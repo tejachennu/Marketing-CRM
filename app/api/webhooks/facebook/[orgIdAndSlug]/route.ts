@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { handleSharedIncoming, handleSharedStatus, sharedConfig } from '@/lib/shared-whatsapp'
 import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
@@ -1541,12 +1542,25 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
   let payload: any
   try { payload = JSON.parse(rawBody) }
   catch { return NextResponse.json({ error: 'Invalid webhook JSON' }, { status: 400 }) }
+  const shared = signed ? sharedConfig() : null
   for (const entry of payload.entry || []) {
     for (const change of entry.changes || []) {
       const value = change.value || {}
+      // WAMA's own number also sends booking messages for Starter businesses: a failure is given back
+      // to their wallet, and their customers' replies get the business's phone number instead of the
+      // platform's chatbot
+      const sharedCustomers = new Set<string>()
+      if (shared && value?.metadata?.phone_number_id === shared.phoneNumberId) {
+        const db = getSupabaseClient()
+        for (const status of value.statuses || []) await handleSharedStatus(db, status).catch((error: any) => console.error('[Shared number] status:', error?.message))
+        for (const message of value.messages || []) {
+          const result = await handleSharedIncoming(db, String(message?.from || '')).catch(() => ({ replied: false, known: false }))
+          if (result.known) sharedCustomers.add(String(message.from))
+        }
+      }
       const events = [
         ...(value.statuses || []).map((status: any) => ({ ...value, messages: undefined, statuses: [status] })),
-        ...(value.messages || []).map((message: any) => ({ ...value, statuses: undefined, messages: [message], contacts: (value.contacts || []).filter((contact: any) => contact.wa_id === message.from) })),
+        ...(value.messages || []).filter((message: any) => !sharedCustomers.has(String(message?.from || ''))).map((message: any) => ({ ...value, statuses: undefined, messages: [message], contacts: (value.contacts || []).filter((contact: any) => contact.wa_id === message.from) })),
       ]
       for (const event of events) {
         const options: { signed: boolean; afterReply?: () => Promise<void> } = { signed }
