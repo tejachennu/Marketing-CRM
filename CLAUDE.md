@@ -311,6 +311,10 @@ Git-connected to this repo; production deploys are made from `v4`), with everyth
 
 ## Open items and ideas
 
+- **The big plan in progress**: `docs/PLAN-plans-signin-stores.md` (plans ₹999–₹12,000, WAMA's own
+  number, Google/Apple sign-in, Firebase notifications, E-commerce in the app, Play Store and App Store).
+  Read it first and update its Progress table.
+
 - **Waiting on the owner**: should the active item in the phone bottom bar be navy instead of the
   current green? (The whole bottom bar and sidebar still use emerald for "active".)
 - Older pages (inbox, commerce, settings) still use emerald/teal accents and some gradients; the owner
