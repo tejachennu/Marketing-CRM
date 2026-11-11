@@ -283,7 +283,7 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 
 | Phase | Status |
 |---|---|
-| 1 Plans and billing | server done (plans, limits, plan changes, wallets, checks); pages next |
+| 1 Plans and billing | done (server, website pricing + billing + Super Admin, app Billing). Not deployed |
 | 2 Google / Apple sign-in | not started |
 | 3 WAMA's number + booking page | not started |
 | 4 App for three account kinds | not started |

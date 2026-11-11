@@ -17,20 +17,87 @@ class DemoBilling {
     'cancelAtPeriodEnd': false,
     'aiPercentLeft': 72,
     'aiPaused': false,
-    'plan': {
-      'name': 'WAMA CRM Pro',
-      'price': 3000,
-      'interval': 'month',
-      'features': ['Shared WhatsApp inbox', 'AI replies', 'Campaigns', 'Front Desk', 'Sales Pipeline'],
-    },
+    'plan': _plans[1],
+    'plans': _plans,
+    'pendingPlan': null,
+    'allows': {'inbox': true, 'ai_replies': true, 'tickets': true, 'campaigns': true, 'templates': true, 'flows': true, 'api': true},
+    'whatsappMode': 'own',
+    'messageBalance': 145.5,
+    'messagePrices': {'utility': 0.115, 'authentication': 0.115, 'marketing': 0.7846, 'service': 0},
+    'messageTopupOptions': [200, 500, 1000, 2000],
+    'messages': [
+      {'kind': 'usage', 'amount': -0.115, 'category': 'utility', 'date': _now.subtract(const Duration(hours: 2)).toIso8601String()},
+      {'kind': 'topup', 'amount': 200, 'category': null, 'date': _now.subtract(const Duration(days: 4)).toIso8601String()},
+    ],
     'payments': [
-      {'purpose': 'AI credit', 'amount': 1000, 'date': _now.subtract(const Duration(days: 3)).toIso8601String()},
+      {'purpose': 'ai_topup', 'amount': 1000, 'date': _now.subtract(const Duration(days: 3)).toIso8601String()},
     ],
     'topupOptions': [500, 1000, 2000, 5000],
     'minTopup': 100,
     'maxTopup': 50000,
     'razorpayKeyId': 'rzp_test_demo',
   };
+
+  /// The same plans as lib/plans.ts on the server.
+  static const _messaging = [
+    'Your own WhatsApp number',
+    'Team inbox with AI replies in English, Telugu and Hindi',
+    'Campaigns with every Meta template type',
+    'Tickets, flow builder and WhatsApp forms',
+  ];
+  static const _plans = [
+    {
+      'id': 'starter',
+      'name': 'Starter',
+      'tagline': 'Bookings and bills, with WhatsApp messages from our number',
+      'price': 999,
+      'interval': 'monthly',
+      'whatsapp': 'shared',
+      'features': [
+        'Front Desk: bookings, walk-ins and GST bills',
+        'Your own booking page with a link and QR code',
+        "Booking confirmations and reminders on WhatsApp from WAMA's number",
+        "WhatsApp messages at Meta's price, no extra charge",
+        'Up to 3 team members',
+      ],
+    },
+    {
+      'id': 'growth',
+      'name': 'Growth',
+      'tagline': 'Your own WhatsApp with AI, campaigns and one connector',
+      'price': 2500,
+      'interval': 'monthly',
+      'whatsapp': 'own',
+      'features': [..._messaging, 'One connector: Front Desk, E-commerce or Sales Pipeline', '₹300 of AI credit every month', 'Ads support from our team (Google and Meta)', 'Up to 5 team members'],
+    },
+    {
+      'id': 'pro_1',
+      'name': 'Pro 1',
+      'tagline': 'Everything, with ads and 2 video campaigns a month',
+      'price': 6000,
+      'interval': 'monthly',
+      'whatsapp': 'own',
+      'features': [..._messaging, 'All connectors', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
+    },
+    {
+      'id': 'pro_2',
+      'name': 'Pro 2',
+      'tagline': 'Everything, with ads and 4 video campaigns a month',
+      'price': 9000,
+      'interval': 'monthly',
+      'whatsapp': 'own',
+      'features': [..._messaging, 'All connectors', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
+    },
+    {
+      'id': 'pro_3',
+      'name': 'Pro 3',
+      'tagline': 'Everything, with ads and 8 video campaigns a month',
+      'price': 12000,
+      'interval': 'monthly',
+      'whatsapp': 'own',
+      'features': [..._messaging, 'All connectors', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
+    },
+  ];
 
   static const _groups = [
     {
@@ -98,9 +165,23 @@ class DemoBilling {
         if (body['razorpay_payment_id'] == null) {
           return {'keyId': 'rzp_test_demo', 'orderId': 'order_demo', 'amount': ((body['amount'] as num?) ?? 0) * 100, 'currency': 'INR'};
         }
-        _state['aiPercentLeft'] = 100;
-        (_state['payments'] as List).insert(0, {'purpose': 'AI credit', 'amount': 1000, 'date': DateTime.now().toUtc().toIso8601String()});
+        final amount = (body['amount'] as num?) ?? 500;
+        if (body['wallet'] == 'messages') {
+          _state['messageBalance'] = ((_state['messageBalance'] as num?) ?? 0) + amount;
+          (_state['messages'] as List).insert(0, {'kind': 'topup', 'amount': amount, 'category': null, 'date': DateTime.now().toUtc().toIso8601String()});
+          (_state['payments'] as List).insert(0, {'purpose': 'message_topup', 'amount': amount, 'date': DateTime.now().toUtc().toIso8601String()});
+        } else {
+          _state['aiPercentLeft'] = 100;
+          (_state['payments'] as List).insert(0, {'purpose': 'ai_topup', 'amount': amount, 'date': DateTime.now().toUtc().toIso8601String()});
+        }
         return {'success': true};
+      case '/api/billing/change-plan':
+        // The demo is on its free trial: the plan switches at once
+        final plan = _plans.where((p) => p['id'] == body['plan']).firstOrNull;
+        if (plan == null) return {'success': true};
+        _state['plan'] = plan;
+        _state['whatsappMode'] = plan['whatsapp'];
+        return {'kind': 'switched', 'plan': plan['id'], 'autoPayCleared': false, 'keyId': 'rzp_test_demo'};
     }
     return null;
   }

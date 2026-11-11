@@ -60,7 +60,7 @@ Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE
 Direct DB for auto-migrations: `POSTGRES_URL_NON_POOLING` / `POSTGRES_URL` / `DATABASE_URL`.
 WhatsApp/Meta: `WHATSAPP_*`, `META_APP_SECRET`, `META_SYSTEM_USER_TOKEN`, `NEXT_PUBLIC_META_*`.
 Twilio: `TWILIO_*`. AI: `OPENAI_API_KEY`, `AI_PRICE_MARKUP`, `AI_USD_INR_RATE`.
-Billing: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_ID`, `RAZORPAY_WEBHOOK_SECRET`.
+Billing: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, optional `RAZORPAY_PLAN_<STARTER|GROWTH|PRO_1|PRO_2|PRO_3>`, `META_PRICE_<UTILITY|…>_INR`.
 Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `SUPERADMIN_EMAILS`.
 
 ## Map of the code
@@ -116,6 +116,18 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   front_desk read/write, leads read/write.
 
 ## What has been built (recent history, newest first)
+
+- **Plans (phase 1 of `docs/PLAN-plans-signin-stores.md`)**: `lib/plans.ts` (Starter ₹999 on WAMA's
+  number + Front Desk only, Growth ₹2,500, Pro 1/2/3 ₹6,000/9,000/12,000; limits, Super Admin
+  overrides, upgrade difference), migration `20261111_plans_and_message_wallet.sql` (lock 724519013,
+  also run with the billing migration), Razorpay plan per tier found/created by itself (optional env
+  `RAZORPAY_PLAN_<ID>`), `POST /api/billing/change-plan` (trial switch; upgrade pays the difference
+  then new auto-pay from the bill date; downgrade from the bill date; `pending_subscription_id`),
+  monthly AI credit per plan payment, message wallet (`lib/message-wallet.ts`, Meta's price, no markup,
+  charge/refund once), plan checks (`verifyOrgAccess(..., { feature })` → 402; team size; connectors via
+  `activeConnectors`), web `/pricing`, Billing plan picker + message wallet, sign-up `?plan=`, Super Admin
+  plan/limits/wallet, app Billing (plans list, change plan, wallet; `--dart-define=STORE=true` hides buy
+  buttons). The old ₹3,000 plan reads as Growth; old workspaces keep all connectors (override).
 
 - **App: Tickets, Templates and Billing like the web** (owner: "without missing a single feature"):
   - **Tickets** (`chats/tickets_screen.dart`, a "Tickets" chip in Chats): counts, Open/Resolved, search,
