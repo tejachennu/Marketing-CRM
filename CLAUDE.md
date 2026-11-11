@@ -117,6 +117,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Starter on WAMA's number + booking page** (owner: Front Desk only without WhatsApp; all other plans
+  need WhatsApp): `lib/shared-whatsapp.ts` (four fixed utility templates `wama_booking_confirmed`,
+  `wama_booking_reminder`, `wama_bill_ready`, `wama_feedback_request`; charged to the message wallet before
+  sending, refunded on refusal/failure; `shared_messages` table), `sendToCustomer` routes Starter
+  (`whatsapp_mode = shared`) there, webhook `/api/webhooks/wama-shared` (failed → refund; a customer reply
+  gets the business's phone once a day), Super Admin "WAMA's WhatsApp number" panel (submit templates).
+  Env: `WAMA_SHARED_PHONE_NUMBER_ID`, `WAMA_SHARED_WABA_ID`, `WAMA_SHARED_ACCESS_TOKEN`,
+  `WAMA_SHARED_VERIFY_TOKEN`, optional `WAMA_SHARED_APP_SECRET`. Growth/Pro: inbox, campaigns, templates,
+  flows, tickets show "Connect your WhatsApp first" until a number is connected; Starter lands on Front Desk.
+  Public booking page `/b/<org slug>` (`lib/salon/booking-page.ts`, `app/b/[slug]`, APIs
+  `/api/public/booking/[slug]` and `/times`; `?p=` person, `?s=` service; rate-limited; booked or request
+  per "accept on their own"; confirmation through the normal sender), Setup → Booking page with links and
+  QR codes (`qrcode` package).
+
 - **Plans (phase 1 of `docs/PLAN-plans-signin-stores.md`)**: `lib/plans.ts` (Starter ₹999 on WAMA's
   number + Front Desk only, Growth ₹2,500, Pro 1/2/3 ₹6,000/9,000/12,000; limits, Super Admin
   overrides, upgrade difference), migration `20261111_plans_and_message_wallet.sql` (lock 724519013,

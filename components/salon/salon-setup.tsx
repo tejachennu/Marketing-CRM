@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, History, Package, Pencil, ReceiptText, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, History, Package, Pencil, ReceiptText, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench, QrCode } from 'lucide-react'
+import { BookingPageLinks } from './booking-page-links'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
@@ -20,11 +21,12 @@ const GST_RATES = [0, 5, 12, 18, 28]
 const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-export type Section = 'services' | 'team' | 'business' | 'whatsapp' | 'booking' | 'templates' | 'history'
+export type Section = 'services' | 'team' | 'business' | 'page' | 'whatsapp' | 'booking' | 'templates' | 'history'
 const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
   { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
   { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
   { id: 'business', label: 'Business', hint: 'Invoice details and logo', icon: Store },
+  { id: 'page', label: 'Booking page', hint: 'Link and QR codes', icon: QrCode },
   { id: 'whatsapp', label: 'WhatsApp', hint: 'Chat, bookings, feedback', icon: MessageCircle },
   { id: 'booking', label: 'Booking flow', hint: 'Book on WhatsApp in taps', icon: CalendarCheck2 },
   { id: 'templates', label: 'Templates', hint: 'Messages for Meta', icon: FileText },
@@ -480,6 +482,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'booking' && <BookingFlowSettingsSection orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'history' && <ChangeHistory orgId={orgId} />}
+      {section === 'page' && <BookingPageLinks orgId={orgId} setup={setup} flash={(message) => flash('success', message)} />}
       {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} onSaved={(message_templates) => onChange({ ...setup, settings: { ...setup.settings, message_templates } })} />}
       </div>
       </div>
