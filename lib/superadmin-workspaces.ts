@@ -129,6 +129,12 @@ export async function applyWorkspaceAction(db: any, organizationId: string, chan
     case 'set_plan':
       // By hand (an offline arrangement): the plan changes now; Razorpay auto-pay is not touched
       await update({ plan: change.plan, whatsapp_mode: getPlan(change.plan).whatsapp })
+      // Starter is Front Desk only: switch it on so the workspace lands there
+      if (getPlan(change.plan).whatsapp === 'shared') {
+        const { data: org } = await db.from('organizations').select('enabled_connectors').eq('id', organizationId).maybeSingle()
+        const list = Array.isArray(org?.enabled_connectors) ? org.enabled_connectors : []
+        if (!list.includes('salon')) await db.from('organizations').update({ enabled_connectors: [...list, 'salon'] }).eq('id', organizationId)
+      }
       return
     case 'set_overrides':
       await update({ plan_overrides: change.overrides })

@@ -1142,8 +1142,8 @@ export default function SettingsPage() {
             </section>
           )}
 
-          {/* Custom Credentials & Integrations Settings */}
-          <div className={cardClass}>
+          {/* Custom Credentials & Integrations Settings (the "Connect WhatsApp" card links to #whatsapp) */}
+          <div id="whatsapp" className={`${cardClass} scroll-mt-4`}>
             <SectionHeader
               icon={Key}
               title="Credentials & Integrations"

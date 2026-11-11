@@ -28,6 +28,8 @@ export default function DashboardLayout({
   const [orgId, setOrgId] = useState<string | null>(null)
   const [orgName, setOrgName] = useState<string>('')
   const [orgSlug, setOrgSlug] = useState<string>('')
+  // Is a WhatsApp number connected (Meta or Twilio)? null until known
+  const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(null)
   // Which modules the workspace has; Flow Builder, Commerce, Team and Billing wait until this is known
   const [workspaceModules, setWorkspaceModules] = useState<{ loaded: boolean; consular: boolean }>({ loaded: false, consular: false })
   const [userRole, setUserRole] = useState<string>('')
@@ -414,6 +416,7 @@ export default function DashboardLayout({
             enabled_connectors: Array.isArray(org.enabled_connectors) ? org.enabled_connectors : [],
           })
 
+          setWhatsappConnected(org.credentials?.messaging === true)
           const twilioConfigured = org.credentials?.messaging === true
           const sendgridConfigured = org.credentials?.email === true
           const openaiConfigured = org.credentials?.ai === true
@@ -673,7 +676,7 @@ export default function DashboardLayout({
   }
 
   // The plan and AI credit: drives the Billing menu item, reminders and the paywall when a trial ends
-  const [billing, setBilling] = useState<{ exempt: boolean; hasAccess: boolean; status: string; trialDaysLeft: number | null; aiPercentLeft: number | null; aiPaused: boolean; onTrial?: boolean; plan?: { id: string; name: string; price: number }; limits?: PlanLimits; allows?: Record<PlanFeature, boolean>; messageLow?: boolean } | null>(null)
+  const [billing, setBilling] = useState<{ exempt: boolean; hasAccess: boolean; status: string; trialDaysLeft: number | null; aiPercentLeft: number | null; aiPaused: boolean; onTrial?: boolean; plan?: { id: string; name: string; price: number }; limits?: PlanLimits; allows?: Record<PlanFeature, boolean>; messageLow?: boolean; whatsappMode?: 'own' | 'shared' } | null>(null)
   useEffect(() => {
     if (!orgId || isSuperAdmin({ role: userRole })) return
     let cancelled = false
@@ -735,6 +738,16 @@ export default function DashboardLayout({
     if (path.startsWith('/dashboard/ivr')) return false
     return true
   }
+
+  // Starter has no inbox: its home is Front Desk
+  useEffect(() => {
+    if (billing?.whatsappMode === 'shared' && !billing.exempt && pathname === '/dashboard' && features.enabled_connectors.includes('salon')) router.replace('/dashboard/front-desk')
+  }, [billing?.whatsappMode, billing?.exempt, pathname, features.enabled_connectors, router])
+
+  // Growth and Pro run on the business's own WhatsApp number: until it is connected, the pages that need
+  // it show "Connect your WhatsApp" (Starter uses WAMA's number and never needs this)
+  const needsWhatsapp = Boolean(billing && !billing.exempt && billing.whatsappMode !== 'shared' && whatsappConnected === false && !isPlatformAdmin)
+  const whatsappPage = (path: string) => path === '/dashboard' || ['/dashboard/campaigns', '/dashboard/templates', '/dashboard/flows', '/dashboard/tickets'].some((base) => path === base || path.startsWith(`${base}/`))
 
   // What the plan leaves out (lib/plans.ts). The page stays in the menu with a lock, and opens an
   // "Upgrade" card, so people see what a bigger plan gives them.
@@ -800,7 +813,7 @@ export default function DashboardLayout({
   // Once a trial or plan has ended, only Billing and the profile stay open
   const billingLocked = Boolean(billing && !billing.exempt && !billing.hasAccess && !isPlatformAdmin)
     && !pathname.startsWith('/dashboard/billing') && !pathname.startsWith('/dashboard/profile')
-  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' | 'plan' = !profileLoaded || (isModulePage(pathname) && !workspaceModules.loaded && !isPlatformAdmin)
+  const pageAccess: 'loading' | 'allowed' | 'role' | 'feature' | 'billing' | 'plan' | 'whatsapp' = !profileLoaded || (isModulePage(pathname) && !workspaceModules.loaded && !isPlatformAdmin)
     ? 'loading'
     : !canAccessPage(currentUser, pathname)
       ? 'role'
@@ -810,7 +823,9 @@ export default function DashboardLayout({
           ? 'billing'
           : planOff(pathname)
             ? 'plan'
-            : 'allowed'
+            : needsWhatsapp && whatsappPage(pathname)
+              ? 'whatsapp'
+              : 'allowed'
   // A short reminder above the page: trial ending, payment failed, AI credits low or used up
   const billingBanner = !billing || billing.exempt || isPlatformAdmin || pageAccess === 'billing' || pathname.startsWith('/dashboard/billing')
     ? null
@@ -1423,6 +1438,21 @@ export default function DashboardLayout({
                   </p>
                   {canManageBilling && (
                     <Link href="/dashboard/billing" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Subscribe now</Link>
+                  )}
+                </div>
+              </div>
+            ) : pageAccess === 'whatsapp' ? (
+              <div className="flex items-center justify-center h-full p-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-8 max-w-md w-full text-center">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#1D5BEA] mb-4"><MessageCircle size={22} /></div>
+                  <h2 className="text-lg font-bold text-[#0E1B3D] dark:text-white mb-2">Connect your WhatsApp first</h2>
+                  <p className="text-sm text-[#4a5672] dark:text-slate-400 mb-6 leading-relaxed">
+                    {can(currentUser, 'settings.manage')
+                      ? 'Your plan works with your own WhatsApp Business number. Connect it once (about 5 minutes) and your inbox, AI replies, campaigns and templates switch on.'
+                      : 'Your workspace admin needs to connect the business WhatsApp number. Then your inbox, AI replies and campaigns switch on.'}
+                  </p>
+                  {can(currentUser, 'settings.manage') && (
+                    <Link href="/dashboard/settings?tab=general#whatsapp" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Connect WhatsApp</Link>
                   )}
                 </div>
               </div>
