@@ -12,6 +12,7 @@
  */
 
 import { BUSINESS_TYPES, businessType } from './business'
+import { sendPush } from '../push'
 import { groupByCategory } from './categories'
 import { aiFetch, type AiAccess } from '../ai-access'
 import { LANGUAGE_RULES } from '../chat-language'
@@ -424,6 +425,7 @@ export async function handleSlotPick(input: SalonChatInput & { buttonId: string 
     status: autoApprove ? 'booked' : 'requested', services: booked, notes: offer.notes ? `Booked on WhatsApp · ${offer.notes}` : 'Booked on WhatsApp', source: 'chat',
   }).select('id').single())
   if (error) throw new Error(error.message)
+  await sendPush(db, { organizationId: input.organization.id }, { kind: 'booking', title: autoApprove ? 'New booking' : 'New booking request', body: `${offer.customer_name || 'A customer'} · ${names} · ${day}, ${label}`, open: 'bookings' })
   // One tap, one booking: the list cannot book a second time
   await db.from('salon_chat_offers').delete().eq('id', offer.id).eq('organization_id', input.organization.id)
 

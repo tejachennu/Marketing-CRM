@@ -117,6 +117,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Pop-up notifications (Firebase)**: `lib/push.ts` (FCM HTTP v1 with a service-account JWT, no SDK;
+  `sendPush(db, {organizationId, userIds?, exceptUserId?}, notice)` never throws; forgets unregistered
+  phones), table `device_tokens` (migration `20261113_push_devices.sql`, lock 724519014),
+  `POST/DELETE /api/mobile/devices`, `/api/mobile/config` returns `firebase` (public values). Sent on: a
+  customer's message (the chat's assignee, else everyone; one per chat by tag), a WhatsApp cart order, a
+  booking or request (WhatsApp and the booking page), a ticket assigned. App: `data/push.dart`
+  (`firebase_core` + `firebase_messaging`, started from Dart with the server's values, so there is no
+  `google-services.json` and no Google Gradle plugin; registers the phone after sign-in, removes it on
+  sign-out; taps open the chat / bookings / tickets through `Notifier.tapped`), `Notifier.pushOn` stops
+  the second (local) notification in the background, channels `messages`/`bookings`/`orders`/`tickets`.
+  Env: `FIREBASE_PROJECT_ID`, `FIREBASE_ANDROID_APP_ID`, `FIREBASE_API_KEY`, `FIREBASE_SENDER_ID`,
+  `FIREBASE_SERVICE_ACCOUNT` (secret). **Not tried on a real phone yet.** Known: `booking_try_test.dart`
+  fails between 18:30 and 24:00 UTC (its "Tomorrow" label mixes UTC and India dates).
+
 - **Starter on WAMA's number + booking page** (owner: Front Desk only without WhatsApp; all other plans
   need WhatsApp): `lib/shared-whatsapp.ts` (four fixed utility templates `wama_booking_confirmed`,
   `wama_booking_reminder`, `wama_bill_ready`, `wama_feedback_request`; charged to the message wallet before

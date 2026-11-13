@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sendPush } from '@/lib/push'
 import { handleSharedIncoming, handleSharedStatus, sharedConfig } from '@/lib/shared-whatsapp'
 import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
@@ -613,6 +614,15 @@ async function processEvent(
 
     if (updateError) {
       console.error('[Facebook Webhook] Error updating conversation metadata:', updateError)
+    }
+
+    // Pop-up notification on the team's phones: the person the chat is assigned to, else everyone
+    if (!previousMessage) {
+      const who = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ').trim() || phoneNumber
+      const isOrder = type === 'order'
+      await sendPush(supabase, { organizationId: orgId, userIds: [(conversation as any)?.assigned_to] }, isOrder
+        ? { kind: 'order', title: 'New order', body: `${who} sent an order on WhatsApp`, open: 'orders', tag: `order:${conversation.id}` }
+        : { kind: 'message', title: who, body: messageBody || (finalMediaUrl ? 'Sent a file' : 'New message'), open: `chat:${conversation.id}`, tag: `chat:${conversation.id}` })
     }
 
     // ── Commerce Wing: Process in-chat e-commerce events ───────────────

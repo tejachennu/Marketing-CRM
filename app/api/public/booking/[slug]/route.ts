@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
+import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createOnlineBooking, loadBookingPage, parseOnlineBooking } from '@/lib/salon/booking-page'
 import { bookingMessage, bookingTemplate, sendCustomerText } from '@/lib/salon/whatsapp'
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const result = await createOnlineBooking(db, page, parsed)
     if ('error' in result) return NextResponse.json({ error: result.error, taken: (result as any).taken === true }, { status: 409 })
+    await sendPush(db, { organizationId: page.organization.id }, { kind: 'booking', title: result.status === 'booked' ? 'New booking' : 'New booking request', body: `${parsed.name} · ${result.when} · booked online`, open: 'bookings' })
     let confirmation = false
     if (result.status === 'booked') {
       const business = page.setup.settings.business_name || page.organization.name

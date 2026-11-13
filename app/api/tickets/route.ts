@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { sendPush } from '@/lib/push'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 import { can, canSeeAll, describeDenied } from '@/lib/rbac'
@@ -187,6 +188,11 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       throw error
+    }
+
+    // Tell the person it was given to (not when they took it themselves)
+    if (changesAssignee && assignedTo && data?.organization_id) {
+      await sendPush(supabase, { organizationId: data.organization_id, userIds: [assignedTo], exceptUserId: recordResult.user?.id }, { kind: 'ticket', title: 'Ticket assigned to you', body: data.subject || 'Open it to see the details', open: 'tickets', tag: `ticket:${data.id}` })
     }
 
     return NextResponse.json({ success: true, ticket: data })

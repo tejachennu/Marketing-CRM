@@ -288,6 +288,6 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 | 3 WAMA's number + booking page | done: shared sender + webhook + Super Admin templates, booking page /b/<slug> with QR codes, Connect-WhatsApp gate. Not yet: change/cancel link, per-person hours and leave |
 | 4 App for three account kinds | not started |
 | 5 E-commerce in the app | not started |
-| 6 Firebase notifications | not started |
+| 6 Firebase notifications | built for Android (server + app), not tried on a real phone; needs the 5 Firebase values in Vercel, a deploy and a new APK. iPhone later |
 | 7 Legal, delete account, store builds | not started |
 | 8 Real-phone tests and submission | not started |
