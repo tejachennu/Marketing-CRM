@@ -8,6 +8,7 @@ import 'backend.dart';
 import 'format.dart';
 import 'local_store.dart';
 import 'notifier.dart';
+import 'push.dart';
 
 const _uuid = Uuid();
 
@@ -82,6 +83,7 @@ class AppState extends ChangeNotifier {
     if (signedIn) {
       startLive();
       unawaited(syncNow().then((_) => checkBookings()));
+      unawaited(startPush());
     }
   }
 
@@ -107,7 +109,11 @@ class AppState extends ChangeNotifier {
     startLive();
     await syncNow();
     await checkBookings();
+    unawaited(startPush());
   }
+
+  /// Pop-up notifications when the app is closed (needs the server's Firebase settings).
+  Future<void> startPush() => Push.instance.start(backend, store.read('config')?['firebase'] as Map?);
 
   // ── Sign up (with the code emailed to them) ──
 
@@ -151,6 +157,7 @@ class AppState extends ChangeNotifier {
   Future<void> signOut() async {
     backend.stopLive();
     _knownBookings = null;
+    await Push.instance.stop(backend);
     await backend.signOut();
     await store.clear();
     notifyListeners();

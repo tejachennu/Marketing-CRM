@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../data/app_state.dart';
 import '../data/notifier.dart';
 import '../screens/chats/chat_screen.dart';
+import '../screens/chats/tickets_screen.dart';
 import '../screens/front_desk/front_desk_screen.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -19,9 +20,21 @@ void openNotice(AppState app, String payload) {
     final id = payload.substring(5);
     final list = (app.cached('conversations')?['conversations'] as List? ?? const []);
     final conv = list.cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
-    if (conv != null) nav.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(conv))));
+    if (conv != null) {
+      nav.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(conv))));
+    } else {
+      // Not loaded yet (the app was just opened by the notification): bring the chats up to date, then open it
+      unawaited(
+        app.syncNow().then((_) {
+          final fresh = (app.cached('conversations')?['conversations'] as List? ?? const []).cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
+          if (fresh != null) navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(fresh))));
+        }),
+      );
+    }
   } else if (payload == 'bookings') {
     nav.push(MaterialPageRoute(builder: (_) => const FrontDeskScreen(initialTab: 1)));
+  } else if (payload == 'tickets') {
+    nav.push(MaterialPageRoute(builder: (_) => const TicketsScreen()));
   }
 }
 

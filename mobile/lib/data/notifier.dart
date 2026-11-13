@@ -23,8 +23,8 @@ class Notice {
 }
 
 /// Notifications like WhatsApp: a banner at the top while the app is open, and a phone
-/// notification (with sound) when it is in the background. When the app is fully closed, phone
-/// notifications need push messages from the server (Firebase), which are not set up yet.
+/// notification (with sound) when it is in the background. When the app is fully closed, the
+/// server's push messages do it (see push.dart).
 class Notifier {
   Notifier._();
   static final instance = Notifier._();
@@ -35,6 +35,13 @@ class Notifier {
   bool _ready = false;
   int _id = 0;
   bool inForeground = true;
+
+  /// Push notifications from the server are on: in the background the phone shows those, so no
+  /// local one is added on top.
+  bool pushOn = false;
+
+  /// A push notification was tapped: open what it is about.
+  void tapped(String payload) => _taps.add(payload);
 
   /// In-app banners (shown by the app shell).
   Stream<Notice> get notices => _notices.stream;
@@ -52,7 +59,12 @@ class Notifier {
           if (payload.isNotEmpty) _taps.add(payload);
         },
       );
-      await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestNotificationsPermission();
+      // The kinds of notification, so the phone's settings list them and push notifications land in the right one
+      for (final (id, name) in const [('messages', 'WhatsApp messages'), ('bookings', 'Booking requests'), ('orders', 'Orders'), ('tickets', 'Tickets')]) {
+        await android?.createNotificationChannel(AndroidNotificationChannel(id, name, importance: Importance.high));
+      }
       _ready = true;
     } catch (e) {
       debugPrint('Notifications are not available: $e');
@@ -64,6 +76,7 @@ class Notifier {
       _notices.add(notice);
       return;
     }
+    if (pushOn) return;
     final channel = notice.bookings ? ('bookings', 'Booking requests') : ('messages', 'WhatsApp messages');
     try {
       await _plugin.show(
