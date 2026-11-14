@@ -117,6 +117,13 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Connectors under the plans** (owner: "check the connectors too"): `GET /api/connectors` also returns
+  `active` per connector and `plan` ({connectors, only}); `POST` takes `swap: true` (`connectorSwitch` in
+  `lib/plans.ts` switches the others off to make room on a one-connector plan; Starter stays Front Desk only).
+  The Connectors page says how many the plan includes, marks extra ones "Not in your plan" and offers
+  "Use X instead?". A workspace still on `pro_monthly` (before the plans set-up ran) keeps all connectors
+  (`billingLimits`).
+
 - **Sign in / sign up with Google** (website and app; owner chose plain Google sign-in through Supabase
   after trying Firebase as a middleman, Nov 2026: Firebase is for notifications only):
   `components/auth/oauth-buttons.tsx` ("Continue with Google" on /login and /signup via Supabase
