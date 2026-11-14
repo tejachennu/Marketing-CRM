@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 
 import 'backend.dart';
+import 'demo_backend.dart';
 import 'format.dart';
 import 'local_store.dart';
 import 'notifier.dart';
@@ -114,6 +115,33 @@ class AppState extends ChangeNotifier {
 
   /// Pop-up notifications when the app is closed (needs the server's Firebase settings).
   Future<void> startPush() => Push.instance.start(backend, store.read('config')?['firebase'] as Map?);
+
+  /// "Continue with Google". Returns null when signed in, or the name and email to start the
+  /// "Name your business" step (a first-time Google account with no workspace yet).
+  Future<Map<String, dynamic>?> signInWithGoogle() async {
+    await backend.signInWithGoogle();
+    if (backend is! DemoBackend) {
+      final state = await backend.get('/api/auth/oauth-complete');
+      if (state['ready'] != true) return state;
+    }
+    await _afterSignIn();
+    return null;
+  }
+
+  /// The "Name your business" step after a first Google sign-in: makes the workspace, then opens the app.
+  Future<void> finishGoogleSignUp(String companyName, String fullName) async {
+    await backend.send('POST', '/api/auth/oauth-complete', {'companyName': companyName, 'fullName': fullName});
+    await _afterSignIn();
+  }
+
+  Future<void> _afterSignIn() async {
+    await load('me', '/api/mobile/me', force: true, rethrowErrors: true);
+    startLive();
+    await syncNow();
+    await checkBookings();
+    unawaited(startPush());
+    notifyListeners();
+  }
 
   // ── Sign up (with the code emailed to them) ──
 

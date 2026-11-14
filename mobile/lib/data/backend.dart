@@ -35,6 +35,9 @@ abstract class Backend {
   /// Send a file (a photo or document for a chat). Returns the server's reply ({ url, filename }).
   Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}});
   Future<void> signIn(String email, String password);
+
+  /// "Continue with Google": opens Google in the browser and waits until it comes back signed in.
+  Future<void> signInWithGoogle();
   Future<void> signOut();
   bool get signedIn;
 
@@ -108,6 +111,45 @@ class HttpBackend implements Backend {
       throw ApiException(401, e.message);
     } catch (_) {
       throw OfflineException('Signing in needs the internet once. After that the app works offline.');
+    }
+  }
+
+  /// Where Google sends the person back: this app (see the intent filter in AndroidManifest.xml).
+  /// It must be in Supabase → Authentication → URL configuration → Redirect URLs.
+  static const oauthReturn = 'com.magnetora.wamacrm://login-callback';
+
+  @override
+  Future<void> signInWithGoogle() async {
+    final done = Completer<void>();
+    final sub = client.auth.onAuthStateChange.listen(
+      (event) {
+        if (event.event == AuthChangeEvent.signedIn && event.session != null && !done.isCompleted) done.complete();
+      },
+      onError: (Object e) {
+        if (!done.isCompleted) done.completeError(ApiException(401, e is AuthException ? e.message : 'Signing in with Google did not finish. Please try again.'));
+      },
+    );
+    try {
+      final opened = await client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: oauthReturn,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+        queryParams: const {'prompt': 'select_account'},
+      );
+      if (!opened) throw ApiException(400, 'Google could not be opened on this phone.');
+      // The person picks their account in the browser; give up after a few minutes (they can tap again)
+      await done.future.timeout(const Duration(minutes: 4), onTimeout: () => throw ApiException(408, 'Signing in with Google did not finish. Please try again.'));
+    } on AuthException catch (e) {
+      throw ApiException(
+        401,
+        RegExp('provider is not enabled|Unsupported provider', caseSensitive: false).hasMatch(e.message) ? 'Signing in with Google is not switched on yet. Please use your email for now.' : e.message,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw OfflineException('Signing in needs the internet.');
+    } finally {
+      await sub.cancel();
     }
   }
 
