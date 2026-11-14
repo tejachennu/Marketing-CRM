@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
+import { getSuperAdminEmails } from '@/lib/api-auth-helper'
+import { issueLoginCode, loginCodeEmail } from '@/lib/auth/login-otp'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -51,78 +53,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // OTP logic disabled for testing
-    /*
-    // 2. Generate a secure 6-digit OTP
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes expiration
+    const normalisedEmail = String(email).trim().toLowerCase()
 
-    // 3. Store OTP in database
-    const { error: otpDbError } = await adminSupabase
-      .from('login_otps')
-      .insert([
-        {
-          email: email.trim().toLowerCase(),
-          otp_code: otpCode,
-          expires_at: expiresAt,
-        }
-      ])
-
-    if (otpDbError) {
-      console.error('[Login API] Failed to store OTP in DB:', otpDbError)
-      return NextResponse.json(
-        { error: 'Internal server error during verification' },
-        { status: 500 }
-      )
+    // After the password, a 6-digit code emailed to the person proves the email is theirs. Super admins
+    // can also use the bypass code (LOGIN_OTP_BYPASS) when email is down. Set OTP_LOGIN=off to skip it.
+    const otpOff = String(process.env.OTP_LOGIN || '').trim().toLowerCase() === 'off'
+    if (!otpOff) {
+      const issued = await issueLoginCode(adminSupabase, normalisedEmail).catch((e) => { console.error('[Login API] Could not make a code:', e?.message); return { error: 'A code could not be made. Please try again.' } as const })
+      if ('error' in issued) {
+        // A recent code is still good; ask for it rather than failing
+        if ('retryAfter' in issued && issued.retryAfter) return NextResponse.json({ otpRequired: true, email: normalisedEmail, resendAfterSeconds: issued.retryAfter })
+        return NextResponse.json({ error: issued.error }, { status: 429 })
+      }
+      const name = data.user?.user_metadata?.full_name || normalisedEmail
+      const mail = loginCodeEmail(issued.code, name)
+      const sent = await sendEmail({ to: normalisedEmail, subject: mail.subject, html: mail.html, text: mail.text }).then(() => true).catch((e) => { console.error('[Login API] Code email failed:', e?.message); return false })
+      // A super admin with the bypass set can still get in even if the email did not go out
+      const canBypass = Boolean(String(process.env.LOGIN_OTP_BYPASS || '').trim()) && getSuperAdminEmails().includes(normalisedEmail)
+      if (!sent && !canBypass) return NextResponse.json({ error: 'We could not email your code right now. Please try again, or contact support.' }, { status: 502 })
+      return NextResponse.json({ otpRequired: true, email: normalisedEmail, resendAfterSeconds: 60, ...(sent ? {} : { emailFailed: true }) })
     }
 
-    // 4. Send email to user with the OTP code
-    const userFullName = data.user?.user_metadata?.full_name || email
-    
-    const emailHtml = `
-      <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e9edef; rounded: 12px; background-color: #ffffff;">
-        <h2 style="color: #111b21; font-weight: 800; font-size: 20px; margin-bottom: 8px;">Verification Code</h2>
-        <p style="color: #54656f; font-size: 13px; line-height: 1.5; margin-bottom: 24px;">
-          Hi there, <br/>
-          Use the following verification code to complete your login to <strong>WAMA CRM</strong>. This code is valid for 5 minutes.
-        </p>
-        <div style="background-color: #f0f2f5; padding: 16px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
-          <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #00a884; font-family: monospace;">${otpCode}</span>
-        </div>
-        <p style="color: #8696a0; font-size: 11px; line-height: 1.4; margin-top: 24px;">
-          If you didn't attempt to sign in, you can safely ignore this email. Someone else might have typed your email by mistake.
-        </p>
-      </div>
-    `
-    
-    await sendEmail({
-      to: email.trim().toLowerCase(),
-      subject: `🔑 ${otpCode} is your WAMA CRM verification code`,
-      html: emailHtml,
-      text: `Your WAMA CRM verification code is: ${otpCode}. It expires in 5 minutes.`
-    })
-    */
-
-    // Return session directly (bypassing OTP)
-    const response = NextResponse.json({
-      success: true,
-      otpRequired: false,
-      session: data.session,
-      user: data.user
-    })
-
+    // OTP switched off: sign in straight away
+    const response = NextResponse.json({ success: true, otpRequired: false, session: data.session, user: data.user })
     if (data.session) {
-      // Set a flag cookie to indicate user is logged in (for middleware route protection)
-      // The actual access_token is managed client-side via localStorage and the Supabase SDK
-      const maxAge = 60 * 60 * 24 * 7 // 7 days
-      response.cookies.set('user-logged-in', 'true', {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge,
-        path: '/',
-      })
+      response.cookies.set('user-logged-in', 'true', { secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 60 * 60 * 24 * 7, path: '/' })
     }
-
     return response
   } catch (error) {
     console.error('[v0] Login error:', error)
