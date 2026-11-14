@@ -253,7 +253,7 @@ export default function LoginPage() {
                   {notice && !error && <div role="status" className="rounded-xl bg-[#e8f7f1] dark:bg-emerald-950/30 px-4 py-3 text-[14px] font-medium text-[#047857] dark:text-emerald-300">{notice}</div>}
                   {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 px-4 py-3 text-[14px] font-medium text-[#b91c1c] dark:text-red-300">{error}</div>}
 
-                  <button type="submit" disabled={loading || otpCode.length !== 6} className="w-full h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
+                  <button type="submit" disabled={loading || otpCode.length < 4} className="w-full h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
                     {loading ? <><Loader2 size={18} className="animate-spin" /> Checking…</> : 'Verify and sign in'}
                   </button>
                 </form>
