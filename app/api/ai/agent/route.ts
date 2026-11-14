@@ -1,3 +1,4 @@
+import { notifyTicketRaised } from '@/lib/push-events'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
@@ -331,6 +332,7 @@ async function executeCreateTicket(params: any, orgId: string, supabase: any, us
   }).select().single()
 
   if (error) return { error: error.message }
+  await notifyTicketRaised(supabase, { organizationId: orgId, ticketId: data.id, subject: params.subject, conversationId: params.conversation_id || null, exceptUserId: userId })
   return { success: true, ticket_id: data.id, message: `Ticket "${params.subject}" created successfully` }
 }
 

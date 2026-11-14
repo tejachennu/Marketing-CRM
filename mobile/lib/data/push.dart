@@ -22,6 +22,7 @@ class Push {
   String? _token;
   StreamSubscription<String>? _refresh;
   StreamSubscription<RemoteMessage>? _opened;
+  StreamSubscription<RemoteMessage>? _foreground;
 
   /// Start Firebase with the server's settings (`firebase` in /api/mobile/config). Used for
   /// notifications and for "Continue with Google". Returns false when they are not set up.
@@ -48,6 +49,14 @@ class Push {
         await messaging.requestPermission();
         // A notification was tapped: open what it is about
         _opened = FirebaseMessaging.onMessageOpenedApp.listen(_open);
+        // With the app open, Android shows nothing for a push: show it as the banner at the top.
+        // Messages and bookings already arrive through the live updates, so only the others.
+        _foreground = FirebaseMessaging.onMessage.listen((message) {
+          final kind = '${message.data['kind'] ?? ''}';
+          final note = message.notification;
+          if (note == null || kind == 'message' || kind == 'booking') return;
+          Notifier.instance.notify(Notice(title: note.title ?? 'WAMA CRM', body: note.body ?? '', open: '${message.data['open'] ?? ''}'));
+        });
         final first = await messaging.getInitialMessage();
         if (first != null) Timer(const Duration(milliseconds: 600), () => _open(first));
         // The server sends to the phone's FCM token (FCM HTTP v1 `token`), which these two give
@@ -93,5 +102,6 @@ class Push {
   void dispose() {
     _refresh?.cancel();
     _opened?.cancel();
+    _foreground?.cancel();
   }
 }

@@ -18,6 +18,7 @@ import '../campaigns/campaigns_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
+import '../store/store_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -82,6 +83,7 @@ class MoreScreen extends StatelessWidget {
                 const _Gap(),
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
                 if (app.can('campaigns')) _Row(icon: Icons.campaign_outlined, title: 'Campaigns', subtitle: 'Send a WhatsApp template to many customers', onTap: () => open(const CampaignsScreen())),
+                if (app.storeOn) _Row(icon: Icons.storefront_outlined, title: 'E-commerce', subtitle: 'Orders, products, payments and delivery', onTap: () => open(const StoreScreen())),
                 const _Gap(),
                 const _Title('AI'),
                 _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
@@ -119,6 +121,21 @@ class MoreScreen extends StatelessWidget {
                     subtitle: 'Off · an admin can switch it on in Connectors on the web',
                   ),
                 _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
+                _Row(
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Test notifications',
+                  subtitle: 'Send a pop-up to this phone to check it works',
+                  onTap: () async {
+                    toast(context, 'Sending a test…');
+                    try {
+                      await app.startPush();
+                      final data = await app.ask('/api/mobile/push-test', const {});
+                      if (context.mounted) toast(context, '${data['message'] ?? 'Sent.'}');
+                    } catch (e) {
+                      if (context.mounted) toast(context, '$e');
+                    }
+                  },
+                ),
                 const _Row(icon: Icons.language, title: 'Team members and connectors', subtitle: 'On the web at wamacrm.magnetora.in'),
                 const _Gap(),
                 _Row(

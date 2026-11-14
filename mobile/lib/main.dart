@@ -31,6 +31,7 @@ import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/billing_screen.dart';
 import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
+import 'screens/store/store_screen.dart';
 import 'screens/templates/template_create.dart';
 import 'screens/templates/template_editor.dart';
 import 'screens/templates/template_model.dart';
@@ -226,6 +227,11 @@ class WamaApp extends StatelessWidget {
       'grow' => const GrowScreen(),
       'billing' => const BillingScreen(),
       'tickets' => const TicketsScreen(),
+      'store' => const StoreScreen(),
+      'store_products' => const StoreScreen(initialTab: 1),
+      'store_flow' => const StoreScreen(initialTab: 2),
+      'store_settings' => const StoreScreen(initialTab: 3),
+      'store_tab' => const HomeShell(),
       'template_create' => TemplateSetupScreen(existing: [for (final t in (app.cached('templates')?['templates'] as List? ?? const [])) Map<String, dynamic>.from(t)]),
       'template_editor' => TemplateEditorScreen(draft: {...emptyDraft('MARKETING', 'custom'), 'name': 'weekend_offer'}),
       'template_editor_carousel' => TemplateEditorScreen(draft: {...emptyDraft('MARKETING', 'carousel'), 'name': 'new_looks'}),
@@ -278,9 +284,11 @@ class _HomeShellState extends State<HomeShell> {
     final app = AppScope.of(context);
     final unread = ((app.cached('conversations') ?? const {})['conversations'] as List? ?? const []).where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
     final desk = app.frontDeskOn;
+    final store = !desk && app.storeOn;
     final requests = desk ? FrontDesk(app).requests.length : 0;
     final pages = [
       if (desk) ...[FrontDeskScreen(initialTab: widget.deskTab), const BillsScreen()],
+      if (store) const StoreScreen(asTab: true),
       const ChatsScreen(),
       const MoreScreen(),
     ];
@@ -304,6 +312,7 @@ class _HomeShellState extends State<HomeShell> {
               ),
               const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Bills'),
             ],
+            if (store) const NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Store'),
             NavigationDestination(
               icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline)),
               selectedIcon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble)),

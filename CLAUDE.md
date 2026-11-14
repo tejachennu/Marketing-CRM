@@ -117,6 +117,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: E-commerce, and pop-ups for tickets and connectors** (owner: "build E-commerce in the app exact
+  whatever in web", "notifications not triggering ... ticket raised ... connectors"): `mobile/lib/screens/store/`
+  (`store_screen.dart` shell + Orders and the order page, `products_tab.dart` list / filters / sync / add to
+  catalog / add-edit-remove / send product, collection or catalog, `flow_tab.dart` go-live checks + flow preview
+  + recent orders' trail, `store_settings.dart` every web store setting; rules mirrored in `store_logic.dart`).
+  Same `/api/commerce/*` and `/api/organization` as the web; "Connect catalog with Meta" (Facebook login) opens
+  the web. Shown in More → E-commerce, and as a bottom-bar **Store** tab when Front Desk is off.
+  `/api/mobile/me` now returns `connectors.ecommerce/pipeline` from the plan (`activeConnectors`). Pop-ups:
+  `lib/push-events.ts` (`notifyTicketRaised` from both webhooks, flows and the AI agent; `notifyOrderReady` on
+  paid / COD; `notifyDealAssigned` from `createLead` / `updateLead`; `notifyLowReview` for 3★ or less), kinds
+  `deal` and `review` with their channels; the webhook's ticket pop-up is awaited (the old fire-and-forget
+  `/api/tickets/notify` call could be dropped by Vercel). App: pushes that arrive while it is open show as the
+  top banner (`FirebaseMessaging.onMessage`); More → **Test notifications** (`POST /api/mobile/push-test`)
+  says exactly why a phone gets nothing. Demo data in `data/demo_commerce.dart`; checks in
+  `test/store_screens_test.dart`.
+
 - **Sign-in email code (OTP) re-enabled, with a super-admin bypass** (owner: emails not sending; wanted OTP
   on login + a bypass): `lib/auth/login-otp.ts` (`login_codes` table, migration `20261115_login_codes.sql`,
   lock 724519015; hashed 6-digit codes, 10 min, 5 tries, resend 60 s / 5 per hour; `issueLoginCode`,

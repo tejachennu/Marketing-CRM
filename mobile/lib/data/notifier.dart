@@ -6,7 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Something to tell the person: a new WhatsApp message or a booking request.
 class Notice {
-  const Notice({required this.title, required this.body, this.chatId, this.bookings = false});
+  const Notice({required this.title, required this.body, this.chatId, this.bookings = false, this.open});
   final String title;
   final String body;
 
@@ -15,11 +15,14 @@ class Notice {
 
   /// Opens the Front Desk (booking requests) when tapped.
   final bool bookings;
+
+  /// Anything else to open when tapped: 'tickets', 'orders', 'reviews', 'deals'.
+  final String? open;
   String get payload => chatId != null
       ? 'chat:$chatId'
       : bookings
       ? 'bookings'
-      : '';
+      : (open ?? '');
 }
 
 /// Notifications like WhatsApp: a banner at the top while the app is open, and a phone
@@ -62,7 +65,14 @@ class Notifier {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
       // The kinds of notification, so the phone's settings list them and push notifications land in the right one
-      for (final (id, name) in const [('messages', 'WhatsApp messages'), ('bookings', 'Booking requests'), ('orders', 'Orders'), ('tickets', 'Tickets')]) {
+      for (final (id, name) in const [
+        ('messages', 'WhatsApp messages'),
+        ('bookings', 'Booking requests'),
+        ('orders', 'Orders'),
+        ('tickets', 'Tickets'),
+        ('deals', 'Sales Pipeline'),
+        ('reviews', 'Reviews'),
+      ]) {
         await android?.createNotificationChannel(AndroidNotificationChannel(id, name, importance: Importance.high));
       }
       _ready = true;

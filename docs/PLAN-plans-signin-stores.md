@@ -287,7 +287,7 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 | 2 Google / Apple sign-in | Google built through Supabase (website + app, business name step). Needs Google switched on in Supabase. Apple waits for the iPhone build |
 | 3 WAMA's number + booking page | done: shared sender + webhook + Super Admin templates, booking page /b/<slug> with QR codes, Connect-WhatsApp gate. Not yet: change/cancel link, per-person hours and leave |
 | 4 App for three account kinds | not started |
-| 5 E-commerce in the app | not started |
-| 6 Firebase notifications | built for Android (server + app), not tried on a real phone; needs the 5 Firebase values in Vercel, a deploy and a new APK. iPhone later |
+| 5 E-commerce in the app | done: Orders, Products, Go live, Store settings (same APIs as the web; `mobile/lib/screens/store/`). Not tried against a real store yet |
+| 6 Firebase notifications | built for Android (server + app): messages, orders (cart, paid, COD), bookings, tickets raised and assigned, deals given, reviews of 3★ or less; More → Test notifications. Needs a deploy; not yet confirmed on a real phone. iPhone later |
 | 7 Legal, delete account, store builds | not started |
 | 8 Real-phone tests and submission | not started |

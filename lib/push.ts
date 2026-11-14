@@ -103,19 +103,19 @@ export function resetPushToken() {
   cached = null
 }
 
-export type PushKind = 'message' | 'booking' | 'order' | 'ticket'
+export type PushKind = 'message' | 'booking' | 'order' | 'ticket' | 'deal' | 'review'
 
 export interface PushNotice {
   kind: PushKind
   title: string
   body: string
-  /** What the app opens when tapped: 'chat:<conversation id>', 'bookings', 'orders' or 'tickets' */
+  /** What the app opens when tapped: 'chat:<conversation id>', 'bookings', 'orders', 'tickets', 'deals' or 'reviews' */
   open: string
   /** Notifications with the same tag replace each other (one per chat, not one per message) */
   tag?: string
 }
 
-const CHANNELS: Record<PushKind, string> = { message: 'messages', booking: 'bookings', order: 'orders', ticket: 'tickets' }
+const CHANNELS: Record<PushKind, string> = { message: 'messages', booking: 'bookings', order: 'orders', ticket: 'tickets', deal: 'deals', review: 'reviews' }
 
 /** The FCM message for one phone. */
 export function fcmMessage(token: string, notice: PushNotice) {

@@ -7,6 +7,8 @@ import '../data/notifier.dart';
 import '../screens/chats/chat_screen.dart';
 import '../screens/chats/tickets_screen.dart';
 import '../screens/front_desk/front_desk_screen.dart';
+import '../screens/front_desk/reviews_team.dart';
+import '../screens/store/store_screen.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -35,6 +37,10 @@ void openNotice(AppState app, String payload) {
     nav.push(MaterialPageRoute(builder: (_) => const FrontDeskScreen(initialTab: 1)));
   } else if (payload == 'tickets') {
     nav.push(MaterialPageRoute(builder: (_) => const TicketsScreen()));
+  } else if (payload == 'orders' && app.storeOn) {
+    nav.push(MaterialPageRoute(builder: (_) => const StoreScreen()));
+  } else if (payload == 'reviews' && app.frontDeskOn) {
+    nav.push(MaterialPageRoute(builder: (_) => const ReviewsScreen()));
   }
 }
 
@@ -117,12 +123,18 @@ class _NoticeHostState extends State<NoticeHost> with WidgetsBindingObserver {
                           padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
                           child: Row(
                             children: [
-                              notice.bookings
+                              notice.bookings || notice.open != null
                                   ? Container(
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(12)),
-                                      child: const Icon(Icons.event_available, color: Brand.blue),
+                                      child: Icon(switch (notice.open) {
+                                        'tickets' => Icons.confirmation_number_outlined,
+                                        'orders' => Icons.shopping_bag_outlined,
+                                        'reviews' => Icons.star_outline_rounded,
+                                        'deals' => Icons.trending_up,
+                                        _ => Icons.event_available,
+                                      }, color: Brand.blue),
                                     )
                                   : Avatar(notice.title, size: 40),
                               const SizedBox(width: 10),

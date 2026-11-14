@@ -4,6 +4,7 @@
  * their own work sees and changes only deals they own.
  */
 
+import { notifyDealAssigned } from '../push-events'
 import { contactByPhone } from '../public-api/contacts'
 import { normalizePhone } from '../public-api/keys'
 import { sanitizeSearchTerm } from '../utils'
@@ -185,6 +186,7 @@ export async function createLead(actor: PipelineActor, input: LeadInput & { cont
   const { data, error } = await withPipelineSchema(() => db.from('leads').insert(row).select('*').single())
   if (error) throw new Error(error.message)
   await logActivity(actor, data.id, 'creation', 'Deal created')
+  await notifyDealAssigned(db, { organizationId, dealId: data.id, title: data.title, ownerId: data.assigned_to, byUserId: actor.userId })
   return { lead: (await withContacts(db, organizationId, [data]))[0] }
 }
 
@@ -240,6 +242,7 @@ export async function updateLead(actor: PipelineActor, current: any, change: Lea
   const { data, error } = await withPipelineSchema(() => db.from('leads').update(patch).eq('id', current.id).eq('organization_id', organizationId).select('*').single())
   if (error) throw new Error(error.message)
   for (const [type, content] of notes) await logActivity(actor, current.id, type, content)
+  if (patch.assigned_to) await notifyDealAssigned(db, { organizationId, dealId: current.id, title: data.title, ownerId: String(patch.assigned_to), byUserId: actor.userId })
   return { lead: (await withContacts(db, organizationId, [data]))[0] }
 }
 

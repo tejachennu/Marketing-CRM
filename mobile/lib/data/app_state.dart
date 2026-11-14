@@ -198,6 +198,7 @@ class AppState extends ChangeNotifier {
   String get orgName => me?['organization']?['name']?.toString() ?? 'Workspace';
   bool can(String what) => me?['can']?[what] == true;
   bool get frontDeskOn => me?['connectors']?['frontDesk'] == true;
+  bool get storeOn => me?['connectors']?['ecommerce'] == true;
 
   // ── Lists kept on the phone ──
 

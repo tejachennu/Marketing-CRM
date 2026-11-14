@@ -1,3 +1,4 @@
+import { notifyTicketRaised } from '@/lib/push-events'
 import { createClient } from '@supabase/supabase-js'
 import { sendPush } from '@/lib/push'
 import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
@@ -1391,6 +1392,9 @@ ${LANGUAGE_RULES}
                         const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
                         const contactPhone = contact.phone_number || contact.whatsapp_number || ''
                         const originUrl = request.nextUrl ? request.nextUrl.origin : new URL(request.url).origin
+
+                        // Pop-up on the team's phones (awaited: a call left running can be stopped once the webhook answers)
+                        await notifyTicketRaised(supabase, { organizationId: orgId, ticketId: newTicket.id, subject: messageBody || 'Support Request', contactName, conversationId: conversation.id })
 
                         // Trigger notifications asynchronously without blocking the webhook execution
                         fetch(`${originUrl}/api/tickets/notify`, {

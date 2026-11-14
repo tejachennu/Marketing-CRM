@@ -1,3 +1,4 @@
+import { notifyTicketRaised } from '../push-events'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import type { WhatsAppWorkflow, WorkflowNode, FlowSession } from './flow-types'
@@ -205,6 +206,7 @@ async function executeLocked(input: FlowRuntimeInput, supabase: any): Promise<Fl
           if (data._actions?.[node.id]) return { ticket_id: data._actions[node.id] }
           const ticket = await checked(supabase.from('tickets').insert({ organization_id: organizationId, contact_id: contact.id, conversation_id: conversationId,
             subject: text(node.data.subject || 'WhatsApp support request'), status: 'open' }).select().single())
+          await notifyTicketRaised(supabase, { organizationId, ticketId: ticket.id, subject: ticket.subject, contactName: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contactPhone, conversationId })
           return { ticket_id: ticket.id, _actions: { ...data._actions, [node.id]: ticket.id } }
         }
         if (node.type === 'tag_action') {

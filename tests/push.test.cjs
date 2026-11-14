@@ -111,3 +111,73 @@ test('Push: a phone Firebase no longer knows is forgotten; nothing is sent witho
     assert.equal(none.calls.length, 0)
   })
 })
+
+// ── Pop-ups for what happens in a workspace (lib/push-events.ts) ──
+
+const E = require('../lib/push-events.ts')
+
+function eventsDatabase() {
+  const tables = { device_tokens: phones(), conversations: [{ id: 'conv-1', organization_id: 'org-1', assigned_to: 'u2' }, { id: 'conv-2', organization_id: 'org-1', assigned_to: null }] }
+  const from = (table) => {
+    let filters = [], single = false
+    const q = {
+      select() { return q }, eq(k, v) { filters.push((r) => r[k] === v); return q }, in(k, list) { filters.push((r) => list.includes(r[k])); return q }, limit() { return q },
+      maybeSingle() { single = true; return q },
+      then(resolve, reject) {
+        const rows = tables[table].filter((r) => filters.every((f) => f(r)))
+        return Promise.resolve({ data: single ? rows[0] || null : rows, error: null }).then(resolve, reject)
+      },
+    }
+    return q
+  }
+  return { from }
+}
+
+/** Run with Firebase faked; returns what was sent (token, notification, android channel, open). */
+async function sent(run) {
+  const real = globalThis.fetch
+  const f = fetcher(() => [200, {}])
+  globalThis.fetch = f
+  try {
+    await withEnv({ FIREBASE_SERVICE_ACCOUNT: ACCOUNT }, async () => { P.resetPushToken(); await run() })
+  } finally {
+    globalThis.fetch = real
+  }
+  return f.calls.filter((c) => c.url.includes('messages:send')).map((c) => {
+    const m = JSON.parse(c.body).message
+    return { token: m.token, title: m.notification.title, body: m.notification.body, channel: m.android.notification.channel_id, open: m.data.open }
+  })
+}
+
+test('Push events: a raised ticket goes to whoever has the chat, else to everyone, and opens Tickets', async () => {
+  const owned = await sent(() => E.notifyTicketRaised(eventsDatabase(), { organizationId: 'org-1', ticketId: 't1', subject: 'Refund please', contactName: 'Priya', conversationId: 'conv-1' }))
+  assert.deepEqual(owned.map((s) => s.token), ['phone-b'])
+  assert.equal(owned[0].channel, 'tickets')
+  assert.equal(owned[0].open, 'tickets')
+  assert.match(owned[0].title, /New ticket · Priya/)
+  const nobody = await sent(() => E.notifyTicketRaised(eventsDatabase(), { organizationId: 'org-1', ticketId: 't2', subject: 'Help', conversationId: 'conv-2' }))
+  assert.deepEqual(nobody.map((s) => s.token).sort(), ['phone-a', 'phone-b'])
+})
+
+test('Push events: a paid or COD order tells the whole workspace and opens Orders', async () => {
+  const out = await sent(() => E.notifyOrderReady(eventsDatabase(), { organizationId: 'org-1', orderId: 'o1', orderNumber: 'ORD-1', how: 'paid', amount: '₹1,499', customer: 'Priya' }))
+  assert.equal(out.length, 2)
+  assert.equal(out[0].channel, 'orders')
+  assert.equal(out[0].open, 'orders')
+  assert.match(out[0].title, /Payment received · ₹1,499/)
+  assert.match(out[0].body, /ORD-1 from Priya is ready to ship/)
+})
+
+test('Push events: a deal given to someone tells only them, never for their own deal', async () => {
+  const given = await sent(() => E.notifyDealAssigned(eventsDatabase(), { organizationId: 'org-1', dealId: 'd1', title: 'Bridal package', ownerId: 'u1', byUserId: 'u2' }))
+  assert.deepEqual(given.map((s) => [s.token, s.channel, s.open]), [['phone-a', 'deals', 'deals']])
+  assert.equal((await sent(() => E.notifyDealAssigned(eventsDatabase(), { organizationId: 'org-1', dealId: 'd1', ownerId: 'u1', byUserId: 'u1' }))).length, 0)
+})
+
+test('Push events: only a review of 3 stars or less pops up', async () => {
+  const low = await sent(() => E.notifyLowReview(eventsDatabase(), { organizationId: 'org-1', feedbackId: 'f1', rating: 2, customer: 'Ravi', comment: 'Waited long' }))
+  assert.equal(low.length, 2)
+  assert.equal(low[0].channel, 'reviews')
+  assert.match(low[0].title, /2★ review from Ravi/)
+  assert.equal((await sent(() => E.notifyLowReview(eventsDatabase(), { organizationId: 'org-1', feedbackId: 'f2', rating: 5 }))).length, 0)
+})

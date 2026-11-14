@@ -1,5 +1,6 @@
 /** Saving feedback (server only). */
 
+import { notifyLowReview } from '../push-events'
 import { staffOnInvoice, type FeedbackInput } from './feedback'
 import { withSalonSchema } from './schema'
 
@@ -17,5 +18,6 @@ export async function saveFeedback(db: any, invoice: any, input: FeedbackInput, 
     ? await withSalonSchema(() => db.from('salon_feedback').update({ ...row, followed_up_at: null }).eq('id', existing.id).eq('organization_id', invoice.organization_id).select('*').single())
     : await withSalonSchema(() => db.from('salon_feedback').insert(row).select('*').single())
   if (saved.error) throw new Error(saved.error.message)
+  await notifyLowReview(db, { organizationId: invoice.organization_id, feedbackId: saved.data.id, rating: Number(input.rating), customer: invoice.customer_name, comment: input.comment })
   return saved.data
 }

@@ -9,6 +9,7 @@
  * and customers tap old buttons.
  */
 
+import { notifyOrderReady } from '../push-events'
 import { createClient } from '@supabase/supabase-js'
 import {
   buildAddressFlowMessage,
@@ -752,6 +753,7 @@ export async function handleCheckoutButton({
   if (confirmErr) throw confirmErr
   if (!confirmed || confirmed.length === 0) return { handled: true, outcome: 'already_done', order }
 
+  await notifyOrderReady(supabase, { organizationId: organization.id, orderId: order.id, orderNumber: order.order_number, how: 'cod', amount: total, customer: order.shipping_address?.full_name || order.customer_name })
   const address = formatAddress(order.shipping_address)
   await reply(
     `${CHECKOUT_TEXT.codConfirmed(order.order_number, total)}${address ? `\n\nDelivering to: ${address}` : ''}`,
@@ -872,6 +874,9 @@ export async function handleInboundPaymentConfirmation({
     .select('id')
   if (updateErr) throw updateErr
   if (!marked || marked.length === 0) return { ...order, payment_status: 'paid' }
+  if (order.status !== 'canceled') {
+    await notifyOrderReady(supabase, { organizationId: organization.id, orderId: order.id, orderNumber: order.order_number, how: 'paid', amount: formatMoney(paidAmount, currency), customer: order.shipping_address?.full_name || order.customer_name })
+  }
 
   // 2. Record transaction
   await supabase.from('commerce_transactions').insert({

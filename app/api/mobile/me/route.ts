@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser, getSupabaseAdminClient } from '@/lib/api-auth-helper'
-import { isConnectorOn } from '@/lib/connectors'
+import { CONNECTORS, isConnectorOn } from '@/lib/connectors'
+import { billingLimits, getBilling } from '@/lib/billing'
+import { activeConnectors } from '@/lib/plans'
+import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { can, canSeeAll, getRoleDisplay, isReadOnly } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
@@ -12,6 +15,10 @@ export async function GET(request: NextRequest) {
   if (!user.organization_id) return NextResponse.json({ error: 'Your account is not part of a workspace.' }, { status: 403 })
   const { data: organization, error } = await getSupabaseAdminClient().from('organizations').select('*').eq('id', user.organization_id).maybeSingle()
   if (error || !organization) return NextResponse.json({ error: 'Your workspace could not be found.' }, { status: 404 })
+  // Connectors that are on and inside the plan (as the web menu shows them)
+  const on = CONNECTORS.map((connector) => connector.key).filter((key) => isConnectorOn(organization, key))
+  const billing = await getBilling(getSupabaseAdminClient(), organization.id).catch(() => null)
+  const active = isConsularHelpdesk(organization) ? on.filter((key) => key === 'pipeline') : activeConnectors(billingLimits(billing), on)
   return NextResponse.json({
     success: true,
     user: { id: user.id, name: user.full_name || null, email: user.email || null, role: getRoleDisplay(user.role).label },
@@ -23,6 +30,6 @@ export async function GET(request: NextRequest) {
       seeAll: canSeeAll(user),
       billing: can(user, 'billing.manage'),
     },
-    connectors: { frontDesk: isConnectorOn(organization, 'salon') },
+    connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
   })
 }
