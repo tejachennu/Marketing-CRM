@@ -565,7 +565,10 @@ class DemoBackend implements Backend {
   Future<void> signOut() async => _signedIn = false;
 
   @override
-  Future<void> signInWithGoogle() async => _signedIn = true;
+  Future<Map<String, dynamic>> signInWithGoogle() async {
+    _signedIn = true;
+    return {'needsBusiness': false};
+  }
 
   late final DemoCampaigns _camp = DemoCampaigns(campaigns: _campaigns, contacts: _contacts, conversations: _conversations);
   late final DemoTemplates _tpl = DemoTemplates(templates: _templates, id: _id);

@@ -119,11 +119,11 @@ class AppState extends ChangeNotifier {
   /// "Continue with Google". Returns null when signed in, or the name and email to start the
   /// "Name your business" step (a first-time Google account with no workspace yet).
   Future<Map<String, dynamic>?> signInWithGoogle() async {
-    await backend.signInWithGoogle();
-    if (backend is! DemoBackend) {
-      final state = await backend.get('/api/auth/oauth-complete');
-      if (state['ready'] != true) return state;
+    if (backend is! DemoBackend && !await Push.ensureFirebase(store.read('config')?['firebase'] as Map?)) {
+      throw ApiException(503, 'Signing in with Google is not switched on yet. Please use your email for now.');
     }
+    final answer = await backend.signInWithGoogle();
+    if (answer['needsBusiness'] == true) return answer;
     await _afterSignIn();
     return null;
   }

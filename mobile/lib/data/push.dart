@@ -23,19 +23,27 @@ class Push {
   StreamSubscription<String>? _refresh;
   StreamSubscription<RemoteMessage>? _opened;
 
+  /// Start Firebase with the server's settings (`firebase` in /api/mobile/config). Used for
+  /// notifications and for "Continue with Google". Returns false when they are not set up.
+  static Future<bool> ensureFirebase(Map? config) async {
+    if (kIsWeb || config == null) return false;
+    final apiKey = '${config['apiKey'] ?? ''}', projectId = '${config['projectId'] ?? ''}', senderId = '${config['senderId'] ?? ''}';
+    final appId = Platform.isIOS ? '${config['iosAppId'] ?? ''}' : '${config['appId'] ?? ''}';
+    if (apiKey.isEmpty || projectId.isEmpty || senderId.isEmpty || appId.isEmpty) return false;
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: FirebaseOptions(apiKey: apiKey, appId: appId, messagingSenderId: senderId, projectId: projectId),
+      );
+    }
+    return true;
+  }
+
   /// Start once someone is signed in. [config] is the `firebase` part of the server's answer.
   Future<void> start(Backend backend, Map? config) async {
     if (kIsWeb || backend is! HttpBackend || config == null) return;
-    final apiKey = '${config['apiKey'] ?? ''}', projectId = '${config['projectId'] ?? ''}', senderId = '${config['senderId'] ?? ''}';
-    final appId = !kIsWeb && Platform.isIOS ? '${config['iosAppId'] ?? ''}' : '${config['appId'] ?? ''}';
-    if (apiKey.isEmpty || projectId.isEmpty || senderId.isEmpty || appId.isEmpty) return;
     try {
       if (!_started) {
-        if (Firebase.apps.isEmpty) {
-          await Firebase.initializeApp(
-            options: FirebaseOptions(apiKey: apiKey, appId: appId, messagingSenderId: senderId, projectId: projectId),
-          );
-        }
+        if (!await ensureFirebase(config)) return;
         final messaging = FirebaseMessaging.instance;
         await messaging.requestPermission();
         // A notification was tapped: open what it is about
