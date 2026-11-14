@@ -128,8 +128,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   sign-out; taps open the chat / bookings / tickets through `Notifier.tapped`), `Notifier.pushOn` stops
   the second (local) notification in the background, channels `messages`/`bookings`/`orders`/`tickets`.
   Env: `FIREBASE_PROJECT_ID`, `FIREBASE_ANDROID_APP_ID`, `FIREBASE_API_KEY`, `FIREBASE_SENDER_ID`,
-  `FIREBASE_SERVICE_ACCOUNT` (secret). **Not tried on a real phone yet.** Known: `booking_try_test.dart`
-  fails between 18:30 and 24:00 UTC (its "Tomorrow" label mixes UTC and India dates).
+  `FIREBASE_SERVICE_ACCOUNT` (secret). **Not tried on a real phone yet.**
 
 - **Starter on WAMA's number + booking page** (owner: Front Desk only without WhatsApp; all other plans
   need WhatsApp): `lib/shared-whatsapp.ts` (four fixed utility templates `wama_booking_confirmed`,

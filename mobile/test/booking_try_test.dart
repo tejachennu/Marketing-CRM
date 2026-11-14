@@ -82,7 +82,12 @@ void main() {
     expect(shows('Here is how to find us:'), isTrue);
     expect(shows('See prices'), isTrue);
     expect(shows('When should we see you for Haircut (Women)?'), isTrue);
-    await tap('Tomorrow');
+    // The next open day: "Tomorrow", or a date when tomorrow is the closed day (Sunday)
+    final nextDay = find.byWidgetPredicate((w) => w is Text && ((w.data ?? '') == 'Tomorrow' || RegExp(r'^[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}$').hasMatch(w.data ?? '')));
+    await tester.ensureVisible(nextDay.first);
+    await tester.pump();
+    await tester.tap(nextDay.first);
+    await tester.pumpAndSettle();
     final time = find.byWidgetPredicate((w) => w is Text && RegExp(r'^\d{1,2}:\d{2} (am|pm)$').hasMatch(w.data ?? ''));
     await tester.ensureVisible(time.first);
     await tester.tap(time.first);
