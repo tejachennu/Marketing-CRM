@@ -117,18 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
-- **Sign in / sign up with Google through Firebase** (owner: "Firebase as a middleman only for sign-ups and
-  notifications; the database is Supabase only; check the account exists in Supabase"): Firebase only checks
-  the Google account. Website: `components/auth/oauth-buttons.tsx` (Firebase pop-up, `firebase` npm package
-  loaded on click; settings from `GET /api/auth/firebase`: `FIREBASE_WEB_API_KEY`, `FIREBASE_WEB_APP_ID`,
-  optional `FIREBASE_AUTH_DOMAIN`). App: `HttpBackend.signInWithGoogle` (`firebase_auth`
-  `signInWithProvider`, Firebase started by `Push.ensureFirebase`). Both send the Firebase ID token to
-  `POST /api/auth/firebase` → `lib/auth/firebase-signin.ts`: `verifyFirebaseToken` (Google's certificates,
-  audience/issuer = `FIREBASE_PROJECT_ID`, verified email), `supabaseSessionFor` (the Supabase account with
-  that email, made when missing; session via admin `generateLink` magiclink + `verifyOtp`, no email sent).
-  First-timers name their business: `app/auth/callback` (website) / the app's business step, both
-  `POST /api/auth/oauth-complete` (`lib/auth/oauth-workspace.ts`). Firebase signs out right after; WAMA keeps
-  only the Supabase session. **Not tried against Firebase yet.**
+- **Sign in / sign up with Google** (website and app; owner chose plain Google sign-in through Supabase
+  after trying Firebase as a middleman, Nov 2026: Firebase is for notifications only):
+  `components/auth/oauth-buttons.tsx` ("Continue with Google" on /login and /signup via Supabase
+  `signInWithOAuth`, `NEXT_PUBLIC_OAUTH_PROVIDERS`, default `google`; `apple` ready for later; remembers
+  `?plan=`), `app/auth/callback` (session from the code or the URL hash, then "Name your business" the first
+  time), `GET/POST /api/auth/oauth-complete` with `lib/auth/oauth-workspace.ts` (`createWorkspaceFor`:
+  business, owner, deal stages, trial on the chosen plan; once). Same email as an existing account = that
+  account (Supabase links them). App: `HttpBackend.signInWithGoogle` (browser, back to
+  `com.magnetora.wamacrm://login-callback`, intent filter in AndroidManifest), sign-in screen button +
+  business step (`AppState.signInWithGoogle` / `finishGoogleSignUp`). Needs Google switched on in Supabase
+  (Web OAuth client from Google Cloud) with both return addresses allowed. **Not tried against Supabase yet.**
 
 - **Super Admin console redesigned** (owner: "really not good"): `components/superadmin/console-parts.tsx`
   holds `ConsoleOverview` (tiles that open the filtered list, Needs attention with reasons, Plans with

@@ -400,9 +400,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } catch (e) {
-      // Closing Google's window is not an error
-      final message = '$e'.replaceFirst('Exception: ', '').trim();
-      if (mounted) setState(() => _error = message.isEmpty ? null : message);
+      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
