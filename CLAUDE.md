@@ -347,9 +347,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   redesign, WhatsApp commerce (catalog sync, cart, payments, AI shopping assistant), templates manager,
   flow builder, campaigns, landing page.
 
-**Deployed**: production was updated on 10 Nov 2026 from branch `v4` (Vercel project `marketing-crm`,
-Git-connected to this repo; production deploys are made from `v4`), with everything above up to
-"questions in the middle of a booking". Previous production commit: `4ce54f0`.
+**Deployed**: production was updated on 14 Nov 2026 from branch `v4` (Vercel project `marketing-crm`,
+Git-connected to this repo; production deploys are made from `v4`), with everything above: plans and
+billing, WAMA's number for Starter, the booking page, "Connect your WhatsApp first", and the server side
+of pop-up notifications. Previous production commit: `cf4c324` (10 Nov 2026).
 
 ## Open items and ideas
 
