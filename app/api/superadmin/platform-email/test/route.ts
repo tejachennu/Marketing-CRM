@@ -13,21 +13,27 @@ import {
 } from '@/lib/platform-email'
 
 /**
- * Sends a test email to the signed-in superadmin (never anyone else), from the mailbox in the form
- * when one is given, otherwise from the one platform emails use now. Answers with the mail server's
- * own error when it fails.
+ * Sends a test email, from the mailbox in the form when one is given, otherwise from the one platform
+ * emails use now. Only a signed-in superadmin can run it; the test goes to the address they type (to
+ * check delivery to a real inbox), or to their own account when they leave it blank. Answers with the
+ * mail server's own error when it fails.
  */
 export async function POST(request: NextRequest) {
   const admin = await checkSuperAdmin(request)
   if (!admin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const to = String(admin.email || '').trim()
+
+  const body = await request.json().catch(() => ({}))
+  const requestedTo = body && typeof body === 'object' ? String((body as any).to ?? '').trim() : ''
+  if (requestedTo && !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(requestedTo)) {
+    return NextResponse.json({ success: false, error: 'Enter a valid email address to send the test to.' }, { status: 400 })
+  }
+  const to = requestedTo || String(admin.email || '').trim()
   if (!to) {
     return NextResponse.json({ success: false, error: 'Your account has no email address to send the test to.' }, { status: 400 })
   }
 
-  const body = await request.json().catch(() => ({}))
   let settings: PlatformEmailSettings | null = null
 
   if (body && typeof body === 'object' && String(body.host ?? '').trim()) {

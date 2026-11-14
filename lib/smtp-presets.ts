@@ -22,6 +22,14 @@ export const SMTP_PRESETS: SmtpPreset[] = [
     secure: true,
     hint: 'Sign in with the full email address and its mailbox password. If GoDaddy refuses it, try the server smtp.titan.email.',
   },
+  {
+    id: 'titan',
+    label: 'Titan Email',
+    host: 'smtp.titan.email',
+    port: 465,
+    secure: true,
+    hint: 'Sign in with the full email address and its mailbox password (the one you use for Titan webmail).',
+  },
   { id: 'hostinger', label: 'Hostinger', host: 'smtp.hostinger.com', port: 465, secure: true },
   {
     id: 'google',

@@ -66,6 +66,7 @@ export function PlatformEmailSettings() {
   const [testing, setTesting] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [testTo, setTestTo] = useState('')
 
   const fillForm = useCallback((mailbox: MailboxView | null) => {
     setHost(mailbox?.host || '')
@@ -121,7 +122,7 @@ export function PlatformEmailSettings() {
     setTesting(true)
     setTestResult(null)
     setNotice(null)
-    const { data } = await call('/api/superadmin/platform-email/test', { method: 'POST', body: JSON.stringify(form()) })
+    const { data } = await call('/api/superadmin/platform-email/test', { method: 'POST', body: JSON.stringify({ ...form(), to: testTo.trim() }) })
     setTestResult(data?.success !== undefined ? data : { success: false, error: data?.error || 'The test could not be run' })
     setTesting(false)
   }
@@ -307,13 +308,20 @@ export function PlatformEmailSettings() {
       )}
 
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+        <input
+          type="email"
+          value={testTo}
+          onChange={(e) => setTestTo(e.target.value)}
+          placeholder="Send test to (blank = me)"
+          className="h-9 px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#0b141a] text-xs text-neutral-800 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-[#00a884] w-[220px] max-w-full"
+        />
         <button
           onClick={sendTest}
           disabled={testing || saving}
           className="px-4 py-2 rounded-lg border border-[#00a884] text-[#00a884] hover:bg-[#00a884]/10 disabled:opacity-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
         >
           {testing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-          <span>Send test email to me</span>
+          <span>{testTo.trim() ? 'Send test email' : 'Send test email to me'}</span>
         </button>
         <button
           onClick={save}

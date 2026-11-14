@@ -139,12 +139,24 @@ test('Platform email: login codes go out from the mailbox saved in the panel', a
   assert.equal(sent[0].options.host, 'smtpout.secureserver.net')
 })
 
-test('Platform email test route: only ever mails the signed-in admin, and reports the server error', async () => {
+test('Platform email test route: sends to the chosen address or the admin, and reports the server error', async () => {
   reset()
+  // A superadmin can send the test to a chosen inbox (to check delivery)
   let data = await (await testRoute.POST(request('POST', { ...GODADDY, to: 'someone-else@example.com' }))).json()
   assert.equal(data.success, true)
   assert.equal(sent.length, 1)
-  assert.equal(sent[0].mail.to, 'owner@magnetora.in')
+  assert.equal(sent[0].mail.to, 'someone-else@example.com')
+  assert.equal(data.to, 'someone-else@example.com')
+
+  // A blank recipient falls back to the signed-in admin
+  data = await (await testRoute.POST(request('POST', GODADDY))).json()
+  assert.equal(data.success, true)
+  assert.equal(sent[1].mail.to, 'owner@magnetora.in')
+
+  // A bad address is refused before anything is sent
+  data = await (await testRoute.POST(request('POST', { ...GODADDY, to: 'not-an-email' }))).json()
+  assert.equal(data.success, false)
+  assert.equal(sent.length, 2)
 
   failWith = Object.assign(new Error('Invalid login: 535 Authentication failed'), { code: 'EAUTH', responseCode: 535, response: '535 Authentication failed' })
   data = await (await testRoute.POST(request('POST', GODADDY))).json()
