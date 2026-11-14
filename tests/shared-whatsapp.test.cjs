@@ -20,7 +20,7 @@ function database(seed = {}) {
   const from = (table) => {
     let filters = [], op = 'select', values, singular = false, limit = Infinity
     const q = {
-      select() { return q }, eq(k, v) { filters.push((r) => r[k] === v); return q }, order() { return q }, limit(n) { limit = n; return q },
+      select() { return q }, eq(k, v) { filters.push((r) => r[k] === v); return q }, in(k, list) { filters.push((r) => list.includes(r[k])); return q }, order() { return q }, limit(n) { limit = n; return q },
       maybeSingle() { singular = true; return q }, single() { singular = true; return q },
       insert(data) { op = 'insert'; values = data; return q }, update(data) { op = 'update'; values = data; return q },
       then(resolve, reject) {
@@ -177,4 +177,20 @@ test('Shared number: WAMA CRM\'s own WhatsApp settings are used when no separate
   // The platform number on Twilio cannot send Meta templates
   assert.equal(SW.sharedConfig({ ...own, WHATSAPP_PROVIDER: 'twilio' }), null)
   assert.equal(SW.sharedConfig({}), null)
+})
+
+test('Shared number: with nothing in Vercel, the number connected in WAMA CRM\'s own workspace is used', async () => {
+  const none = { WAMA_SHARED_PHONE_NUMBER_ID: '', WAMA_SHARED_ACCESS_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '', WHATSAPP_API_TOKEN: '', WAMA_SHARED_WORKSPACE_ID: '' }
+  await withEnv(none, async () => {
+    SW.resetSharedNumber()
+    const platform = { id: '303b7a2d-281c-403c-b794-54d1e195ca69', name: 'WAMA CRM', whatsapp_provider: 'twilio' }
+    const magnetora = { id: 'b2acf062-c379-49f2-8905-267413c9c394', name: 'Magnetora', whatsapp_provider: 'facebook', whatsapp_api_token: 'tok', whatsapp_phone_number_id: '42', whatsapp_business_account_id: '77' }
+    const found = await SW.findSharedNumber(database({ organizations: [platform, magnetora] }))
+    assert.deepEqual(found.config, { phoneNumberId: '42', wabaId: '77', token: 'tok', graphVersion: 'v25.0' })
+    assert.match(found.from, /Magnetora/)
+    SW.resetSharedNumber()
+    const missing = await SW.findSharedNumber(database({ organizations: [platform] }))
+    assert.equal(missing.config, null)
+    assert.match(missing.why, /Twilio/)
+  })
 })

@@ -17,7 +17,7 @@ const TONE: Record<string, string> = {
  * in Vercel, and its four message templates on Meta, with a button to submit the missing ones.
  */
 export function SharedNumberPanel({ api }: { api: Api }) {
-  const [data, setData] = useState<{ configured: boolean; templates: Row[]; error?: string } | null>(null)
+  const [data, setData] = useState<{ configured: boolean; templates: Row[]; error?: string; from?: string; why?: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -35,7 +35,7 @@ export function SharedNumberPanel({ api }: { api: Api }) {
     setBusy(true); setMessage('')
     try {
       const result = await api('/api/superadmin/shared-number', { method: 'POST', body: '{}' })
-      setData({ configured: true, templates: result.templates || [] })
+      setData({ configured: true, templates: result.templates || [], from: result.from })
       setMessage(result.errors?.length ? `Some were not accepted: ${result.errors.join('; ')}` : 'Sent to Meta. Approval usually takes a few minutes to a day.')
     } catch (error: any) {
       setMessage(error.message)
@@ -65,10 +65,12 @@ export function SharedNumberPanel({ api }: { api: Api }) {
         <div className="py-4"><Loader2 size={18} className="animate-spin text-[#1D5BEA]" /></div>
       ) : !data.configured ? (
         <p className="mt-3 text-[13.5px] rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-3 py-2.5">
-          Not set up. It uses WAMA CRM&apos;s own WhatsApp number (WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_API_TOKEN in Vercel, on Meta Cloud API). Until then Starter workspaces send nothing.
+          Not set up{data.why ? `: ${data.why}` : ''}. It uses the WhatsApp number connected in WAMA CRM&apos;s own workspace (Settings → WhatsApp, on Meta), or WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_API_TOKEN in Vercel. Until then Starter workspaces send nothing.
         </p>
       ) : (
-        <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <>
+        {data.from && <p className="mt-3 text-[13px] text-[#4a5672] dark:text-slate-400">Using {data.from}.</p>}
+        <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {data.templates.map((t) => (
             <li key={t.name} className="rounded-xl border border-[#eef1f6] dark:border-slate-800 px-3 py-2 flex items-center justify-between gap-2 min-w-0">
               <span className="min-w-0"><span className="block text-[13.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{t.name}</span>{t.reason && <span className="block text-[12px] text-[#b91c1c] truncate">{t.reason}</span>}</span>
@@ -76,6 +78,7 @@ export function SharedNumberPanel({ api }: { api: Api }) {
             </li>
           ))}
         </ul>
+        </>
       )}
       {(message || data?.error) && <p className="mt-2 text-[13px] text-[#4a5672] dark:text-slate-400">{message || data?.error}</p>}
     </section>

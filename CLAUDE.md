@@ -139,7 +139,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   Uses WAMA CRM's own number from the existing `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_BUSINESS_ACCOUNT_ID` /
   `WHATSAPP_API_TOKEN` (owner: "take from the env"); its events arrive at the platform workspace's normal
   webhook, which hands statuses and Starter customers' replies to `handleSharedStatus` / `handleSharedIncoming`
-  (those replies skip the platform chatbot). Optional separate number: `WAMA_SHARED_*` + `/api/webhooks/wama-shared`. Growth/Pro: inbox, campaigns, templates,
+  (those replies skip the platform chatbot). Those settings are not in Vercel, so `findSharedNumber(db)` falls
+  back to the number connected in WAMA CRM's own workspaces (ids in `PLATFORM_WORKSPACES`, Meta only; or
+  `WAMA_SHARED_WORKSPACE_ID`); the Super Admin panel says which one is used, or why none is.
+  Optional separate number: `WAMA_SHARED_*` + `/api/webhooks/wama-shared`. Growth/Pro: inbox, campaigns, templates,
   flows, tickets show "Connect your WhatsApp first" until a number is connected; Starter lands on Front Desk.
   Public booking page `/b/<org slug>` (`lib/salon/booking-page.ts`, `app/b/[slug]`, APIs
   `/api/public/booking/[slug]` and `/times`; `?p=` person, `?s=` service; rate-limited; booked or request

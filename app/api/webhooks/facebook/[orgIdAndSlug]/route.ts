@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendPush } from '@/lib/push'
-import { handleSharedIncoming, handleSharedStatus, sharedConfig } from '@/lib/shared-whatsapp'
+import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
 import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
@@ -1552,7 +1552,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ or
   let payload: any
   try { payload = JSON.parse(rawBody) }
   catch { return NextResponse.json({ error: 'Invalid webhook JSON' }, { status: 400 }) }
-  const shared = signed ? sharedConfig() : null
+  const shared = signed ? (await findSharedNumber(getSupabaseClient()).catch(() => null))?.config || null : null
   for (const entry of payload.entry || []) {
     for (const change of entry.changes || []) {
       const value = change.value || {}

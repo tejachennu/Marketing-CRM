@@ -41,6 +41,52 @@ export function sharedConfig(env: Record<string, string | undefined> = process.e
   return { phoneNumberId, wabaId, token, graphVersion: own('WAMA_SHARED_GRAPH_VERSION') || own('WHATSAPP_GRAPH_API_VERSION') || 'v25.0' }
 }
 
+/** WAMA CRM's own workspaces, in the order their WhatsApp number is tried. */
+const PLATFORM_WORKSPACES = ['303b7a2d-281c-403c-b794-54d1e195ca69', 'b2acf062-c379-49f2-8905-267413c9c394']
+
+export interface SharedSource { config: SharedConfig | null; from: string; why?: string }
+
+let resolved: { at: number; source: SharedSource } | null = null
+
+/** Test seam: forget which number was found. */
+export function resetSharedNumber() {
+  resolved = null
+}
+
+/**
+ * WAMA's number, with where it came from: the settings in Vercel when set, otherwise the WhatsApp
+ * number WAMA CRM's own workspace has connected in Settings (Meta Cloud API). WAMA_SHARED_WORKSPACE_ID
+ * names another workspace to use. Remembered for five minutes.
+ */
+export async function findSharedNumber(db: any, now = Date.now()): Promise<SharedSource> {
+  const fromEnv = sharedConfig()
+  if (fromEnv) return { config: fromEnv, from: 'the settings in Vercel' }
+  if (resolved && now - resolved.at < 5 * 60_000) return resolved.source
+  const ids = [String(process.env.WAMA_SHARED_WORKSPACE_ID || '').trim(), ...PLATFORM_WORKSPACES].filter(Boolean)
+  const reasons: string[] = []
+  let source: SharedSource = { config: null, from: '', why: '' }
+  try {
+    const { data } = await db.from('organizations').select('id, name, whatsapp_provider, whatsapp_api_token, whatsapp_phone_number_id, whatsapp_business_account_id, whatsapp_graph_api_version').in('id', ids)
+    for (const id of ids) {
+      const org = (data || []).find((row: any) => row.id === id)
+      if (!org) continue
+      if (org.whatsapp_provider !== 'facebook') { reasons.push(`${org.name} sends WhatsApp through Twilio, not Meta`); continue }
+      if (!org.whatsapp_api_token || !org.whatsapp_phone_number_id) { reasons.push(`${org.name} has no WhatsApp number connected`); continue }
+      source = {
+        config: { phoneNumberId: String(org.whatsapp_phone_number_id), wabaId: String(org.whatsapp_business_account_id || ''), token: String(org.whatsapp_api_token), graphVersion: String(org.whatsapp_graph_api_version || '') || 'v25.0' },
+        from: `the number connected in ${org.name}`,
+      }
+      break
+    }
+    if (!source.config) source.why = reasons.join('; ') || 'WAMA CRM\'s own workspace was not found'
+  } catch (error: any) {
+    source.why = error?.message || 'The workspaces could not be read'
+  }
+  // A miss is only remembered briefly, so connecting a number shows up at once
+  if (source.config) resolved = { at: now, source }
+  return source
+}
+
 /** WAMA's number in the shape the WhatsApp sender takes. */
 function sender(config: SharedConfig) {
   return { whatsapp_provider: 'facebook', whatsapp_api_token: config.token, whatsapp_phone_number_id: config.phoneNumberId, whatsapp_graph_api_version: config.graphVersion }
@@ -147,9 +193,8 @@ async function graph(config: SharedConfig, path: string, init: { method?: string
 }
 
 /** Each shared template and its status on Meta (APPROVED, PENDING, REJECTED or missing). */
-export async function sharedTemplateStatus(fetcher: typeof fetch = fetch): Promise<{ name: string; purpose: MessagePurpose; status: string; reason?: string | null }[]> {
-  const config = sharedConfig()
-  if (!config?.wabaId) throw new Error("WAMA's number is not set up: add WAMA_SHARED_PHONE_NUMBER_ID, WAMA_SHARED_WABA_ID and WAMA_SHARED_ACCESS_TOKEN in Vercel.")
+export async function sharedTemplateStatus(config: SharedConfig | null, fetcher: typeof fetch = fetch): Promise<{ name: string; purpose: MessagePurpose; status: string; reason?: string | null }[]> {
+  if (!config?.wabaId) throw new Error("WAMA's number has no WhatsApp Business Account ID, so its templates cannot be read.")
   const data = await graph(config, `${config.wabaId}/message_templates?fields=name,status,language,rejected_reason&limit=200`, {}, fetcher)
   const found = (data?.data || []).filter((t: any) => t.language === SHARED_LANGUAGE)
   return SHARED_TEMPLATES.map((template) => {
@@ -159,10 +204,9 @@ export async function sharedTemplateStatus(fetcher: typeof fetch = fetch): Promi
 }
 
 /** Submit the templates Meta does not have yet. Returns the statuses afterwards. */
-export async function submitSharedTemplates(appUrl: string, fetcher: typeof fetch = fetch) {
-  const config = sharedConfig()
-  if (!config?.wabaId) throw new Error("WAMA's number is not set up: add WAMA_SHARED_PHONE_NUMBER_ID, WAMA_SHARED_WABA_ID and WAMA_SHARED_ACCESS_TOKEN in Vercel.")
-  const before = await sharedTemplateStatus(fetcher)
+export async function submitSharedTemplates(config: SharedConfig | null, appUrl: string, fetcher: typeof fetch = fetch) {
+  if (!config?.wabaId) throw new Error("WAMA's number has no WhatsApp Business Account ID, so templates cannot be submitted.")
+  const before = await sharedTemplateStatus(config, fetcher)
   const errors: string[] = []
   for (const template of SHARED_TEMPLATES) {
     const current = before.find((t) => t.name === template.name)
@@ -173,7 +217,7 @@ export async function submitSharedTemplates(appUrl: string, fetcher: typeof fetc
       errors.push(`${template.name}: ${error?.message}`)
     }
   }
-  return { templates: await sharedTemplateStatus(fetcher), errors }
+  return { templates: await sharedTemplateStatus(config, fetcher), errors }
 }
 
 /** The business's own phone number for "call …": Front Desk settings, else the workspace's. */
@@ -195,7 +239,7 @@ export type SharedSendResult = { sent: boolean; error?: string; walletEmpty?: bo
  * given back when Meta refuses it. Nothing is sent when the wallet is short.
  */
 export async function sendShared(db: any, organizationId: string, phone: string, purpose: MessagePurpose, values: Partial<Record<FieldKey, string>>): Promise<SharedSendResult> {
-  const config = sharedConfig()
+  const { config } = await findSharedNumber(db)
   if (!config) return { sent: false, error: "WhatsApp messages from WAMA's number are not switched on yet." }
   const template = sharedTemplateFor(purpose)
   if (!template) return { sent: false, error: 'This message cannot go from WAMA\'s number.' }
@@ -250,7 +294,7 @@ const DAY = 86_400_000
  * phone number. Free for the business (a reply within 24 hours of the customer writing is free on Meta).
  */
 export async function handleSharedIncoming(db: any, from: string, now = Date.now()): Promise<{ replied: boolean; known?: boolean }> {
-  const config = sharedConfig()
+  const { config } = await findSharedNumber(db)
   const key = phoneKey(from)
   if (!config || key.length < 6) return { replied: false }
   const { data: recent } = await db.from('shared_messages').select('organization_id, purpose, created_at').eq('phone', key).order('created_at', { ascending: false }).limit(20)

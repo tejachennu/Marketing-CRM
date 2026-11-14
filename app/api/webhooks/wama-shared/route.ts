@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { verifyMetaSignature } from '@/lib/meta-webhook'
-import { handleSharedIncoming, handleSharedStatus, sharedConfig } from '@/lib/shared-whatsapp'
+import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
 
 export const runtime = 'nodejs'
 
@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
-  const config = sharedConfig()
   const db = getSupabaseAdminClient()
+  const { config } = await findSharedNumber(db)
   try {
     for (const entry of body?.entry || []) {
       for (const change of entry?.changes || []) {
