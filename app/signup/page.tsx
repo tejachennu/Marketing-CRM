@@ -1,6 +1,7 @@
 'use client'
 
 import { WamaLogo } from '@/components/brand/wama-logo'
+import { OAuthButtons } from '@/components/auth/oauth-buttons'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -160,9 +161,11 @@ export default function SignupPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Create Account</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-medium leading-relaxed">
-              Start your 14-day free trial. Every feature included, with ₹300 of free AI credit.
+              Start your 14-day free trial. No card needed.
             </p>
           </div>
+
+          <div className="mb-5"><OAuthButtons plan={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('plan') : null} onError={setError} /></div>
 
           <form onSubmit={handleSignup} className="space-y-5">
             <div>

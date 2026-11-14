@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, BadgeCheck, Bot, Eye, EyeOff, Loader2, Megaphone, MessageCircle, Moon, RefreshCw, ShieldCheck, ShoppingBag, Sun } from 'lucide-react'
 import { WamaLogo } from '@/components/brand/wama-logo'
+import { OAuthButtons } from '@/components/auth/oauth-buttons'
 
 const HIGHLIGHTS = [
   { icon: MessageCircle, title: 'One WhatsApp inbox for the whole team', text: 'Every chat, assigned to the right person.' },
@@ -186,7 +187,9 @@ export default function LoginPage() {
                 <h2 className="text-[30px] font-extrabold tracking-tight">Welcome back</h2>
                 <p className="text-[15.5px] text-[#4a5672] dark:text-slate-400 mt-1.5">Sign in to your WAMA CRM workspace.</p>
 
-                <form onSubmit={handleLogin} className="mt-8 space-y-5">
+                <div className="mt-8"><OAuthButtons onError={setError} /></div>
+
+                <form onSubmit={handleLogin} className="mt-4 space-y-5">
                   <div>
                     <label htmlFor="email" className="block text-[14px] font-semibold mb-1.5">Email</label>
                     <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="you@yourbusiness.in" required autoFocus />

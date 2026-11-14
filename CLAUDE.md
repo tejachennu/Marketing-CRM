@@ -117,6 +117,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Sign in / sign up with Google** (website and app): `components/auth/oauth-buttons.tsx` ("Continue with
+  Google" on /login and /signup, `NEXT_PUBLIC_OAUTH_PROVIDERS`, default `google`; `apple` ready for later;
+  remembers `?plan=`), `app/auth/callback` (takes the session from the code or the URL hash, then
+  "Name your business" the first time), `GET/POST /api/auth/oauth-complete` with `lib/auth/oauth-workspace.ts`
+  (`createWorkspaceFor`: business, owner, deal stages, trial on the chosen plan; once). Same email as an
+  existing account = that account (Supabase links them). App: `HttpBackend.signInWithGoogle` (browser,
+  back to `com.magnetora.wamacrm://login-callback`, intent filter in AndroidManifest), sign-in screen
+  button + business step (`AppState.signInWithGoogle` / `finishGoogleSignUp`). Needs Google switched on in
+  Supabase with both return addresses allowed. **Not tried against Supabase yet.**
+
 - **Super Admin console redesigned** (owner: "really not good"): `components/superadmin/console-parts.tsx`
   holds `ConsoleOverview` (tiles that open the filtered list, Needs attention with reasons, Plans with
   paying / trial / monthly amount, Trials ending next, Newest), `WorkspaceList` (filter chips with counts,
