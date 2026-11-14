@@ -55,7 +55,9 @@ export interface BillingRow {
 /** A workspace's plan limits: its plan with Super Admin's changes; no limits when exempt or before billing. */
 export function billingLimits(row: BillingRow | null | undefined): PlanLimits {
   if (!row || row.billing_exempt) return { ...UNLIMITED, connectorKeys: [] }
-  return limitsOf(row.plan, row.plan_overrides)
+  // The old ₹3,000 plan (a database the plans set-up has not reached yet) keeps every connector
+  const overrides = row.plan === 'pro_monthly' ? { connectors: 3, ...(row.plan_overrides || {}) } : row.plan_overrides
+  return limitsOf(row.plan, overrides)
 }
 
 export interface BillingState {

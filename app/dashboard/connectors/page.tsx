@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import { CONNECTORS, type ConnectorKey } from '@/lib/connectors'
 import { can } from '@/lib/rbac'
 import { api, card, primaryButton, secondaryButton, Toast, Toggle, useToast, useWorkspace } from '@/components/salon/ui'
+import { useConfirm } from '@/lib/dialog-context'
 
 const ICONS: Record<ConnectorKey, LucideIcon> = { salon: FrontDeskIcon, ecommerce: ShoppingBag, pipeline: TrendingUp }
 
@@ -20,12 +21,21 @@ const LOOKS: Record<ConnectorKey, { band: string; icon: string; tags: string[]; 
 export default function ConnectorsPage() {
   const { workspace, error } = useWorkspace()
   const { toast, flash } = useToast()
+  const confirm = useConfirm()
   const [state, setState] = useState<Record<string, boolean> | null>(null)
+  // Switched on but outside the plan (more connectors on than the plan includes)
+  const [inactive, setInactive] = useState<Record<string, boolean>>({})
+  const [plan, setPlan] = useState<{ connectors: number; only: string[] } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const load = useCallback(async (orgId: string) => {
-    const data = await api(`/api/connectors?organizationId=${orgId}`)
+  const apply = (data: any) => {
     setState(Object.fromEntries((data.connectors || []).map((c: any) => [c.key, c.enabled])))
+    setInactive(Object.fromEntries((data.connectors || []).map((c: any) => [c.key, c.enabled && c.active === false])))
+    setPlan(data.plan || null)
+  }
+
+  const load = useCallback(async (orgId: string) => {
+    apply(await api(`/api/connectors?organizationId=${orgId}`))
   }, [])
 
   useEffect(() => {
@@ -35,16 +45,31 @@ export default function ConnectorsPage() {
 
   const canSwitch = can(workspace?.me, 'settings.manage')
 
+  const nameOf = (key: string) => CONNECTORS.find((c) => c.key === key)?.name || key
+
   async function toggle(key: ConnectorKey, enabled: boolean) {
     if (!workspace) return
+    // A plan with room for fewer connectors than are on: offer to swap instead of a refusal
+    let swap = false
+    const others = Object.keys(state || {}).filter((k) => k !== key && state?.[k] && !inactive[k])
+    if (enabled && plan && !plan.only.length && others.length >= plan.connectors) {
+      const ok = await confirm({
+        title: `Use ${nameOf(key)} instead?`,
+        message: `Your plan includes ${plan.connectors === 1 ? 'one connector' : `${plan.connectors} connectors`}. ${others.map(nameOf).join(' and ')} will be switched off. Nothing is deleted: switch it back on any time, or upgrade to Pro in Billing for all of them.`,
+        confirmLabel: `Use ${nameOf(key)}`,
+      })
+      if (!ok) return
+      swap = true
+    }
     setBusy(key)
     try {
-      const data = await api('/api/connectors', { method: 'POST', body: JSON.stringify({ organizationId: workspace.orgId, key, enabled }) })
-      setState(Object.fromEntries((data.connectors || []).map((c: any) => [c.key, c.enabled])))
+      const data = await api('/api/connectors', { method: 'POST', body: JSON.stringify({ organizationId: workspace.orgId, key, enabled, swap }) })
+      apply(data)
       // The menu picks up the change straight away
       window.dispatchEvent(new Event('organization-features-changed'))
-      const name = CONNECTORS.find((c) => c.key === key)?.name
-      flash('success', enabled ? `${name} is on. Find it in the menu.` : `${name} is off.`)
+      const name = nameOf(key)
+      const off = (data.switchedOff || []).map(nameOf)
+      flash('success', enabled ? `${name} is on${off.length ? ` (${off.join(' and ')} switched off)` : ''}. Find it in the menu.` : `${name} is off.`)
     } catch (err: any) {
       flash('error', err.message)
     } finally {
@@ -65,18 +90,28 @@ export default function ConnectorsPage() {
 
         {error && <div className={`${card} p-5 text-[15px] text-[#b91c1c]`}>{error}</div>}
 
+        {plan && plan.connectors < 3 && (
+          <div className={`${card} p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between`}>
+            <p className="text-[14.5px] text-[#4a5672] dark:text-slate-300">
+              {plan.only.length ? 'Your plan includes Front Desk only.' : `Your plan includes ${plan.connectors === 1 ? 'one connector' : `${plan.connectors} connectors`}. Switching another one on swaps them.`}
+            </p>
+            {canSwitch && <Link href="/dashboard/billing?change=1" className={`${secondaryButton} shrink-0`}>See plans</Link>}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {CONNECTORS.map((connector) => {
             const Icon = ICONS[connector.key]
             const look = LOOKS[connector.key]
             const on = Boolean(state?.[connector.key])
+            const outside = on && Boolean(inactive[connector.key])
             return (
               <article key={connector.key} className={`${card} overflow-hidden flex flex-col`}>
                 <div className={`h-24 ${look.band} p-5 flex items-start justify-between`}>
                   <span className={`h-14 w-14 rounded-2xl ${look.icon} text-white flex items-center justify-center shadow-sm`}><Icon size={27} /></span>
                   {state === null ? <Loader2 size={18} className="animate-spin text-[#8a94a8]" /> : (
-                    <span className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[13px] font-bold ${on ? 'bg-white text-[#047857] dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-white text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}>
-                      {on && <Check size={14} strokeWidth={3} />} {on ? 'On' : 'Off'}
+                    <span className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[13px] font-bold ${on && !outside ? 'bg-white text-[#0E1B3D] dark:bg-slate-800 dark:text-white' : 'bg-white text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}>
+                      {on && !outside && <Check size={14} strokeWidth={3} />} {outside ? 'Not in your plan' : on ? 'On' : 'Off'}
                     </span>
                   )}
                 </div>
@@ -94,13 +129,13 @@ export default function ConnectorsPage() {
                   <div className="mt-5 pt-4 border-t border-[#eef1f6] dark:border-slate-800 flex items-center justify-between gap-3">
                     {canSwitch ? (
                       <label className="flex items-center gap-3 text-[15px] font-semibold text-[#0E1B3D] dark:text-white">
-                        <Toggle checked={on} disabled={state === null || busy !== null} onChange={(value) => toggle(connector.key, value)} label={`${connector.name} on or off`} />
-                        {busy === connector.key ? 'Saving…' : on ? 'Switched on' : 'Switch on'}
+                        <Toggle checked={on && !outside} disabled={state === null || busy !== null} onChange={(value) => toggle(connector.key, value)} label={`${connector.name} on or off`} />
+                        {busy === connector.key ? 'Saving…' : outside ? 'Use this one' : on ? 'Switched on' : 'Switch on'}
                       </label>
                     ) : (
                       <span className="text-[14px] text-[#6B7894]">An admin can switch this on or off.</span>
                     )}
-                    {on && (
+                    {on && !outside && (
                       <Link href={connector.href} className={connector.key === 'salon' ? primaryButton : secondaryButton}>Open <ArrowRight size={17} /></Link>
                     )}
                   </div>

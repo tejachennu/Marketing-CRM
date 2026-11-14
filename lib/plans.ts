@@ -238,3 +238,20 @@ export function activeConnectors(limits: PlanLimits, on: ConnectorKey[]): Connec
   const allowed = CONNECTOR_PRIORITY.filter((key) => on.includes(key) && (!limits.connectorKeys.length || limits.connectorKeys.includes(key)))
   return allowed.slice(0, Math.max(0, limits.connectors))
 }
+
+/**
+ * Switching a connector on under the plan's limit. With room: just on. On a plan with fewer connectors
+ * than are on: the others that are on are switched off to make room (`switchOff`), when the person
+ * agreed to swap. A connector the plan does not include at all (Starter: Front Desk only) is refused.
+ */
+export function connectorSwitch(limits: PlanLimits, alreadyOn: ConnectorKey[], key: ConnectorKey, swap: boolean): { ok: true; switchOff: ConnectorKey[] } | { ok: false; reason: string; canSwap: boolean } {
+  if (limits.connectorKeys.length && !limits.connectorKeys.includes(key)) {
+    return { ok: false, reason: 'Your plan includes Front Desk only. Upgrade to Growth or Pro in Billing to add this connector.', canSwap: false }
+  }
+  const blocked = connectorBlockReason(limits, alreadyOn, key)
+  if (!blocked) return { ok: true, switchOff: [] }
+  if (!swap) return { ok: false, reason: blocked, canSwap: limits.connectors >= 1 }
+  // Keep the newest choice, plus as many of the others as the plan allows (in their usual order)
+  const keep = activeConnectors({ ...limits, connectors: Math.max(0, limits.connectors - 1) }, alreadyOn.filter((on) => on !== key))
+  return { ok: true, switchOff: alreadyOn.filter((on) => on !== key && !keep.includes(on)) }
+}
