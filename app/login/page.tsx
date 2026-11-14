@@ -84,8 +84,7 @@ export default function LoginPage() {
         setOtpRequired(true)
         setOtpCode('')
         setResendTimer(data.resendAfterSeconds || 60)
-        if (data.emailFailed) setNotice('We could not email the code just now. If you have a bypass code, enter it below.')
-        else setNotice(`We sent a 6-digit code to ${data.email || email}.`)
+        setNotice(`We sent a 6-digit code to ${data.email || email}.`)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')

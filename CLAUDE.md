@@ -120,12 +120,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 - **Sign-in email code (OTP) re-enabled, with a super-admin bypass** (owner: emails not sending; wanted OTP
   on login + a bypass): `lib/auth/login-otp.ts` (`login_codes` table, migration `20261115_login_codes.sql`,
   lock 724519015; hashed 6-digit codes, 10 min, 5 tries, resend 60 s / 5 per hour; `issueLoginCode`,
-  `checkLoginCode`, `clearLoginCode`, `loginCodeEmail`). `POST /api/auth/login` now verifies the password,
-  emails a code and returns `otpRequired`; if the email send fails, a super admin with `LOGIN_OTP_BYPASS`
-  set still gets `otpRequired` (login page shows a "use your bypass code" note). `POST /api/auth/verify-otp`
-  rewritten to use `checkLoginCode` (re-checks the password too). Bypass: `isBypassCode` honours
-  `LOGIN_OTP_BYPASS` only for `SUPERADMIN_EMAILS` (never hardcoded; set it in Vercel). `OTP_LOGIN=off` skips
-  the whole step. Email itself is sent via `lib/email.ts` (platform mailbox from Super Admin → Platform Email,
+  `checkLoginCode`, `clearLoginCode`, `loginCodeEmail`). `POST /api/auth/login` verifies the password,
+  emails a code and returns `otpRequired`. **If the code email cannot be sent, login signs the person in on
+  the password alone** (`signInNow`) rather than lock anyone out — a mail outage never blocks login. `POST
+  /api/auth/verify-otp` rewritten to use `checkLoginCode` (re-checks the password too). Bypass: `isBypassCode`
+  honours `LOGIN_OTP_BYPASS` only for `SUPERADMIN_EMAILS` (never hardcoded; set it in Vercel) and lets a super
+  admin skip the code step with that code when email is working. `OTP_LOGIN=off` skips the whole step. Email itself is sent via `lib/email.ts` (platform mailbox from Super Admin → Platform Email,
   or `PLATFORM_SMTP_*` / `HOSTINGER_SMTP_*`; SendGrid fallback); the "email not sending" cause is almost
   always those not being set — Super Admin → Platform Email → Send test shows the real SMTP error.
 
