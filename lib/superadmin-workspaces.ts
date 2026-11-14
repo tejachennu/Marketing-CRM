@@ -5,7 +5,8 @@
  */
 
 import { billingState, getBilling, type BillingRow } from './billing'
-import { getPlan, isPlanId, type PlanId } from './plans'
+import { getPlan, isPlanId, limitsOf, PLANS, type PlanId } from './plans'
+import { LOW_MESSAGE_BALANCE } from './message-wallet'
 import { creditMessages } from './message-wallet'
 import { withPlansSchema } from './plans-schema'
 
@@ -158,15 +159,37 @@ export interface WorkspaceSummary {
   members: number
   max_teammates: number | null
   enable_ai: boolean
+  /** When a customer last wrote or was written to, if known */
+  last_active_at: string | null
+  /** What this workspace needs from WAMA CRM staff, most pressing first */
+  attention: Attention[]
   billing: ReturnType<typeof billingState> & { configured: boolean; aiBalance: number | null; hasSubscription: boolean; plan: string; planName: string; price: number; pendingPlan: string | null; whatsappMode: 'own' | 'shared'; messageBalance: number; overrides: Record<string, unknown> }
 }
 
+export type AttentionKind = 'payment_failed' | 'ended' | 'trial_ending' | 'ai_paused' | 'wallet_low' | 'no_whatsapp'
+export interface Attention { kind: AttentionKind; text: string; urgent: boolean }
+
+/** What a workspace needs looking at, most pressing first. Exempt workspaces and ones without billing need nothing. */
+export function attentionFor(w: Pick<WorkspaceSummary, 'whatsapp' | 'billing'>): Attention[] {
+  const b = w.billing
+  if (!b.configured || b.exempt) return []
+  const list: Attention[] = []
+  if (b.status === 'past_due') list.push({ kind: 'payment_failed', text: 'Payment failed', urgent: true })
+  if (!b.hasAccess) list.push({ kind: 'ended', text: b.onTrial ? 'Trial ended' : 'Plan ended', urgent: true })
+  if (!b.hasAccess) return list
+  if (b.status === 'trialing' && (b.trialDaysLeft ?? 99) <= 3) list.push({ kind: 'trial_ending', text: (b.trialDaysLeft ?? 0) <= 1 ? 'Trial ends today' : `Trial ends in ${b.trialDaysLeft} days`, urgent: false })
+  if (b.whatsappMode === 'own' && !w.whatsapp) list.push({ kind: 'no_whatsapp', text: 'WhatsApp not connected', urgent: false })
+  if (b.whatsappMode === 'shared' && b.messageBalance < LOW_MESSAGE_BALANCE) list.push({ kind: 'wallet_low', text: `Message wallet low (₹${b.messageBalance.toLocaleString('en-IN')})`, urgent: b.messageBalance <= 0 })
+  if (b.aiPaused && limitsOf(b.plan, b.overrides).messaging) list.push({ kind: 'ai_paused', text: 'AI credit used up', urgent: false })
+  return list
+}
+
 /** One row per workspace for the console list. */
-export function summarizeWorkspace(organization: any, billing: BillingRow | null, members: number, now = Date.now()): WorkspaceSummary {
+export function summarizeWorkspace(organization: any, billing: BillingRow | null, members: number, now = Date.now(), lastActiveAt: string | null = null): WorkspaceSummary {
   const state = billingState(billing, now)
   const metaConnected = Boolean(organization.whatsapp_phone_number_id) && organization.whatsapp_provider === 'facebook'
   const twilioConnected = Boolean(organization.twilio_account_sid) && (organization.whatsapp_provider || 'twilio') === 'twilio'
-  return {
+  const summary: WorkspaceSummary = {
     id: organization.id,
     name: organization.name,
     slug: organization.slug,
@@ -189,7 +212,21 @@ export function summarizeWorkspace(organization: any, billing: BillingRow | null
       messageBalance: Math.round((Number(billing?.message_balance) || 0) * 100) / 100,
       overrides: billing?.plan_overrides && typeof billing.plan_overrides === 'object' ? billing.plan_overrides : {},
     },
+    last_active_at: lastActiveAt,
+    attention: [],
   }
+  summary.attention = attentionFor(summary)
+  return summary
+}
+
+/** Each plan with how many workspaces pay for it, how many are trying it, and what it brings in a month. */
+export function planBreakdown(workspaces: WorkspaceSummary[]) {
+  const billed = workspaces.filter((w) => w.billing.configured && !w.billing.exempt)
+  return PLANS.map((plan) => {
+    const on = billed.filter((w) => w.billing.plan === plan.id)
+    const paying = on.filter((w) => w.billing.status === 'active' || w.billing.status === 'past_due')
+    return { plan: plan.id, name: plan.name, price: plan.amountPaise / 100, paying: paying.length, trial: on.filter((w) => w.billing.status === 'trialing').length, revenue: paying.length * (plan.amountPaise / 100) }
+  })
 }
 
 /** Totals for the console's overview. Monthly revenue adds up the plan price of every paying workspace. */
@@ -207,5 +244,8 @@ export function workspaceTotals(workspaces: WorkspaceSummary[]) {
     aiPaused: billed.filter((w) => w.billing.aiPaused).length,
     monthlyRevenue: paying.reduce((sum, w) => sum + w.billing.price, 0),
     people: workspaces.reduce((sum, w) => sum + w.members, 0),
+    attention: workspaces.filter((w) => w.attention.length > 0).length,
+    trialsEndingSoon: billed.filter((w) => w.billing.status === 'trialing' && w.billing.hasAccess && (w.billing.trialDaysLeft ?? 99) <= 3).length,
+    byPlan: planBreakdown(workspaces),
   }
 }

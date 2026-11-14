@@ -7,7 +7,7 @@ import {
   RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, X,
 } from 'lucide-react'
 import { PLANS } from '@/lib/plans'
-import { SharedNumberPanel } from '@/components/superadmin/shared-number'
+import { ConsoleOverview, ConsoleSetup, WorkspaceList, type WorkspaceFilter } from '@/components/superadmin/console-parts'
 import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
 import { getRoleDisplay, toStoredRole } from '@/lib/rbac'
@@ -82,8 +82,8 @@ interface Person {
   organization?: { name: string; slug: string } | null
 }
 
-type Tab = 'overview' | 'workspaces' | 'people' | 'email'
-type Filter = 'all' | 'paying' | 'trial' | 'ended' | 'exempt'
+type Tab = 'overview' | 'workspaces' | 'people' | 'setup' | 'email'
+type Filter = WorkspaceFilter
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -109,10 +109,10 @@ async function api(path: string, init: RequestInit = {}) {
 function planLabel(billing: WorkspaceBilling): [string, string] {
   if (!billing.configured) return ['No billing yet', 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300']
   if (billing.exempt) return ['Exempt', 'bg-[#e8ecf5] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
-  if (billing.status === 'active') return [billing.cancelAtPeriodEnd ? `Paid till ${formatDate(billing.accessUntil)}` : 'Paying', 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300']
+  if (billing.status === 'active') return [billing.cancelAtPeriodEnd ? `Paid till ${formatDate(billing.accessUntil)}` : 'Paying', 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
   if (billing.status === 'trialing') return [`Trial · ${billing.trialDaysLeft}d left`, 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
   if (billing.status === 'past_due') return ['Payment failed', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
-  if (billing.status === 'cancelled') return [`Cancelled · till ${formatDate(billing.accessUntil)}`, 'bg-[#fff7e8] text-[#92400e] dark:bg-amber-950/40 dark:text-amber-300']
+  if (billing.status === 'cancelled') return [`Cancelled · till ${formatDate(billing.accessUntil)}`, 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
   return [billing.onTrial ? 'Trial ended' : 'Plan ended', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
 }
 
@@ -124,22 +124,11 @@ function PlanPill({ billing }: { billing: WorkspaceBilling }) {
 function CreditBar({ billing }: { billing: WorkspaceBilling }) {
   if (billing.exempt || billing.aiPercentLeft === null) return <span className="text-[13px] text-[#6B7894]">Own key</span>
   const percent = billing.aiPercentLeft
-  const color = billing.aiPaused ? '#E5484D' : percent <= 20 ? '#F59E0B' : '#00A884'
+  const color = billing.aiPaused || percent <= 20 ? '#b91c1c' : '#1D5BEA'
   return (
     <div className="flex items-center gap-2 min-w-[110px]">
       <div className="h-2 w-16 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${percent}%`, background: color }} /></div>
       <span className="text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-200">{percent}%</span>
-    </div>
-  )
-}
-
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: 'green' | 'red' | 'blue' | 'amber' }) {
-  const color = tone === 'green' ? 'text-[#047857]' : tone === 'red' ? 'text-[#b91c1c]' : tone === 'blue' ? 'text-[#1D5BEA]' : tone === 'amber' ? 'text-[#92400e]' : 'text-[#0E1B3D] dark:text-white'
-  return (
-    <div className={`${card} px-4 py-4`}>
-      <div className="text-[13px] font-semibold text-[#6B7894]">{label}</div>
-      <div className={`text-[26px] font-extrabold leading-tight mt-1 ${color}`}>{value}</div>
-      {hint && <div className="text-[12.5px] text-[#8a94a8] mt-0.5">{hint}</div>}
     </div>
   )
 }
@@ -175,7 +164,6 @@ export default function SuperAdminConsole() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
-  const [search, setSearch] = useState('')
   const [peopleSearch, setPeopleSearch] = useState('')
   const [peopleWorkspace, setPeopleWorkspace] = useState('all')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -193,6 +181,7 @@ export default function SuperAdminConsole() {
   // Whether this console can switch billing on itself (the server has a database connection)
   const [canSwitchOnBilling, setCanSwitchOnBilling] = useState(false)
   const [razorpaySetup, setRazorpaySetup] = useState<{ mode: 'live' | 'test' | 'off'; webhook: boolean } | null>(null)
+  const [pushSetup, setPushSetup] = useState<{ app: boolean; server: boolean } | null>(null)
   const [resetting, setResetting] = useState(false)
   const [switchingOn, setSwitchingOn] = useState(false)
 
@@ -207,7 +196,7 @@ export default function SuperAdminConsole() {
     setTotals(data.totals || null)
     setBillingReady(data.billingReady !== false)
     api('/api/superadmin/billing-setup')
-      .then((setup) => { setCanSwitchOnBilling(Boolean(setup.canSwitchOn)); setRazorpaySetup(setup.razorpay || null) })
+      .then((setup) => { setCanSwitchOnBilling(Boolean(setup.canSwitchOn)); setRazorpaySetup(setup.razorpay || null); setPushSetup(setup.push || null) })
       .catch(() => setCanSwitchOnBilling(false))
   }, [])
 
@@ -344,25 +333,6 @@ export default function SuperAdminConsole() {
   }
 
   // ── Derived lists ──
-  const filteredWorkspaces = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return workspaces.filter((w) => {
-      if (q && !`${w.name} ${w.slug} ${w.contact_email || ''}`.toLowerCase().includes(q)) return false
-      const b = w.billing
-      if (filter === 'paying') return !b.exempt && (b.status === 'active' || b.status === 'past_due')
-      if (filter === 'trial') return !b.exempt && b.status === 'trialing'
-      if (filter === 'ended') return b.configured && !b.exempt && !b.hasAccess
-      if (filter === 'exempt') return b.exempt
-      return true
-    })
-  }, [workspaces, filter, search])
-
-  const attention = useMemo(() => workspaces.filter((w) => {
-    const b = w.billing
-    if (!b.configured || b.exempt) return false
-    return b.status === 'past_due' || !b.hasAccess || b.aiPaused || (b.status === 'trialing' && (b.trialDaysLeft ?? 99) <= 3)
-  }), [workspaces])
-
   const filteredPeople = useMemo(() => {
     const q = peopleSearch.trim().toLowerCase()
     return people.filter((p) => (peopleWorkspace === 'all' || p.organization_id === peopleWorkspace) && (!q || `${p.full_name || ''} ${p.email}`.toLowerCase().includes(q)))
@@ -409,7 +379,7 @@ export default function SuperAdminConsole() {
         )}
 
         <div className="flex gap-1 overflow-x-auto border-b border-[#e3e8f2] dark:border-slate-800">
-          {([['overview', 'Overview'], ['workspaces', `Workspaces (${workspaces.length})`], ['people', `People (${people.length})`], ['email', 'Platform email']] as [Tab, string][]).map(([id, label]) => (
+          {([['overview', 'Overview'], ['workspaces', `Workspaces (${workspaces.length})`], ['people', `People (${people.length})`], ['setup', 'Setup'], ['email', 'Platform email']] as [Tab, string][]).map(([id, label]) => (
             <button key={id} type="button" onClick={() => setTab(id)} className={`px-4 h-11 text-[14.5px] font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-[#1D5BEA] text-[#1D5BEA]' : 'border-transparent text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>{label}</button>
           ))}
           <Link href="/dashboard/superadmin/advanced" className="ml-auto px-3 h-11 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white whitespace-nowrap"><Settings2 size={15} /> Advanced</Link>
@@ -418,115 +388,12 @@ export default function SuperAdminConsole() {
         {loading && workspaces.length === 0 ? (
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
         ) : tab === 'overview' ? (
-          <div className="space-y-6">
-            <SharedNumberPanel api={api} />
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Stat label="Monthly revenue" value={rupees(totals?.monthlyRevenue || 0)} hint={`${totals?.paying || 0} paying, by their plan`} tone="green" />
-              <Stat label="On free trial" value={String(totals?.trialing || 0)} tone="blue" />
-              <Stat label="Trial or plan ended" value={String(totals?.expired || 0)} tone={totals?.expired ? 'red' : undefined} />
-              <Stat label="Payment failed" value={String(totals?.pastDue || 0)} tone={totals?.pastDue ? 'red' : undefined} />
-              <Stat label="Workspaces" value={String(totals?.workspaces || 0)} hint={billingReady ? `${totals?.exempt || 0} exempt` : 'Billing not on yet'} />
-              <Stat label="People" value={String(totals?.people || 0)} />
-              <Stat label="AI paused (no credit)" value={String(totals?.aiPaused || 0)} tone={totals?.aiPaused ? 'amber' : undefined} />
-              <Stat label="Paying" value={String(totals?.paying || 0)} tone="green" />
-            </div>
-
-            {billingReady && (
-              <div className={`${card} px-5 py-4 flex flex-col md:flex-row md:items-center gap-4`}>
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <span className="h-10 w-10 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] flex items-center justify-center"><CreditCard size={19} /></span>
-                  <div className="min-w-0">
-                    <h2 className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">Billing setup</h2>
-                    <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
-                      <span>Razorpay keys: {!razorpaySetup ? '…' : razorpaySetup.mode === 'live'
-                        ? <strong className="text-[#047857]">Live ✓</strong>
-                        : razorpaySetup.mode === 'test'
-                          ? <strong className="text-[#92400e]">Test (no real money)</strong>
-                          : <strong className="text-[#b91c1c]">Not set</strong>}</span>
-                      <span>Webhook secret: {!razorpaySetup ? '…' : razorpaySetup.webhook ? <strong className="text-[#047857]">Set ✓</strong> : <strong className="text-[#b91c1c]">Not set</strong>}</span>
-                    </p>
-                  </div>
-                </div>
-                <button type="button" onClick={resetBillingData} disabled={resetting} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#f3c7c7] text-[#b91c1c] text-[14px] font-semibold hover:bg-[#fdf0f0] dark:border-red-900 dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-50 shrink-0">
-                  {resetting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Clear billing test data
-                </button>
-              </div>
-            )}
-
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className={card}>
-                <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><AlertTriangle size={17} className="text-[#F59E0B]" /><h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Needs attention</h2></div>
-                {attention.length === 0 ? <p className="px-5 py-8 text-[14px] text-[#6B7894] text-center">All good. No failed payments, ending trials or empty AI credit.</p> : (
-                  <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
-                    {attention.slice(0, 8).map((w) => (
-                      <li key={w.id}>
-                        <button type="button" onClick={() => openWorkspace(w.id)} className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#f6f8fc] dark:hover:bg-slate-800/50 cursor-pointer">
-                          <span className="flex-1 min-w-0"><span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{w.name}</span><span className="block text-[13px] text-[#6B7894]">{w.billing.aiPaused && w.billing.hasAccess ? 'AI credit used up' : planLabel(w.billing)[0]}</span></span>
-                          <ChevronRight size={16} className="text-[#8a94a8]" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className={card}>
-                <div className="px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Building2 size={17} className="text-[#1D5BEA]" /><h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Newest workspaces</h2></div>
-                <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
-                  {workspaces.slice(0, 8).map((w) => (
-                    <li key={w.id}>
-                      <button type="button" onClick={() => openWorkspace(w.id)} className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#f6f8fc] dark:hover:bg-slate-800/50 cursor-pointer">
-                        <span className="flex-1 min-w-0"><span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{w.name}</span><span className="block text-[13px] text-[#6B7894]">Joined {formatDate(w.created_at)} · {w.members} {w.members === 1 ? 'person' : 'people'}</span></span>
-                        <PlanPill billing={w.billing} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+          <ConsoleOverview workspaces={workspaces} totals={totals} billingReady={billingReady} onOpen={openWorkspace} onShow={(next) => { setFilter(next); setTab('workspaces') }} />
         ) : tab === 'workspaces' ? (
-          <div className={card}>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800">
-              <div className="flex gap-1.5 overflow-x-auto">
-                {([['all', 'All'], ['paying', 'Paying'], ['trial', 'On trial'], ['ended', 'Ended'], ['exempt', 'Exempt']] as [Filter, string][]).map(([id, label]) => (
-                  <button key={id} type="button" onClick={() => setFilter(id)} className={`px-3 h-8 rounded-lg text-[13.5px] font-semibold whitespace-nowrap cursor-pointer ${filter === id ? 'bg-[#0E1B3D] text-white dark:bg-white dark:text-[#0E1B3D]' : 'bg-[#f1f4f9] dark:bg-slate-800 text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D]'}`}>{label}</button>
-                ))}
-              </div>
-              <label className="relative lg:w-72">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search workspaces" className={`${input} pl-9`} aria-label="Search workspaces" />
-              </label>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-[14px]">
-                <thead>
-                  <tr className="text-left text-[13px] text-[#6B7894]">
-                    <th className="px-5 py-3 font-semibold">Workspace</th>
-                    <th className="px-3 py-3 font-semibold">Plan</th>
-                    <th className="px-3 py-3 font-semibold">AI credit</th>
-                    <th className="px-3 py-3 font-semibold">People</th>
-                    <th className="px-3 py-3 font-semibold">WhatsApp</th>
-                    <th className="px-3 py-3 font-semibold">Joined</th>
-                    <th className="px-3 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorkspaces.map((w) => (
-                    <tr key={w.id} onClick={() => openWorkspace(w.id)} className="border-t border-[#eef1f6] dark:border-slate-800 hover:bg-[#f6f8fc] dark:hover:bg-slate-800/40 cursor-pointer">
-                      <td className="px-5 py-3"><div className="font-semibold text-[#0E1B3D] dark:text-white">{w.name}</div><div className="text-[13px] text-[#6B7894]">{w.contact_email || w.slug}</div></td>
-                      <td className="px-3 py-3"><PlanPill billing={w.billing} /></td>
-                      <td className="px-3 py-3"><CreditBar billing={w.billing} /></td>
-                      <td className="px-3 py-3 text-[#0E1B3D] dark:text-slate-200">{w.members}{w.max_teammates ? ` / ${w.max_teammates}` : ''}</td>
-                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300">{w.whatsapp === 'meta' ? 'Meta' : w.whatsapp === 'twilio' ? 'Twilio' : <span className="text-[#8a94a8]">Not connected</span>}</td>
-                      <td className="px-3 py-3 text-[#4a5672] dark:text-slate-300 whitespace-nowrap">{formatDate(w.created_at)}</td>
-                      <td className="px-3 py-3 text-right"><ChevronRight size={16} className="inline text-[#8a94a8]" /></td>
-                    </tr>
-                  ))}
-                  {filteredWorkspaces.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-[#6B7894]">No workspaces match.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <WorkspaceList workspaces={workspaces} filter={filter} onFilter={setFilter} onOpen={openWorkspace} />
+        ) : tab === 'setup' ? (
+          <ConsoleSetup api={api} status={{ razorpay: razorpaySetup, push: pushSetup }} billingReady={billingReady} canSwitchOnBilling={canSwitchOnBilling}
+            switchingOn={switchingOn} resetting={resetting} onSwitchOnBilling={switchOnBilling} onResetBilling={resetBillingData} />
         ) : tab === 'people' ? (
           <div className={card}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
 import { migrationConnectionString, runBillingMigration } from '@/lib/billing-migration'
+import { firebaseAppConfig, serviceAccount } from '@/lib/push'
 import { razorpayMode, resetBillingData, workspacesWithLiveSubscriptions } from '@/lib/billing-reset'
 
 export const runtime = 'nodejs'
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
     canSwitchOn: Boolean(migrationConnectionString()),
     // Which Razorpay keys the server has (never the keys themselves)
     razorpay: { mode: razorpayMode(), webhook: Boolean(String(process.env.RAZORPAY_WEBHOOK_SECRET || '').trim()) },
+    // Pop-up notifications: the app's settings and the server's sending key (yes or no, never the values)
+    push: { app: Boolean(firebaseAppConfig()), server: Boolean(serviceAccount()) },
   })
 }
 

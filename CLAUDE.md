@@ -117,6 +117,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Super Admin console redesigned** (owner: "really not good"): `components/superadmin/console-parts.tsx`
+  holds `ConsoleOverview` (tiles that open the filtered list, Needs attention with reasons, Plans with
+  paying / trial / monthly amount, Trials ending next, Newest), `WorkspaceList` (filter chips with counts,
+  plan filter, sort, search, CSV download; table on wide screens, cards on phones; last chat, wallet, AI) and
+  `ConsoleSetup` (new **Setup** tab: billing, Razorpay keys and webhook, WAMA's WhatsApp number, Firebase,
+  "Send a test to my phone" → `POST /api/superadmin/push-test`). Server: `attentionFor` (payment failed,
+  ended, trial ending, WhatsApp not connected, message wallet low, AI used up), `planBreakdown`, `last_active_at`
+  (latest conversation) in `lib/superadmin-workspaces.ts`; `billing-setup` GET also returns `push`.
+  Navy / blue / grey, red only for what needs attention.
+
 - **Pop-up notifications (Firebase)**: `lib/push.ts` (FCM HTTP v1 with a service-account JWT, no SDK;
   `sendPush(db, {organizationId, userIds?, exceptUserId?}, notice)` never throws; forgets unregistered
   phones), table `device_tokens` (migration `20261113_push_devices.sql`, lock 724519014),

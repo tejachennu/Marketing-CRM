@@ -52,10 +52,10 @@ export function SharedNumberPanel({ api }: { api: Api }) {
           <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><MessageCircle size={17} className="text-[#1D5BEA]" /> WAMA&apos;s WhatsApp number</h2>
           <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 mt-0.5">Sends booking confirmations, reminders, bills and feedback requests for Starter workspaces.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button type="button" onClick={load} className="h-9 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[13.5px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"><RefreshCw size={14} /> Check</button>
           {data?.configured && missing && (
-            <button type="button" disabled={busy} onClick={submit} className="h-9 px-3 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[13.5px] font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+            <button type="button" disabled={busy} onClick={submit} className="h-9 px-3 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[13.5px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-50">
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Submit templates
             </button>
           )}

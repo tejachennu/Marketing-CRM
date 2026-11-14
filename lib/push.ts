@@ -144,7 +144,7 @@ export interface PushTarget {
  * Send a notification to the phones of a workspace (or of some of its people). Returns how many were
  * sent. Phones Firebase no longer knows are forgotten. Never throws.
  */
-export async function sendPush(db: any, target: PushTarget, notice: PushNotice, fetcher: typeof fetch = fetch): Promise<number> {
+export async function sendPush(db: any, target: PushTarget, notice: PushNotice, fetcher: typeof fetch = fetch, problems?: string[]): Promise<number> {
   try {
     const account = serviceAccount()
     if (!account) return 0
@@ -167,15 +167,18 @@ export async function sendPush(db: any, target: PushTarget, notice: PushNotice, 
         // The app was removed or signed out on that phone
         if (response.status === 404 || code === 'UNREGISTERED') await db.from('device_tokens').delete().eq('token', phone.token)
         else console.warn('[Push] Not sent:', response.status, code || failure?.error?.message || '')
+        problems?.push(String(failure?.error?.message || code || `Firebase returned HTTP ${response.status}`))
         return false
       } catch (sendError: any) {
         console.warn('[Push] Not sent:', sendError?.message)
+        problems?.push(String(sendError?.message || 'Firebase could not be reached'))
         return false
       }
     }))
     return results.filter(Boolean).length
   } catch (error: any) {
     console.warn('[Push] Could not send:', error?.message)
+    problems?.push(String(error?.message || 'The notification could not be sent'))
     return 0
   }
 }

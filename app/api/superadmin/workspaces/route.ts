@@ -26,8 +26,12 @@ export async function GET(request: NextRequest) {
     const billingByOrg = new Map<string, any>((billingRows.error ? [] : billingRows.data || []).map((row: any) => [row.organization_id, row]))
 
     const workspaces = await Promise.all((organizations || []).map(async (organization: any) => {
-      const { count } = await db.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', organization.id)
-      return summarizeWorkspace(organization, billingByOrg.get(organization.id) || null, count || 0)
+      const [{ count }, latest] = await Promise.all([
+        db.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', organization.id),
+        // When a customer last wrote or was written to: shows which workspaces are really in use
+        db.from('conversations').select('last_message_at').eq('organization_id', organization.id).not('last_message_at', 'is', null).order('last_message_at', { ascending: false }).limit(1),
+      ])
+      return summarizeWorkspace(organization, billingByOrg.get(organization.id) || null, count || 0, Date.now(), latest.data?.[0]?.last_message_at || null)
     }))
 
     return NextResponse.json({ success: true, billingReady: !billingRows.error, workspaces, totals: workspaceTotals(workspaces) })

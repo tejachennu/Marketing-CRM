@@ -444,7 +444,9 @@ test('Console: totals add up each paying workspace\'s plan price', () => {
   ]
   assert.equal(list[0].whatsapp, 'meta')
   assert.equal(list[4].whatsapp, 'twilio')
-  assert.deepEqual(W.workspaceTotals(list), { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 8500, people: 12 })
+  const totals = W.workspaceTotals(list)
+  assert.deepEqual({ ...totals, byPlan: undefined }, { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 8500, people: 12, attention: 3, trialsEndingSoon: 0, byPlan: undefined })
+  assert.deepEqual(totals.byPlan.filter((p) => p.paying || p.trial).map((p) => [p.plan, p.paying, p.trial, p.revenue]), [['growth', 1, 1, 2500], ['pro_1', 1, 0, 6000]])
 })
 
 // ── When the first charge happens ───────────────────────────────────────────
@@ -867,4 +869,18 @@ test('Console: set a plan, limits, WAMA\'s number and message wallet money by ha
   assert.equal(db.tables.organization_billing[0].message_balance, 250)
   const summary = W2.summarizeWorkspace({ id: 'org-1', name: 'x', slug: 'x', created_at: iso(-1) }, db.tables.organization_billing[0], 1, NOW)
   assert.deepEqual([summary.billing.plan, summary.billing.price, summary.billing.messageBalance], ['starter', 999, 250])
+})
+
+test('Console: what needs attention on a workspace, most pressing first', () => {
+  const org = { id: 'x', name: 'x', slug: 'x', created_at: iso(-1) }
+  const connected = { ...org, whatsapp_provider: 'facebook', whatsapp_phone_number_id: '1' }
+  const kinds = (o, r) => W.summarizeWorkspace(o, r, 1, NOW).attention.map((a) => a.kind)
+  assert.deepEqual(kinds(connected, row()), [])
+  assert.deepEqual(kinds(org, row({ trial_ends_at: iso(2) })), ['trial_ending', 'no_whatsapp'])
+  assert.deepEqual(kinds(connected, row({ status: 'past_due', current_period_end: iso(-1) })), ['payment_failed'])
+  assert.deepEqual(kinds(connected, row({ trial_ends_at: iso(-2), ai_balance: 0 })), ['ended'])
+  assert.deepEqual(kinds(connected, row({ ai_balance: 0 })), ['ai_paused'])
+  // Starter: WAMA's number sends, so no WhatsApp is needed, but the wallet must have money; it has no AI
+  assert.deepEqual(kinds(org, row({ plan: 'starter', whatsapp_mode: 'shared', message_balance: 20, ai_balance: 0 })), ['wallet_low'])
+  assert.deepEqual(kinds(org, row({ billing_exempt: true })), [])
 })
