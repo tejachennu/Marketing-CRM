@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { getSupabase } from '@/lib/supabase'
+import { authSessionManager } from '@/lib/auth-context'
 
 /** Which sign-in providers are switched on in Supabase (NEXT_PUBLIC_OAUTH_PROVIDERS, default "google"). */
 export function oauthProviders(): ('google' | 'apple')[] {
@@ -29,12 +31,51 @@ function AppleMark() {
   )
 }
 
+const NOT_ON = 'Signing in with Google is not switched on yet. Please use your email for now.'
+
 /**
- * "Continue with Google" (and Apple when switched on). Opens the provider's page; it comes back to
- * /auth/callback, which signs the person in, or asks their business name the first time. `plan` (from
+ * Sign in with Google through Firebase (Firebase only checks who the person is), then swap that for
+ * the person's WAMA CRM account in Supabase (/api/auth/firebase). Returns whether they still need to
+ * name their business.
+ */
+async function signInThroughFirebase(provider: 'google' | 'apple'): Promise<{ needsBusiness: boolean }> {
+  const config = await fetch('/api/auth/firebase').then((res) => res.json()).catch(() => null)
+  if (!config?.firebase) throw new Error(NOT_ON)
+  const [{ initializeApp, getApps }, auth] = await Promise.all([import('firebase/app'), import('firebase/auth')])
+  const app = getApps().find((a) => a.name === 'wama-signin') || initializeApp(config.firebase, 'wama-signin')
+  const firebaseAuth = auth.getAuth(app)
+  const authProvider = provider === 'google' ? new auth.GoogleAuthProvider() : new auth.OAuthProvider('apple.com')
+  if (provider === 'google') (authProvider as any).setCustomParameters({ prompt: 'select_account' })
+  else (authProvider as any).addScope('email')
+  let result
+  try {
+    result = await auth.signInWithPopup(firebaseAuth, authProvider)
+  } catch (error: any) {
+    const code = String(error?.code || '')
+    if (code.includes('popup-closed') || code.includes('cancelled-popup')) throw new Error('')
+    if (code.includes('popup-blocked')) throw new Error('Your browser blocked the Google window. Allow pop-ups for this site and try again.')
+    if (code.includes('operation-not-allowed') || code.includes('configuration-not-found') || code.includes('unauthorized-domain')) throw new Error(NOT_ON)
+    throw new Error('Google sign-in did not finish. Please try again.')
+  }
+  const idToken = await result.user.getIdToken()
+  // Firebase's part is done: WAMA CRM keeps its own (Supabase) session from here
+  await auth.signOut(firebaseAuth).catch(() => undefined)
+  const res = await fetch('/api/auth/firebase', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !data.session) throw new Error(data.error || 'Your account could not be opened. Please try again.')
+  authSessionManager.setSession(data.session)
+  authSessionManager.setUser(data.user)
+  await getSupabase().auth.setSession({ access_token: data.session.access_token, refresh_token: data.session.refresh_token })
+  return { needsBusiness: data.needsBusiness === true }
+}
+
+/**
+ * "Continue with Google" (and Apple when switched on). Opens Google's window; once the person is known,
+ * they go to the dashboard, or name their business first (/auth/callback) the first time. `plan` (from
  * the pricing page) is remembered for that first time.
  */
 export function OAuthButtons({ plan, onError }: { plan?: string | null; onError?: (message: string) => void }) {
+  const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const providers = oauthProviders()
   if (!providers.length) return null
@@ -43,14 +84,11 @@ export function OAuthButtons({ plan, onError }: { plan?: string | null; onError?
     setBusy(provider)
     try {
       if (plan) sessionStorage.setItem('signup_plan', plan)
-      const { error } = await getSupabase().auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: `${window.location.origin}/auth/callback`, ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}) },
-      })
-      if (error) throw error
+      const { needsBusiness } = await signInThroughFirebase(provider)
+      router.replace(needsBusiness ? '/auth/callback' : '/dashboard')
     } catch (error: any) {
       setBusy(null)
-      onError?.(/provider is not enabled|Unsupported provider/i.test(error?.message || '') ? `Signing in with ${provider === 'google' ? 'Google' : 'Apple'} is not switched on yet. Please use your email for now.` : error?.message || 'That did not work. Please try again.')
+      if (error?.message) onError?.(error.message)
     }
   }
 

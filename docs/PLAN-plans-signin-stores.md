@@ -284,7 +284,7 @@ All keys go only into Vercel, Supabase, Firebase or GitHub secrets. Never in the
 | Phase | Status |
 |---|---|
 | 1 Plans and billing | done (server, website pricing + billing + Super Admin, app Billing). Not deployed |
-| 2 Google / Apple sign-in | Google built (website + app, business name step); needs Google switched on in Supabase. Apple waits for the iPhone build |
+| 2 Google / Apple sign-in | Google built through Firebase (Firebase checks the Google account; accounts stay in Supabase), website + app with the business name step. Needs Google on in Firebase + the web app values in Vercel. Apple waits for the iPhone build |
 | 3 WAMA's number + booking page | done: shared sender + webhook + Super Admin templates, booking page /b/<slug> with QR codes, Connect-WhatsApp gate. Not yet: change/cancel link, per-person hours and leave |
 | 4 App for three account kinds | not started |
 | 5 E-commerce in the app | not started |
