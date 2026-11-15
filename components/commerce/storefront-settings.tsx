@@ -289,9 +289,9 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
               disabled={!canManage || busy}
               className={`${inputClass} sm:flex-1`}
             />
-            <button type="button" onClick={connect} disabled={!canManage || busy || !domain || domain === info?.domain} className={`${primaryButton} shrink-0 justify-center`}>
+            {domain !== info?.domain && <button type="button" onClick={connect} disabled={!canManage || busy || !domain} className={`${primaryButton} shrink-0 justify-center`}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} {info?.domain ? 'Change' : 'Connect'}
-            </button>
+            </button>}
           </div>
           {error && <p role="alert" className="text-xs font-semibold text-[#b91c1c]">{error}</p>}
 

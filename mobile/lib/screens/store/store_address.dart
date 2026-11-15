@@ -156,12 +156,14 @@ class _StoreAddressCardState extends State<StoreAddressCard> {
               decoration: const InputDecoration(labelText: 'Your domain', hintText: 'shop.yourname.com'),
               onChanged: (_) => setState(() {}),
             ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: !widget.canManage || _busy || _domain.text.trim().isEmpty || _domain.text.trim().toLowerCase() == domain ? null : _connect,
-              icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.language, size: 18),
-              label: Text(domain == null ? 'Connect' : 'Change'),
-            ),
+            if (domain == null || _domain.text.trim().toLowerCase() != domain) ...[
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: !widget.canManage || _busy || _domain.text.trim().isEmpty || _domain.text.trim().toLowerCase() == domain ? null : _connect,
+                icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.language, size: 18),
+                label: Text(domain == null ? 'Connect' : 'Change'),
+              ),
+            ],
             if (_error.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),

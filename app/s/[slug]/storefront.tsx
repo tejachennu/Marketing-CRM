@@ -119,6 +119,14 @@ function Stepper({ value, onChange, small }: { value: number; onChange: (n: numb
   )
 }
 
+/** +919876543210 → +91 98765 43210 (Indian numbers); other numbers as they are. */
+export function showPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 12 && digits.startsWith('91')) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`
+  if (digits.length === 10) return `${digits.slice(0, 5)} ${digits.slice(5)}`
+  return phone
+}
+
 export function Storefront({ store, startCategory }: { store: StoreView; startCategory: string | null }) {
   const money = (n: number) => formatMoney(n, store.currency)
   const [category, setCategory] = useState<string | null>(startCategory)
@@ -306,7 +314,7 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
     <div style={{ ['--c' as any]: store.colour }} className="min-h-screen bg-[#f4f6fa] text-[#0E1B3D]">
       {store.announcement && <div className="bg-[var(--c)] text-white text-center text-[13.5px] font-semibold px-4 py-2">{store.announcement}</div>}
 
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#e3e8f2]">
+      <header className="sticky top-0 z-30 bg-white border-b border-[#e3e8f2]">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center gap-3">
           {store.logo ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -399,7 +407,7 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
           </div>
           <div className="space-y-2 text-[#4a5672]">
             {store.address && <p className="flex gap-2"><MapPin size={17} className="shrink-0 mt-0.5 text-[var(--c)]" /> <span className="whitespace-pre-line">{store.address}</span></p>}
-            {store.phone && <a href={`tel:${store.phone}`} className="flex gap-2 font-semibold text-[#0E1B3D]"><Phone size={17} className="text-[var(--c)]" /> {store.phone}</a>}
+            {store.phone && <a href={`tel:${store.phone}`} className="flex gap-2 font-semibold text-[#0E1B3D]"><Phone size={17} className="text-[var(--c)]" /> {showPhone(store.phone)}</a>}
             {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-full bg-[#25D366] text-white font-bold items-center gap-2">Chat on WhatsApp</a>}
           </div>
         </div>
@@ -523,9 +531,9 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                 {store.deliveryNote && handover === 'delivery' && <p className="text-[13.5px] text-[#4a5672] bg-[#f4f6fa] rounded-xl p-3 whitespace-pre-line">{store.deliveryNote}</p>}
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything we should know? (optional)" aria-label="Note" rows={2} maxLength={500} className={`${input} h-auto py-3`} />
                 {store.payOnline && store.payLater && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2">
                     {([['online', 'Pay now', CreditCard], ['later', handover === 'delivery' ? 'Cash on delivery' : 'Cash at pick up', Banknote]] as const).map(([id, label, Icon]) => (
-                      <button key={id} type="button" onClick={() => setPay(id)} className={`h-12 rounded-xl border-2 font-bold text-[14px] inline-flex items-center justify-center gap-2 cursor-pointer ${pay === id ? 'border-[var(--c)] text-[var(--c)] bg-[var(--c)]/5' : 'border-[#d5ddeb] text-[#4a5672]'}`}>
+                      <button key={id} type="button" onClick={() => setPay(id)} className={`h-12 px-2 rounded-xl border-2 font-bold text-[14px] leading-tight inline-flex items-center justify-center gap-2 cursor-pointer ${pay === id ? 'border-[var(--c)] text-[var(--c)] bg-[var(--c)]/5' : 'border-[#d5ddeb] text-[#4a5672]'}`}>
                         <Icon size={17} /> {label}
                       </button>
                     ))}
