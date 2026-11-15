@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Plus, Search, ShieldCheck, ShoppingBag, Store, Truck, X } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
+import { showPhone } from '@/lib/phone-display'
 import type { StoreView } from '@/lib/commerce/storefront'
 
 type Product = StoreView['products'][number]
@@ -117,14 +118,6 @@ function Stepper({ value, onChange, small }: { value: number; onChange: (n: numb
       <button type="button" aria-label="One more" onClick={() => onChange(value + 1)} className={`${size} flex items-center justify-center text-[#0E1B3D] cursor-pointer`}><Plus size={small ? 14 : 16} /></button>
     </div>
   )
-}
-
-/** +919876543210 → +91 98765 43210 (Indian numbers); other numbers as they are. */
-export function showPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
-  if (digits.length === 12 && digits.startsWith('91')) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`
-  if (digits.length === 10) return `${digits.slice(0, 5)} ${digits.slice(5)}`
-  return phone
 }
 
 export function Storefront({ store, startCategory }: { store: StoreView; startCategory: string | null }) {

@@ -89,3 +89,62 @@ test('Store payment: an order is marked paid once, and only for the right amount
   assert.equal(await R.markStoreOrderPaid(db, order, { id: 'pay_1', amount: 56000 }), false)
   assert.equal(rows.commerce_transactions.length, 1)
 })
+
+// A tiny stand-in for the database: filters rows of one table by eq() (incl. JSON paths like a->b->>c)
+function fakeDb(rows) {
+  const read = (row, key) => {
+    const m = key.match(/^(\w+)->(\w+)->>(\w+)$/)
+    return m ? row[m[1]]?.[m[2]]?.[m[3]] : row[key]
+  }
+  return {
+    from() {
+      const filters = []
+      const q = {
+        select() { return q },
+        eq(k, v) { filters.push([k, v]); return q },
+        rows() { return rows.filter((r) => filters.every(([k, v]) => String(read(r, k)) === String(v))) },
+        maybeSingle() { return Promise.resolve({ data: q.rows()[0] || null }) },
+        limit() { return Promise.resolve({ data: q.rows() }) },
+      }
+      return q
+    },
+  }
+}
+
+test('Store webhook: the order is found from the Razorpay order notes, the payment notes, or the Razorpay order id', async () => {
+  const ORDER = { id: '33333333-3333-4333-8333-333333333333', organization_id: 'org1', order_number: 'ORD-1', shipping_address: { payment: { order_id: 'order_RZP1' } } }
+  const db = fakeDb([ORDER, { ...ORDER, id: '44444444-4444-4444-8444-444444444444', organization_id: 'org2', order_number: 'ORD-2' }])
+  const pay = (notes) => ({ payload: { payment: { entity: { order_id: 'order_RZP1', notes: notes || {} } } } })
+  // Razorpay puts our notes on the ORDER entity (order.paid), not on the payment
+  const fromOrder = { payload: { payment: { entity: { order_id: 'order_RZP1', notes: [] } }, order: { entity: { notes: { wama_order_id: ORDER.id } } } } }
+  assert.equal((await R.findStoreOrder(db, 'org1', fromOrder)).id, ORDER.id)
+  assert.equal((await R.findStoreOrder(db, 'org1', pay({ wama_order_number: 'ORD-1' }))).id, ORDER.id)
+  // No notes at all (payment.captured): found by the Razorpay order id we kept
+  assert.equal((await R.findStoreOrder(db, 'org1', pay())).id, ORDER.id)
+  // Never another workspace's order
+  assert.equal((await R.findStoreOrder(db, 'org3', pay({ wama_order_id: ORDER.id }))), null)
+  // A made-up id is not used as an id
+  assert.equal((await R.findStoreOrder(db, 'org1', pay({ wama_order_id: "x' or 1=1" }))).id, ORDER.id)
+})
+
+test('Store page: unfinished payments, cancelled orders and Razorpay time limit are handled', () => {
+  const fs = require('fs')
+  const path = require('path')
+  const root = path.join(__dirname, '..')
+  const page = fs.readFileSync(path.join(root, 'app/s/[slug]/storefront.tsx'), 'utf8')
+  assert.match(page, /store-unpaid:\$\{store\.slug\}/, 'an unfinished payment is kept across a reload')
+  assert.match(page, /action: 'check'/, 'and checked with Razorpay when the page opens again')
+  assert.match(page, /notes: \{ wama_order_number/, 'checkout passes our order number to Razorpay')
+  const pay = fs.readFileSync(path.join(root, 'app/api/public/store/[slug]/pay/route.ts'), 'utf8')
+  assert.match(pay, /order\.status === 'canceled' && body\?\.action !== 'check'/, 'no paying for a cancelled order')
+  const lib = fs.readFileSync(path.join(root, 'lib/commerce/store-payments.ts'), 'utf8')
+  assert.match(lib, /AbortSignal\.timeout\(15000\)/)
+  assert.ok(fs.existsSync(path.join(root, 'app/s/[slug]/not-found.tsx')), 'a closed store shows a friendly page')
+})
+
+test('Store page: phone numbers are shown in a readable way', () => {
+  const { showPhone } = require('../lib/phone-display.ts')
+  assert.equal(showPhone('+919876543210'), '+91 98765 43210')
+  assert.equal(showPhone('9876543210'), '98765 43210')
+  assert.equal(showPhone('+14155550100'), '+14155550100')
+})

@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wama_mobile/screens/store/store_logic.dart';
@@ -22,6 +23,8 @@ void main() {
       ('store_products', ['Classic white linen shirt', 'Edit']),
       ('store_products', ['Add product']),
       ('store_products', ['Send catalog']),
+      // Store address: going back to our address asks first
+      ('store_website', ['Our address (free)']),
     ],
   );
 
@@ -33,6 +36,12 @@ void main() {
     expect(channelLabel({'checkout_type': 'in_chat'}), isNull);
     expect(nextStatuses('delivered'), isEmpty);
     expect(needsRefund({'status': 'canceled', 'payment_status': 'paid'}), isTrue);
+  });
+
+  test('Made store pictures are recognised by their address and keep their colour', () {
+    expect(madePicture('https://wamacrm.magnetora.in/api/public/store-art?kind=banner&c=0E1B3D&name=X'), const Color(0xFF0E1B3D));
+    expect(madePicture('https://wamacrm.magnetora.in/api/public/store-art?kind=logo&name=X'), const Color(0xFF1D5BEA));
+    expect(madePicture('https://cdn.example.com/photo.jpg'), isNull);
   });
 
   test('Money is shown in the order currency', () {
