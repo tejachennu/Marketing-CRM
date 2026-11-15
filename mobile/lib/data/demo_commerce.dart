@@ -243,6 +243,8 @@ class DemoCommerce {
     switch (path) {
       case '/api/organization':
         return {'organization': org};
+      case '/api/commerce/storefront/payments':
+        return {'connected': true, 'keyId': 'rzp_live_Ab12Cd34Ef', 'live': true, 'webhook': false, 'webhookUrl': 'https://wamacrm.magnetora.in/api/public/store/glow-store/razorpay-webhook'};
       case '/api/commerce/storefront':
         return {
           'settings': website,
@@ -426,6 +428,14 @@ class DemoCommerce {
         return {'success': true, 'flowId': 'flow-1'};
       case '/api/commerce/catalog':
         return {'success': true, 'catalogId': '1234567890', 'connected': true};
+      case '/api/commerce/storefront/payments':
+        return {
+          'connected': true,
+          'keyId': body['keyId'],
+          'live': '${body['keyId']}'.startsWith('rzp_live_'),
+          'webhook': true,
+          'webhookUrl': 'https://wamacrm.magnetora.in/api/public/store/glow-store/razorpay-webhook',
+        };
       case '/api/commerce/storefront':
         website.addAll(Map<String, dynamic>.from(body['settings'] as Map));
         return {'success': true, 'settings': website, 'link': 'https://wamacrm.magnetora.in/s/glow-store'};

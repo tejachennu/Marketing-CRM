@@ -16,6 +16,10 @@ import type { ManualOrderInput } from './manual-order'
 export const STOREFRONT_SQL = `-- The online store page's settings (banners, categories, colour, delivery). Safe to run more than once.
 -- The app runs it on its own when first needed.
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS storefront JSONB;
+-- The business's own Razorpay account, for online payment on the store page (server only; never sent to a page)
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS store_razorpay_key_id TEXT;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS store_razorpay_key_secret TEXT;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS store_razorpay_webhook_secret TEXT;
 
 NOTIFY pgrst, 'reload schema';
 `
@@ -26,10 +30,10 @@ export const storefrontSchemaSetup = createAutoSetup('Online store', (connection
 /** Run a database step; if the storefront column is missing, add it and try again. */
 export async function withStorefrontSchema(step: () => PromiseLike<any>, setup: { ensure: () => Promise<boolean> } = storefrontSchemaSetup): Promise<any> {
   const first = await step()
-  if (!isMissingSchemaError(first.error, /storefront/)) return first
+  if (!isMissingSchemaError(first.error, /storefront|store_razorpay/)) return first
   if (!(await setup.ensure())) return first
   let result = await step()
-  for (let attempt = 1; attempt < 4 && isMissingSchemaError(result.error, /storefront/); attempt++) {
+  for (let attempt = 1; attempt < 4 && isMissingSchemaError(result.error, /storefront|store_razorpay/); attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 600 * attempt))
     result = await step()
   }
@@ -77,6 +81,8 @@ export interface StorefrontSettings {
   address: string
   about: string
   show_out_of_stock: boolean
+  /** How customers pay: on delivery / pick up, online (Razorpay), or their choice. */
+  payment: 'later' | 'online' | 'both'
 }
 
 export const MAX_BANNERS = 8
@@ -86,7 +92,7 @@ export function defaultStorefront(): StorefrontSettings {
   return {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
-    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false,
+    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later',
   }
 }
 
@@ -162,6 +168,7 @@ export function readStorefront(raw: any): StorefrontSettings {
     address: longText(raw.address, 300),
     about: longText(raw.about, 1200),
     show_out_of_stock: raw.show_out_of_stock === true,
+    payment: raw.payment === 'online' || raw.payment === 'both' ? raw.payment : 'later',
   }
 }
 
@@ -201,6 +208,8 @@ export interface StorePage {
   categories: StoreCategory[]
   /** The delivery charge rule in force (the page's own, else the store's shipping settings). */
   fees: { fee: number; freeFrom: number }
+  /** How customers can pay right now: online needs the business's Razorpay keys. */
+  pay: { online: boolean; later: boolean }
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -229,6 +238,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     settings,
     products,
     categories: storeCategories(settings, products),
+    pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
     fees: {
       fee: settings.delivery_fee ?? (Number(org.commerce_default_shipping_fee) || 0),
       freeFrom: settings.free_delivery_from ?? (Number(org.commerce_free_shipping_threshold) || 0),
@@ -245,9 +255,16 @@ export function storeView(page: StorePage) {
     categories: page.categories, products: page.products, pickup: s.pickup, delivery: s.delivery,
     deliveryNote: s.delivery_note, deliveryFee: page.fees.fee, freeFrom: page.fees.freeFrom, minOrder: s.min_order,
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
+    payOnline: page.pay.online, payLater: page.pay.later,
   }
 }
 export type StoreView = ReturnType<typeof storeView>
+
+/** Ways to pay on the page: online only when the business's Razorpay is connected; never none. */
+export function payOptions(settings: Pick<StorefrontSettings, 'payment'>, razorpayConnected: boolean): { online: boolean; later: boolean } {
+  const online = razorpayConnected && settings.payment !== 'later'
+  return { online, later: !online || settings.payment !== 'online' }
+}
 
 /** The delivery charge for an order of this much, by the store page's own rule. */
 export function deliveryCharge(settings: StorefrontSettings, subtotal: number, org: { commerce_default_shipping_fee?: unknown; commerce_free_shipping_threshold?: unknown } = {}): number {
@@ -257,7 +274,7 @@ export function deliveryCharge(settings: StorefrontSettings, subtotal: number, o
 }
 
 /** An order placed on the page: checked against what the page offers, prices from the product list. */
-export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrderInput; subtotal: number } | { error: string } {
+export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrderInput; subtotal: number; pay: 'online' | 'later' } | { error: string } {
   const name = text(body?.name, 120)
   if (name.length < 2) return { error: 'Please enter your name.' }
   const phone = normalizePhone(body?.phone)
@@ -265,6 +282,9 @@ export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrde
   const handover = body?.handover === 'delivery' ? 'delivery' : 'pickup'
   if (handover === 'delivery' && !page.settings.delivery) return { error: 'This store does not deliver. Please choose pick up.' }
   if (handover === 'pickup' && !page.settings.pickup) return { error: 'This store only delivers. Please add your address.' }
+  const pay: 'online' | 'later' = body?.pay === 'online' ? 'online' : 'later'
+  if (pay === 'online' && !page.pay.online) return { error: 'Online payment is not available here right now. Please choose to pay on delivery or pick up.' }
+  if (pay === 'later' && !page.pay.later) return { error: 'Please pay online to place this order.' }
   const raw: any[] = Array.isArray(body?.items) ? body.items : []
   if (!raw.length) return { error: 'Your cart is empty.' }
   if (raw.length > 60) return { error: 'Please order at most 60 different products at once.' }
@@ -290,6 +310,7 @@ export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrde
   }
   return {
     subtotal,
+    pay,
     order: { channel: 'website', customer: { contactId: null, name, phone }, items, handover, paid: false, paymentMethod: null, shippingFee: null, address, note: longText(body?.note, 500) || null },
   }
 }

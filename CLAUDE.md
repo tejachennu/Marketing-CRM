@@ -117,6 +117,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Razorpay on the online store website** (owner: "Online store website (/s/shop). Integrate the razorpay"):
+  each business connects **its own** Razorpay (money goes to the business, not WAMA): new columns
+  `organizations.store_razorpay_key_id / _key_secret / _webhook_secret` (in the storefront migration; hidden
+  from `/api/organization` by `isSecretColumn`). `lib/commerce/store-payments.ts`: `checkStoreKeys` (reads one
+  order), `createStorePayment` (Razorpay order in paise, notes = our order), `verifyStoreSignature`,
+  `verifyStoreWebhook`, `paidPayment` (asks Razorpay), `markStoreOrderPaid` (amount must match; once, by
+  `payment_status <> 'paid'`; transaction row; "Paid online" pop-up). Settings `storefront.payment` =
+  later | online | both, `payOptions` (online only when keys are saved; never no way to pay). Order route:
+  `pay: 'online'` → order `payment_pending` + `payment_method razorpay`, Razorpay order id kept in
+  `shipping_address.payment.order_id`, page opens checkout.js; `POST /api/public/store/[slug]/pay`
+  (signature → paid; `action: 'check'`; `action: 'later'` → pay on delivery when allowed);
+  `POST /api/public/store/[slug]/razorpay-webhook` (business's webhook secret). Keys: `GET/PUT/DELETE
+  /api/commerce/storefront/payments` (PUT checks the keys with Razorpay first; admins). Web Website tab →
+  Online payment (Razorpay) + How customers pay; app Website screen the same. Page: Pay now / Pay on delivery
+  choice, "Payment not finished" with Try again / Pay later instead. **Not tried with real Razorpay keys yet.**
+
 - **Online store website for each business** (owner: "e-commerce store front page website, carousel,
   categories, fully dynamic, responsive, ordering products from the page"): public page **`/s/<org slug>`**
   (`app/s/[slug]/page.tsx` + `storefront.tsx`): top strip, header with search and cart, banner carousel

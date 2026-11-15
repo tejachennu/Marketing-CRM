@@ -1,12 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, MapPin, Minus, Phone, Plus, Search, ShoppingBag, Store, Truck, X } from 'lucide-react'
+import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Plus, Search, ShieldCheck, ShoppingBag, Store, Truck, X } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import type { StoreView } from '@/lib/commerce/storefront'
 
 type Product = StoreView['products'][number]
+
+/** Razorpay's checkout window, loaded only when someone pays online. */
+function loadRazorpay(): Promise<any> {
+  const w = window as any
+  if (w.Razorpay) return Promise.resolve(w.Razorpay)
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = () => (w.Razorpay ? resolve(w.Razorpay) : reject(new Error('Online payment could not be opened.')))
+    script.onerror = () => reject(new Error('Online payment could not be opened. Check your internet and try again.'))
+    document.body.appendChild(script)
+  })
+}
 type Cart = Record<string, number>
 
 const input = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] bg-white text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[var(--c)] focus:ring-4 focus:ring-[var(--c)]/10'
@@ -162,9 +175,53 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
   const [note, setNote] = useState('')
   const [placing, setPlacing] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<{ orderNumber: string; total: number } | null>(null)
+  const [done, setDone] = useState<{ orderNumber: string; total: number; paid: boolean } | null>(null)
+  const [pay, setPay] = useState<'online' | 'later'>(store.payOnline ? 'online' : 'later')
+  // An online payment that was started but not finished: try again, or pay later
+  const [unpaid, setUnpaid] = useState<{ orderNumber: string; total: number; razorpay: any } | null>(null)
   const delivery = handover === 'delivery' ? (store.freeFrom > 0 && subtotal >= store.freeFrom ? 0 : store.deliveryFee) : 0
   const short = store.minOrder > 0 && subtotal < store.minOrder
+
+  const confirmPayment = async (orderNumber: string, razorpayOrderId: string, extra: Record<string, string>) => {
+    const res = await fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber, razorpayOrderId, ...extra }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'The payment could not be confirmed.')
+    return data
+  }
+
+  /** Open Razorpay for an order; resolves when the window closes, paid or not. */
+  async function payOnline(order: { orderNumber: string; total: number; razorpay: any }) {
+    setError('')
+    const Razorpay = await loadRazorpay()
+    await new Promise<void>((resolve) => {
+      const checkout = new Razorpay({
+        key: order.razorpay.keyId,
+        order_id: order.razorpay.orderId,
+        amount: order.razorpay.amount,
+        currency: order.razorpay.currency,
+        name: order.razorpay.name,
+        description: `Order #${order.orderNumber}`,
+        prefill: { name: order.razorpay.customer?.name, contact: order.razorpay.customer?.contact },
+        theme: { color: store.colour },
+        handler: async (response: any) => {
+          try {
+            const data = await confirmPayment(order.orderNumber, order.razorpay.orderId, { paymentId: response.razorpay_payment_id, signature: response.razorpay_signature })
+            if (data.paid) {
+              setUnpaid(null)
+              setDone({ orderNumber: order.orderNumber, total: order.total, paid: true })
+              setPanel('done')
+            } else setError('Your payment is being checked. If money was taken, the shop will see it shortly.')
+          } catch (err: any) {
+            setError(err.message)
+          }
+          resolve()
+        },
+        modal: { ondismiss: () => resolve() },
+      })
+      checkout.on('payment.failed', (response: any) => setError(response?.error?.description ? `Payment failed: ${response.error.description}` : 'The payment did not go through.'))
+      checkout.open()
+    })
+  }
 
   async function place(event: React.FormEvent) {
     event.preventDefault()
@@ -174,12 +231,33 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
       const res = await fetch(`/api/public/store/${store.slug}/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, handover, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty })) }),
+        body: JSON.stringify({ name, phone, handover, pay, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty })) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
-      setDone({ orderNumber: data.orderNumber, total: data.total })
       setCart({})
+      if (data.razorpay) {
+        const order = { orderNumber: data.orderNumber, total: data.total, razorpay: data.razorpay }
+        setUnpaid(order)
+        await payOnline(order)
+      } else {
+        setDone({ orderNumber: data.orderNumber, total: data.total, paid: false })
+        setPanel('done')
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setPlacing(false)
+    }
+  }
+
+  async function payLaterInstead() {
+    if (!unpaid) return
+    setPlacing(true)
+    try {
+      await confirmPayment(unpaid.orderNumber, unpaid.razorpay.orderId, { action: 'later' })
+      setDone({ orderNumber: unpaid.orderNumber, total: unpaid.total, paid: false })
+      setUnpaid(null)
       setPanel('done')
     } catch (err: any) {
       setError(err.message)
@@ -369,7 +447,22 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
               </>
             )}
 
-            {panel === 'checkout' && (
+            {panel === 'checkout' && unpaid && (
+              <div className="flex-1 overflow-y-auto p-6 text-center">
+                <span className="mx-auto h-16 w-16 rounded-full bg-[#fdf0f0] text-[#b91c1c] flex items-center justify-center"><CreditCard size={28} /></span>
+                <p className="mt-4 text-[20px] font-extrabold">Payment not finished</p>
+                <p className="mt-1 text-[15px] text-[#4a5672]">Your order <b>#{unpaid.orderNumber}</b> is saved and waits for payment of {money(unpaid.total)}.</p>
+                {error && <p role="alert" className="mt-3 rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}
+                <button type="button" disabled={placing} onClick={() => payOnline(unpaid).catch((err) => setError(err.message))} className="mt-6 w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-60">Try paying again</button>
+                {store.payLater && (
+                  <button type="button" disabled={placing} onClick={payLaterInstead} className="mt-3 w-full h-12 rounded-full border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer disabled:opacity-60">
+                    {placing && <Loader2 size={16} className="inline animate-spin mr-1" />} {handover === 'delivery' ? 'Pay on delivery instead' : 'Pay at pick up instead'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {panel === 'checkout' && !unpaid && (
               <form onSubmit={place} className="flex-1 overflow-y-auto p-4 space-y-4">
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" aria-label="Your name" required maxLength={120} className={input} />
                 <PhoneField value={phone} onChange={setPhone} inputClassName={input} placeholder="Mobile number" />
@@ -396,15 +489,28 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                 )}
                 {store.deliveryNote && handover === 'delivery' && <p className="text-[13.5px] text-[#4a5672] bg-[#f4f6fa] rounded-xl p-3 whitespace-pre-line">{store.deliveryNote}</p>}
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything we should know? (optional)" aria-label="Note" rows={2} maxLength={500} className={`${input} h-auto py-3`} />
+                {store.payOnline && store.payLater && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {([['online', 'Pay now', CreditCard], ['later', handover === 'delivery' ? 'Pay on delivery' : 'Pay at pick up', Banknote]] as const).map(([id, label, Icon]) => (
+                      <button key={id} type="button" onClick={() => setPay(id)} className={`h-12 rounded-xl border-2 font-bold text-[14px] inline-flex items-center justify-center gap-2 cursor-pointer ${pay === id ? 'border-[var(--c)] text-[var(--c)] bg-[var(--c)]/5' : 'border-[#d5ddeb] text-[#4a5672]'}`}>
+                        <Icon size={17} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="rounded-xl bg-[#f4f6fa] p-4 space-y-1.5 text-[14.5px]">
                   <div className="flex justify-between"><span>Items</span><span>{money(subtotal)}</span></div>
                   {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{delivery ? money(delivery) : 'Free'}</span></div>}
                   <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(subtotal + delivery)}</span></div>
-                  <p className="text-[13px] text-[#6B7894]">Pay when you {handover === 'delivery' ? 'get your order' : 'pick it up'}. The shop will confirm your order.</p>
+                  {pay === 'online' ? (
+                    <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> Pay securely by UPI, card or net banking with Razorpay.</p>
+                  ) : (
+                    <p className="text-[13px] text-[#6B7894]">Pay when you {handover === 'delivery' ? 'get your order' : 'pick it up'}. The shop will confirm your order.</p>
+                  )}
                 </div>
                 {error && <p role="alert" className="rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}
                 <button type="submit" disabled={placing} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] inline-flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer">
-                  {placing && <Loader2 size={17} className="animate-spin" />} Place order
+                  {placing && <Loader2 size={17} className="animate-spin" />} {pay === 'online' ? `Pay ${money(subtotal + delivery)}` : 'Place order'}
                 </button>
               </form>
             )}
@@ -413,7 +519,11 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
               <div className="flex-1 overflow-y-auto p-6 text-center">
                 <span className="mx-auto h-16 w-16 rounded-full bg-[var(--c)] text-white flex items-center justify-center"><Check size={32} /></span>
                 <p className="mt-4 text-[22px] font-extrabold">Thank you, {name.split(' ')[0]}!</p>
-                <p className="mt-1 text-[15px] text-[#4a5672]">Your order <b>#{done.orderNumber}</b> for {money(done.total)} is with {store.name}. They will contact you to confirm it.</p>
+                <p className="mt-1 text-[15px] text-[#4a5672]">
+                  {done.paid
+                    ? <>Your payment of {money(done.total)} is received. Order <b>#{done.orderNumber}</b> is confirmed with {store.name}.</>
+                    : <>Your order <b>#{done.orderNumber}</b> for {money(done.total)} is with {store.name}. They will contact you to confirm it.</>}
+                </p>
                 {store.whatsapp && (
                   <a href={waLink(`Hi ${store.name}, I just placed order #${done.orderNumber} on your website.`)} target="_blank" rel="noreferrer" className="mt-6 inline-flex h-12 px-6 rounded-full bg-[#25D366] text-white font-bold items-center">Message the shop on WhatsApp</a>
                 )}

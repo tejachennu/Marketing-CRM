@@ -17,7 +17,7 @@ function page(settings = {}) {
     { id: P2, title: 'Silk saree', description: '', price: 4299, currency: 'INR', image: '', category: 'Sarees', inStock: true },
     { id: P3, title: 'Sandals', description: '', price: 999, currency: 'INR', image: '', category: 'Footwear', inStock: false },
   ]
-  return { organization: { id: 'org-1', name: 'Glow', slug: 'glow', currency: 'INR' }, settings: s, products, categories: S.storeCategories(s, products), fees: { fee: 60, freeFrom: 1000 } }
+  return { organization: { id: 'org-1', name: 'Glow', slug: 'glow', currency: 'INR' }, settings: s, products, categories: S.storeCategories(s, products), fees: { fee: 60, freeFrom: 1000 }, pay: S.payOptions(s, settings.razorpay === true) }
 }
 
 test('Store page: the migration file is the SQL the app runs', () => {

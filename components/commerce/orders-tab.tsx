@@ -64,6 +64,7 @@ const METHOD_LABELS: Record<string, string> = {
   cod: 'Cash on Delivery',
   manual: 'Marked as paid by your team',
   razorpay_link: 'Payment link',
+  razorpay: 'Paid online (Razorpay)',
   cash: 'Cash',
   upi: 'UPI',
   card: 'Card',

@@ -28,6 +28,11 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
   bool _saving = false;
   String? _uploading;
   final Map<String, TextEditingController> _text = {};
+  Map<String, dynamic>? _pay;
+  final _keyId = TextEditingController();
+  final _keySecret = TextEditingController();
+  final _webhookSecret = TextEditingController();
+  bool _payBusy = false;
 
   @override
   void initState() {
@@ -37,6 +42,9 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
 
   @override
   void dispose() {
+    _keyId.dispose();
+    _keySecret.dispose();
+    _webhookSecret.dispose();
     for (final c in _text.values) {
       c.dispose();
     }
@@ -50,7 +58,11 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
     try {
       final data = await app.backend.get('/api/commerce/storefront', {'organizationId': app.orgId});
       if (!mounted) return;
+      final pay = await app.backend.get('/api/commerce/storefront/payments', {'organizationId': app.orgId}).catchError((_) => <String, dynamic>{});
+      if (!mounted) return;
       setState(() {
+        _pay = pay['error'] == null ? pay : null;
+        _keyId.text = '${pay['keyId'] ?? ''}';
         _s = Map<String, dynamic>.from(data['settings'] as Map);
         _s!['banners'] = [for (final b in (_s!['banners'] as List? ?? const [])) Map<String, dynamic>.from(b as Map)];
         _link = data['link'] as String?;
@@ -59,6 +71,48 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
       });
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
+    }
+  }
+
+  Future<void> _connect() async {
+    setState(() => _payBusy = true);
+    try {
+      final data = await AppScope.read(context).ask('/api/commerce/storefront/payments', {
+        'keyId': _keyId.text.trim(),
+        'keySecret': _keySecret.text.trim(),
+        if (_webhookSecret.text.trim().isNotEmpty) 'webhookSecret': _webhookSecret.text.trim(),
+      }, method: 'PUT');
+      if (!mounted) return;
+      setState(() {
+        _pay = data;
+        _keySecret.clear();
+        _webhookSecret.clear();
+        if (_s!['payment'] == 'later' || _s!['payment'] == null) _s!['payment'] = 'both';
+      });
+      toast(context, 'Razorpay connected${data['live'] == true ? '' : ' in test mode (no real money)'}. Save the website to use it.');
+    } catch (e) {
+      if (mounted) toast(context, plain(e));
+    } finally {
+      if (mounted) setState(() => _payBusy = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    final app = AppScope.read(context);
+    setState(() => _payBusy = true);
+    try {
+      final data = await app.backend.send('DELETE', '/api/commerce/storefront/payments?organizationId=${app.orgId}', const {});
+      if (!mounted) return;
+      setState(() {
+        _pay = data;
+        _keyId.clear();
+        _s!['payment'] = 'later';
+      });
+      toast(context, 'Razorpay disconnected. Customers pay on delivery or pick up.');
+    } catch (e) {
+      if (mounted) toast(context, plain(e));
+    } finally {
+      if (mounted) setState(() => _payBusy = false);
     }
   }
 
@@ -403,6 +457,62 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
               title: const Text('Show out-of-stock products (greyed out)'),
             ),
           ]),
+          if (manage)
+            _section(
+              'Online payment (Razorpay)',
+              subtitle: 'Customers pay by UPI, card or net banking on your website. The money goes straight to your own Razorpay account; Razorpay charges its fee (about 2%).',
+              [
+                if (_pay?['connected'] == true)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Connected · ${_pay!['keyId']}${_pay!['live'] == true ? '' : ' (test mode: no real money)'}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      TextButton(onPressed: _payBusy ? null : _disconnect, child: const Text('Disconnect')),
+                    ],
+                  )
+                else
+                  const Text('In Razorpay, open Account & Settings → API Keys → Generate key. Paste both here.', style: TextStyle(color: Brand.muted, fontSize: 13)),
+                gap(),
+                TextField(
+                  controller: _keyId,
+                  decoration: const InputDecoration(labelText: 'Key ID', hintText: 'rzp_live_…'),
+                ),
+                gap(),
+                TextField(
+                  controller: _keySecret,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: _pay?['connected'] == true ? 'Key Secret (leave empty to keep)' : 'Key Secret'),
+                ),
+                gap(),
+                TextField(
+                  controller: _webhookSecret,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Webhook secret (recommended)',
+                    helperText: _pay?['webhookUrl'] != null ? 'In Razorpay → Webhooks, add ${_pay!['webhookUrl']} with payment.captured and order.paid, and the same secret.' : null,
+                    helperMaxLines: 4,
+                  ),
+                ),
+                gap(),
+                FilledButton(onPressed: _payBusy ? null : _connect, child: Text(_pay?['connected'] == true ? 'Save keys' : 'Connect Razorpay')),
+                const SizedBox(height: 14),
+                const Text('How customers pay', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (id, label) in [('both', 'Their choice'), ('online', 'Online only'), ('later', 'On delivery / pick up')])
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: (s['payment'] ?? 'later') == id,
+                        onSelected: id != 'later' && _pay?['connected'] != true ? null : (_) => setState(() => s['payment'] = id),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           _section('Contact and about', [
             PhoneField(value: '${s['whatsapp'] ?? ''}', onChanged: (v) => s['whatsapp'] = v, label: 'WhatsApp number'),
             gap(),
