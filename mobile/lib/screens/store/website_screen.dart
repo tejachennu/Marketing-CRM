@@ -547,6 +547,13 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
               onChanged: (v) => setState(() => s['show_out_of_stock'] = v),
               title: const Text('Show out-of-stock products (greyed out)'),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: s['accounts'] != false,
+              onChanged: (v) => setState(() => s['accounts'] = v),
+              title: const Text('Customers can sign in with Google'),
+              subtitle: const Text('They see their orders and where each one is, and keep their cart. Anyone can still order without signing in.'),
+            ),
           ]),
           if (manage)
             _section(

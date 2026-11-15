@@ -23,5 +23,5 @@ export default async function StorePage({ params, searchParams }: { params: Prom
   const page = await loadStore(getSupabaseAdminClient(), slug)
   if (!page) notFound()
   const view = storeView(page)
-  return <Storefront store={view} startCategory={view.categories.some((x) => x.name === c) ? c! : null} />
+  return <Storefront store={view} appUrl={(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')} startCategory={view.categories.some((x) => x.name === c) ? c! : null} />
 }

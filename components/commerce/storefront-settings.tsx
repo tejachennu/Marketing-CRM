@@ -598,6 +598,10 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
             <input type="checkbox" checked={settings.show_out_of_stock} onChange={(e) => set({ show_out_of_stock: e.target.checked })} className="h-4 w-4 accent-[#1D5BEA]" /> Show out-of-stock products (greyed out)
           </label>
         </div>
+        <label className="flex items-start gap-2 text-[13px] font-semibold cursor-pointer">
+          <input type="checkbox" checked={settings.accounts !== false} onChange={(e) => set({ accounts: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
+          <span>Customers can sign in with Google<span className={`block font-normal ${hintClass}`}>They see their orders and where each one is, keep their cart on any phone, and check out faster. Anyone can still order without signing in, and track an order with its number.</span></span>
+        </label>
         <p className={hintClass}>Your team confirms each order from Orders. For payment online, connect Razorpay below.</p>
       </section>
 

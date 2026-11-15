@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Plus, Search, ShieldCheck, ShoppingBag, Store, Truck, X } from 'lucide-react'
+import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Plus, Search, ShieldCheck, ShoppingBag, Store, Truck, UserRound, X } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
+import { AccountPanel, useShopper } from './account'
 import type { StoreView } from '@/lib/commerce/storefront'
 
 type Product = StoreView['products'][number]
@@ -120,7 +121,7 @@ function Stepper({ value, onChange, small }: { value: number; onChange: (n: numb
   )
 }
 
-export function Storefront({ store, startCategory }: { store: StoreView; startCategory: string | null }) {
+export function Storefront({ store, startCategory, appUrl = '' }: { store: StoreView; startCategory: string | null; appUrl?: string }) {
   const money = (n: number) => formatMoney(n, store.currency)
   const [category, setCategory] = useState<string | null>(startCategory)
   const [query, setQuery] = useState('')
@@ -152,6 +153,17 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
     else next[id] = Math.min(99, qty)
     return next
   })
+
+  // Signed-in shoppers: orders, tracking, cart on every phone
+  const shopper = useShopper(store.slug, store.accounts, cart, setCart, appUrl)
+  const [accountView, setAccountView] = useState<null | 'orders' | 'track'>(null)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('account') !== '1') return
+    params.delete('account')
+    history.replaceState(null, '', window.location.pathname + (params.toString() ? `?${params}` : ''))
+    setAccountView('orders')
+  }, [])
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -211,6 +223,15 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
       else localStorage.removeItem(unpaidKey)
     } catch {}
   }, [unpaid, unpaidKey])
+  // Signed in: name, phone and address filled in from last time (only empty boxes)
+  useEffect(() => {
+    const saved = shopper.account?.shopper
+    if (panel !== 'checkout' || !saved) return
+    if (!name && saved.name) setName(saved.name)
+    if (!phone && saved.phone) setPhone(saved.phone)
+    if (saved.address && !address.address_line_1 && !address.city) setAddress((current) => ({ ...current, ...saved.address }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, shopper.account])
   const delivery = handover === 'delivery' ? (store.freeFrom > 0 && subtotal >= store.freeFrom ? 0 : store.deliveryFee) : 0
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
@@ -264,12 +285,13 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
     try {
       const res = await fetch(`/api/public/store/${store.slug}/order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...shopper.headers() },
         body: JSON.stringify({ name, phone, handover, pay, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty })) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
       setCart({})
+      if (shopper.session) shopper.refresh()
       if (data.razorpay) {
         const order = { orderNumber: data.orderNumber, total: data.total, razorpay: data.razorpay }
         setUnpaid(order)
@@ -320,6 +342,17 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products" aria-label="Search products" className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f4f6fa] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-[var(--c)]/30" />
           </div>
+          {store.accounts && (
+            <button type="button" onClick={() => setAccountView('orders')} aria-label={shopper.session ? 'My orders' : 'Sign in'} className="h-11 shrink-0 rounded-full border border-[#d5ddeb] bg-white px-3 sm:px-4 inline-flex items-center gap-2 font-bold text-[14px] text-[#0E1B3D] cursor-pointer hover:border-[var(--c)]">
+              {shopper.account?.shopper.picture ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={shopper.account.shopper.picture} alt="" className="h-7 w-7 -ml-1 rounded-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <UserRound size={18} />
+              )}
+              <span className="hidden sm:inline">{shopper.session ? 'My orders' : 'Sign in'}</span>
+            </button>
+          )}
           <button type="button" onClick={() => setPanel('cart')} aria-label={`Cart, ${count} items`} className="relative h-11 px-4 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2 shrink-0 cursor-pointer">
             <ShoppingBag size={18} />
             <span className="hidden sm:inline">Cart</span>
@@ -404,6 +437,9 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
             {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-full bg-[#25D366] text-white font-bold items-center gap-2">Chat on WhatsApp</a>}
           </div>
         </div>
+        <p className="pb-2 text-center">
+          <button type="button" onClick={() => setAccountView(shopper.session ? 'orders' : 'track')} className="text-[14px] font-semibold text-[#4a5672] underline cursor-pointer">{shopper.session ? 'My orders' : 'Track your order'}</button>
+        </p>
         <p className="pb-6 text-center text-[12.5px] text-[#8a94a8]">Online store by WAMA CRM</p>
       </footer>
 
@@ -561,12 +597,19 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                 {store.whatsapp && (
                   <a href={waLink(`Hi ${store.name}, I just placed order #${done.orderNumber} on your website.`)} target="_blank" rel="noreferrer" className="mt-6 inline-flex h-12 px-6 rounded-full bg-[#25D366] text-white font-bold items-center">Message the shop on WhatsApp</a>
                 )}
+                <button type="button" onClick={() => { setPanel(null); setAccountView(shopper.session ? 'orders' : 'track') }} className="mt-3 w-full h-12 rounded-full border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer">
+                  {shopper.session ? 'See it in My orders' : 'Track this order'}
+                </button>
+                {!shopper.session && store.accounts && <p className="mt-2 text-[13px] text-[#6B7894]">Keep your order number <b>#{done.orderNumber}</b>, or sign in next time to see all your orders.</p>}
                 <button type="button" onClick={() => setPanel(null)} className="mt-3 block mx-auto text-[14.5px] font-semibold text-[#4a5672] underline cursor-pointer">Continue shopping</button>
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* Sign in, My orders, Track an order */}
+      {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} initialView={accountView} onClose={() => setAccountView(null)} />}
     </div>
   )
 }

@@ -10,7 +10,7 @@ website (filled from business details, made pictures, Razorpay, own domain throu
 
 | Check | Result |
 |---|---|
-| Web unit tests (`npm test`, 48 files) | **590 / 590 passed** |
+| Web unit tests (`npm test`, 49 files) | **602 / 602 passed** |
 | Web type check (`tsc --noEmit`) | **No errors** |
 | Web production build (`next build`) | **Passed** |
 | App code check (`flutter analyze`) | **No issues** |
@@ -35,13 +35,14 @@ use it.
 
 ## 3. Test results by area
 
-### 3.1 Web (590 tests)
+### 3.1 Web (602 tests)
 
 | Area | Test files | Tests |
 |---|---|---|
 | Online store website (settings, page, orders, prefill, made pictures) | storefront, store-prefill | 10 |
 | Store online payment (Razorpay) | store-payments | 8 |
 | Store on own domain + gateway | store-domain | 10 |
+| Shop customer accounts (sign in, orders, tracking, saved cart) | store-accounts | 12 |
 | Shop and phone-call orders | manual-order | 5 |
 | WhatsApp shop (catalog, cart, go-live, shopping assistant) | whatsapp-commerce, meta-catalog, commerce-go-live, chat-commerce, shopping-assistant, catalog-access-route | 107 |
 | Front Desk (bookings, bills, GST, reviews, jobs, catalog, categories) | salon, salon-jobs, salon-reviews, salon-chat, front-desk, front-desk-catalog, front-desk-categories | 95 |
@@ -138,6 +139,25 @@ Result: **Pass** = automated test passed. **Seen** = checked in the browser or a
 | DM-11 | Gateway files | Caddy on-demand certificates with the check, manual-only deploy, no secrets in files | Pass |
 | DM-12 | App: Store address card | Both choices, records with Copy, Check again, Remove asks first, fits 320 px | Pass + Seen |
 
+### 5.5 Shop customer accounts (added 15 Nov 2026)
+
+| ID | Case | Expected | Result |
+|---|---|---|---|
+| AC-01 | Store page header | "Sign in" button (or "My orders" when signed in) beside the cart | Seen |
+| AC-02 | Continue with Google | Sign-in runs on WAMA's address, then returns to the store (also to its own domain) | Pass (code); **needs a real Google try** |
+| AC-03 | Return address after sign-in | Only WAMA or the store's own https domain, never anywhere else | Pass |
+| AC-04 | My orders | The shopper's orders in this store only, newest first, with status, items and total | Pass + Seen |
+| AC-05 | One order | Placed → Confirmed → On the way / Ready to pick up → Delivered / Picked up, with times, tracking number, items, totals, payment | Pass + Seen |
+| AC-06 | Cancelled order | Placed, then Cancelled | Pass |
+| AC-07 | Order view | No workspace ids or team notes | Pass |
+| AC-08 | Order while signed in | Linked to the shopper; name, phone and address saved for next time; saved cart emptied | Pass (code) |
+| AC-09 | Checkout when signed in | Name, phone and address filled in (only empty boxes) | Seen |
+| AC-10 | Cart on another phone | The phone's cart and the saved cart are joined (bigger amount wins) and kept | Pass |
+| AC-11 | Account without a valid sign-in | Refused (401) | Pass + real request |
+| AC-12 | Track an order as a guest | Order number + the phone it was placed with; wrong phone, other store or odd numbers find nothing; 20 tries an hour | Pass + real request |
+| AC-13 | Store switches sign-in off | No Sign in button; account API refuses | Pass |
+| AC-14 | 320 px phone | All account screens fit, no sideways scroll | Seen |
+
 ## 6. Not tested here (needs a real try)
 
 These need real accounts or servers that this test environment does not have. Please try them once
@@ -148,7 +168,7 @@ before telling customers.
 | Real Razorpay payment on the store page | No real keys here | Connect test keys (rzp_test_…) in Website → Online payment, place an order, pay with Razorpay's test card, and check that the order shows "Paid online". Then set the webhook and repeat with the page closed. |
 | Own domain on the Hostinger store server | No server yet. Downloading Caddy to validate the config was blocked here, so `Caddyfile` has only been checked by its tests, not by Caddy itself. | Follow `deploy/gateway/README.md` (Hostinger steps). Setup runs `caddy validate` before starting. Then connect a spare sub-domain and press Check again. |
 | Pop-up notifications on a real phone | Needs a phone and Firebase | App → More → Test notifications |
-| Google sign-in | Needs Google switched on in Supabase | Sign in with Google on /login |
+| Google sign-in (dashboard and shop customers) | Needs Google switched on in Supabase | Sign in with Google on /login, and on a store page. In Supabase → Authentication → URL Configuration, add `https://wamacrm.magnetora.in/s/**` to Redirect URLs, or shoppers land on the business sign-up page. |
 | WhatsApp tick-box booking form | Needs Meta | Send "Book" to the business number |
 | Real database speed and the "Loading…" Website tab | No production database here | Run the storefront SQL in Supabase first (see the earlier note), then open the Website tab |
 

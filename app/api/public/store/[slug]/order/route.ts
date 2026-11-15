@@ -7,6 +7,7 @@ import { deliveryCharge, loadStore, parseStoreOrder } from '@/lib/commerce/store
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
+import { saveShopper, shopperFrom, withStoreAccountsSchema } from '@/lib/commerce/store-accounts'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -35,6 +36,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
     const order = made.order
     const total = formatMoney(order.total_amount, order.currency)
+
+    // A signed-in shopper: the order goes in their history, and their details are kept for next time
+    const shopper = page.settings.accounts ? await shopperFrom(request, db) : null
+    if (shopper) {
+      await withStoreAccountsSchema(() => db.from('commerce_orders').update({ shopper_id: shopper.id }).eq('id', order.id)).catch(() => null)
+      await saveShopper(db, page.organization.id, shopper, {
+        name: parsed.order.customer.name || undefined,
+        phone: parsed.order.customer.phone || undefined,
+        ...(parsed.order.address ? { address: parsed.order.address } : {}),
+        cart: {},
+      }).catch((error: any) => console.error('[Store order shopper]', error?.message))
+    }
 
     // Pay online: the order waits for its payment, which goes to the business's own Razorpay
     if (keys) {

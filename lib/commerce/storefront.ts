@@ -83,6 +83,8 @@ export interface StorefrontSettings {
   show_out_of_stock: boolean
   /** How customers pay: on delivery / pick up, online (Razorpay), or their choice. */
   payment: 'later' | 'online' | 'both'
+  /** Customers may sign in with Google to see their orders, track them and keep their cart. */
+  accounts: boolean
 }
 
 export const MAX_BANNERS = 8
@@ -92,7 +94,7 @@ export function defaultStorefront(): StorefrontSettings {
   return {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
-    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later',
+    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true,
   }
 }
 
@@ -169,6 +171,7 @@ export function readStorefront(raw: any): StorefrontSettings {
     about: longText(raw.about, 1200),
     show_out_of_stock: raw.show_out_of_stock === true,
     payment: raw.payment === 'online' || raw.payment === 'both' ? raw.payment : 'later',
+    accounts: raw.accounts !== false,
   }
 }
 
@@ -202,7 +205,7 @@ export function storeCategories(settings: StorefrontSettings, products: StorePro
 }
 
 export interface StorePage {
-  organization: { id: string; name: string; slug: string; currency: string }
+  organization: { id: string; name: string; slug: string; currency: string; domain: string | null }
   settings: StorefrontSettings
   products: StoreProduct[]
   categories: StoreCategory[]
@@ -240,7 +243,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     }))
     .filter((p: StoreProduct) => p.inStock || settings.show_out_of_stock)
   return {
-    organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase() },
+    organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase(), domain: org.store_domain || null },
     settings,
     products,
     categories: storeCategories(settings, products),
@@ -262,6 +265,7 @@ export function storeView(page: StorePage) {
     deliveryNote: s.delivery_note, deliveryFee: page.fees.fee, freeFrom: page.fees.freeFrom, minOrder: s.min_order,
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
     payOnline: page.pay.online, payLater: page.pay.later,
+    accounts: s.accounts, domain: page.organization.domain,
   }
 }
 export type StoreView = ReturnType<typeof storeView>

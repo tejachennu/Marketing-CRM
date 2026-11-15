@@ -117,6 +117,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop customer accounts** (owner: "for the shop add the oauth for users also they can see their products
+  purchased, cart and history tracking"): shoppers sign in with Google on the store page (setting
+  `storefront.accounts`, default on; web + app switch). `lib/commerce/store-accounts.ts`: table `store_shoppers`
+  (per store: name, phone, address, saved cart; RLS on, server only) + `commerce_orders.shopper_id` (migration
+  `20261121_store_accounts.sql`, lock 724519018); `shopperFrom` (Bearer Supabase token → `db.auth.getUser`),
+  `cleanCart` / `mergeCarts`, `shopperStatus` / `orderTimeline` / `shopperOrderView` (plain words, no workspace
+  ids), `trackOrder` (order number + phone, last 10 digits). APIs: `GET/PUT /api/public/store/[slug]/account`
+  (signed in), `POST /api/public/store/[slug]/track` (guests, 20/h), and the order route links the order and
+  saves details. Browser: `lib/commerce/shopper-client.ts` (own Supabase client, `storageKey: 'wama-shopper'`,
+  PKCE, apart from the dashboard login; `safeReturn`, `packSession`), sign-in page `/s/[slug]/signin` (always on
+  WAMA's address; hands the session to a store's own domain in `#shopper=`), `app/s/[slug]/account.tsx`
+  (`useShopper`, `AccountPanel`: Sign in, My orders, order timeline, Track an order). Supabase needs
+  `https://wamacrm.magnetora.in/s/**` in Redirect URLs. **Not tried against real Google yet.**
+
 - **Own domains only through our Hostinger server** (owner: "Domain Connect is not vercel ... hostinger linux
   server ... I will deploy"): all Vercel domain code removed from `lib/commerce/store-domain.ts` (no
   `VERCEL_TOKEN` etc.). The only way is the store server in `deploy/gateway/` (Hostinger VPS, Ubuntu 24.04,
