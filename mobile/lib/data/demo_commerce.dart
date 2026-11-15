@@ -243,6 +243,18 @@ class DemoCommerce {
     switch (path) {
       case '/api/organization':
         return {'organization': org};
+      case '/api/commerce/storefront/domain':
+        return {
+          'available': true,
+          'ourLink': 'https://wamacrm.magnetora.in/s/glow-store',
+          'domain': 'shop.glowstore.in',
+          'state': 'waiting',
+          'records': [
+            {'type': 'CNAME', 'name': 'shop', 'value': 'cname.vercel-dns.com'},
+          ],
+          'note': 'Add the record below at the company where you bought the domain (GoDaddy, Hostinger, …). It can take from a few minutes up to a day to work.',
+          'link': 'https://shop.glowstore.in',
+        };
       case '/api/commerce/storefront/payments':
         return {'connected': true, 'keyId': 'rzp_live_Ab12Cd34Ef', 'live': true, 'webhook': false, 'webhookUrl': 'https://wamacrm.magnetora.in/api/public/store/glow-store/razorpay-webhook'};
       case '/api/commerce/storefront':

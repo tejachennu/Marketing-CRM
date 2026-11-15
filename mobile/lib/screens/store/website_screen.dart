@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'store_address.dart';
 import 'store_logic.dart';
 import 'store_screen.dart';
 
@@ -321,6 +322,8 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 ],
               ),
             ),
+          const SizedBox(height: 12),
+          StoreAddressCard(canManage: AppScope.of(context).can('settings')),
           if (manage && _suggested != null) ...[
             const SizedBox(height: 12),
             Panel(

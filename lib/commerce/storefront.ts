@@ -213,11 +213,17 @@ export interface StorePage {
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
+const DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/
 
 /** The store page for a slug, or null when there is none, it is switched off, or the store is off. */
 export async function loadStore(db: any, slug: string): Promise<StorePage | null> {
-  if (!SLUG.test(slug)) return null
-  const { data: org } = await db.from('organizations').select('*').eq('slug', slug).maybeSingle()
+  // A business's own domain (shop.theirname.com) comes here in place of the slug
+  const domain = String(slug || '').toLowerCase()
+  const byDomain = DOMAIN.test(domain)
+  if (!byDomain && !SLUG.test(slug)) return null
+  const { data: org } = byDomain
+    ? await db.from('organizations').select('*').eq('store_domain', domain).maybeSingle()
+    : await db.from('organizations').select('*').eq('slug', slug).maybeSingle()
   if (!org || org.enable_commerce === false) return null
   const settings = readStorefront(org.storefront)
   if (!settings.enabled) return null

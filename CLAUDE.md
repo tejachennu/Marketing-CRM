@@ -117,6 +117,19 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Store on the business's own domain** (owner: "custom domain like Shopify ... two options, ours or custom
+  domain"): Website tab → **Store address** (web `StoreAddress` in `storefront-settings.tsx`, app
+  `store/store_address.dart`): "Our address (free)" or "My own domain". `lib/commerce/store-domain.ts`:
+  `cleanDomain`, `isRootDomain` (A `76.76.21.21` for a root domain, CNAME `cname.vercel-dns.com` otherwise;
+  Vercel's recommended values used when given; TXT when Vercel asks for proof), `addDomain` / `removeDomain` /
+  `domainStatus` through Vercel's API (`VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID`; without them the
+  option says it is not set up). New column `organizations.store_domain` (unique; migration
+  `20261120_store_domain.sql`, lock 724519017). `GET/PUT/DELETE /api/commerce/storefront/domain` (PUT/DELETE
+  admins). `middleware.ts` rewrites every non-API page on a host that is not WAMA's (`lib/commerce/store-host.ts`
+  `isOwnHost`: *.magnetora.in, *.vercel.app, NEXT_PUBLIC_APP_URL, `STORE_APP_HOSTS`, IPs) to `/s/<host>`, and
+  `loadStore` finds the store by `store_domain`. Later, for many domains: a small Ubuntu gateway (Caddy with
+  on-demand certificates) in front, same settings screen. **Not tried against Vercel yet.**
+
 - **Store website filled from the business's details, with made pictures** (owner: "Prefill the data ... full
   store configuration, generate images"): `suggestStorefront` in `lib/commerce/storefront.ts` builds a full page
   from the workspace (name, `contact_phone`, `contact_address`, `whatsapp_default_phone`, shipping fee / free-from),

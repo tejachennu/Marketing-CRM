@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, ImagePlus, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, Globe, ImagePlus, Loader2, Plus, RefreshCw, Sparkles, Trash2, Clock } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
@@ -172,6 +172,170 @@ function RazorpayConnect({ orgId, payment, onPayment, showToast }: { orgId: stri
   )
 }
 
+interface DomainInfo {
+  available: boolean
+  ourLink: string | null
+  domain: string | null
+  state: 'connected' | 'waiting' | 'unavailable' | null
+  records: { type: string; name: string; value: string }[]
+  note: string
+  link: string | null
+}
+
+/** Where the store opens: our address, or the business's own domain (like Shopify). */
+function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManage: boolean; showToast: ShowToast }) {
+  const [info, setInfo] = useState<DomainInfo | null>(null)
+  const [choice, setChoice] = useState<'ours' | 'own'>('ours')
+  const [domain, setDomain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const apply = (data: DomainInfo) => {
+    setInfo(data)
+    if (data.domain) {
+      setChoice('own')
+      setDomain(data.domain)
+    }
+  }
+  useEffect(() => {
+    fetch(`/api/commerce/storefront/domain?organizationId=${orgId}`)
+      .then((res) => res.json())
+      .then((data) => { if (!data.error) apply(data) })
+      .catch(() => {})
+  }, [orgId])
+
+  async function call(method: 'GET' | 'PUT' | 'DELETE', body?: Record<string, unknown>) {
+    setBusy(true)
+    setError('')
+    try {
+      const res = method === 'GET'
+        ? await fetch(`/api/commerce/storefront/domain?organizationId=${orgId}`)
+        : await fetch('/api/commerce/storefront/domain', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, ...body }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Please try again.')
+      setInfo(data)
+      return data as DomainInfo
+    } catch (err: any) {
+      setError(err.message)
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function useOurs() {
+    setChoice('ours')
+    if (!info?.domain) return
+    if (!window.confirm(`Stop using ${info.domain}? Your store goes back to our address.`)) {
+      setChoice('own')
+      return
+    }
+    const data = await call('DELETE')
+    if (data) {
+      setDomain('')
+      showToast('success', 'Your store uses our address again.')
+    } else setChoice('own')
+  }
+
+  async function connect() {
+    const data = await call('PUT', { domain })
+    if (data) {
+      setDomain(data.domain || domain)
+      showToast('success', data.state === 'connected' ? 'Connected. Your store opens on your domain.' : 'Added. Now add the record at your domain company.')
+    }
+  }
+
+  async function check() {
+    const data = await call('GET')
+    if (data) showToast(data.state === 'connected' ? 'success' : 'error', data.state === 'connected' ? 'Connected. Your store opens on your domain.' : 'Not working yet. Check the record, or wait a little longer.')
+  }
+
+  const heading = 'text-sm font-bold text-slate-900 dark:text-white'
+  const sub = 'text-xs text-slate-500 dark:text-slate-400'
+  const option = (value: 'ours' | 'own', title: string, text: string, onPick: () => void) => (
+    <label className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${choice === value ? 'border-[#1D5BEA] bg-[#f4f6fa] dark:bg-slate-900/60' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
+      <input type="radio" name="store-address" checked={choice === value} onChange={onPick} disabled={!canManage || busy} className="mt-1 accent-[#1D5BEA]" />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-slate-900 dark:text-white">{title}</span>
+        <span className={`block ${sub} break-all`}>{text}</span>
+      </span>
+    </label>
+  )
+  const connected = info?.state === 'connected'
+
+  return (
+    <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
+      <div>
+        <h2 className={heading}>Store address</h2>
+        <p className={sub}>Use our free address, or open your store on your own domain, like shop.yourname.com.</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {option('ours', 'Our address (free)', (info?.ourLink || '').replace(/^https?:\/\//, '') || 'wamacrm.magnetora.in/s/…', useOurs)}
+        {option('own', 'My own domain', 'A domain you bought from GoDaddy, Hostinger or any other company.', () => setChoice('own'))}
+      </div>
+
+      {choice === 'own' && (
+        <div className="space-y-3">
+          {info && !info.available && !info.domain && (
+            <p className="text-xs font-semibold text-[#b91c1c]">Custom domains are not set up on WAMA yet. Please ask WAMA support.</p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value.trim().toLowerCase())}
+              placeholder="shop.yourname.com"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={!canManage || busy}
+              className={`${inputClass} sm:flex-1`}
+            />
+            <button type="button" onClick={connect} disabled={!canManage || busy || !domain || domain === info?.domain} className={`${primaryButton} shrink-0 justify-center`}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} {info?.domain ? 'Change' : 'Connect'}
+            </button>
+          </div>
+          {error && <p role="alert" className="text-xs font-semibold text-[#b91c1c]">{error}</p>}
+
+          {info?.domain && (
+            <div className="rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[13px] font-semibold text-slate-900 dark:text-white break-all">{info.domain}</span>
+                <span className={`inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-bold ${connected ? 'bg-[#eef1f6] text-[#1D5BEA]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+                  {connected ? <Check size={12} /> : <Clock size={12} />} {connected ? 'Connected' : 'Waiting for your domain'}
+                </span>
+              </div>
+              <p className={sub}>{info.note}</p>
+              {!connected && info.records.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Add this at your domain company (DNS settings):</p>
+                  {info.records.map((r, i) => (
+                    <div key={i} className="p-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-900/60 text-[12px] space-y-1.5">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span><span className="text-[#6B7894]">Type </span><span className="font-mono font-semibold">{r.type}</span></span>
+                        <span className="min-w-0 break-all"><span className="text-[#6B7894]">Name </span><span className="font-mono font-semibold">{r.name}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1"><span className="text-[#6B7894]">Value </span><span className="font-mono font-semibold break-all">{r.value}</span></span>
+                        <button type="button" onClick={() => navigator.clipboard?.writeText(r.value).then(() => showToast('success', 'Copied.'))} className={`${secondaryButton} shrink-0`}><Copy size={13} /> Copy</button>
+                      </div>
+                    </div>
+                  ))}
+                  <p className={sub}>Remove any other A or CNAME record with the same name first. It can take from a few minutes up to a day to work.</p>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {!connected && <button type="button" onClick={check} disabled={busy} className={secondaryButton}><RefreshCw size={13} /> Check again</button>}
+                {connected && info.link && <a href={info.link} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={13} /> Open</a>}
+                {connected && info.link && <button type="button" onClick={() => navigator.clipboard?.writeText(info.link!).then(() => showToast('success', 'Link copied.'))} className={secondaryButton}><Copy size={13} /> Copy link</button>}
+                {canManage && <button type="button" onClick={useOurs} disabled={busy} className={secondaryButton}><Trash2 size={13} /> Remove domain</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 /** E-commerce → Website: the business's online store page. */
 export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: string; canManage: boolean; showToast: ShowToast }) {
   const [settings, setSettings] = useState<any>(null)
@@ -292,6 +456,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           </div>
         )}
       </section>
+
+      <StoreAddress orgId={orgId} canManage={canManage} showToast={showToast} />
 
       {canManage && suggested && (
         <section className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3`}>

@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isOwnHost } from '@/lib/commerce/store-host'
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
+
+  // A business's own domain (shop.theirname.com): every page is its online store. API calls (cart,
+  // order, payment) and Next's own files pass through untouched.
+  const host = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '')
+  if (host && !isOwnHost(host) && !pathname.startsWith('/_next') && !pathname.startsWith('/api') && !/\.[a-z0-9]{2,5}$/i.test(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = `/s/${host}`
+    return NextResponse.rewrite(url)
+  }
 
   // Skip middleware for static assets, API routes, and RSC payloads
   if (
