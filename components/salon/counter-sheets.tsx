@@ -265,7 +265,7 @@ export function WhoDidIt({ setup, lines, value, onChange, planned }: { setup: Sa
 
 // ── Day and time ─────────────────────────────────────────────────────────────
 
-function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staffIds, onDate, onTime }: {
+export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staffIds, onDate, onTime }: {
   orgId: string
   setup: SalonSetup
   date: string

@@ -28,6 +28,7 @@ export type CounterAction =
   | { type: 'set_status'; appointment_id: string; status: 'booked' | 'arrived' | 'in_service' | 'cancelled' | 'no_show' }
   | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
   | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
+  | { type: 'reschedule'; appointment_id: string; starts_at: string; staff_id?: string | null; send_whatsapp?: boolean }
   | { type: 'sell_membership'; customer: CustomerRef; plan_id: string; payment_method?: PaymentMethod | null; starts_at?: string | null; send_whatsapp?: boolean }
   | { type: 'approve_request'; appointment_id: string; starts_at?: string | null; send_whatsapp?: boolean }
   | { type: 'decline_request'; appointment_id: string; send_whatsapp?: boolean }
@@ -95,6 +96,13 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       const ids = serviceIds(body.service_ids)
       if (!ids.length) return { error: 'Choose at least one service.' }
       return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false, membership_id: isUuid(body.membership_id) ? body.membership_id : null } }
+    }
+    case 'reschedule': {
+      if (!isUuid(body.appointment_id)) return { error: 'Choose an appointment.' }
+      const at = Date.parse(String(body.starts_at || ''))
+      if (!Number.isFinite(at)) return { error: 'Choose a date and time.' }
+      if (at < Date.now() - 15 * 60 * 1000) return { error: 'That time has already passed.' }
+      return { action: { type: 'reschedule', appointment_id: body.appointment_id, starts_at: new Date(at).toISOString(), staff_id: body.staff_id === undefined ? undefined : isUuid(body.staff_id) ? body.staff_id : null, send_whatsapp: body.send_whatsapp !== false } }
     }
     case 'sell_membership': {
       const customer = parseCustomer(body.customer)
@@ -438,6 +446,36 @@ export async function executeCounterAction(
       // A membership card used on it gets its sessions and credit back; a card sold on it is cancelled
       if (invoice.status !== 'void') await undoCardsForInvoice(db, organizationId, invoice.id, userId).catch((error: any) => console.error('[Front Desk] card undo', error?.message))
       return { invoice: updated, message: `${invoice.number} cancelled. It stays on record, marked void.` }
+    }
+
+    case 'reschedule': {
+      const appointment = await checked(db.from('salon_appointments').select('*').eq('id', action.appointment_id).eq('organization_id', organizationId).maybeSingle())
+      if (!appointment) throw new Error('That appointment was not found.')
+      if (!['booked', 'arrived', 'requested'].includes(appointment.status)) throw new Error('Only appointments that have not started can be moved.')
+      const length = Math.max(15 * 60_000, Date.parse(appointment.ends_at) - Date.parse(appointment.starts_at))
+      const endsAt = new Date(Date.parse(action.starts_at) + length).toISOString()
+      // A new person takes over every service of the visit
+      let staffId = appointment.staff_id || null
+      let services = appointment.services || []
+      let staffName: string | null = staffSummary(services).staff_name
+      if (action.staff_id !== undefined) {
+        const members = await loadStaffMembers(db, organizationId, [action.staff_id])
+        if (action.staff_id && !members.has(action.staff_id)) throw new Error('That team member was not found.')
+        staffId = action.staff_id
+        staffName = action.staff_id ? members.get(action.staff_id)!.name : null
+        services = services.map((s: any) => ({ ...s, staff_id: staffId, staff_name: staffName }))
+      }
+      let warning: string | undefined
+      if (staffId) {
+        const overlapping = await checked(db.from('salon_appointments').select('id, customer_name, starts_at').eq('organization_id', organizationId).eq('staff_id', staffId)
+          .lt('starts_at', endsAt).gt('ends_at', action.starts_at).in('status', ['booked', 'arrived', 'in_service']))
+        const other = (overlapping || []).find((a: any) => a.id !== appointment.id)
+        if (other) warning = `${staffName || 'They'} already has ${other.customer_name} at ${formatIstTime(other.starts_at)}.`
+      }
+      const updated = await checked(db.from('salon_appointments').update({ starts_at: action.starts_at, ends_at: endsAt, staff_id: staffId, services, updated_at: now })
+        .eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
+      const whatsapp = action.send_whatsapp && updated.customer_phone && send ? await send.booking(updated, staffName) : null
+      return { appointment: updated, whatsapp, warning, message: `Moved ${updated.customer_name} to ${formatIstDay(istDate(action.starts_at))} ${formatIstTime(action.starts_at)}` }
     }
 
     case 'sell_membership': {

@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, IdCard, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, IdCard, CalendarDays, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock } from 'lucide-react'
 import { FrontDeskIcon } from '@/components/salon/front-desk-icon'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
@@ -787,8 +787,9 @@ export default function DashboardLayout({
   const connectorBarItems: { tab: string; label: string; short?: string; icon: typeof Menu; badge: number }[] =
     connectorApp === 'front-desk' ? [
       { tab: 'counter', label: 'Front Desk', short: 'Desk', icon: FrontDeskIcon, badge: connectorBadges.counter || 0 },
+      { tab: 'appointments', label: 'Calendar', icon: CalendarDays, badge: 0 },
       { tab: 'members', label: 'Members', icon: IdCard, badge: 0 },
-      { tab: 'invoices', label: 'Invoices', icon: ReceiptText, badge: 0 },
+      { tab: 'invoices', label: 'Bills', icon: ReceiptText, badge: 0 },
     ] : connectorApp === 'pipeline' ? [
       { tab: 'board', label: 'Board', icon: KanbanSquare, badge: 0 },
       { tab: 'list', label: 'List', icon: List, badge: 0 },

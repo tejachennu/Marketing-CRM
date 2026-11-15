@@ -5,8 +5,8 @@
 
 import { announceConnectorBadges, announceConnectorTab, connectorTabFromSearch, isConnectorTab, onTabRequest, openConnectorTab } from './connector-nav'
 
-export type FrontDeskTab = 'counter' | 'invoices' | 'members' | 'reviews' | 'team' | 'setup'
-export const FRONT_DESK_TABS: FrontDeskTab[] = ['counter', 'invoices', 'members', 'reviews', 'team', 'setup']
+export type FrontDeskTab = 'counter' | 'appointments' | 'invoices' | 'members' | 'reviews' | 'team' | 'setup'
+export const FRONT_DESK_TABS: FrontDeskTab[] = ['counter', 'appointments', 'invoices', 'members', 'reviews', 'team', 'setup']
 /** Tabs only managers and admins see */
 export const MANAGER_TABS: FrontDeskTab[] = ['reviews', 'team', 'setup']
 

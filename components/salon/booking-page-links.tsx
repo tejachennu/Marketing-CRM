@@ -48,7 +48,10 @@ export function BookingPageLinks({ orgId, setup, flash }: { orgId: string; setup
   }, [orgId])
   if (error) return <p className="text-[14px] text-[#b91c1c]">{error}</p>
   if (slug === null) return <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
-  const base = `${typeof window !== 'undefined' ? window.location.origin : 'https://wamacrm.magnetora.in'}/b/${slug}`
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://wamacrm.magnetora.in'
+  const base = `${origin}/b/${slug}`
+  // The business page: who you are, services and prices, team, memberships, reviews, and Book now
+  const site = `${origin}/v/${slug}`
   const services = (setup.services || []).filter((s: any) => s.active !== false)
   const staff = (setup.staff || []).filter((m: any) => m.active !== false)
   const safe = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'qr'
@@ -60,7 +63,8 @@ export function BookingPageLinks({ orgId, setup, flash }: { orgId: string; setup
         <p className="text-[14px] text-[#4a5672] dark:text-slate-400 mt-1">Customers pick a service, a person and a free time, and the booking comes to your Front Desk list. Put the link in your Instagram bio, WhatsApp status and Google Maps, and print the QR code for your counter.</p>
         {!services.length && <p className="mt-3 text-[13.5px] rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-3 py-2">Add your services first (Setup → Services). The page opens once there is something to book.</p>}
         <div className="mt-4 flex flex-wrap gap-2">
-          <a href={base} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={16} /> Open my page</a>
+          <a href={base} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={16} /> Open my booking page</a>
+          <a href={site} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={16} /> Open my business page</a>
           <button type="button" onClick={() => navigator.clipboard?.writeText(base).then(() => flash('Link copied'))} className={secondaryButton}><Copy size={16} /> Copy link</button>
         </div>
         <p className="mt-3 text-[12.5px] text-[#6B7894]">
@@ -71,6 +75,7 @@ export function BookingPageLinks({ orgId, setup, flash }: { orgId: string; setup
       <section className={`${card} p-5`}>
         <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Links and QR codes</h3>
         <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 mt-1">
+          <LinkRow label="Business page" hint="Services, prices, team, reviews and Book now" link={site} file={`page-${safe(slug)}`} flash={flash} />
           <LinkRow label={setup.settings?.business_name || 'Whole business'} hint="Every service and person" link={base} file={`booking-${safe(slug)}`} flash={flash} />
           {staff.map((m: any) => <LinkRow key={m.id} label={m.name} hint="Opens with this person picked" link={`${base}?p=${m.id}`} file={`booking-${safe(m.name)}`} flash={flash} />)}
           {services.map((s: any) => <LinkRow key={s.id} label={s.name} hint="Opens with this service picked" link={`${base}?s=${s.id}`} file={`booking-${safe(s.name)}`} flash={flash} />)}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, IdCard, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { CalendarDays, FileText, IdCard, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { FrontDeskIcon } from './front-desk-icon'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
@@ -14,6 +14,7 @@ import { SalonInvoices } from './salon-invoices'
 import { SalonReviews } from './salon-reviews'
 import { SalonTeam } from './salon-team'
 import { SalonMembers } from './salon-members'
+import { SalonAppointments } from './salon-appointments'
 import type { SalonSetup } from './types'
 
 type Tab = FrontDeskTab
@@ -81,6 +82,7 @@ export function SalonApp() {
   useEffect(() => { announceFrontDeskTab(tab) }, [tab])
   const tabs: { id: Tab; label: string; icon: typeof FrontDeskIcon }[] = [
     { id: 'counter', label: 'Front Desk', icon: FrontDeskIcon },
+    { id: 'appointments', label: 'Appointments', icon: CalendarDays },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
     { id: 'members', label: 'Members', icon: IdCard },
     ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
@@ -162,6 +164,7 @@ export function SalonApp() {
           : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />)}
         {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} onOpenReviews={() => go('reviews')} />}
         {tab === 'reviews' && canManage && <SalonReviews orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} />}
+        {tab === 'appointments' && <SalonAppointments orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />}
         {tab === 'members' && <SalonMembers orgId={workspace.orgId} setup={setup} canManage={canManage} canWrite={can(workspace.me, 'records.write')} flash={flash} range={range} onRangeChange={setRange} />}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} range={range} onRangeChange={setRange} />}
       </div>
