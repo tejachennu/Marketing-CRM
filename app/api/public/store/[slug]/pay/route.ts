@@ -30,6 +30,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const razorpayOrderId = String(body?.razorpayOrderId || '')
   if (!order || !razorpayOrderId || razorpayOrderOf(order) !== razorpayOrderId) return NextResponse.json({ error: 'That order could not be found.' }, { status: 404 })
   if (order.payment_status === 'paid') return NextResponse.json({ success: true, paid: true })
+  // The shop cancelled it: no payment is taken for it any more (a captured one would only need a refund)
+  if (order.status === 'canceled' && body?.action !== 'check') return NextResponse.json({ error: 'The shop cancelled this order. Please place a new one.' }, { status: 410 })
 
   if (body?.action === 'later') {
     if (!page.pay.later) return NextResponse.json({ error: 'This shop takes online payment only.' }, { status: 400 })
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (body?.action === 'check') {
       const payment = await paidPayment(keys, razorpayOrderId)
       if (payment) await markStoreOrderPaid(db, order, payment)
-      return NextResponse.json({ success: true, paid: Boolean(payment) })
+      return NextResponse.json({ success: true, paid: Boolean(payment), ...(order.status === 'canceled' ? { canceled: true } : {}) })
     }
     const paymentId = String(body?.paymentId || '')
     if (!paymentId || !verifyStoreSignature(keys.keySecret, razorpayOrderId, paymentId, body?.signature)) return NextResponse.json({ error: 'The payment could not be confirmed. If money was taken, the shop will see it shortly.' }, { status: 400 })

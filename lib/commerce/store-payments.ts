@@ -9,6 +9,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { formatMoney } from './commerce-utils'
 import { sendPush } from '../push'
+import { isUuid } from '../record-visibility'
 
 const API = 'https://api.razorpay.com/v1'
 
@@ -33,6 +34,8 @@ async function call(keys: StoreRazorpayKeys, path: string, init: { method?: stri
     method: init.method || 'GET',
     headers: { Authorization: 'Basic ' + Buffer.from(`${keys.keyId}:${keys.keySecret}`).toString('base64'), 'Content-Type': 'application/json' },
     ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+    // A slow Razorpay must not keep the customer waiting until the server gives up
+    signal: AbortSignal.timeout(15000),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -117,4 +120,26 @@ export async function markStoreOrderPaid(db: any, order: any, payment: { id: str
     tag: `order:${order.id}`,
   })
   return true
+}
+
+/**
+ * Our order for a Razorpay event. Our ids ride on the Razorpay ORDER's notes (Razorpay does not copy them to
+ * the payment), so look there first, then the payment's notes, then the Razorpay order id we kept.
+ */
+export async function findStoreOrder(db: any, organizationId: string, event: any) {
+  const payment = event?.payload?.payment?.entity || {}
+  const notes = { ...(payment.notes || {}), ...(event?.payload?.order?.entity?.notes || {}) }
+  const base = () => db.from('commerce_orders').select('*').eq('organization_id', organizationId)
+  const id = String(notes.wama_order_id || '')
+  if (isUuid(id)) {
+    const { data } = await base().eq('id', id).maybeSingle()
+    if (data) return data
+  }
+  const number = String(notes.wama_order_number || '')
+  if (number) {
+    const { data } = await base().eq('order_number', number).maybeSingle()
+    if (data) return data
+  }
+  const { data } = await base().eq('shipping_address->payment->>order_id', String(payment.order_id)).limit(1)
+  return data?.[0] || null
 }

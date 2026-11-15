@@ -179,6 +179,37 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
   const [pay, setPay] = useState<'online' | 'later'>(store.payOnline ? 'online' : 'later')
   // An online payment that was started but not finished: try again, or pay later
   const [unpaid, setUnpaid] = useState<{ orderNumber: string; total: number; razorpay: any } | null>(null)
+  const unpaidKey = `store-unpaid:${store.slug}`
+  // An unfinished payment survives a reload: ask once whether it was paid after all, else offer it again
+  useEffect(() => {
+    let saved: { orderNumber: string; total: number; razorpay: any } | null = null
+    try {
+      saved = JSON.parse(localStorage.getItem(unpaidKey) || 'null')
+    } catch {}
+    if (!saved?.orderNumber || !saved.razorpay?.orderId) return
+    fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber: saved.orderNumber, razorpayOrderId: saved.razorpay.orderId, action: 'check' }) })
+      .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data.paid) {
+          try { localStorage.removeItem(unpaidKey) } catch {}
+          setDone({ orderNumber: saved!.orderNumber, total: saved!.total, paid: true })
+          setPanel('done')
+        } else if ((ok && !data.canceled) || data?.error === 'Online payment is not set up for this shop.') {
+          setUnpaid(saved)
+          setPanel('checkout')
+        } else {
+          // The order is gone or already handled: forget it
+          try { localStorage.removeItem(unpaidKey) } catch {}
+        }
+      })
+      .catch(() => {})
+  }, [unpaidKey, store.slug])
+  useEffect(() => {
+    try {
+      if (unpaid) localStorage.setItem(unpaidKey, JSON.stringify(unpaid))
+      else localStorage.removeItem(unpaidKey)
+    } catch {}
+  }, [unpaid, unpaidKey])
   const delivery = handover === 'delivery' ? (store.freeFrom > 0 && subtotal >= store.freeFrom ? 0 : store.deliveryFee) : 0
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
@@ -201,6 +232,8 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
         currency: order.razorpay.currency,
         name: order.razorpay.name,
         description: `Order #${order.orderNumber}`,
+        // So Razorpay's payment (and its webhook) carries our order too
+        notes: { wama_order_number: order.orderNumber },
         prefill: { name: order.razorpay.customer?.name, contact: order.razorpay.customer?.contact },
         theme: { color: store.colour },
         handler: async (response: any) => {
