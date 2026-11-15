@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore, storeView } from '@/lib/commerce/storefront'
@@ -23,5 +24,6 @@ export default async function StorePage({ params, searchParams }: { params: Prom
   const page = await loadStore(getSupabaseAdminClient(), slug)
   if (!page) notFound()
   const view = storeView(page)
-  return <Storefront store={view} appUrl={(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')} startCategory={view.categories.some((x) => x.name === c) ? c! : null} />
+  const ownDomain = (await headers()).get('x-store-via-domain') === '1'
+  return <Storefront store={view} basePath={ownDomain ? '' : `/s/${page.organization.slug}`} appUrl={(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')} startCategory={view.categories.some((x) => x.name === c) ? c! : null} />
 }

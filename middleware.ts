@@ -15,8 +15,12 @@ export async function middleware(request: NextRequest) {
   const host = (viaGateway || request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '')
   if (host && !isOwnHost(host) && !pathname.startsWith('/_next') && !pathname.startsWith('/api') && !/\.[a-z0-9]{2,5}$/i.test(pathname)) {
     const url = request.nextUrl.clone()
-    url.pathname = `/s/${host}`
-    return NextResponse.rewrite(url)
+    // The store's home, or one product's page (/p/<id>); every other address shows the home
+    const product = pathname.match(/^\/p\/([0-9a-f-]{36})\/?$/i)?.[1]
+    url.pathname = product ? `/s/${host}/p/${product.toLowerCase()}` : `/s/${host}`
+    const forwarded = new Headers(request.headers)
+    forwarded.set('x-store-via-domain', '1')
+    return NextResponse.rewrite(url, { request: { headers: forwarded } })
   }
 
   // Skip middleware for static assets, API routes, and RSC payloads
