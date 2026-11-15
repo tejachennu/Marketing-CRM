@@ -105,3 +105,59 @@ test('the middleware sends custom domains to the store and leaves API calls alon
   // store-host must stay import-free (the middleware runs at the edge)
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/commerce/store-host.ts'), 'utf8'), /^import /m)
 })
+
+test('gateway mode: records point at the gateway and DNS decides connected', async () => {
+  process.env.STORE_GATEWAY_HOST = 'stores.magnetora.in'
+  process.env.STORE_GATEWAY_IP = '203.0.113.10'
+  assert.deepEqual(D.gatewayConfig(), { host: 'stores.magnetora.in', ip: '203.0.113.10' })
+  assert.equal(D.domainsAvailable(), true)
+  // No Vercel call is made in gateway mode
+  const fetcher = async () => { throw new Error('Vercel should not be called') }
+  assert.deepEqual(await D.addDomain('shop.glowstore.in', fetcher), { ok: true })
+  assert.equal(await D.removeDomain('shop.glowstore.in', fetcher), true)
+
+  const dnsNone = { cname: async () => [], a: async () => [] }
+  let s = await D.domainStatus('shop.glowstore.in', fetcher, dnsNone)
+  assert.equal(s.state, 'waiting')
+  assert.deepEqual(s.records, [{ type: 'CNAME', name: 'shop', value: 'stores.magnetora.in' }])
+  assert.match(s.note, /Add the record/)
+
+  const dnsElsewhere = { cname: async () => [], a: async () => ['198.51.100.1'] }
+  s = await D.domainStatus('shop.glowstore.in', fetcher, dnsElsewhere)
+  assert.match(s.note, /points somewhere else/)
+
+  const dnsCname = { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] }
+  s = await D.domainStatus('shop.glowstore.in', fetcher, dnsCname)
+  assert.equal(s.state, 'connected')
+
+  const dnsRoot = { cname: async () => [], a: async () => ['203.0.113.10'] }
+  s = await D.domainStatus('glowstore.in', fetcher, dnsRoot)
+  assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }])
+  assert.equal(s.state, 'connected')
+
+  process.env.STORE_GATEWAY_IP = 'not-an-ip'
+  assert.equal(D.gatewayConfig(), null)
+  delete process.env.STORE_GATEWAY_HOST
+  delete process.env.STORE_GATEWAY_IP
+  assert.equal(D.domainsAvailable(), false)
+})
+
+test('the gateway files are complete and keep no secrets', () => {
+  const root = path.join(__dirname, '..')
+  const caddy = fs.readFileSync(path.join(root, 'deploy/gateway/Caddyfile'), 'utf8')
+  assert.match(caddy, /on_demand_tls/)
+  assert.match(caddy, /ask \{\$APP_URL\}\/api\/public\/store-domain-check/)
+  assert.match(caddy, /header_up X-Store-Domain \{host\}/)
+  assert.match(caddy, /header_up X-Gateway-Key \{\$STORE_GATEWAY_KEY\}/)
+  const setup = fs.readFileSync(path.join(root, 'deploy/gateway/setup.sh'), 'utf8')
+  assert.match(setup, /set -euo pipefail/)
+  assert.match(setup, /caddy validate/)
+  const flow = fs.readFileSync(path.join(root, '.github/workflows/deploy-gateway.yml'), 'utf8')
+  assert.match(flow, /workflow_dispatch/)
+  assert.doesNotMatch(flow, /^\s+push:/m, 'never deploys on a push')
+  for (const text of [caddy, setup, flow]) assert.doesNotMatch(text, /BEGIN [A-Z ]*PRIVATE KEY|rzp_live_[A-Za-z0-9]{6,}/)
+  // The middleware trusts the gateway header only with the key
+  const mw = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
+  assert.match(mw, /x-gateway-key'\) === gatewayKey/)
+  assert.match(mw, /gatewayKey\.length >= 16/)
+})

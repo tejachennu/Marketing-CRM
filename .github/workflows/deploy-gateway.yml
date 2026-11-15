@@ -1,0 +1,83 @@
+# Sets up or updates the store domain gateway server (deploy/gateway). Runs only when started by hand
+# (Actions → "Deploy store gateway" → Run workflow). Nothing here is secret: the server login and the
+# gateway key live in this repository's Actions secrets.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   GATEWAY_SSH_HOST     server address (IP or name)
+#   GATEWAY_SSH_USER     login user with sudo (e.g. ubuntu or root)
+#   GATEWAY_SSH_KEY      private SSH key for that user (the matching public key is in ~/.ssh/authorized_keys)
+#   GATEWAY_SSH_PORT     optional, default 22
+#   STORE_GATEWAY_KEY    long random key; the same value in Vercel as STORE_GATEWAY_KEY
+#   ACME_EMAIL           email for certificate notices
+# Variables (same page, Variables tab):
+#   GATEWAY_HOSTNAME     e.g. stores.magnetora.in (A record → the server); same value in Vercel as STORE_GATEWAY_HOST
+#   APP_URL              e.g. https://wamacrm.magnetora.in
+name: Deploy store gateway
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gateway
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SSH_HOST: ${{ secrets.GATEWAY_SSH_HOST }}
+      SSH_USER: ${{ secrets.GATEWAY_SSH_USER }}
+      SSH_PORT: ${{ secrets.GATEWAY_SSH_PORT || '22' }}
+      GATEWAY_HOSTNAME: ${{ vars.GATEWAY_HOSTNAME }}
+      APP_URL: ${{ vars.APP_URL || 'https://wamacrm.magnetora.in' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check settings
+        run: |
+          missing=""
+          [ -n "$SSH_HOST" ] || missing="$missing GATEWAY_SSH_HOST"
+          [ -n "$SSH_USER" ] || missing="$missing GATEWAY_SSH_USER"
+          [ "${{ secrets.GATEWAY_SSH_KEY != '' }}" = "true" ] || missing="$missing GATEWAY_SSH_KEY"
+          [ "${{ secrets.STORE_GATEWAY_KEY != '' }}" = "true" ] || missing="$missing STORE_GATEWAY_KEY"
+          [ "${{ secrets.ACME_EMAIL != '' }}" = "true" ] || missing="$missing ACME_EMAIL"
+          [ -n "$GATEWAY_HOSTNAME" ] || missing="$missing GATEWAY_HOSTNAME(variable)"
+          if [ -n "$missing" ]; then echo "::error::Add these in Settings → Secrets and variables → Actions:$missing"; exit 1; fi
+
+      - name: SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.GATEWAY_SSH_KEY }}" > ~/.ssh/gateway
+          chmod 600 ~/.ssh/gateway
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy files
+        run: |
+          ssh -i ~/.ssh/gateway -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" 'rm -rf /tmp/wama-gateway && mkdir -p /tmp/wama-gateway'
+          scp -i ~/.ssh/gateway -P "$SSH_PORT" deploy/gateway/Caddyfile deploy/gateway/setup.sh "$SSH_USER@$SSH_HOST:/tmp/wama-gateway/"
+
+      - name: Set up the server
+        env:
+          STORE_GATEWAY_KEY: ${{ secrets.STORE_GATEWAY_KEY }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+        run: |
+          # Settings go over stdin, so they never show in the server's process list or logs
+          printf 'export GATEWAY_HOSTNAME=%q APP_URL=%q STORE_GATEWAY_KEY=%q ACME_EMAIL=%q\n' "$GATEWAY_HOSTNAME" "$APP_URL" "$STORE_GATEWAY_KEY" "$ACME_EMAIL" \
+            | ssh -i ~/.ssh/gateway -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" 'umask 077; cat > /tmp/wama-gateway/env.sh; sudo bash -c ". /tmp/wama-gateway/env.sh && bash /tmp/wama-gateway/setup.sh"; status=$?; rm -f /tmp/wama-gateway/env.sh; exit $status'
+
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 "https://$GATEWAY_HOSTNAME/healthz"; then echo; echo "Gateway is up."; exit 0; fi
+            sleep 10
+          done
+          echo "::error::https://$GATEWAY_HOSTNAME/healthz did not answer. Check that its DNS A record points to the server."
+          exit 1
+
+      - name: Clean up
+        if: always()
+        run: rm -f ~/.ssh/gateway

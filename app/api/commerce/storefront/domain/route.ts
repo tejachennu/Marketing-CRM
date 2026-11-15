@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { addDomain, cleanDomain, domainStatus, removeDomain, vercelConfig, withStoreDomainSchema } from '@/lib/commerce/store-domain'
+import { addDomain, cleanDomain, domainStatus, removeDomain, domainsAvailable, withStoreDomainSchema } from '@/lib/commerce/store-domain'
 
 export const runtime = 'nodejs'
 
@@ -12,7 +12,7 @@ async function current(db: any, organizationId: string) {
 
 function answer(request: NextRequest, org: any, status: Awaited<ReturnType<typeof domainStatus>>) {
   return NextResponse.json({
-    available: Boolean(vercelConfig()),
+    available: domainsAvailable(),
     ourLink: org?.slug ? `${appUrl(request)}/s/${org.slug}` : null,
     ...status,
     link: status.domain ? `https://${status.domain}` : null,

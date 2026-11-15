@@ -8,7 +8,11 @@ export async function middleware(request: NextRequest) {
 
   // A business's own domain (shop.theirname.com): every page is its online store. API calls (cart,
   // order, payment) and Next's own files pass through untouched.
-  const host = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '')
+  // Visits through our store domain gateway (deploy/gateway) arrive for wamacrm.magnetora.in with the
+  // customer's domain in X-Store-Domain and the gateway's key; anything else uses the request's own host.
+  const gatewayKey = process.env.STORE_GATEWAY_KEY || ''
+  const viaGateway = gatewayKey.length >= 16 && request.headers.get('x-gateway-key') === gatewayKey ? request.headers.get('x-store-domain') : null
+  const host = (viaGateway || request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '')
   if (host && !isOwnHost(host) && !pathname.startsWith('/_next') && !pathname.startsWith('/api') && !/\.[a-z0-9]{2,5}$/i.test(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = `/s/${host}`
