@@ -1,16 +1,14 @@
 /**
  * A business's own web address for its online store (like Shopify): "shop.theirname.com" opens the same
- * store as wamacrm.magnetora.in/s/<slug>. The domain is added to our Vercel project through Vercel's API
- * (Vercel makes the https certificate), the business adds one DNS record at its domain seller, and the
- * middleware sends visits on that address to the store page.
+ * store as wamacrm.magnetora.in/s/<slug>.
  *
- * Two ways, same settings screen:
- * - Gateway (preferred once set up): our own Ubuntu server with Caddy (deploy/gateway/). Domains point at
- *   STORE_GATEWAY_HOST / STORE_GATEWAY_IP; Caddy makes the certificate on the first visit after asking
- *   /api/public/store-domain-check, and passes visits to the app with X-Store-Domain. No domain limit.
- * - Vercel: VERCEL_TOKEN and VERCEL_PROJECT_ID (and VERCEL_TEAM_ID for a team project); domains are added
- *   to our Vercel project through its API.
- * With neither, the option says it is not set up yet.
+ * It runs through WAMA's own store server (a Hostinger Ubuntu server with Caddy, see deploy/gateway/):
+ * - the business points its domain at the server (CNAME to STORE_GATEWAY_HOST, or A to STORE_GATEWAY_IP);
+ * - on the first visit Caddy asks /api/public/store-domain-check and, only for a connected domain, makes the
+ *   https certificate by itself;
+ * - Caddy passes the visit to the app with X-Store-Domain + X-Gateway-Key, and the middleware shows the store.
+ * No limit on domains, and nothing is registered anywhere per domain. Until STORE_GATEWAY_HOST and
+ * STORE_GATEWAY_IP are set, the option says it is not set up yet.
  */
 
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
@@ -70,14 +68,11 @@ export function isRootDomain(domain: string): boolean {
 }
 
 export interface DnsRecord {
-  type: 'A' | 'CNAME' | 'TXT'
+  type: 'A' | 'CNAME'
   /** The "Name" / "Host" box at the domain seller. */
   name: string
   value: string
 }
-
-export const VERCEL_IP = '76.76.21.21'
-export const VERCEL_CNAME = 'cname.vercel-dns.com'
 
 /** The host box for a record: "@" for the root, else the part before the root domain ("shop"). */
 export function hostLabel(domain: string, recordDomain = domain): string {
@@ -86,17 +81,6 @@ export function hostLabel(domain: string, recordDomain = domain): string {
   const root = labels.slice(-rootParts).join('.')
   if (recordDomain === root) return '@'
   return recordDomain.endsWith(`.${root}`) ? recordDomain.slice(0, -(root.length + 1)) : recordDomain
-}
-
-/** The record(s) the business adds at its domain seller. */
-export function dnsRecordsFor(domain: string, verification: { type?: string; domain?: string; value?: string }[] = [], recommended?: { ipv4?: string; cname?: string }): DnsRecord[] {
-  const records: DnsRecord[] = isRootDomain(domain)
-    ? [{ type: 'A', name: '@', value: recommended?.ipv4 || VERCEL_IP }]
-    : [{ type: 'CNAME', name: hostLabel(domain), value: recommended?.cname || VERCEL_CNAME }]
-  for (const v of verification) {
-    if (String(v.type).toUpperCase() === 'TXT' && v.domain && v.value) records.push({ type: 'TXT', name: hostLabel(domain, v.domain), value: v.value })
-  }
-  return records
 }
 
 export type DomainState = 'connected' | 'waiting' | 'unavailable'
@@ -110,10 +94,9 @@ export interface DomainStatus {
 }
 
 /**
- * The store domain gateway (our own Ubuntu server running Caddy, see deploy/gateway/): when it is set up,
- * businesses point their domain at it instead of at Vercel, with no limit on the number of domains.
- * STORE_GATEWAY_HOST is its name (e.g. stores.magnetora.in, the CNAME target), STORE_GATEWAY_IP its address
- * (the A record for root domains). Null when there is no gateway.
+ * The store server (Hostinger Ubuntu + Caddy, deploy/gateway/). STORE_GATEWAY_HOST is its name
+ * (e.g. stores.magnetora.in, the CNAME target), STORE_GATEWAY_IP its address (the A record for root
+ * domains). Null until both are set.
  */
 export function gatewayConfig(env: Record<string, string | undefined> = process.env) {
   const host = String(env.STORE_GATEWAY_HOST || '').trim().toLowerCase().replace(/\.$/, '')
@@ -122,9 +105,16 @@ export function gatewayConfig(env: Record<string, string | undefined> = process.
   return { host, ip }
 }
 
-/** True when businesses can connect their own domain (through the gateway or Vercel). */
+/** True when businesses can connect their own domain (the store server is set up). */
 export function domainsAvailable(): boolean {
-  return Boolean(gatewayConfig() || vercelConfig())
+  return Boolean(gatewayConfig())
+}
+
+export const NOT_SET_UP = 'Custom domains are not set up on WAMA yet. Please ask WAMA support.'
+
+/** The one record the business adds at its domain company. */
+export function dnsRecordsFor(domain: string, gateway: { host: string; ip: string }): DnsRecord[] {
+  return isRootDomain(domain) ? [{ type: 'A', name: '@', value: gateway.ip }] : [{ type: 'CNAME', name: hostLabel(domain), value: gateway.host }]
 }
 
 export interface DnsLookup {
@@ -143,10 +133,13 @@ const realDns: DnsLookup = {
   },
 }
 
-/** Where the domain stands on the gateway: connected once its DNS points at the gateway. */
-export async function gatewayStatus(domain: string, gateway: { host: string; ip: string }, dns: DnsLookup = realDns): Promise<DomainStatus> {
-  const records: DnsRecord[] = isRootDomain(domain) ? [{ type: 'A', name: '@', value: gateway.ip }] : [{ type: 'CNAME', name: hostLabel(domain), value: gateway.host }]
-  const [cnames, addresses] = await Promise.all([dns.cname(domain), dns.a(domain)])
+/** Where the domain stands: connected once its DNS points at the store server, else the record to add. */
+export async function domainStatus(domain: string | null, lookup: DnsLookup = realDns): Promise<DomainStatus> {
+  if (!domain) return { domain: null, state: null, records: [], note: '' }
+  const gateway = gatewayConfig()
+  if (!gateway) return { domain, state: 'unavailable', records: [], note: NOT_SET_UP }
+  const records = dnsRecordsFor(domain, gateway)
+  const [cnames, addresses] = await Promise.all([lookup.cname(domain), lookup.a(domain)])
   const pointsHere = cnames.some((c) => c.toLowerCase().replace(/\.$/, '') === gateway.host) || addresses.includes(gateway.ip)
   if (pointsHere) return { domain, state: 'connected', records, note: 'Your store opens on this address. The first visit can take a few seconds while the secure (https) certificate is made.' }
   return {
@@ -156,102 +149,5 @@ export async function gatewayStatus(domain: string, gateway: { host: string; ip:
     note: addresses.length || cnames.length
       ? 'Your domain still points somewhere else. Change the record below at the company where you bought the domain (GoDaddy, Hostinger, …).'
       : 'Add the record below at the company where you bought the domain (GoDaddy, Hostinger, …). It can take from a few minutes up to a day to work.',
-  }
-}
-
-/** Vercel settings from the environment, or null when custom domains are not set up. */
-export function vercelConfig(env: Record<string, string | undefined> = process.env) {
-  const token = String(env.VERCEL_TOKEN || env.VERCEL_API_TOKEN || '').trim()
-  const projectId = String(env.VERCEL_PROJECT_ID || '').trim()
-  if (!token || !projectId) return null
-  const teamId = String(env.VERCEL_TEAM_ID || '').trim()
-  return { token, projectId, teamId }
-}
-
-type Fetch = typeof fetch
-
-async function vercel(config: NonNullable<ReturnType<typeof vercelConfig>>, method: string, path: string, body?: unknown, fetcher: Fetch = fetch) {
-  const url = new URL(`https://api.vercel.com${path}`)
-  if (config.teamId) url.searchParams.set('teamId', config.teamId)
-  const res = await fetcher(url.toString(), {
-    method,
-    headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
-  })
-  const data: any = await res.json().catch(() => ({}))
-  return { ok: res.ok, status: res.status, data }
-}
-
-/** Vercel's error in plain words for the business. */
-export function vercelProblem(status: number, data: any): string {
-  const code = String(data?.error?.code || '')
-  if (code === 'domain_already_in_use' || code === 'domain_taken' || status === 409) {
-    return 'This domain is already connected to another website. Remove it there first, or use another address like shop.yourname.com.'
-  }
-  if (code === 'invalid_domain' || code === 'invalid_name') return 'That domain is not valid. Type it like shop.yourname.com.'
-  if (code === 'forbidden' || status === 401 || status === 403) return 'Custom domains are not set up on WAMA right now. Please ask WAMA support.'
-  if (status === 429) return 'Too many tries. Please try again in a few minutes.'
-  return 'The domain could not be connected right now. Please try again.'
-}
-
-/** Add the domain to our Vercel project (already added = fine). */
-export async function addDomain(domain: string, fetcher: Fetch = fetch): Promise<{ ok: true } | { ok: false; error: string }> {
-  // The gateway needs no sign-up per domain: it asks us (store-domain-check) on the first visit
-  if (gatewayConfig()) return { ok: true }
-  const config = vercelConfig()
-  if (!config) return { ok: false, error: 'Custom domains are not set up on WAMA yet. Please ask WAMA support.' }
-  const res = await vercel(config, 'POST', `/v10/projects/${encodeURIComponent(config.projectId)}/domains`, { name: domain }, fetcher)
-  if (res.ok) return { ok: true }
-  // Already on this project (e.g. a second try) is not a problem
-  if (res.status === 409 && /already.*(this|your) project|domain_already_exists/i.test(`${res.data?.error?.code} ${res.data?.error?.message}`)) return { ok: true }
-  return { ok: false, error: vercelProblem(res.status, res.data) }
-}
-
-/** Take the domain off our Vercel project (gone already = fine). */
-export async function removeDomain(domain: string, fetcher: Fetch = fetch): Promise<boolean> {
-  if (gatewayConfig()) return true
-  const config = vercelConfig()
-  if (!config) return true
-  const res = await vercel(config, 'DELETE', `/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(domain)}`, undefined, fetcher)
-  return res.ok || res.status === 404
-}
-
-/** Where the domain stands: connected (https works), or the records still to add. */
-export async function domainStatus(domain: string | null, fetcher: Fetch = fetch, lookup: DnsLookup = realDns): Promise<DomainStatus> {
-  if (!domain) return { domain: null, state: null, records: [], note: '' }
-  const gateway = gatewayConfig()
-  if (gateway) return gatewayStatus(domain, gateway, lookup)
-  const config = vercelConfig()
-  if (!config) return { domain, state: 'unavailable', records: dnsRecordsFor(domain), note: 'Custom domains are not set up on WAMA yet. Please ask WAMA support.' }
-  const base = `/v9/projects/${encodeURIComponent(config.projectId)}/domains/${encodeURIComponent(domain)}`
-  let project = await vercel(config, 'GET', base, undefined, fetcher).catch(() => null)
-  if (project && project.status === 404) {
-    // Saved here but not on Vercel (e.g. removed there): add it again
-    await addDomain(domain, fetcher).catch(() => null)
-    project = await vercel(config, 'GET', base, undefined, fetcher).catch(() => null)
-  }
-  if (project?.ok && project.data?.verified === false) {
-    const verify = await vercel(config, 'POST', `${base}/verify`, undefined, fetcher).catch(() => null)
-    if (verify?.ok) project = verify
-  }
-  const dns = await vercel(config, 'GET', `/v6/domains/${encodeURIComponent(domain)}/config`, undefined, fetcher).catch(() => null)
-  const verification = Array.isArray(project?.data?.verification) ? project!.data.verification : []
-  const recommended = {
-    ipv4: Array.isArray(dns?.data?.recommendedIPv4) ? dns!.data.recommendedIPv4.find((r: any) => r?.rank === 1)?.value?.[0] : undefined,
-    cname: Array.isArray(dns?.data?.recommendedCNAME) ? String(dns!.data.recommendedCNAME.find((r: any) => r?.rank === 1)?.value || '').replace(/\.$/, '') || undefined : undefined,
-  }
-  const records = dnsRecordsFor(domain, verification, recommended)
-  const verified = project?.ok ? project.data?.verified !== false : false
-  const configured = dns?.ok ? dns.data?.misconfigured === false : false
-  if (verified && configured) return { domain, state: 'connected', records, note: 'Your store opens on this address.' }
-  if (!project?.ok) return { domain, state: 'waiting', records, note: 'We could not check your domain just now. Try again in a minute.' }
-  return {
-    domain,
-    state: 'waiting',
-    records,
-    note: verified
-      ? 'Add the record below at the company where you bought the domain (GoDaddy, Hostinger, …). It can take from a few minutes up to a day to work.'
-      : 'This domain is used on another website account. Add the TXT record below too, so we know it is yours.',
   }
 }

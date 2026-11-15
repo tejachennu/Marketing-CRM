@@ -250,7 +250,7 @@ class DemoCommerce {
           'domain': 'shop.glowstore.in',
           'state': 'waiting',
           'records': [
-            {'type': 'CNAME', 'name': 'shop', 'value': 'cname.vercel-dns.com'},
+            {'type': 'CNAME', 'name': 'shop', 'value': 'stores.magnetora.in'},
           ],
           'note': 'Add the record below at the company where you bought the domain (GoDaddy, Hostinger, …). It can take from a few minutes up to a day to work.',
           'link': 'https://shop.glowstore.in',

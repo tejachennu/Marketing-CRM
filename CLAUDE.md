@@ -117,6 +117,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Own domains only through our Hostinger server** (owner: "Domain Connect is not vercel ... hostinger linux
+  server ... I will deploy"): all Vercel domain code removed from `lib/commerce/store-domain.ts` (no
+  `VERCEL_TOKEN` etc.). The only way is the store server in `deploy/gateway/` (Hostinger VPS, Ubuntu 24.04,
+  Caddy): `domainsAvailable()` = `STORE_GATEWAY_HOST` + `STORE_GATEWAY_IP` set; records are CNAME →
+  `stores.magnetora.in` or A → the VPS IP; status comes from DNS; `PUT` refuses (503) until it is set up.
+  The owner installs the server himself (README Part 2: `git clone`, `setup.sh`; the script stops if Apache /
+  Nginx / LiteSpeed hold ports 80/443). The GitHub workflow stays as an optional extra.
+
 - **Store domain gateway, store fixes and a testing report** (owner: "do all the changes ... fix all the bugs ...
   test cases ... testing report"): `deploy/gateway/` (Caddyfile with on-demand certificates that ask
   `GET /api/public/store-domain-check`, `setup.sh` for Ubuntu, README with the steps) and
@@ -139,7 +147,8 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `domainStatus` through Vercel's API (`VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID`; without them the
   option says it is not set up). New column `organizations.store_domain` (unique; migration
   `20261120_store_domain.sql`, lock 724519017). `GET/PUT/DELETE /api/commerce/storefront/domain` (PUT/DELETE
-  admins). `middleware.ts` rewrites every non-API page on a host that is not WAMA's (`lib/commerce/store-host.ts`
+  admins). (Vercel's domain API was used here at first; replaced by our Hostinger store server, see above.)
+  `middleware.ts` rewrites every non-API page on a host that is not WAMA's (`lib/commerce/store-host.ts`
   `isOwnHost`: *.magnetora.in, *.vercel.app, NEXT_PUBLIC_APP_URL, `STORE_APP_HOSTS`, IPs) to `/s/<host>`, and
   `loadStore` finds the store by `store_domain`. Later, for many domains: a small Ubuntu gateway (Caddy with
   on-demand certificates) in front, same settings screen. **Not tried against Vercel yet.**

@@ -2,7 +2,9 @@
 
 **Date:** 15 Nov 2026  **Branch:** `ccr-7a545d5a-4kbhlw`  **Last commit tested:** `0e85e9a`
 **Scope:** the whole web app and mobile app, with extra focus on this round's work: the online store
-website (filled from business details, made pictures, Razorpay, own domain, domain gateway).
+website (filled from business details, made pictures, Razorpay, own domain through our Hostinger store server).
+
+**Update (same day):** domain connection now goes only through WAMA's own Hostinger Ubuntu server (no Vercel).
 
 ## 1. Summary
 
@@ -125,10 +127,10 @@ Result: **Pass** = automated test passed. **Seen** = checked in the browser or a
 |---|---|---|---|
 | DM-01 | Typed domain "https://Shop.MyName.com/" | Cleaned to shop.myname.com | Pass |
 | DM-02 | Bad or WAMA domain | Plain error | Pass |
-| DM-03 | shop.name.com / name.com / name.co.in | CNAME for sub-domains. A record for root domains, including .co.in | Pass |
-| DM-04 | Vercel mode: added, waiting, connected | Status follows Vercel. A TXT record is shown when Vercel asks for proof. | Pass |
-| DM-05 | Domain used by another website / another WAMA store | Clear message, nothing saved | Pass |
-| DM-06 | Gateway mode | Records point at stores.magnetora.in or the gateway IP. Connected once DNS points there. No Vercel calls. | Pass |
+| DM-03 | shop.name.com / name.com / name.co.in | CNAME to stores.magnetora.in for sub-domains. A record to the server IP for root domains, including .co.in | Pass |
+| DM-04 | Store server not set up | "Custom domains are not set up on WAMA yet", nothing saved | Pass |
+| DM-05 | Domain used by another WAMA store | Clear message, nothing saved | Pass (code) |
+| DM-06 | Domain status | Waiting, then "points somewhere else", then Connected once DNS points at the server. No Vercel used. | Pass |
 | DM-07 | Visit on a business's domain | Store page. /dashboard is not reachable there. API calls work. | Pass + real request |
 | DM-08 | Visit on wamacrm.magnetora.in | App as before | Real request |
 | DM-09 | Gateway header without the right key | Ignored | Pass |
@@ -144,8 +146,7 @@ before telling customers.
 | What | Why not tested | How to try |
 |---|---|---|
 | Real Razorpay payment on the store page | No real keys here | Connect test keys (rzp_test_…) in Website → Online payment, place an order, pay with Razorpay's test card, and check that the order shows "Paid online". Then set the webhook and repeat with the page closed. |
-| Own domain through Vercel | `VERCEL_TOKEN` / `VERCEL_PROJECT_ID` not set | Set them in Vercel, connect a spare sub-domain, add the CNAME, then press Check again |
-| Domain gateway server | No server yet. Downloading Caddy to validate the config was blocked here, so `Caddyfile` has only been checked by its tests, not by Caddy itself. | Follow `deploy/gateway/README.md`. The deploy runs `caddy validate` on the server before starting. |
+| Own domain on the Hostinger store server | No server yet. Downloading Caddy to validate the config was blocked here, so `Caddyfile` has only been checked by its tests, not by Caddy itself. | Follow `deploy/gateway/README.md` (Hostinger steps). Setup runs `caddy validate` before starting. Then connect a spare sub-domain and press Check again. |
 | Pop-up notifications on a real phone | Needs a phone and Firebase | App → More → Test notifications |
 | Google sign-in | Needs Google switched on in Supabase | Sign in with Google on /login |
 | WhatsApp tick-box booking form | Needs Meta | Send "Book" to the business number |

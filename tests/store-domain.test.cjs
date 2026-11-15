@@ -22,57 +22,33 @@ test('WAMA hosts are never treated as a store', () => {
   delete process.env.STORE_APP_HOSTS
 })
 
-test('root domains get an A record, others a CNAME; a TXT check is added when asked', () => {
+test('root domains get an A record, sub-domains a CNAME, both to the store server', () => {
+  const gw = { host: 'stores.magnetora.in', ip: '203.0.113.10' }
   assert.equal(D.isRootDomain('glowstore.com'), true)
   assert.equal(D.isRootDomain('glowstore.co.in'), true)
   assert.equal(D.isRootDomain('shop.glowstore.in'), false)
   assert.equal(D.isRootDomain('shop.glowstore.co.in'), false)
-  assert.deepEqual(D.dnsRecordsFor('glowstore.com'), [{ type: 'A', name: '@', value: '76.76.21.21' }])
-  assert.deepEqual(D.dnsRecordsFor('shop.glowstore.co.in'), [{ type: 'CNAME', name: 'shop', value: 'cname.vercel-dns.com' }])
-  const withTxt = D.dnsRecordsFor('shop.glowstore.in', [{ type: 'TXT', domain: '_vercel.glowstore.in', value: 'vc-domain-verify=abc' }])
-  assert.deepEqual(withTxt[1], { type: 'TXT', name: '_vercel', value: 'vc-domain-verify=abc' })
+  assert.deepEqual(D.dnsRecordsFor('glowstore.com', gw), [{ type: 'A', name: '@', value: '203.0.113.10' }])
+  assert.deepEqual(D.dnsRecordsFor('shop.glowstore.co.in', gw), [{ type: 'CNAME', name: 'shop', value: 'stores.magnetora.in' }])
 })
 
-test('without Vercel settings the option says it is not ready, and nothing is called', async () => {
-  delete process.env.VERCEL_TOKEN
-  delete process.env.VERCEL_PROJECT_ID
-  let called = 0
-  const fetcher = async () => { called++; return new Response('{}') }
-  const added = await D.addDomain('shop.glowstore.in', fetcher)
-  assert.equal(added.ok, false)
-  const status = await D.domainStatus('shop.glowstore.in', fetcher)
-  assert.equal(status.state, 'unavailable')
-  assert.equal(called, 0)
+test('without the store server set up, the option says so', async () => {
+  delete process.env.STORE_GATEWAY_HOST
+  delete process.env.STORE_GATEWAY_IP
+  assert.equal(D.gatewayConfig(), null)
+  assert.equal(D.domainsAvailable(), false)
+  let looked = 0
+  const dns = { cname: async () => { looked++; return [] }, a: async () => { looked++; return [] } }
+  const s = await D.domainStatus('shop.glowstore.in', dns)
+  assert.equal(s.state, 'unavailable')
+  assert.equal(s.note, D.NOT_SET_UP)
+  assert.equal(looked, 0)
+  assert.deepEqual(await D.domainStatus(null, dns), { domain: null, state: null, records: [], note: '' })
 })
 
-test('domain status reads Vercel: waiting until verified and configured, then connected', async () => {
-  process.env.VERCEL_TOKEN = 'test-token'
-  process.env.VERCEL_PROJECT_ID = 'prj_test'
-  process.env.VERCEL_TEAM_ID = 'team_test'
-  const seen = []
-  let misconfigured = true
-  const fetcher = async (url, init) => {
-    seen.push(`${init.method} ${new URL(url).pathname} ${new URL(url).searchParams.get('teamId')}`)
-    assert.equal(init.headers.Authorization, 'Bearer test-token')
-    if (url.includes('/config')) return new Response(JSON.stringify({ misconfigured, recommendedCNAME: [{ rank: 1, value: 'abc.vercel-dns-017.com.' }] }))
-    return new Response(JSON.stringify({ name: 'shop.glowstore.in', verified: true }))
-  }
-  let status = await D.domainStatus('shop.glowstore.in', fetcher)
-  assert.equal(status.state, 'waiting')
-  assert.deepEqual(status.records, [{ type: 'CNAME', name: 'shop', value: 'abc.vercel-dns-017.com' }])
-  assert.ok(seen.every((s) => s.endsWith('team_test')))
-  misconfigured = false
-  status = await D.domainStatus('shop.glowstore.in', fetcher)
-  assert.equal(status.state, 'connected')
-
-  // Adding: already on our project is fine; used elsewhere is explained
-  const conflict = async () => new Response(JSON.stringify({ error: { code: 'domain_already_in_use', message: 'in use by another project' } }), { status: 409 })
-  assert.match((await D.addDomain('shop.glowstore.in', conflict)).error, /already connected to another website/)
-  const ours = async () => new Response(JSON.stringify({ error: { code: 'domain_already_exists', message: 'already exists on this project' } }), { status: 409 })
-  assert.deepEqual(await D.addDomain('shop.glowstore.in', ours), { ok: true })
-  delete process.env.VERCEL_TOKEN
-  delete process.env.VERCEL_PROJECT_ID
-  delete process.env.VERCEL_TEAM_ID
+test('no Vercel is used for domains any more', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../lib/commerce/store-domain.ts'), 'utf8') + fs.readFileSync(path.join(__dirname, '../app/api/commerce/storefront/domain/route.ts'), 'utf8')
+  assert.doesNotMatch(src, /api\.vercel\.com|VERCEL_TOKEN|vercel-dns/)
 })
 
 test('the store page loads by its own domain', async () => {
@@ -106,32 +82,24 @@ test('the middleware sends custom domains to the store and leaves API calls alon
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/commerce/store-host.ts'), 'utf8'), /^import /m)
 })
 
-test('gateway mode: records point at the gateway and DNS decides connected', async () => {
+test('store server: records point at it and DNS decides connected', async () => {
   process.env.STORE_GATEWAY_HOST = 'stores.magnetora.in'
   process.env.STORE_GATEWAY_IP = '203.0.113.10'
   assert.deepEqual(D.gatewayConfig(), { host: 'stores.magnetora.in', ip: '203.0.113.10' })
   assert.equal(D.domainsAvailable(), true)
-  // No Vercel call is made in gateway mode
-  const fetcher = async () => { throw new Error('Vercel should not be called') }
-  assert.deepEqual(await D.addDomain('shop.glowstore.in', fetcher), { ok: true })
-  assert.equal(await D.removeDomain('shop.glowstore.in', fetcher), true)
 
-  const dnsNone = { cname: async () => [], a: async () => [] }
-  let s = await D.domainStatus('shop.glowstore.in', fetcher, dnsNone)
+  let s = await D.domainStatus('shop.glowstore.in', { cname: async () => [], a: async () => [] })
   assert.equal(s.state, 'waiting')
   assert.deepEqual(s.records, [{ type: 'CNAME', name: 'shop', value: 'stores.magnetora.in' }])
   assert.match(s.note, /Add the record/)
 
-  const dnsElsewhere = { cname: async () => [], a: async () => ['198.51.100.1'] }
-  s = await D.domainStatus('shop.glowstore.in', fetcher, dnsElsewhere)
+  s = await D.domainStatus('shop.glowstore.in', { cname: async () => [], a: async () => ['198.51.100.1'] })
   assert.match(s.note, /points somewhere else/)
 
-  const dnsCname = { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] }
-  s = await D.domainStatus('shop.glowstore.in', fetcher, dnsCname)
+  s = await D.domainStatus('shop.glowstore.in', { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] })
   assert.equal(s.state, 'connected')
 
-  const dnsRoot = { cname: async () => [], a: async () => ['203.0.113.10'] }
-  s = await D.domainStatus('glowstore.in', fetcher, dnsRoot)
+  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'] })
   assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }])
   assert.equal(s.state, 'connected')
 
@@ -139,7 +107,6 @@ test('gateway mode: records point at the gateway and DNS decides connected', asy
   assert.equal(D.gatewayConfig(), null)
   delete process.env.STORE_GATEWAY_HOST
   delete process.env.STORE_GATEWAY_IP
-  assert.equal(D.domainsAvailable(), false)
 })
 
 test('the gateway files are complete and keep no secrets', () => {

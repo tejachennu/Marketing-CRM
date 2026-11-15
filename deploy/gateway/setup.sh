@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Sets up (or updates) the WAMA store domain gateway on Ubuntu 22.04 / 24.04. Safe to run again.
+# Sets up (or updates) WAMA's store server for businesses' own domains on Ubuntu 22.04 / 24.04
+# (made for a Hostinger VPS; any Ubuntu server works). Safe to run again.
 # Run as root with these set in the environment (the GitHub "Deploy store gateway" workflow does this):
 #   GATEWAY_HOSTNAME   the gateway's own name, e.g. stores.magnetora.in (its DNS A record → this server)
 #   APP_URL            the WAMA app, e.g. https://wamacrm.magnetora.in
@@ -13,6 +14,16 @@ done
 if [ "${#STORE_GATEWAY_KEY}" -lt 16 ]; then echo "STORE_GATEWAY_KEY must be at least 16 characters" >&2; exit 1; fi
 APP_HOST="$(echo "$APP_URL" | sed -E 's#^https?://##; s#/.*$##')"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+
+echo "== Checking ports 80 and 443 are free"
+# Some Hostinger templates come with Apache, Nginx or LiteSpeed already on these ports
+busy="$(ss -ltnpH '( sport = :80 or sport = :443 )' 2>/dev/null | grep -v '"caddy"' || true)"
+if [ -n "$busy" ]; then
+  echo "Another program is using port 80 or 443:" >&2
+  echo "$busy" >&2
+  echo "Stop it first (for example: systemctl disable --now apache2 nginx lshttpd), or use the plain Ubuntu 24.04 template." >&2
+  exit 1
+fi
 
 echo "== Installing Caddy"
 if ! command -v caddy >/dev/null 2>&1; then

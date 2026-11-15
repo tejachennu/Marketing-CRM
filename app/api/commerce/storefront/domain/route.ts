@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { addDomain, cleanDomain, domainStatus, removeDomain, domainsAvailable, withStoreDomainSchema } from '@/lib/commerce/store-domain'
+import { NOT_SET_UP, cleanDomain, domainStatus, domainsAvailable, withStoreDomainSchema } from '@/lib/commerce/store-domain'
 
 export const runtime = 'nodejs'
 
@@ -36,6 +36,7 @@ export async function PUT(request: NextRequest) {
   const organizationId = body?.organizationId || null
   const access = await verifyOrgAccess(request, organizationId, { permission: 'settings.manage' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
+  if (!domainsAvailable()) return NextResponse.json({ error: NOT_SET_UP }, { status: 503 })
   const cleaned = cleanDomain(body?.domain)
   if ('error' in cleaned) return NextResponse.json({ error: cleaned.error, field: 'domain' }, { status: 400 })
   const domain = cleaned.domain
@@ -48,16 +49,11 @@ export async function PUT(request: NextRequest) {
   if (taken) return NextResponse.json({ error: 'This domain is already used by another store on WAMA.', field: 'domain' }, { status: 409 })
 
   if (org.store_domain !== domain) {
-    const added = await addDomain(domain)
-    if (!added.ok) return NextResponse.json({ error: added.error, field: 'domain' }, { status: 400 })
     const saved = await db.from('organizations').update({ store_domain: domain }).eq('id', organizationId)
     if (saved.error) {
-      await removeDomain(domain).catch(() => null)
       const clash = /duplicate|unique/i.test(saved.error.message || '')
       return NextResponse.json({ error: clash ? 'This domain is already used by another store on WAMA.' : 'The domain could not be saved. Please try again.' }, { status: clash ? 409 : 500 })
     }
-    // The old domain stops pointing at this store
-    if (org.store_domain) await removeDomain(org.store_domain).catch(() => null)
   }
   return answer(request, org, await domainStatus(domain))
 }
@@ -72,7 +68,6 @@ export async function DELETE(request: NextRequest) {
   const { data: org, error } = await current(db, organizationId)
   if (error || !org) return NextResponse.json({ error: error?.message || 'Workspace not found' }, { status: 500 })
   if (org.store_domain) {
-    await removeDomain(org.store_domain).catch(() => null)
     const saved = await db.from('organizations').update({ store_domain: null }).eq('id', organizationId)
     if (saved.error) return NextResponse.json({ error: 'The domain could not be removed. Please try again.' }, { status: 500 })
   }
