@@ -8,7 +8,7 @@ import { normalizePhone } from '../public-api/keys'
 import { contactByPhone } from '../public-api/contacts'
 import { isUuid } from '../record-visibility'
 
-export const ORDER_CHANNELS = { in_store: 'In the shop', phone: 'Phone call' } as const
+export const ORDER_CHANNELS = { in_store: 'In the shop', phone: 'Phone call', website: 'Website' } as const
 export type OrderChannel = keyof typeof ORDER_CHANNELS
 export type Handover = 'now' | 'pickup' | 'delivery'
 export const HAND_PAYMENT_METHODS = { cash: 'Cash', upi: 'UPI', card: 'Card' } as const
@@ -36,7 +36,7 @@ const money = (value: unknown): number | null => {
 /** Check what the team typed. Returns the order to save, or what to fix (in plain words). */
 export function parseManualOrder(body: any): { order: ManualOrderInput } | { error: string; field?: string } {
   const channel = body?.channel
-  if (!(channel in ORDER_CHANNELS)) return { error: 'Say where the order came from: in the shop or a phone call.', field: 'channel' }
+  if (!(channel in ORDER_CHANNELS) || channel === 'website') return { error: 'Say where the order came from: in the shop or a phone call.', field: 'channel' }
   const handover = body?.handover as Handover
   if (!['now', 'pickup', 'delivery'].includes(handover)) return { error: 'Say how the customer gets it: now, pick up later, or delivery.', field: 'handover' }
   if (handover === 'now' && channel !== 'in_store') return { error: 'A phone order cannot be handed over now. Choose pick up or delivery.', field: 'handover' }

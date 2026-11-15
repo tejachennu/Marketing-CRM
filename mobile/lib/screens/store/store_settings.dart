@@ -5,6 +5,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'store_logic.dart';
 import 'store_screen.dart';
+import 'website_screen.dart';
 
 /// Store settings, as on the web: take orders on/off, the AI shopping assistant, the catalog (pick,
 /// connect, create, rename, stop using, delete), the WhatsApp cart, the address form, payment and
@@ -339,6 +340,16 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
       children: [
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            leading: const Icon(Icons.language, color: Brand.blue),
+            title: const Text('Online store website', style: TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: const Text('Banners, categories, ordering from your own shop page'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WebsiteScreen())),
+          ),
+        ),
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: SwitchListTile(

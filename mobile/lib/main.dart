@@ -33,6 +33,7 @@ import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/store/new_order_screen.dart';
 import 'screens/store/store_screen.dart';
+import 'screens/store/website_screen.dart';
 import 'screens/more/chat_tickets_screen.dart';
 import 'screens/templates/template_create.dart';
 import 'screens/templates/template_editor.dart';
@@ -231,6 +232,7 @@ class WamaApp extends StatelessWidget {
       'tickets' => const TicketsScreen(),
       'store' => const StoreScreen(),
       'new_order' => const NewOrderScreen(currency: 'INR'),
+      'store_website' => const WebsiteScreen(),
       'chat_tickets' => const ChatTicketsScreen(),
       'store_products' => const StoreScreen(initialTab: 1),
       'store_flow' => const StoreScreen(initialTab: 2),

@@ -117,6 +117,24 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Online store website for each business** (owner: "e-commerce store front page website, carousel,
+  categories, fully dynamic, responsive, ordering products from the page"): public page **`/s/<org slug>`**
+  (`app/s/[slug]/page.tsx` + `storefront.tsx`): top strip, header with search and cart, banner carousel
+  (slides by itself, swipe, arrows, dots; a tap opens a category or a link), round category pictures, product
+  grid (2/3/4 columns), product sheet, cart kept in localStorage, checkout (name, phone, pick up or delivery
+  with address, note; pay on delivery / pick up), "Send this cart on WhatsApp", footer with address, call and
+  WhatsApp. `lib/commerce/storefront.ts`: settings in new column `organizations.storefront` (JSON;
+  migration `20261119_storefront.sql`, lock 724519016), `readStorefront` cleans everything (https pictures
+  only, 8 banners, colour presets), `loadStore` (off unless enabled and the store is on), `storeView` (no
+  workspace id), `parseStoreOrder` (prices from the product list, stock, minimum order, pick-up/delivery
+  rules), `deliveryCharge`. `POST /api/public/store/[slug]/order` (rate limited per address and phone) saves
+  it with `createManualOrder` as channel `website` and pops up "New website order". Settings: `GET/PUT
+  /api/commerce/storefront`; web E-commerce → **Website** tab (`components/commerce/storefront-settings.tsx`:
+  on/off, link + QR, name, line, strip, logo, colour, banners with upload/order/what a tap opens, category
+  order and pictures, pick up / delivery, charges, note, minimum, contact, about); on phones it opens from the
+  Store tab. App: Store tab → Online store website (`store/website_screen.dart`). `PhoneField`'s country box
+  now keeps its width when the screen's input class says `w-full`.
+
 - **Shop and phone-call orders; Chat and tickets settings for every business** (owner: "in-store purchases
   ... people contact via phone call", "chat and tickets option not showing in settings"):
   `lib/commerce/manual-order.ts` (`parseManualOrder`, `startStatus`, `createManualOrder`): `POST

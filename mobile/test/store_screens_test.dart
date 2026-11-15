@@ -8,7 +8,7 @@ import 'screen_check.dart';
 /// with large text; and the store rules mirrored from the web.
 void main() {
   screenChecks(
-    screens: ['store', 'store_products', 'store_flow', 'store_settings', 'new_order', 'chat_tickets'],
+    screens: ['store', 'store_products', 'store_flow', 'store_settings', 'new_order', 'chat_tickets', 'store_website'],
     flows: [
       ('store', ['#ORD-241114-0007']),
       ('store', ['#ORD-241114-0006']),

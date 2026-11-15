@@ -72,7 +72,7 @@ const METHOD_LABELS: Record<string, string> = {
 /** Orders the team added: where they came from. WhatsApp carts have none. */
 function channelLabel(order: CommerceOrder): string | null {
   const type = (order as any).checkout_type
-  return type === 'in_store' ? 'In the shop' : type === 'phone' ? 'Phone call' : null
+  return type === 'in_store' ? 'In the shop' : type === 'phone' ? 'Phone call' : type === 'website' ? 'Website' : null
 }
 const handoverOf = (order: CommerceOrder): string => String((order.shipping_address as any)?.handover || '')
 

@@ -190,6 +190,29 @@ class DemoCommerce {
     'commerce_ai_assistant': true,
   };
   bool _cartOn = true;
+  final Map<String, dynamic> website = {
+    'enabled': true,
+    'title': 'Glow Store',
+    'tagline': 'Handloom sarees, kurtas and more',
+    'logo': '',
+    'colour': '#1D5BEA',
+    'announcement': 'Free delivery on orders above ₹999',
+    'banners': [
+      {'image': '', 'title': 'Festive collection', 'text': 'New this week', 'button': 'Shop now', 'category': 'Sarees', 'link': ''},
+    ],
+    'categories': [],
+    'pickup': true,
+    'delivery': true,
+    'delivery_note': 'We deliver in Hyderabad within 2 days.',
+    'delivery_fee': null,
+    'free_delivery_from': null,
+    'min_order': 0,
+    'whatsapp': '+919876543210',
+    'phone': '+919876543210',
+    'address': 'Shop 4, Road No. 12, Banjara Hills, Hyderabad',
+    'about': 'A family shop since 1998.',
+    'show_out_of_stock': false,
+  };
 
   static const _views = {
     'awaiting': ['cart_submitted', 'awaiting_address', 'payment_pending'],
@@ -220,6 +243,15 @@ class DemoCommerce {
     switch (path) {
       case '/api/organization':
         return {'organization': org};
+      case '/api/commerce/storefront':
+        return {
+          'settings': website,
+          'link': 'https://wamacrm.magnetora.in/s/glow-store',
+          'storeOn': true,
+          'categories': [
+            for (final c in {for (final p in _products) '${p['category']}'}) {'name': c, 'image': ''},
+          ],
+        };
       case '/api/teammates':
         return {
           'success': true,
@@ -394,6 +426,9 @@ class DemoCommerce {
         return {'success': true, 'flowId': 'flow-1'};
       case '/api/commerce/catalog':
         return {'success': true, 'catalogId': '1234567890', 'connected': true};
+      case '/api/commerce/storefront':
+        website.addAll(Map<String, dynamic>.from(body['settings'] as Map));
+        return {'success': true, 'settings': website, 'link': 'https://wamacrm.magnetora.in/s/glow-store'};
       case '/api/organization':
         org.addAll(Map<String, dynamic>.from(body['updates'] as Map));
         return {'success': true, 'organization': org};

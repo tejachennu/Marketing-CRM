@@ -95,6 +95,7 @@ const paymentMethodLabels = {
 String? channelLabel(Map order) => switch (order['checkout_type']) {
   'in_store' => 'In the shop',
   'phone' => 'Phone call',
+  'website' => 'Website',
   _ => null,
 };
 
