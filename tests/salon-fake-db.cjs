@@ -22,6 +22,7 @@ function salonDb(seed = {}) {
           : op === 'in' ? v.replace(/^\(|\)$/g, '').split(',').includes(String(r[k])) : String(r[k]) === v))
         return this
       },
+      like(k, pattern) { const re = new RegExp('^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
       ilike(k, pattern) { const re = new RegExp('^' + pattern.replace(/%/g, '.*') + '$', 'i'); filters.push((r) => re.test(String(r[k] ?? ''))); return this },
       contains(k, list) { filters.push((r) => Array.isArray(r[k]) && list.every((v) => r[k].includes(v))); return this },
       lt(k, v) { filters.push((r) => r[k] < v); return this },

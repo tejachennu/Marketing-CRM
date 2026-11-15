@@ -26,6 +26,27 @@ export function invoiceMessage(invoice: any, link: string): string {
   return `${greeting}, thank you for visiting ${business}! 🙏\nYour bill ${invoice.number}: ${formatRupees(Number(invoice.total))}${paid}\nView or download: ${link}`
 }
 
+export function cardLink(origin: string, token: string): string {
+  return `${origin.replace(/\/+$/, '')}/m/${token}`
+}
+
+/** The message with a customer's membership card: what it gives, until when, and its link. */
+export function cardMessage(card: any, businessName: string | null, link: string): string {
+  const firstName = String(card.customer_name || '').split(' ')[0]
+  const plan = card.plan || {}
+  const parts: string[] = []
+  if (Number(card.credit_balance) > 0) parts.push(`${formatRupees(Number(card.credit_balance))} to spend`)
+  for (const s of card.sessions || []) if (s.total - s.used > 0) parts.push(`${s.total - s.used} × ${s.name}`)
+  if (Number(plan.discount_percent) > 0) parts.push(`${Number(plan.discount_percent)}% off services`)
+  const until = new Date(card.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+  return [
+    `${firstName ? `Hi ${firstName}` : 'Hi'}, welcome to ${plan.name || 'your'} membership at ${businessName || 'our salon'}! 🎉`,
+    `Card ${card.card_number}${parts.length ? `: ${parts.join(', ')}` : ''}.`,
+    `Valid till ${until}.`,
+    `See your card any time: ${link}`,
+  ].join('\n')
+}
+
 export function bookingMessage(appointment: any, businessName: string | null, staffName: string | null): string {
   const firstName = String(appointment.customer_name || '').split(' ')[0]
   const services = (appointment.services || []).map((service: any) => service.name).join(', ')

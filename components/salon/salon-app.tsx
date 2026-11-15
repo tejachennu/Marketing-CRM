@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
+import { FileText, IdCard, Loader2, ReceiptText, Settings2, Sparkles, Star, Users } from 'lucide-react'
 import { FrontDeskIcon } from './front-desk-icon'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
@@ -13,6 +13,7 @@ import { SalonCounter } from './salon-counter'
 import { SalonInvoices } from './salon-invoices'
 import { SalonReviews } from './salon-reviews'
 import { SalonTeam } from './salon-team'
+import { SalonMembers } from './salon-members'
 import type { SalonSetup } from './types'
 
 type Tab = FrontDeskTab
@@ -81,6 +82,7 @@ export function SalonApp() {
   const tabs: { id: Tab; label: string; icon: typeof FrontDeskIcon }[] = [
     { id: 'counter', label: 'Front Desk', icon: FrontDeskIcon },
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
+    { id: 'members', label: 'Members', icon: IdCard },
     ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
   ]
 
@@ -125,6 +127,18 @@ export function SalonApp() {
           </div>
         </header>
 
+        {/* Phones: Reviews and Team are not in the bottom bar, so managers reach them here */}
+        {canManage && (
+          <div className="md:hidden flex gap-2 overflow-x-auto no-scrollbar -mt-1">
+            {([['reviews', 'Reviews', Star], ['team', 'Team', Users]] as const).map(([id, label, Icon]) => (
+              <button key={id} type="button" onClick={() => go(tab === id ? 'counter' : id)} aria-pressed={tab === id}
+                className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-[13.5px] font-semibold cursor-pointer ${tab === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672] dark:text-slate-300'}`}>
+                <Icon size={15} /> {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {tab === 'setup' && canManage && <SalonSetupTab key={setupSection} orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} initialSection={setupSection} />}
         {/* Nothing is sent from a template until the business sets its templates up */}
         {tab === 'counter' && canManage && setup.services.length > 0 && templatesSetUp < 4 && (
@@ -148,6 +162,7 @@ export function SalonApp() {
           : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />)}
         {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} onOpenReviews={() => go('reviews')} />}
         {tab === 'reviews' && canManage && <SalonReviews orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} />}
+        {tab === 'members' && <SalonMembers orgId={workspace.orgId} setup={setup} canManage={canManage} canWrite={can(workspace.me, 'records.write')} flash={flash} range={range} onRangeChange={setRange} />}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} range={range} onRangeChange={setRange} />}
       </div>
       <Toast toast={toast} />

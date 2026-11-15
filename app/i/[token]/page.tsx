@@ -9,7 +9,7 @@ import { PrintButton } from './print-button'
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Invoice', robots: { index: false, follow: false } }
 
-const PAYMENT_LABELS: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
+const PAYMENT_LABELS: Record<string, string> = { cash: 'Cash', upi: 'UPI', card: 'Card', membership: 'Membership' }
 
 async function loadInvoice(token: string) {
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return null
@@ -152,6 +152,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                 <div className="flex justify-between"><dt className="text-[#4a5672]">SGST</dt><dd>{money(invoice.sgst)}</dd></div>
               </>)}
             <div className="flex justify-between border-t border-[#e3e8f2] pt-2 mt-2 text-[18px] font-extrabold"><dt>Total</dt><dd>{money(invoice.total)}</dd></div>
+            {Number(invoice.membership_paid) > 0 && (
+              <>
+                <div className="flex justify-between text-[14.5px]"><dt>Paid from membership</dt><dd>− {money(invoice.membership_paid)}</dd></div>
+                <div className="flex justify-between font-bold text-[15.5px]"><dt>{invoice.status === 'paid' ? 'Paid' : 'To pay'}</dt><dd>{money(Math.max(0, Number(invoice.total) - Number(invoice.membership_paid)))}</dd></div>
+              </>
+            )}
             {invoice.prices_include_tax && registered && <p className="text-[12px] text-[#6B7894] text-right">Prices include GST</p>}
           </dl>
         </section>

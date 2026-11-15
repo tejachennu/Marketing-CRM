@@ -10,10 +10,12 @@ import { formatIstDay, formatIstTime, istDate, parsePhoneNumber, phoneKey } from
 import { isUuid } from './validate'
 import { withSalonSchema } from './schema'
 import type { SalonContext } from './server'
+import { applyCard, cardFromPlan, creditToUse, usableCard, withMembershipSchema } from './memberships'
+import { addUsage, cardBelongsTo, insertCard, loadCard, loadPlan, recordCardUse, undoCardsForInvoice } from './membership-store'
 
 export type PaymentMethod = 'cash' | 'upi' | 'card'
 export const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'upi', 'card']
-export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: 'Cash', upi: 'UPI', card: 'Card' }
+export const PAYMENT_LABELS: Record<PaymentMethod | 'membership', string> = { cash: 'Cash', upi: 'UPI', card: 'Card', membership: 'Membership' }
 
 export interface CustomerRef {
   contact_id?: string | null
@@ -24,8 +26,9 @@ export interface CustomerRef {
 export type CounterAction =
   | { type: 'create_appointment'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; starts_at: string; notes?: string | null; send_whatsapp?: boolean }
   | { type: 'set_status'; appointment_id: string; status: 'booked' | 'arrived' | 'in_service' | 'cancelled' | 'no_show' }
-  | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
-  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean }
+  | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
+  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
+  | { type: 'sell_membership'; customer: CustomerRef; plan_id: string; payment_method?: PaymentMethod | null; starts_at?: string | null; send_whatsapp?: boolean }
   | { type: 'approve_request'; appointment_id: string; starts_at?: string | null; send_whatsapp?: boolean }
   | { type: 'decline_request'; appointment_id: string; send_whatsapp?: boolean }
   | { type: 'pay_invoice'; invoice_id: string; payment_method: PaymentMethod }
@@ -85,13 +88,26 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       return { action: { type: 'set_status', appointment_id: body.appointment_id, status: body.status } }
     case 'complete_and_bill':
       if (!isUuid(body.appointment_id)) return { error: 'Choose an appointment.' }
-      return { action: { type: 'complete_and_bill', appointment_id: body.appointment_id, extra_service_ids: serviceIds(body.extra_service_ids), staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
+      return { action: { type: 'complete_and_bill', appointment_id: body.appointment_id, extra_service_ids: serviceIds(body.extra_service_ids), staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false, membership_id: isUuid(body.membership_id) ? body.membership_id : null } }
     case 'walk_in_bill': {
       const customer = parseCustomer(body.customer ?? { name: 'Walk-in customer' })
       if ('error' in customer) return customer
       const ids = serviceIds(body.service_ids)
       if (!ids.length) return { error: 'Choose at least one service.' }
-      return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false } }
+      return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false, membership_id: isUuid(body.membership_id) ? body.membership_id : null } }
+    }
+    case 'sell_membership': {
+      const customer = parseCustomer(body.customer)
+      if ('error' in customer) return customer
+      if (!customer.phone && !customer.contact_id) return { error: 'Add the customer\'s mobile number, so the card can be found at the counter.' }
+      if (!isUuid(body.plan_id)) return { error: 'Choose a membership plan.' }
+      let startsAt: string | null = null
+      if (body.starts_at) {
+        const at = Date.parse(String(body.starts_at))
+        if (!Number.isFinite(at)) return { error: 'Choose when the card starts.' }
+        startsAt = new Date(at).toISOString()
+      }
+      return { action: { type: 'sell_membership', customer, plan_id: body.plan_id, payment_method: parsePayment(body.payment_method), starts_at: startsAt, send_whatsapp: body.send_whatsapp !== false } }
     }
     case 'approve_request': {
       if (!isUuid(body.appointment_id)) return { error: 'Choose a booking request.' }
@@ -127,6 +143,7 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
 export interface ActionResult {
   appointment?: any
   invoice?: any
+  membership?: any
   whatsapp?: { sent: boolean; error?: string; windowClosed?: boolean } | null
   /** Short message for the counter, e.g. "Booked Priya at 5:00 pm" */
   message: string
@@ -227,6 +244,8 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   payment_method?: PaymentMethod | null
   appointment_id?: string | null
   staff_name?: string | null
+  /** A membership card paying from its credit (up to the bill's total) */
+  membership?: { id: string; credit: number } | null
 }) {
   const settings = ctx.settings
   // Without a GSTIN a business cannot charge GST: the bill carries no tax
@@ -236,24 +255,42 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   const now = new Date().toISOString()
   const askFeedback = settings.feedback_enabled !== false && Boolean(input.customer.phone)
   const feedbackDueAt = askFeedback ? new Date(Date.now() + (Number(settings.feedback_delay_minutes) || 120) * 60_000).toISOString() : null
+  // A card's credit pays first; the rest by the chosen method, or later. Nothing left to pay = paid.
+  const fromCard = input.membership ? creditToUse({ credit_balance: input.membership.credit }, totals.total) : 0
+  const due = Math.round((totals.total - fromCard) * 100) / 100
+  const method = input.membership && due <= 0 ? 'membership' : input.payment_method || null
+  const card = input.membership ? { membership_id: input.membership.id, membership_paid: fromCard } : {}
   for (let attempt = 0; attempt < 6; attempt++) {
     const last = await checked(db.from('salon_invoices').select('seq').eq('organization_id', ctx.organizationId).order('seq', { ascending: false }).limit(1))
     const seq = (Number(last?.[0]?.seq) || 0) + 1
-    const { data, error } = await withSalonSchema(() => db.from('salon_invoices').insert({
+    const { data, error } = await withSalonSchema(() => withMembershipSchema(() => db.from('salon_invoices').insert({
       organization_id: ctx.organizationId, seq, number: formatInvoiceNumber(settings.invoice_prefix, seq),
       appointment_id: input.appointment_id || null, contact_id: input.customer.contact_id, customer_name: input.customer.name,
       customer_phone: input.customer.phone, staff_name: input.staff_name || null, items: totals.lines,
       prices_include_tax: Boolean(settings.prices_include_tax), subtotal: totals.subtotal, discount: totals.discount, taxable: totals.taxable,
       cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, total: totals.total,
-      status: input.payment_method ? 'paid' : 'unpaid', payment_method: input.payment_method || null, paid_at: input.payment_method ? now : null,
+      status: method ? 'paid' : 'unpaid', payment_method: method, paid_at: method ? now : null,
       public_token: makeToken(), business, created_by: ctx.userId || null, issued_at: now,
       ...(feedbackDueAt ? { feedback_due_at: feedbackDueAt } : {}),
-    }).select('*').single())
+      ...card,
+    }).select('*').single()))
     if (!error) return data
     if (!(error.code === '23505' || /duplicate key/i.test(error.message || ''))) throw new Error(error.message)
   }
   throw new Error('The invoice could not be numbered. Please try again.')
 }
+
+/** The membership card for a bill: it must be this customer's, and valid today. */
+async function cardForBill(db: any, organizationId: string, membershipId: string | null | undefined, who: { contact_id?: string | null; phone?: string | null }) {
+  if (!membershipId) return null
+  const card = await loadCard(db, organizationId, membershipId)
+  if (!card) throw new Error('That membership card was not found.')
+  if (!cardBelongsTo(card, who)) throw new Error('That membership card belongs to another customer.')
+  if (!usableCard(card)) throw new Error(`Membership card ${card.card_number} cannot be used today.`)
+  return card
+}
+
+const cardNote = (card: any, invoice: any) => (card ? ` · card ${card.card_number} used${Number(invoice.membership_paid) > 0 ? ` (${formatRupees(Number(invoice.membership_paid))} from credit)` : ''}` : '')
 
 function servicesText(services: { name: string }[]): string {
   return services.map((service) => service.name).join(', ')
@@ -263,7 +300,7 @@ function servicesText(services: { name: string }[]): string {
 export async function executeCounterAction(
   ctx: SalonContext & { settings: any },
   action: CounterAction,
-  send?: { invoice: (invoice: any) => Promise<ActionResult['whatsapp']>; booking: (appointment: any, staffName: string | null) => Promise<ActionResult['whatsapp']>; text?: (phone: string, body: string) => Promise<ActionResult['whatsapp']> }
+  send?: { invoice: (invoice: any) => Promise<ActionResult['whatsapp']>; booking: (appointment: any, staffName: string | null) => Promise<ActionResult['whatsapp']>; text?: (phone: string, body: string) => Promise<ActionResult['whatsapp']>; card?: (card: any, invoice: any) => Promise<ActionResult['whatsapp']> }
 ): Promise<ActionResult> {
   const { db, organizationId } = ctx
   const userId = ctx.user?.id || null
@@ -323,14 +360,18 @@ export async function executeCounterAction(
       }
       const services = assignStaff(all, action.staff_ids, appointment.staff_id, members)
       const team = staffSummary(services)
+      const card = await cardForBill(db, organizationId, action.membership_id, { contact_id: appointment.contact_id, phone: appointment.customer_phone })
+      const use = card ? applyCard(card, services as any) : null
       const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
         customer: { contact_id: appointment.contact_id, name: appointment.customer_name, phone: appointment.customer_phone },
-        lines: services, discount: action.discount, payment_method: action.payment_method,
+        lines: use ? use.lines : services, discount: action.discount, payment_method: action.payment_method,
         appointment_id: appointment.id, staff_name: team.staff_name,
+        membership: card ? { id: card.id, credit: Number(card.credit_balance) || 0 } : null,
       })
+      if (card && use) await recordCardUse(db, organizationId, card.id, { sessions: use.sessions, credit: Number(invoice.membership_paid) || 0, discountSaved: use.discountSaved }, invoice.id, userId)
       const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services, staff_id: team.staff_id || appointment.staff_id || null, updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}${cardNote(card, invoice)}` }
     }
 
     case 'walk_in_bill': {
@@ -347,12 +388,16 @@ export async function executeCounterAction(
         organization_id: organizationId, contact_id: customer.contact_id, customer_name: customer.name, customer_phone: customer.phone,
         staff_id: team.staff_id, starts_at: startsAt, ends_at: now, status: 'completed', services, notes: 'Walk-in', created_by: userId,
       }).select('*').single())
+      const card = await cardForBill(db, organizationId, action.membership_id, { contact_id: customer.contact_id, phone: customer.phone })
+      const use = card ? applyCard(card, services as any) : null
       const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
-        customer, lines: services, discount: action.discount, payment_method: action.payment_method, appointment_id: appointment.id, staff_name: team.staff_name,
+        customer, lines: use ? use.lines : services, discount: action.discount, payment_method: action.payment_method, appointment_id: appointment.id, staff_name: team.staff_name,
+        membership: card ? { id: card.id, credit: Number(card.credit_balance) || 0 } : null,
       })
+      if (card && use) await recordCardUse(db, organizationId, card.id, { sessions: use.sessions, credit: Number(invoice.membership_paid) || 0, discountSaved: use.discountSaved }, invoice.id, userId)
       const updated = await checked(db.from('salon_appointments').update({ invoice_id: invoice.id }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))} · ${customer.name}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))} · ${customer.name}${cardNote(card, invoice)}` }
     }
 
     case 'approve_request':
@@ -390,7 +435,25 @@ export async function executeCounterAction(
       const invoice = await checked(db.from('salon_invoices').select('*').eq('id', action.invoice_id).eq('organization_id', organizationId).maybeSingle())
       if (!invoice) throw new Error('That invoice was not found.')
       const updated = await checked(db.from('salon_invoices').update({ status: 'void', updated_at: now }).eq('id', invoice.id).eq('organization_id', organizationId).select('*').single())
+      // A membership card used on it gets its sessions and credit back; a card sold on it is cancelled
+      if (invoice.status !== 'void') await undoCardsForInvoice(db, organizationId, invoice.id, userId).catch((error: any) => console.error('[Front Desk] card undo', error?.message))
       return { invoice: updated, message: `${invoice.number} cancelled. It stays on record, marked void.` }
+    }
+
+    case 'sell_membership': {
+      const plan = await loadPlan(db, organizationId, action.plan_id)
+      if (!plan || !plan.active) throw new Error('That membership plan is not on sale.')
+      const customer = await resolveCustomer(db, organizationId, action.customer)
+      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
+        customer,
+        lines: [{ service_id: null, name: `Membership: ${plan.name}`, price: Number(plan.price) || 0, tax_rate: Number(plan.tax_rate) || 0, sac_code: null }],
+        payment_method: action.payment_method,
+      })
+      const values = cardFromPlan({ ...plan, price: Number(plan.price) || 0, credit: Number(plan.credit) || 0, discount_percent: Number(plan.discount_percent) || 0, validity_days: Number(plan.validity_days) || 365, sessions: plan.sessions || [] }, action.starts_at ? new Date(action.starts_at) : new Date())
+      const card = await insertCard(db, organizationId, { ...values, plan_id: plan.id, contact_id: customer.contact_id, customer_name: customer.name, customer_phone: customer.phone, status: 'active', sold_invoice_id: invoice.id, created_by: userId })
+      await addUsage(db, organizationId, [{ membership_id: card.id, invoice_id: invoice.id, kind: 'sale', amount: Number(invoice.total) || 0, created_by: userId }])
+      const whatsapp = action.send_whatsapp && customer.phone && send?.card ? await send.card(card, invoice) : null
+      return { invoice, membership: card, whatsapp, message: `Card ${card.card_number} · ${plan.name} for ${customer.name}` }
     }
 
     case 'send_invoice': {

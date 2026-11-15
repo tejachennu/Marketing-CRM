@@ -16,6 +16,8 @@ import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/sa
 import { PhoneField } from '../phone-field'
 import { api, Avatar, Chip, Field, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
 import type { Appointment, SalonSetup, Service } from './types'
+import { applyCard, creditToUse } from '@/lib/salon/membership-rules'
+import { MembershipBox } from './membership-box'
 
 export type PaymentChoice = 'cash' | 'upi' | 'card' | null
 
@@ -472,8 +474,28 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
   const staffName = (id: string | null | undefined) => (id ? setup.staff.find((member) => member.id === id)?.name : undefined)
   const registered = Boolean(setup.settings.gstin)
   const appliedDiscount: Discount | null = customOff ? (Number(customOff.value) > 0 ? { type: customOff.type, value: Number(customOff.value) } : null) : discount
-  const bill = computeInvoice(lines.map((line) => ({ ...line, tax_rate: registered ? Number(line.tax_rate) : 0 })), { pricesIncludeTax: setup.settings.prices_include_tax, discount: appliedDiscount })
   const phone = customer.phone.trim()
+
+  // The customer's membership cards: the first that can be used is picked; the bill shows what it takes off
+  const [cards, setCards] = useState<any[]>([])
+  const [cardId, setCardId] = useState<string | null>(null)
+  useEffect(() => {
+    const digits = phone.replace(/\D/g, '')
+    if (!customer.contact_id && digits.length < 10) { setCards([]); setCardId(null); return }
+    let gone = false
+    const timer = setTimeout(() => {
+      api(`/api/salon/memberships?organizationId=${orgId}&view=customer&contact_id=${customer.contact_id || ''}&phone=${encodeURIComponent(phone)}`)
+        .then((data) => { if (gone) return; setCards(data.cards || []); setCardId((current) => (data.cards || []).some((c: any) => c.id === current) ? current : data.cards?.[0]?.id || null) })
+        .catch(() => { if (!gone) setCards([]) })
+    }, 400)
+    return () => { gone = true; clearTimeout(timer) }
+  }, [orgId, customer.contact_id, phone])
+  const chosenCard = cards.find((c) => c.id === cardId) || null
+  const cardUse = chosenCard ? applyCard(chosenCard, lines.map((line) => ({ ...line, service_id: line.service_id || null, price: Number(line.price), tax_rate: Number(line.tax_rate), sac_code: line.sac_code || null }))) : null
+  const billLines = cardUse ? cardUse.lines : lines
+  const bill = computeInvoice(billLines.map((line) => ({ ...line, tax_rate: registered ? Number(line.tax_rate) : 0 })), { pricesIncludeTax: setup.settings.prices_include_tax, discount: appliedDiscount })
+  const fromCard = chosenCard ? creditToUse(chosenCard, bill.total) : 0
+  const toPay = Math.round((bill.total - fromCard) * 100) / 100
 
   async function submit() {
     setError('')
@@ -482,8 +504,8 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
     try {
       const staff_ids = lines.map((line) => lineStaff[line.key] || null)
       const action = walkIn
-        ? { type: 'walk_in_bill', customer: { contact_id: customer.contact_id, name: customer.name.trim() || 'Walk-in customer', phone: phone || null }, service_ids: serviceIds, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp }
-        : { type: 'complete_and_bill', appointment_id: target.appointment.id, extra_service_ids: extra, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp }
+        ? { type: 'walk_in_bill', customer: { contact_id: customer.contact_id, name: customer.name.trim() || 'Walk-in customer', phone: phone || null }, service_ids: serviceIds, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp, membership_id: cardId }
+        : { type: 'complete_and_bill', appointment_id: target.appointment.id, extra_service_ids: extra, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp, membership_id: cardId }
       onBilled(await api('/api/salon/act', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action }) }))
     } catch (err: any) {
       setError(err.message)
@@ -512,6 +534,12 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           <span className="text-[15px] font-bold text-[#0E1B3D] dark:text-white">Total</span>
           <span className="text-[26px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-none">{formatRupees(bill.total)}</span>
         </div>
+        {fromCard > 0 && (
+          <>
+            <div className="flex justify-between gap-2"><span>Paid from membership</span><span className="font-semibold text-[#0E1B3D] dark:text-slate-100">− {formatRupees(fromCard)}</span></div>
+            <div className="flex justify-between gap-2 text-[15px] font-bold text-[#0E1B3D] dark:text-white"><span>To pay now</span><span>{formatRupees(toPay)}</span></div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -522,8 +550,8 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
       footer={
         <div className="w-full flex items-center gap-3">
           <div className="min-w-0 mr-auto">
-            <p className="text-[12.5px] text-[#6B7894] truncate">Total{payment ? ` · ${PAYMENTS.find((p) => p.value === payment)?.label}` : ' · pay later'}</p>
-            <p className="text-[22px] font-extrabold leading-tight text-[#0E1B3D] dark:text-white">{formatRupees(bill.total)}</p>
+            <p className="text-[12.5px] text-[#6B7894] truncate">{fromCard > 0 ? 'To pay now' : 'Total'}{toPay <= 0 && chosenCard ? ' · covered by the card' : payment ? ` · ${PAYMENTS.find((p) => p.value === payment)?.label}` : ' · pay later'}</p>
+            <p className="text-[22px] font-extrabold leading-tight text-[#0E1B3D] dark:text-white">{formatRupees(toPay)}</p>
           </div>
           <button type="button" onClick={onClose} className={`${secondaryButton} max-sm:hidden`}>Cancel</button>
           <button type="button" onClick={submit} disabled={saving || !lines.length}
@@ -556,6 +584,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
             )}
           </section>
           <WhoDidIt setup={setup} lines={lines} value={lineStaff} onChange={setLineStaff} />
+          <MembershipBox cards={cards} chosen={cardId} onChoose={setCardId} preview={cardUse ? { sessions: cardUse.sessions.reduce((n, s) => n + s.count, 0), discount: cardUse.discountSaved, credit: fromCard } : null} />
           <section className="space-y-2">
             <p className={sectionTitle}>Discount</p>
             <div className="flex flex-wrap gap-2">
