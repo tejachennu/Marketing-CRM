@@ -10,6 +10,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../chats/chat_screen.dart';
 import 'flow_tab.dart';
+import 'new_order_screen.dart';
 import 'products_tab.dart';
 import 'store_logic.dart';
 import 'store_settings.dart';
@@ -438,7 +439,7 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
                 Icons.account_balance_wallet_outlined,
               ),
               const SizedBox(width: 8),
-              tile('Orders', '${summary?['total'] ?? '—'}', 'Carts received on WhatsApp', Icons.inventory_2_outlined),
+              tile('Orders', '${summary?['total'] ?? '—'}', 'WhatsApp, shop and phone orders', Icons.inventory_2_outlined),
             ],
           ),
           const SizedBox(height: 8),
@@ -455,6 +456,20 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
               ),
             ],
           ),
+          if (AppScope.of(context).can('write'))
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final order = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => NewOrderScreen(currency: currency)));
+                  if (order == null || !mounted) return;
+                  await _load(1, silent: true);
+                  if (mounted) await _open(order);
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('New order (shop or phone call)'),
+              ),
+            ),
           SearchField(
             hint: 'Order number, name or phone',
             padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
@@ -569,7 +584,15 @@ class _OrderRow extends StatelessWidget {
               style: const TextStyle(fontSize: 13, color: Brand.muted),
             ),
             const SizedBox(height: 6),
-            Wrap(spacing: 6, runSpacing: 4, children: [StatusPill(order['status']), ?flag]),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                StatusPill(order['status']),
+                ?flag,
+                if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: Icons.storefront_outlined),
+              ],
+            ),
           ],
         ),
       ),
@@ -784,6 +807,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 children: [
                   StatusPill(order['status']),
                   ?flag,
+                  if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: Icons.storefront_outlined),
                   Text(formatWhen('${order['created_at']}'), style: const TextStyle(color: Brand.muted, fontSize: 13)),
                 ],
               ),
@@ -878,10 +902,11 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                   if ('${address['notes'] ?? ''}'.isNotEmpty) Text('Note: ${address['notes']}', style: const TextStyle(color: Brand.muted)),
                 ] else
-                  Text(
-                    widget.collectsAddress ? 'The customer has not filled in the address form yet.' : 'This store does not collect addresses in the chat. Ask the customer for it in the chat.',
-                    style: const TextStyle(color: Brand.muted),
-                  ),
+                  Text(switch (handoverOf(order)) {
+                    'now' => 'Taken in the shop.',
+                    'pickup' => 'The customer picks it up from the shop.',
+                    _ => widget.collectsAddress ? 'The customer has not filled in the address form yet.' : 'This store does not collect addresses in the chat. Ask the customer for it in the chat.',
+                  }, style: const TextStyle(color: Brand.muted)),
                 if ('${address['carrier'] ?? ''}${address['tracking_number'] ?? ''}'.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -939,7 +964,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    if (isToShip || order['status'] == 'shipped') ...[
+                    if ((isToShip || order['status'] == 'shipped') && handoverOf(order) != 'pickup') ...[
                       TextField(
                         controller: _carrier,
                         maxLength: 60,
@@ -974,7 +999,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       onChanged: (v) => setState(() => _notify = v ?? true),
                       title: const Text('Tell the customer on WhatsApp when the status changes', style: TextStyle(fontSize: 14)),
                     ),
-                    for (final status in next.where((s) => s != 'canceled')) ...[
+                    for (final status in next.where((s) => s != 'canceled' && !(s == 'shipped' && handoverOf(order) == 'pickup'))) ...[
                       FilledButton(
                         onPressed: _busy != null ? null : () => _setStatus(status),
                         child: _busy == status
@@ -983,7 +1008,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                 'paid' => 'Mark as paid',
                                 'cod_confirmed' => 'Confirm as Cash on Delivery',
                                 'shipped' => 'Mark as shipped',
-                                _ => 'Mark as delivered',
+                                _ => handoverOf(order) == 'pickup' ? 'Picked up' : 'Mark as delivered',
                               }),
                       ),
                       const SizedBox(height: 8),

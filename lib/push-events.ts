@@ -23,7 +23,9 @@ async function chatOwner(db: any, organizationId: string, conversationId?: strin
 }
 
 /** A new ticket: the AI handed a chat to the team, a flow raised one, or someone made one. */
-export async function notifyTicketRaised(db: any, input: { organizationId: string; ticketId: string; subject?: string | null; contactName?: string | null; conversationId?: string | null; exceptUserId?: string | null }) {
+export async function notifyTicketRaised(db: any, input: { organizationId: string; ticketId: string; subject?: string | null; contactName?: string | null; contactPhone?: string | null; conversationId?: string | null; exceptUserId?: string | null }) {
+  // The alert email to the people picked in Settings → Chat and tickets (best effort, never throws)
+  await import('./ticket-alerts').then(({ emailTicketAlert }) => emailTicketAlert(db, { organizationId: input.organizationId, ticketId: input.ticketId, ticketSubject: input.subject || 'Support Request', contactName: input.contactName, contactPhone: input.contactPhone })).catch(() => null)
   const owner = await chatOwner(db, input.organizationId, input.conversationId)
   return sendPush(db, { organizationId: input.organizationId, userIds: owner ? [owner] : [], exceptUserId: input.exceptUserId }, {
     kind: 'ticket',

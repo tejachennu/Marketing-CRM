@@ -146,6 +146,16 @@ class DemoCommerce {
         3000,
         address: {...home, 'full_name': 'Meera Joshi'},
       ),
+      {
+        ...order('o8', 'ORD-241114-0008', 'delivered', 'paid', 'cash', [item('Silk dupatta', 'DUP-031', 2, 799)], 'Walk-in', '', 30),
+        'checkout_type': 'in_store',
+        'shipping_address': {'handover': 'now'},
+      },
+      {
+        ...order('o9', 'ORD-241114-0009', 'cod_confirmed', 'pending', 'cod', [item('Handloom saree, maroon', 'SAREE-007', 1, 4299)], 'Lakshmi Devi', '+919700011122', 90),
+        'checkout_type': 'phone',
+        'shipping_address': {'handover': 'pickup'},
+      },
       order(
         'o7',
         'ORD-241111-0001',
@@ -210,6 +220,14 @@ class DemoCommerce {
     switch (path) {
       case '/api/organization':
         return {'organization': org};
+      case '/api/teammates':
+        return {
+          'success': true,
+          'teammates': [
+            {'id': 'u1', 'full_name': 'Teja', 'email': 'owner@glowstore.in', 'role': 'org_admin'},
+            {'id': 'u2', 'full_name': 'Anitha', 'email': 'anitha@glowstore.in', 'role': 'org_manager'},
+          ],
+        };
       case '/api/commerce/orders':
         final view = query?['view'] ?? 'all';
         final search = (query?['search'] ?? '').toLowerCase();
@@ -292,6 +310,42 @@ class DemoCommerce {
       return {'success': true, 'inCatalog': true, 'catalogRemoved': true};
     }
     switch (path) {
+      case '/api/commerce/orders' when body['action'] == 'create':
+        final items = [
+          for (final i in body['items'] as List)
+            {
+              'id': 'n${_orders.length}${i['title']}',
+              'title': (i['title'] as String?)?.isNotEmpty == true ? i['title'] : (_products.where((p) => p['id'] == i['productId']).firstOrNull?['title'] ?? 'Item'),
+              'retailer_id': 'SHOP-ITEM',
+              'quantity': i['quantity'],
+              'unit_price': num.tryParse('${i['price']}') ?? (_products.where((p) => p['id'] == i['productId']).firstOrNull?['price'] ?? 0),
+              'image_url': '',
+            },
+        ];
+        for (final i in items) {
+          i['total_price'] = (i['unit_price'] as num) * (i['quantity'] as num);
+        }
+        final total = items.fold<num>(0, (s, i) => s + (i['total_price'] as num));
+        final paid = body['paid'] == true;
+        final order = {
+          'id': 'o${_orders.length + 1}',
+          'order_number': 'ORD-241115-${(_orders.length + 1).toString().padLeft(4, '0')}',
+          'status': body['handover'] == 'now' ? 'delivered' : (paid ? 'paid' : 'cod_confirmed'),
+          'payment_status': paid ? 'paid' : 'pending',
+          'payment_method': paid ? body['paymentMethod'] : 'cod',
+          'checkout_type': body['channel'],
+          'currency': 'INR',
+          'subtotal': total,
+          'shipping_fee': 0,
+          'tax_amount': 0,
+          'total_amount': total,
+          'items': items,
+          'contact': {'first_name': (body['customer'] as Map)['name'] ?? '', 'last_name': '', 'phone_number': (body['customer'] as Map)['phone'] ?? ''},
+          'shipping_address': {...?(body['address'] as Map?), 'handover': body['handover']},
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        };
+        _orders.insert(0, order);
+        return {'success': true, 'order': order};
       case '/api/commerce/orders':
         final order = _orders.firstWhere((o) => o['id'] == body['orderId']);
         if (method == 'POST') return {'success': true, 'step': 'payment', 'order': order};

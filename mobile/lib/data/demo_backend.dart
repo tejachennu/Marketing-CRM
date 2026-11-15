@@ -587,7 +587,7 @@ class DemoBackend implements Backend {
         return {
           'user': {'id': 'u1', 'name': 'Teja', 'email': 'owner@glowsalon.in', 'role': 'Admin'},
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
-          'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true},
+          'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true, 'settings': true},
           'connectors': {'frontDesk': true, 'ecommerce': true, 'pipeline': true},
         };
       case '/api/salon/setup':

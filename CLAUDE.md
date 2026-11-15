@@ -117,6 +117,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop and phone-call orders; Chat and tickets settings for every business** (owner: "in-store purchases
+  ... people contact via phone call", "chat and tickets option not showing in settings"):
+  `lib/commerce/manual-order.ts` (`parseManualOrder`, `startStatus`, `createManualOrder`): `POST
+  /api/commerce/orders {action:'create', channel:'in_store'|'phone', customer, items (product or typed),
+  handover:'now'|'pickup'|'delivery', paid, paymentMethod cash/upi/card, shippingFee, address, note}`;
+  saved as a normal order with `checkout_type` = channel and `shipping_address.handover` (no new column).
+  Taken now = delivered + paid; otherwise paid → To ship, or pay later → `cod_confirmed`. Paid / COD
+  orders may now go straight to Delivered (`ORDER_TRANSITIONS`). Web: Orders → **New order**
+  (`components/commerce/new-order.tsx`), "In the shop" / "Phone call" labels, "Picked up". App: same
+  (`store/new_order_screen.dart`). Settings: the ticket alert emails and chatbot instructions were shown only
+  to WAMA CRM's own workspace (`isMasterOrg`); now a **Chat and tickets** card for every admin with its own
+  save (`handleSaveChatTickets`), and in the app More → Chat and tickets (`more/chat_tickets_screen.dart`,
+  `can.settings` in `/api/mobile/me`). Ticket emails: `lib/ticket-alerts.ts` (`emailTicketAlert`), sent
+  from the business's own SendGrid/SMTP or else the platform mailbox, called from `notifyTicketRaised`
+  (awaited; the webhooks no longer call `/api/tickets/notify` fire-and-forget).
+
 - **App: E-commerce, and pop-ups for tickets and connectors** (owner: "build E-commerce in the app exact
   whatever in web", "notifications not triggering ... ticket raised ... connectors"): `mobile/lib/screens/store/`
   (`store_screen.dart` shell + Orders and the order page, `products_tab.dart` list / filters / sync / add to

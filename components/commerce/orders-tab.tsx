@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, RefreshCw, Search, Truck, X } from 'lucide-react'
+import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, Plus, RefreshCw, Search, Store, Truck, X } from 'lucide-react'
+import { NewOrderModal } from './new-order'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
@@ -63,19 +64,31 @@ const METHOD_LABELS: Record<string, string> = {
   cod: 'Cash on Delivery',
   manual: 'Marked as paid by your team',
   razorpay_link: 'Payment link',
+  cash: 'Cash',
+  upi: 'UPI',
+  card: 'Card',
 }
+
+/** Orders the team added: where they came from. WhatsApp carts have none. */
+function channelLabel(order: CommerceOrder): string | null {
+  const type = (order as any).checkout_type
+  return type === 'in_store' ? 'In the shop' : type === 'phone' ? 'Phone call' : null
+}
+const handoverOf = (order: CommerceOrder): string => String((order.shipping_address as any)?.handover || '')
 
 interface OrdersTabProps {
   orgId: string
   canEdit: boolean
   /** Whether the store sends an address form, to say what a reminder will contain. */
   collectsAddress: boolean
+  currency: string
   onSummary: (summary: CommerceSummary) => void
   summary: CommerceSummary | null
   showToast: ShowToast
 }
 
-export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary, showToast }: OrdersTabProps) {
+export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary, summary, showToast }: OrdersTabProps) {
+  const [adding, setAdding] = useState(false)
   const confirm = useConfirm()
 
   const [orders, setOrders] = useState<CommerceOrder[]>([])
@@ -322,6 +335,11 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
               </button>
             )}
           </div>
+          {canEdit && (
+            <button type="button" onClick={() => setAdding(true)} title="An order taken in the shop or on a phone call" className={`${primaryButton} shrink-0`}>
+              <Plus size={14} /> New order
+            </button>
+          )}
           <button type="button" onClick={refresh} disabled={refreshing} title="Check for new orders" aria-label="Refresh orders" className={squareButton}>
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -393,6 +411,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                       <div className="flex flex-wrap items-center gap-1">
                         <StatusBadge status={order.status} />
                         <PaymentFlag order={order} />
+                        {channelLabel(order) && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{channelLabel(order)}</span>}
                       </div>
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">{formatMoney(order.total_amount, order.currency)}</td>
@@ -403,7 +422,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                           <span className="truncate">{[order.shipping_address.city, order.shipping_address.pincode].filter(Boolean).join(', ') || order.shipping_address.address_line_1}</span>
                         </span>
                       ) : (
-                        <span className="text-slate-400">No address yet</span>
+                        <span className="text-slate-400">{handoverOf(order) === 'now' ? 'Taken in the shop' : handoverOf(order) === 'pickup' ? 'Picks up' : 'No address yet'}</span>
                       )}
                     </td>
                   </tr>
@@ -424,6 +443,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <StatusBadge status={order.status} />
                     <PaymentFlag order={order} />
+                    {channelLabel(order) && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{channelLabel(order)}</span>}
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs">
@@ -438,6 +458,20 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
         </>
       )}
 
+      {adding && (
+        <NewOrderModal
+          orgId={orgId}
+          currency={currency}
+          onClose={() => setAdding(false)}
+          showToast={showToast}
+          onCreated={(order) => {
+            setAdding(false)
+            load(1)
+            if (order) openOrder(order)
+          }}
+        />
+      )}
+
       {/* ── Order details ── */}
       {selected && (
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Order ${selected.order_number}`}>
@@ -450,7 +484,10 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                   <StatusBadge status={selected.status} />
                   <PaymentFlag order={selected} />
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">{new Date(selected.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {new Date(selected.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                  {channelLabel(selected) && <> · <Store size={11} className="inline -mt-0.5" /> {channelLabel(selected)}</>}
+                </p>
               </div>
               <button type="button" aria-label="Close order" onClick={closeOrder} className={iconButton}>
                 <X size={16} />
@@ -564,7 +601,11 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                   </address>
                 ) : (
                   <p className="text-xs text-slate-500">
-                    {collectsAddress ? 'The customer has not filled in the address form yet.' : 'This store does not collect addresses in the chat. Ask the customer for it in the chat.'}
+                    {handoverOf(selected) === 'now'
+                      ? 'Taken in the shop.'
+                      : handoverOf(selected) === 'pickup'
+                        ? 'The customer picks it up from the shop.'
+                        : collectsAddress ? 'The customer has not filled in the address form yet.' : 'This store does not collect addresses in the chat. Ask the customer for it in the chat.'}
                   </p>
                 )}
                 {fulfillment && (fulfillment.trackingNumber || fulfillment.carrier) && (
@@ -597,7 +638,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                     </div>
                   )}
 
-                  {(isToShip || selected.status === 'shipped') && (
+                  {(isToShip || selected.status === 'shipped') && handoverOf(selected) !== 'pickup' && (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label htmlFor="carrier" className={labelClass}>Courier</label>
@@ -621,10 +662,10 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, onSummary, summary,
                   </label>
 
                   <div className="flex flex-wrap gap-2">
-                    {nextStatuses.filter((status) => status !== 'canceled').map((status) => (
+                    {nextStatuses.filter((status) => status !== 'canceled' && !(status === 'shipped' && handoverOf(selected) === 'pickup')).map((status) => (
                       <button key={status} type="button" disabled={busy !== null} onClick={() => changeStatus(selected, status)} className={`${status === 'cod_confirmed' ? secondaryButton : primaryButton} flex-1`}>
                         {busy === status && <Loader2 size={13} className="animate-spin" />}
-                        {status === 'paid' ? 'Mark as paid' : status === 'cod_confirmed' ? 'Confirm as COD' : status === 'shipped' ? 'Mark as shipped' : 'Mark as delivered'}
+                        {status === 'paid' ? 'Mark as paid' : status === 'cod_confirmed' ? 'Confirm as COD' : status === 'shipped' ? 'Mark as shipped' : handoverOf(selected) === 'pickup' ? 'Picked up' : 'Mark as delivered'}
                       </button>
                     ))}
                     {nextStatuses.includes('canceled') && (

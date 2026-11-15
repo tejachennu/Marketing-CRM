@@ -8,12 +8,15 @@ import 'screen_check.dart';
 /// with large text; and the store rules mirrored from the web.
 void main() {
   screenChecks(
-    screens: ['store', 'store_products', 'store_flow', 'store_settings'],
+    screens: ['store', 'store_products', 'store_flow', 'store_settings', 'new_order', 'chat_tickets'],
     flows: [
       ('store', ['#ORD-241114-0007']),
       ('store', ['#ORD-241114-0006']),
       ('store', ['#ORD-241112-0002']),
       ('store', ['To ship']),
+      ('store', ['#ORD-241114-0009']),
+      ('new_order', ['Phone call', 'Delivery']),
+      ('new_order', ['Picks up later', 'Pays at pick up']),
       ('store_products', ['Classic white linen shirt']),
       ('store_products', ['Classic white linen shirt', 'Send to a customer']),
       ('store_products', ['Classic white linen shirt', 'Edit']),
@@ -25,6 +28,9 @@ void main() {
   test('Order moves follow the web rules', () {
     expect(nextStatuses('payment_pending'), ['paid', 'cod_confirmed', 'canceled']);
     expect(nextStatuses('shipped'), ['delivered', 'canceled']);
+    expect(nextStatuses('cod_confirmed'), ['shipped', 'delivered', 'canceled']);
+    expect(channelLabel({'checkout_type': 'phone'}), 'Phone call');
+    expect(channelLabel({'checkout_type': 'in_chat'}), isNull);
     expect(nextStatuses('delivered'), isEmpty);
     expect(needsRefund({'status': 'canceled', 'payment_status': 'paid'}), isTrue);
   });

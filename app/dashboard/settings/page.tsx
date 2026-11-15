@@ -665,6 +665,22 @@ export default function SettingsPage() {
     }
   }
 
+  const [savingChatTickets, setSavingChatTickets] = useState(false)
+  async function handleSaveChatTickets() {
+    if (!organization) return
+    setSavingChatTickets(true)
+    try {
+      const changes = { chatbot_base_prompt: chatbotBasePrompt.trim() || null, ticket_email_enabled: ticketEmailEnabled, ticket_email_recipients: ticketEmailRecipients }
+      await saveOrganization(changes)
+      setOrganization({ ...organization, ...changes })
+      showNotification('success', ticketEmailEnabled && ticketEmailRecipients.length === 0 ? 'Saved. Tick at least one person to get ticket emails.' : 'Chat and ticket settings saved.', 'Saved')
+    } catch (err: any) {
+      showNotification('error', err.message || 'The settings could not be saved.', 'Not saved')
+    } finally {
+      setSavingChatTickets(false)
+    }
+  }
+
   async function handleSaveCredentials() {
     if (!organization) return
     setSavingCredentials(true)
@@ -1074,25 +1090,39 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          {/* Ticket Email Notifications */}
-          {isMasterOrg && (
-            <section className={cardClass}>
+          {/* Chat and tickets: for every business (only WAMA CRM's own workspace saw these before) */}
+          {(
+            <section id="chat-tickets" className={`${cardClass} scroll-mt-4`}>
               <SectionHeader
                 icon={Bell}
-                title="Ticket Email Notifications"
-                description="Automated email alerts when new customer support tickets are opened."
+                title="Chat and tickets"
+                description="How the AI chatbot answers customers, and who gets an email when a customer needs your team (a ticket)."
                 action={
-                  <button type="button" onClick={handleSaveCredentials} disabled={savingCredentials} className={primaryButtonClass}>
-                    {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
-                    <span>Save Notifications</span>
+                  <button type="button" onClick={handleSaveChatTickets} disabled={savingChatTickets} className={primaryButtonClass}>
+                    {savingChatTickets ? <Loader2 size={13} className="animate-spin" /> : null}
+                    <span>Save</span>
                   </button>
                 }
               />
 
+              <div className="mb-4">
+                <label className={labelClass}>Chatbot instructions (optional)</label>
+                <textarea
+                  rows={5}
+                  value={chatbotBasePrompt}
+                  onChange={(e) => setChatbotBasePrompt(e.target.value)}
+                  placeholder="For example: You are the assistant of Glow Store. Reply in the customer's language. Never promise a delivery date. Hand over to the team for refunds."
+                  className={`${inputClass} resize-y`}
+                />
+                <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-medium mt-1">
+                  How the AI talks and what it must never do. It answers from these instructions and your Knowledge Base. Leave empty for the standard polite helper.
+                </p>
+              </div>
+
               <FeatureRow
                 icon={Mail}
-                title="Enable Ticket Alert Emails"
-                description="Sends an email alert containing ticket details, contact info, and a quick dashboard link"
+                title="Email me when a ticket is raised"
+                description="An email with the customer's name, number and a link to the ticket. Sent from your own mailbox when set up below, otherwise from WAMA CRM"
                 checked={ticketEmailEnabled}
                 onChange={() => setTicketEmailEnabled(!ticketEmailEnabled)}
               />
@@ -1703,21 +1733,6 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className={labelClass}>
-                        AI Chatbot Base Prompt (System Prompt)
-                      </label>
-                      <textarea
-                        rows={6}
-                        value={chatbotBasePrompt}
-                        onChange={(e) => setChatbotBasePrompt(e.target.value)}
-                        placeholder="Enter the custom base/system prompt for your chatbot. Leaving this blank will fall back to the default strict customer service prompt."
-                        className={`${inputClass} resize-y`}
-                      />
-                      <p className="text-[10px] text-[#667781] dark:text-[#8696a0] font-semibold mt-1">
-                        Configure your custom AI agent persona, rules, and fallbacks. The chatbot answers questions based on this prompt combined with your knowledge base.
-                      </p>
-                    </div>
                   </div>
                 </div>
               )}

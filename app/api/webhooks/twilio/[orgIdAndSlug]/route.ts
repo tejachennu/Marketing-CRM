@@ -668,20 +668,8 @@ You MUST respond in JSON format. The JSON object must contain two keys:
                         const originUrl = request.nextUrl ? request.nextUrl.origin : new URL(request.url).origin
 
                         // Pop-up on the team's phones (awaited: a call left running can be stopped once the webhook answers)
-                        await notifyTicketRaised(supabase, { organizationId: orgId, ticketId: newTicket.id, subject: messageBody || 'Support Request', contactName, conversationId: conversation.id })
+                        await notifyTicketRaised(supabase, { organizationId: orgId, ticketId: newTicket.id, subject: messageBody || 'Support Request', contactName, contactPhone, conversationId: conversation.id })
 
-                        // Trigger notifications asynchronously without blocking the webhook execution
-                        fetch(`${originUrl}/api/tickets/notify`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            organizationId: orgId,
-                            ticketSubject: messageBody ? (messageBody.length > 100 ? messageBody.substring(0, 97) + '...' : messageBody) : 'Support Request',
-                            contactName,
-                            contactPhone,
-                            ticketId: newTicket.id
-                          })
-                        }).catch(err => console.error('[Webhook Notification] Failed to trigger ticket notification:', err))
                       }
                     }
                   } catch (ticketErr: any) {

@@ -240,7 +240,7 @@ export default function CommercePage() {
             icon={Wallet}
             tone="text-emerald-500"
           />
-          <Metric label="Orders" value={summary ? summary.total.toLocaleString() : '—'} note="Carts received on WhatsApp" icon={Package} tone="text-blue-500" />
+          <Metric label="Orders" value={summary ? summary.total.toLocaleString() : '—'} note="WhatsApp, shop and phone orders" icon={Package} tone="text-blue-500" />
           <Metric label="Awaiting customer" value={summary ? summary.awaiting.toLocaleString() : '—'} note="Address or payment not completed" icon={Clock} tone="text-amber-500" />
           <Metric
             label="To ship"
@@ -252,7 +252,7 @@ export default function CommercePage() {
         </div>
 
         {orgId && activeTab === 'orders' && (
-          <OrdersTab orgId={orgId} canEdit={canEdit} collectsAddress={setup.addressFlow} summary={summary} onSummary={setSummary} showToast={showToast} />
+          <OrdersTab orgId={orgId} canEdit={canEdit} collectsAddress={setup.addressFlow} currency={currency} summary={summary} onSummary={setSummary} showToast={showToast} />
         )}
 
         {orgId && activeTab === 'products' && (

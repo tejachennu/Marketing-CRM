@@ -60,8 +60,9 @@ const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   cart_submitted: ['paid', 'cod_confirmed', 'canceled'],
   awaiting_address: ['paid', 'cod_confirmed', 'canceled'],
   payment_pending: ['paid', 'cod_confirmed', 'canceled'],
-  paid: ['shipped', 'canceled'],
-  cod_confirmed: ['shipped', 'canceled'],
+  // Delivered straight away: handed over in the shop, picked up, or taken round by the team
+  paid: ['shipped', 'delivered', 'canceled'],
+  cod_confirmed: ['shipped', 'delivered', 'canceled'],
   shipped: ['delivered', 'canceled'],
   delivered: [],
   canceled: [],

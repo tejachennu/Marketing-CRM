@@ -34,8 +34,9 @@ const _transitions = {
   'cart_submitted': ['paid', 'cod_confirmed', 'canceled'],
   'awaiting_address': ['paid', 'cod_confirmed', 'canceled'],
   'payment_pending': ['paid', 'cod_confirmed', 'canceled'],
-  'paid': ['shipped', 'canceled'],
-  'cod_confirmed': ['shipped', 'canceled'],
+  // Delivered straight away: handed over in the shop, picked up, or taken round by the team
+  'paid': ['shipped', 'delivered', 'canceled'],
+  'cod_confirmed': ['shipped', 'delivered', 'canceled'],
   'shipped': ['delivered', 'canceled'],
   'delivered': <String>[],
   'canceled': <String>[],
@@ -80,7 +81,25 @@ String itemSummary(Map order) {
   return ('Not paid yet', false);
 }
 
-const paymentMethodLabels = {'whatsapp_pay': 'Paid in WhatsApp', 'cod': 'Cash on Delivery', 'manual': 'Marked as paid by your team', 'razorpay_link': 'Payment link'};
+const paymentMethodLabels = {
+  'whatsapp_pay': 'Paid in WhatsApp',
+  'cod': 'Cash on Delivery',
+  'manual': 'Marked as paid by your team',
+  'razorpay_link': 'Payment link',
+  'cash': 'Cash',
+  'upi': 'UPI',
+  'card': 'Card',
+};
+
+/// Orders the team added: where they came from (WhatsApp carts have none).
+String? channelLabel(Map order) => switch (order['checkout_type']) {
+  'in_store' => 'In the shop',
+  'phone' => 'Phone call',
+  _ => null,
+};
+
+/// How a hand-made order goes to the customer: now, pickup or delivery ('' for WhatsApp carts).
+String handoverOf(Map order) => '${(order['shipping_address'] as Map?)?['handover'] ?? ''}';
 
 /// What a reminder sends, by the step the server reports.
 const reminderSent = {

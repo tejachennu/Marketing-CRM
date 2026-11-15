@@ -4,7 +4,8 @@ import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { isUuid } from '@/lib/record-visibility'
 import { getCommerceSummary } from '@/lib/commerce/commerce-stats'
-import { notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
+import { createOrderNumber, notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
+import { createManualOrder, parseManualOrder } from '@/lib/commerce/manual-order'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -235,11 +236,28 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// POST: Actions on an order. `remind` sends the customer the step their order is waiting on again.
+// POST: Actions on an order. `remind` sends the customer the step their order is waiting on again;
+// `create` adds an order taken in the shop or on a phone call.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null)
     const { orderId, organizationId, action } = body || {}
+
+    // A sale in the shop, or an order given on a phone call, added by the team
+    if (action === 'create') {
+      if (!organizationId) return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
+      const authResult = await verifyOrgAccess(request, organizationId, { permission: 'records.write' })
+      if (!authResult.authorized) return NextResponse.json({ error: authResult.error }, { status: authResult.status })
+      const parsed = parseManualOrder(body)
+      if ('error' in parsed) return NextResponse.json({ error: parsed.error, field: parsed.field }, { status: 400 })
+      const supabase = getSupabase()
+      const { data: org } = await supabase.from('organizations').select('id, currency, commerce_default_shipping_fee, commerce_free_shipping_threshold').eq('id', organizationId).maybeSingle()
+      if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+      const made = await createManualOrder(supabase, org, parsed.order, createOrderNumber)
+      if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
+      const { data: full } = await supabase.from('commerce_orders').select(ORDER_COLUMNS).eq('id', made.order.id).maybeSingle()
+      return NextResponse.json({ success: true, order: full || made.order })
+    }
 
     if (!orderId || !organizationId) {
       return NextResponse.json({ error: 'Missing orderId or organizationId' }, { status: 400 })

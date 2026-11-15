@@ -19,6 +19,7 @@ import '../contacts/contacts_screen.dart';
 import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
 import '../store/store_screen.dart';
+import 'chat_tickets_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -120,6 +121,8 @@ class MoreScreen extends StatelessWidget {
                     title: 'Front Desk',
                     subtitle: 'Off · an admin can switch it on in Connectors on the web',
                   ),
+                if (app.can('settings'))
+                  _Row(icon: Icons.forum_outlined, title: 'Chat and tickets', subtitle: 'AI replies, chatbot instructions, ticket emails', onTap: () => open(const ChatTicketsScreen())),
                 _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
                 _Row(
                   icon: Icons.notifications_active_outlined,

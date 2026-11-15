@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
       campaigns: can(user, 'campaigns.manage'),
       seeAll: canSeeAll(user),
       billing: can(user, 'billing.manage'),
+      settings: can(user, 'settings.manage'),
     },
     connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
   })

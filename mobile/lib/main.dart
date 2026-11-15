@@ -31,7 +31,9 @@ import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/billing_screen.dart';
 import 'screens/more/grow_screen.dart';
 import 'screens/more/more_screens.dart';
+import 'screens/store/new_order_screen.dart';
 import 'screens/store/store_screen.dart';
+import 'screens/more/chat_tickets_screen.dart';
 import 'screens/templates/template_create.dart';
 import 'screens/templates/template_editor.dart';
 import 'screens/templates/template_model.dart';
@@ -228,6 +230,8 @@ class WamaApp extends StatelessWidget {
       'billing' => const BillingScreen(),
       'tickets' => const TicketsScreen(),
       'store' => const StoreScreen(),
+      'new_order' => const NewOrderScreen(currency: 'INR'),
+      'chat_tickets' => const ChatTicketsScreen(),
       'store_products' => const StoreScreen(initialTab: 1),
       'store_flow' => const StoreScreen(initialTab: 2),
       'store_settings' => const StoreScreen(initialTab: 3),

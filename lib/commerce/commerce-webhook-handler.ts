@@ -67,7 +67,7 @@ export function generateOrderNumber(now: Date = new Date()): string {
 }
 
 /** An order number no other order of this store has. Payments are matched to orders by it. */
-async function createOrderNumber(supabase: Database, organizationId: string): Promise<string> {
+export async function createOrderNumber(supabase: Database, organizationId: string): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const candidate = generateOrderNumber()
     const { data: taken } = await supabase
