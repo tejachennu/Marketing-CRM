@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'store_logic.dart';
 import 'store_screen.dart';
 
 const _colours = [0xFF1D5BEA, 0xFF0E1B3D, 0xFF008069, 0xFFB45309, 0xFFBE185D, 0xFF6D28D9, 0xFF0F766E, 0xFFB91C1C];
@@ -34,10 +35,61 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
   final _webhookSecret = TextEditingController();
   bool _payBusy = false;
 
+  Map<String, dynamic>? _suggested;
+  bool _prefilled = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Pictures we made follow the store colour; the business's own photos are left alone.
+  String _recolour(String url, String colour) => madePicture(url) == null ? url : url.replaceFirstMapped(RegExp(r'([?&]c=)[0-9A-Fa-f]{6}'), (m) => '${m[1]}${colour.replaceFirst('#', '')}');
+
+  void _setColour(String colour) {
+    final s = _s!;
+    s['colour'] = colour;
+    s['logo'] = _recolour('${s['logo'] ?? ''}', colour);
+    for (final b in (s['banners'] as List).cast<Map<String, dynamic>>()) {
+      b['image'] = _recolour('${b['image'] ?? ''}', colour);
+    }
+    for (final c in _categories) {
+      c['image'] = _recolour('${c['image'] ?? ''}', colour);
+    }
+  }
+
+  /// Fill every blank part from the business's details (nothing typed is replaced).
+  void _fillBlanks() {
+    final g = _suggested;
+    final s = _s;
+    if (g == null || s == null) return;
+    setState(() {
+      for (final key in const ['title', 'tagline', 'logo', 'announcement', 'delivery_note', 'whatsapp', 'phone', 'address', 'about']) {
+        final typed = (_text[key]?.text ?? '${s[key] ?? ''}').trim();
+        if (typed.isEmpty && '${g[key] ?? ''}'.isNotEmpty) {
+          s[key] = g[key];
+          _text[key]?.text = '${g[key]}';
+        }
+      }
+      for (final key in const ['delivery_fee', 'free_delivery_from']) {
+        final typed = (_text[key]?.text ?? '${s[key] ?? ''}').trim();
+        if ((typed.isEmpty || typed == 'null') && g[key] != null) {
+          s[key] = g[key];
+          _text[key]?.text = '${g[key]}';
+        }
+      }
+      if ((s['banners'] as List).isEmpty) {
+        s['banners'] = [for (final b in (g['banners'] as List? ?? const [])) Map<String, dynamic>.from(b as Map)];
+      }
+      for (final c in _categories) {
+        if ('${c['image'] ?? ''}'.isNotEmpty) continue;
+        for (final m in (g['categories'] as List? ?? const [])) {
+          if ('${(m as Map)['name']}'.toLowerCase() == '${c['name']}'.toLowerCase()) c['image'] = m['image'];
+        }
+      }
+    });
+    toast(context, 'Filled from your business details. Check and Save.');
   }
 
   @override
@@ -68,6 +120,8 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
         _link = data['link'] as String?;
         _storeOn = data['storeOn'] != false;
         _categories = [for (final c in (data['categories'] as List? ?? const [])) Map<String, dynamic>.from(c as Map)];
+        _suggested = data['suggested'] is Map ? Map<String, dynamic>.from(data['suggested'] as Map) : null;
+        _prefilled = data['prefilled'] == true;
       });
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
@@ -179,6 +233,12 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
           ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
           : value.isEmpty
           ? const Icon(Icons.add_photo_alternate_outlined, color: Brand.faint)
+          : madePicture(value) != null
+          ? Container(
+              color: madePicture(value),
+              alignment: Alignment.center,
+              child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+            )
           : Image.network(
               value,
               fit: BoxFit.cover,
@@ -261,6 +321,34 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 ],
               ),
             ),
+          if (manage && _suggested != null) ...[
+            const SizedBox(height: 12),
+            Panel(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.auto_awesome, color: Brand.blue),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_prefilled ? 'Filled in from your business details' : 'Fill from your business details', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Text(
+                          _prefilled
+                              ? 'Name, logo, contact, delivery charges, categories and banners come from your workspace and products. Pictures are made for you where you have no photo. Check them and tap Save.'
+                              : 'Fills any blank part from your workspace and products. What you typed stays.',
+                          style: const TextStyle(color: Brand.muted, fontSize: 13),
+                        ),
+                        if (!_prefilled) ...[const SizedBox(height: 8), OutlinedButton.icon(onPressed: _fillBlanks, icon: const Icon(Icons.auto_awesome, size: 18), label: const Text('Fill blanks'))],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _section('Look', [
             TextField(
@@ -298,7 +386,7 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
               children: [
                 for (final c in _colours)
                   InkWell(
-                    onTap: () => setState(() => s['colour'] = _hex(c)),
+                    onTap: () => setState(() => _setColour(_hex(c))),
                     customBorder: const CircleBorder(),
                     child: CircleAvatar(
                       radius: 18,

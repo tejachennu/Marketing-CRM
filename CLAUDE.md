@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Store website filled from the business's details, with made pictures** (owner: "Prefill the data ... full
+  store configuration, generate images"): `suggestStorefront` in `lib/commerce/storefront.ts` builds a full page
+  from the workspace (name, `contact_phone`, `contact_address`, `whatsapp_default_phone`, shipping fee / free-from),
+  Front Desk details (`salon_settings` name, phone, address, logo) and products (categories by count, first https
+  photo). `GET /api/commerce/storefront` returns `suggested` always, and uses it as `settings` with
+  `prefilled: true` while the store was never saved (nothing is saved until Save; never switched on by itself).
+  `fillStorefront` / the web and app "Fill blanks" button fill only empty parts. Pictures with no photo are drawn
+  by `lib/commerce/store-art.ts` (flat SVG banners in 4 designs, initials logo, category tiles; no gradients) at
+  `GET /api/public/store-art?kind=banner|logo|tile&c=&name=&n=`; they follow the store colour when it changes
+  (`c=` is rewritten). The app cannot draw SVG, so it shows a made picture as a coloured box (`madePicture`).
+
 - **Razorpay on the online store website** (owner: "Online store website (/s/shop). Integrate the razorpay"):
   each business connects **its own** Razorpay (money goes to the business, not WAMA): new columns
   `organizations.store_razorpay_key_id / _key_secret / _webhook_secret` (in the storefront migration; hidden

@@ -248,6 +248,8 @@ class DemoCommerce {
       case '/api/commerce/storefront':
         return {
           'settings': website,
+          'suggested': _suggestedWebsite,
+          'prefilled': false,
           'link': 'https://wamacrm.magnetora.in/s/glow-store',
           'storeOn': true,
           'categories': [
@@ -448,3 +450,23 @@ class DemoCommerce {
     return null;
   }
 }
+
+/// What the server would fill a blank store page with (made pictures carry the colour in `c=`).
+const _art = 'https://wamacrm.magnetora.in/api/public/store-art';
+final Map<String, dynamic> _suggestedWebsite = {
+  'title': 'Glow Store',
+  'tagline': 'Skin care, Hair care, Bath. Order online in a few taps.',
+  'logo': '$_art?kind=logo&c=1D5BEA&name=Glow+Store',
+  'announcement': 'Free delivery on orders above ₹999',
+  'delivery_note': 'Delivery charge ₹50. Free delivery on orders above ₹999. We call or message you to confirm the delivery time.',
+  'delivery_fee': 50,
+  'free_delivery_from': 999,
+  'whatsapp': '+919876543210',
+  'phone': '+919876543210',
+  'address': 'Road No. 12, Banjara Hills, Hyderabad',
+  'about': 'Welcome to Glow Store. Look through our products, add what you like to the cart and order right here or on WhatsApp.',
+  'banners': [
+    {'image': '$_art?kind=banner&c=1D5BEA&name=Glow+Store&n=0', 'title': 'Welcome to Glow Store', 'text': 'Order online in a few taps.', 'button': 'Shop now', 'category': '', 'link': ''},
+  ],
+  'categories': <Map<String, dynamic>>[],
+};

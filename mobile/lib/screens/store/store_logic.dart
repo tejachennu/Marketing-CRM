@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:flutter/painting.dart' show Color;
 
 /// The store's rules, mirrored from the web (`lib/commerce/commerce-utils.ts`,
 /// `lib/commerce/go-live-checks.ts`, `lib/commerce/catalog-items.ts`), so the app says the same
@@ -406,4 +407,12 @@ String paymentStep(Map org) {
   if (online) return 'payment';
   if (cod) return 'cod';
   return 'acknowledged';
+}
+
+/// A store picture the server made (banner, logo or category tile from /api/public/store-art):
+/// its colour, so the app can show it without drawing SVG. Null for the business's own photos.
+Color? madePicture(String url) {
+  if (!url.contains('/api/public/store-art?')) return null;
+  final hex = RegExp(r'[?&]c=([0-9A-Fa-f]{6})').firstMatch(url)?.group(1) ?? '1D5BEA';
+  return Color(0xFF000000 | int.parse(hex, radix: 16));
 }

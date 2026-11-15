@@ -314,3 +314,125 @@ export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrde
     order: { channel: 'website', customer: { contactId: null, name, phone }, items, handover, paid: false, paymentMethod: null, shippingFee: null, address, note: longText(body?.note, 500) || null },
   }
 }
+
+/** What the business already has, for filling a new store page. */
+export interface StoreSuggestionInput {
+  appUrl: string
+  organization: {
+    name?: string | null
+    currency?: string | null
+    contact_phone?: string | null
+    contact_address?: string | null
+    whatsapp_default_phone?: string | null
+    commerce_default_shipping_fee?: unknown
+    commerce_free_shipping_threshold?: unknown
+  }
+  /** Front Desk business details, when it has them. */
+  salon?: { business_name?: string | null; address?: string | null; phone?: string | null; logo_url?: string | null } | null
+  products: { title?: string | null; category?: string | null; image_url?: string | null }[]
+  colour?: string
+}
+
+/** The web address of a picture made for a store page (drawn by lib/commerce/store-art.ts). */
+export function artUrl(appUrl: string, kind: 'banner' | 'logo' | 'tile', options: { colour: string; name: string; design?: number }): string {
+  const params = new URLSearchParams({ kind, c: options.colour.replace('#', ''), name: options.name.slice(0, 80) })
+  if (options.design !== undefined) params.set('n', String(options.design))
+  return `${appUrl.replace(/\/$/, '')}/api/public/store-art?${params.toString()}`
+}
+
+const money = (value: number, currency?: string | null) =>
+  (String(currency || 'INR').toUpperCase() === 'INR' ? '₹' : `${String(currency).toUpperCase()} `) + value.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+
+/**
+ * A full store page made from the business's own details: its name, logo, phone, address, WhatsApp,
+ * delivery charges, and its products' categories and photos. Banners, a logo and category pictures
+ * are made for it (store-art) wherever it has no photo. Nothing is saved until the business saves.
+ */
+export function suggestStorefront(input: StoreSuggestionInput): StorefrontSettings {
+  const org = input.organization || {}
+  const salon = input.salon || {}
+  const colour = /^#[0-9A-F]{6}$/i.test(input.colour || '') ? input.colour!.toUpperCase() : STORE_COLOURS[0]
+  const name = text(salon.business_name || org.name || 'Our store', 80)
+
+  // Categories by how many products they have, each with its first photo
+  const byCategory = new Map<string, { name: string; count: number; image: string }>()
+  for (const p of input.products || []) {
+    const category = text(p.category, 60) || 'Other'
+    const key = category.toLowerCase()
+    const entry = byCategory.get(key) || { name: category, count: 0, image: '' }
+    entry.count++
+    if (!entry.image && isImageUrl(p.image_url)) entry.image = String(p.image_url).trim()
+    byCategory.set(key, entry)
+  }
+  const ranked = [...byCategory.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  const top = ranked.filter((c) => c.name !== 'Other').slice(0, 3)
+
+  const fee = amount(org.commerce_default_shipping_fee)
+  const freeFrom = amount(org.commerce_free_shipping_threshold)
+  const whatsapp = normalizePhone(org.whatsapp_default_phone) || ''
+  const phone = normalizePhone(org.contact_phone) || normalizePhone(salon.phone) || ''
+  const address = longText(org.contact_address || salon.address || '', 300)
+
+  const tagline = top.length ? `${top.map((c) => c.name).join(', ')}${ranked.length > top.length ? ' and more' : ''}. Order online in a few taps.` : `Order online from ${name} in a few taps.`
+  const announcement = freeFrom ? `Free delivery on orders above ${money(freeFrom, org.currency)}` : whatsapp ? 'Order here or message us on WhatsApp' : ''
+  const deliveryNote = [
+    fee ? `Delivery charge ${money(fee, org.currency)}.` : '',
+    freeFrom ? `Free delivery on orders above ${money(freeFrom, org.currency)}.` : '',
+    'We call or message you to confirm the delivery time.',
+  ].filter(Boolean).join(' ')
+
+  const banners: StoreBanner[] = [
+    { image: artUrl(input.appUrl, 'banner', { colour, name, design: 0 }), title: `Welcome to ${name}`, text: text(tagline, 140), button: 'Shop now', category: '', link: '' },
+    ...top.map((c, i) => ({
+      image: artUrl(input.appUrl, 'banner', { colour, name, design: i + 1 }),
+      title: c.name,
+      text: `${c.count} ${c.count === 1 ? 'product' : 'products'} to choose from`,
+      button: 'See all',
+      category: c.name,
+      link: '',
+    })),
+  ]
+  if (freeFrom && banners.length < 4) {
+    banners.push({ image: artUrl(input.appUrl, 'banner', { colour, name, design: 3 }), title: 'Free delivery', text: `On orders above ${money(freeFrom, org.currency)}`, button: 'Start shopping', category: '', link: '' })
+  }
+
+  return readStorefront({
+    enabled: false,
+    title: name,
+    tagline,
+    logo: isImageUrl(salon.logo_url) ? salon.logo_url : artUrl(input.appUrl, 'logo', { colour, name }),
+    colour,
+    announcement,
+    banners,
+    categories: ranked.slice(0, MAX_CATEGORIES).map((c, i) => ({ name: c.name, image: c.image || artUrl(input.appUrl, 'tile', { colour, name: c.name, design: i }) })),
+    pickup: true,
+    delivery: true,
+    delivery_note: deliveryNote,
+    delivery_fee: fee,
+    free_delivery_from: freeFrom,
+    min_order: 0,
+    whatsapp,
+    phone,
+    address,
+    about: `Welcome to ${name}. Look through our products, add what you like to the cart and order right here${whatsapp ? ' or on WhatsApp' : ''}. ${address ? 'Pick up from our shop or get it delivered.' : 'We deliver to your door.'}`,
+    show_out_of_stock: false,
+    payment: 'later',
+  })
+}
+
+/** The business's saved page with any blank part taken from the suggestion (nothing typed is replaced). */
+export function fillStorefront(current: StorefrontSettings, suggested: StorefrontSettings): StorefrontSettings {
+  const out: StorefrontSettings = { ...current }
+  for (const key of ['title', 'tagline', 'logo', 'announcement', 'delivery_note', 'whatsapp', 'phone', 'address', 'about'] as const) {
+    if (!String(out[key] || '').trim()) out[key] = suggested[key]
+  }
+  if (out.delivery_fee === null) out.delivery_fee = suggested.delivery_fee
+  if (out.free_delivery_from === null) out.free_delivery_from = suggested.free_delivery_from
+  if (!out.banners.length) out.banners = suggested.banners
+  const names = new Set(out.categories.map((c) => c.name.toLowerCase()))
+  out.categories = [
+    ...out.categories.map((c) => ({ ...c, image: c.image || suggested.categories.find((s) => s.name.toLowerCase() === c.name.toLowerCase())?.image || '' })),
+    ...suggested.categories.filter((s) => !names.has(s.name.toLowerCase())),
+  ].slice(0, MAX_CATEGORIES)
+  return out
+}

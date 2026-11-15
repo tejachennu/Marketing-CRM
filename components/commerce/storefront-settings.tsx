@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, ImagePlus, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, ImagePlus, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
@@ -181,6 +181,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [qr, setQr] = useState('')
+  const [suggested, setSuggested] = useState<any>(null)
+  const [prefilled, setPrefilled] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -188,6 +190,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The website settings could not be loaded.')
       setSettings(data.settings)
+      setSuggested(data.suggested || null)
+      setPrefilled(data.prefilled === true)
       setLink(data.link)
       setStoreOn(data.storeOn !== false)
       setCategories(data.categories || [])
@@ -205,6 +209,26 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
   if (!settings) return <div className={`${cardClass} py-16 flex items-center justify-center gap-2 text-sm text-slate-500`}><Loader2 size={18} className="animate-spin" /> Loading…</div>
 
   const set = (changes: Record<string, any>) => setSettings((current: any) => ({ ...current, ...changes }))
+  // Pictures we made follow the store colour; the business's own photos are left alone
+  const recolour = (url: string, colour: string) => (url && url.includes('/api/public/store-art?') ? url.replace(/([?&]c=)[0-9A-Fa-f]{6}/, `$1${colour.replace('#', '')}`) : url)
+  const setColour = (colour: string) => {
+    set({ colour, logo: recolour(settings.logo, colour), banners: (settings.banners || []).map((b: Banner) => ({ ...b, image: recolour(b.image, colour) })) })
+    setCategories((list) => list.map((c) => ({ ...c, image: recolour(c.image, colour) })))
+  }
+  /** Fill every blank part from the business's details (nothing typed is replaced). */
+  const fillBlanks = () => {
+    if (!suggested) return
+    const next = { ...settings }
+    for (const key of ['title', 'tagline', 'logo', 'announcement', 'delivery_note', 'whatsapp', 'phone', 'address', 'about']) {
+      if (!String(next[key] || '').trim()) next[key] = suggested[key]
+    }
+    if (next.delivery_fee === null || next.delivery_fee === undefined) next.delivery_fee = suggested.delivery_fee
+    if (next.free_delivery_from === null || next.free_delivery_from === undefined) next.free_delivery_from = suggested.free_delivery_from
+    if (!(next.banners || []).length) next.banners = suggested.banners
+    setSettings(next)
+    setCategories((list) => list.map((c) => ({ ...c, image: c.image || suggested.categories?.find((s: Category) => s.name.toLowerCase() === c.name.toLowerCase())?.image || '' })))
+    showToast('success', 'Filled from your business details. Check and Save.')
+  }
   const banners: Banner[] = settings.banners || []
   const setBanner = (i: number, changes: Partial<Banner>) => set({ banners: banners.map((b, j) => (j === i ? { ...b, ...changes } : b)) })
   const move = <T,>(list: T[], i: number, by: number) => {
@@ -269,6 +293,21 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
         )}
       </section>
 
+      {canManage && suggested && (
+        <section className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3`}>
+          <Sparkles size={18} className="text-[#1D5BEA] shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className={heading}>{prefilled ? 'Filled in from your business details' : 'Fill from your business details'}</p>
+            <p className={sub}>
+              {prefilled
+                ? 'Name, logo, contact, delivery charges, categories and banners come from your workspace and products. Pictures are made for you where you have no photo. Check them and press Save.'
+                : 'Fills any blank part from your workspace and products: contact, delivery charges, category pictures and banners. What you typed stays.'}
+            </p>
+          </div>
+          {!prefilled && <button type="button" onClick={fillBlanks} className={`${secondaryButton} shrink-0`}><Sparkles size={13} /> Fill blanks</button>}
+        </section>
+      )}
+
       <section className={`${cardClass} p-4 sm:p-5 space-y-4`}>
         <h2 className={heading}>Look</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -293,7 +332,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           <span className={labelClass}>Colour</span>
           <div className="flex flex-wrap gap-2">
             {COLOURS.map((c) => (
-              <button key={c} type="button" disabled={disabled} onClick={() => set({ colour: c })} aria-label={`Colour ${c}`} style={{ background: c }} className="h-9 w-9 rounded-full flex items-center justify-center text-white cursor-pointer ring-offset-2 data-[on=true]:ring-2 ring-slate-400" data-on={settings.colour === c}>
+              <button key={c} type="button" disabled={disabled} onClick={() => setColour(c)} aria-label={`Colour ${c}`} style={{ background: c }} className="h-9 w-9 rounded-full flex items-center justify-center text-white cursor-pointer ring-offset-2 data-[on=true]:ring-2 ring-slate-400" data-on={settings.colour === c}>
                 {settings.colour === c && <Check size={16} />}
               </button>
             ))}
