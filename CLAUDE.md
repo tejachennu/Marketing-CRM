@@ -117,6 +117,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Store domain gateway, store fixes and a testing report** (owner: "do all the changes ... fix all the bugs ...
+  test cases ... testing report"): `deploy/gateway/` (Caddyfile with on-demand certificates that ask
+  `GET /api/public/store-domain-check`, `setup.sh` for Ubuntu, README with the steps) and
+  `.github/workflows/deploy-gateway.yml` (**manual only**, SSH key and `STORE_GATEWAY_KEY` as Actions secrets).
+  When Vercel has `STORE_GATEWAY_HOST` + `STORE_GATEWAY_IP`, `store-domain.ts` uses the gateway (records point at
+  it, connected = DNS points there, no Vercel calls); the middleware trusts `X-Store-Domain` only with
+  `X-Gateway-Key` = `STORE_GATEWAY_KEY` (16+ chars). Fixes: the store Razorpay webhook now finds the order
+  (`findStoreOrder`: Razorpay ORDER notes, then payment notes, then `shipping_address->payment->>order_id`);
+  an unfinished payment is kept in localStorage (`store-unpaid:<slug>`) and checked on reload; no paying for a
+  cancelled order (410); 15 s limit on Razorpay calls; `app/s/[slug]/not-found.tsx`; design polish (solid
+  header, pay choices stack under 360 px, `showPhone` in `lib/phone-display.ts`). Report: `docs/TESTING-REPORT.md`
+  (590 web + 326 app tests, bugs fixed, test cases, what still needs a real try). **Gateway not set up yet;
+  Caddyfile not validated by Caddy itself here.**
+
 - **Store on the business's own domain** (owner: "custom domain like Shopify ... two options, ours or custom
   domain"): Website tab → **Store address** (web `StoreAddress` in `storefront-settings.tsx`, app
   `store/store_address.dart`): "Our address (free)" or "My own domain". `lib/commerce/store-domain.ts`:
