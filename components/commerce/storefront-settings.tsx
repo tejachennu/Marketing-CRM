@@ -145,15 +145,28 @@ function RazorpayConnect({ orgId, payment, onPayment, showToast }: { orgId: stri
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} {connected ? 'Save keys' : 'Connect Razorpay'}
       </button>
       <div>
-        <span className={labelClass}>How customers pay</span>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {([['both', 'Their choice', 'Pay now or on delivery / pick up'], ['online', 'Online only', 'Every order is paid first'], ['later', 'On delivery / pick up', 'No online payment']] as const).map(([id, title, note]) => (
-            <button key={id} type="button" disabled={id !== 'later' && !connected} onClick={() => onPayment(id)} className={`p-3 rounded-xl border-2 text-left text-[13px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${payment === id ? 'border-[#1D5BEA] bg-[#1D5BEA]/5' : 'border-slate-200 dark:border-slate-700'}`}>
-              <span className="block font-bold">{title}</span>
-              <span className="block text-slate-500">{note}</span>
-            </button>
-          ))}
-        </div>
+        <span className={labelClass}>Payment options on your website</span>
+        <p className={`${hintClass} -mt-0.5 mb-2`}>Customers see only the ones switched on. Keep at least one on.</p>
+        {(() => {
+          const cod = payment !== 'online'
+          const now = connected && payment !== 'later'
+          const pick = (nextCod: boolean, nextNow: boolean) => {
+            if (!nextCod && !nextNow) return showToast('error', 'Keep at least one way to pay switched on.')
+            onPayment(nextCod && nextNow ? 'both' : nextNow ? 'online' : 'later')
+          }
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-[13px] cursor-pointer">
+                <input type="checkbox" checked={cod} onChange={(e) => pick(e.target.checked, now)} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+                <span><span className="block font-bold">Cash on delivery</span><span className="block text-slate-500">Pay when the order arrives, or at pick up</span></span>
+              </label>
+              <label className={`flex items-start gap-2.5 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-[13px] ${connected ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
+                <input type="checkbox" checked={now} disabled={!connected} onChange={(e) => pick(cod, e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+                <span><span className="block font-bold">Pay now</span><span className="block text-slate-500">{connected ? 'UPI, card or net banking with Razorpay' : 'Connect Razorpay above first'}</span></span>
+              </label>
+            </div>
+          )
+        })()}
       </div>
     </section>
   )

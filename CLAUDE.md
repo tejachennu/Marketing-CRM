@@ -130,7 +130,8 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   (signature → paid; `action: 'check'`; `action: 'later'` → pay on delivery when allowed);
   `POST /api/public/store/[slug]/razorpay-webhook` (business's webhook secret). Keys: `GET/PUT/DELETE
   /api/commerce/storefront/payments` (PUT checks the keys with Razorpay first; admins). Web Website tab →
-  Online payment (Razorpay) + How customers pay; app Website screen the same. Page: Pay now / Pay on delivery
+  Online payment (Razorpay) + two switches, Cash on delivery and Pay now (owner: only these two options, as
+  switched on); app Website screen the same. Page: Pay now / Cash on delivery
   choice, "Payment not finished" with Try again / Pay later instead. **Not tried with real Razorpay keys yet.**
 
 - **Online store website for each business** (owner: "e-commerce store front page website, carousel,

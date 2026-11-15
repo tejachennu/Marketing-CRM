@@ -456,7 +456,7 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                 <button type="button" disabled={placing} onClick={() => payOnline(unpaid).catch((err) => setError(err.message))} className="mt-6 w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-60">Try paying again</button>
                 {store.payLater && (
                   <button type="button" disabled={placing} onClick={payLaterInstead} className="mt-3 w-full h-12 rounded-full border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer disabled:opacity-60">
-                    {placing && <Loader2 size={16} className="inline animate-spin mr-1" />} {handover === 'delivery' ? 'Pay on delivery instead' : 'Pay at pick up instead'}
+                    {placing && <Loader2 size={16} className="inline animate-spin mr-1" />} {handover === 'delivery' ? 'Cash on delivery instead' : 'Cash at pick up instead'}
                   </button>
                 )}
               </div>
@@ -491,7 +491,7 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything we should know? (optional)" aria-label="Note" rows={2} maxLength={500} className={`${input} h-auto py-3`} />
                 {store.payOnline && store.payLater && (
                   <div className="grid grid-cols-2 gap-2">
-                    {([['online', 'Pay now', CreditCard], ['later', handover === 'delivery' ? 'Pay on delivery' : 'Pay at pick up', Banknote]] as const).map(([id, label, Icon]) => (
+                    {([['online', 'Pay now', CreditCard], ['later', handover === 'delivery' ? 'Cash on delivery' : 'Cash at pick up', Banknote]] as const).map(([id, label, Icon]) => (
                       <button key={id} type="button" onClick={() => setPay(id)} className={`h-12 rounded-xl border-2 font-bold text-[14px] inline-flex items-center justify-center gap-2 cursor-pointer ${pay === id ? 'border-[var(--c)] text-[var(--c)] bg-[var(--c)]/5' : 'border-[#d5ddeb] text-[#4a5672]'}`}>
                         <Icon size={17} /> {label}
                       </button>
@@ -505,7 +505,7 @@ export function Storefront({ store, startCategory }: { store: StoreView; startCa
                   {pay === 'online' ? (
                     <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> Pay securely by UPI, card or net banking with Razorpay.</p>
                   ) : (
-                    <p className="text-[13px] text-[#6B7894]">Pay when you {handover === 'delivery' ? 'get your order' : 'pick it up'}. The shop will confirm your order.</p>
+                    <p className="text-[13px] text-[#6B7894]">Pay cash when you {handover === 'delivery' ? 'get your order' : 'pick it up'}. The shop will confirm your order.</p>
                   )}
                 </div>
                 {error && <p role="alert" className="rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}

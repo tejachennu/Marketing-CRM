@@ -497,19 +497,37 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 gap(),
                 FilledButton(onPressed: _payBusy ? null : _connect, child: Text(_pay?['connected'] == true ? 'Save keys' : 'Connect Razorpay')),
                 const SizedBox(height: 14),
-                const Text('How customers pay', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (id, label) in [('both', 'Their choice'), ('online', 'Online only'), ('later', 'On delivery / pick up')])
-                      ChoiceChip(
-                        label: Text(label),
-                        selected: (s['payment'] ?? 'later') == id,
-                        onSelected: id != 'later' && _pay?['connected'] != true ? null : (_) => setState(() => s['payment'] = id),
-                      ),
-                  ],
+                const Text('Payment options on your website', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('Customers see only the ones switched on. Keep at least one on.', style: TextStyle(color: Brand.muted, fontSize: 13)),
+                Builder(
+                  builder: (context) {
+                    final connected = _pay?['connected'] == true;
+                    final cod = (s['payment'] ?? 'later') != 'online';
+                    final now = connected && (s['payment'] ?? 'later') != 'later';
+                    void pick(bool nextCod, bool nextNow) {
+                      if (!nextCod && !nextNow) return toast(context, 'Keep at least one way to pay switched on.');
+                      setState(() => s['payment'] = nextCod && nextNow ? 'both' : (nextNow ? 'online' : 'later'));
+                    }
+
+                    return Column(
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: cod,
+                          onChanged: (v) => pick(v, now),
+                          title: const Text('Cash on delivery'),
+                          subtitle: const Text('Pay when the order arrives, or at pick up'),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: now,
+                          onChanged: connected ? (v) => pick(cod, v) : null,
+                          title: const Text('Pay now'),
+                          subtitle: Text(connected ? 'UPI, card or net banking with Razorpay' : 'Connect Razorpay above first'),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
