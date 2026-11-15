@@ -10,7 +10,7 @@ website (filled from business details, made pictures, Razorpay, own domain throu
 
 | Check | Result |
 |---|---|
-| Web unit tests (`npm test`, 49 files) | **602 / 602 passed** |
+| Web unit tests (`npm test`, 51 files) | **618 / 618 passed** |
 | Web type check (`tsc --noEmit`) | **No errors** |
 | Web production build (`next build`) | **Passed** |
 | App code check (`flutter analyze`) | **No issues** |
@@ -35,7 +35,7 @@ use it.
 
 ## 3. Test results by area
 
-### 3.1 Web (602 tests)
+### 3.1 Web (618 tests)
 
 | Area | Test files | Tests |
 |---|---|---|
@@ -43,6 +43,8 @@ use it.
 | Store online payment (Razorpay) | store-payments | 8 |
 | Store on own domain + gateway | store-domain | 10 |
 | Shop customer accounts (sign in, orders, tracking, saved cart) | store-accounts | 12 |
+| Front Desk memberships (plans, cards, use at billing, history, report) | memberships | 10 |
+| Front Desk appointments calendar and moving appointments | appointments-calendar | 6 |
 | Shop and phone-call orders | manual-order | 5 |
 | WhatsApp shop (catalog, cart, go-live, shopping assistant) | whatsapp-commerce, meta-catalog, commerce-go-live, chat-commerce, shopping-assistant, catalog-access-route | 107 |
 | Front Desk (bookings, bills, GST, reviews, jobs, catalog, categories) | salon, salon-jobs, salon-reviews, salon-chat, front-desk, front-desk-catalog, front-desk-categories | 95 |
@@ -158,6 +160,43 @@ Result: **Pass** = automated test passed. **Seen** = checked in the browser or a
 | AC-13 | Store switches sign-in off | No Sign in button; account API refuses | Pass |
 | AC-14 | 320 px phone | All account screens fit, no sideways scroll | Seen |
 
+### 5.6 Store product page (added 16 Nov 2026)
+
+| ID | Case | Expected | Result |
+|---|---|---|---|
+| PP-01 | Tap a product on the store | Opens its own page `/s/<store>/p/<product>` (or `/p/<product>` on the store's own domain) | Seen + real request |
+| PP-02 | Product page | Photo, category, name, price, In stock, quantity, Add to cart, Buy now, Ask on WhatsApp, Share, delivery / pick up / payment, description, More in this category | Seen (320 px, 390 px, desktop) |
+| PP-03 | Product not sold any more / wrong id | Store not-open page (404) | Real request |
+| PP-04 | Search engines and sharing | Title with price, description, picture, and product details (price, stock) for Google | Real request |
+
+### 5.7 Front Desk memberships (added 16 Nov 2026)
+
+| ID | Case | Expected | Result |
+|---|---|---|---|
+| MB-01 | New plan | Needs a name, a length, and credit / free sessions / discount (any mix) | Pass |
+| MB-02 | Sell a card | GST bill for the price; card MB-0001 with link and QR; sent on WhatsApp | Pass + Seen |
+| MB-03 | Bill a card holder | Card found by phone or contact; free sessions first, then discount, then credit pays; "covered by the card" | Pass + Seen |
+| MB-04 | Credit runs out | The rest is paid by cash / UPI / card or later | Pass |
+| MB-05 | Cancel a bill that used a card | Sessions and credit go back, once | Pass |
+| MB-06 | Cancel the bill a card was sold on | Card cancelled | Pass |
+| MB-07 | Someone else's card | Refused | Pass |
+| MB-08 | Extend, add or take off credit or sessions, cancel | Changes the card; each change in its history | Pass |
+| MB-09 | Card states | Active, Ending soon (14 days, red), Expired, Cancelled, Starts later | Pass + Seen |
+| MB-10 | Usage report | Cards sold and money in, credit / sessions used, discount given, credit and sessions still owed, by plan | Pass + Seen |
+| MB-11 | Customer's card page | Card with number and QR, what is left, history, terms; no ids | Pass + Seen |
+
+### 5.8 Front Desk appointments and landing page (added 16 Nov 2026)
+
+| ID | Case | Expected | Result |
+|---|---|---|---|
+| AP-01 | Day view (wide screens) | One column per team member plus Anyone, times down the side, colours by state (no-show red), a red now-line; empty slot books | Pass + Seen |
+| AP-02 | Day view (phones) | A list by time with state | Seen |
+| AP-03 | Week and List views | Seven days at a glance; any dates as a list | Seen |
+| AP-04 | Filters and numbers | Person, state, search; appointments, coming, in the shop, done, no-show, booked value | Pass + Seen |
+| AP-05 | Move an appointment | New time and/or person, keeps its length, warns about a clash, tells the customer on WhatsApp; finished visits cannot move | Pass |
+| AP-06 | One appointment | Call, WhatsApp, services and value, Arrived / Start / Bill, Did not come, Cancel, Book again, past visits | Seen |
+| AP-07 | Business landing page `/v/<business>` | Services and prices with Book, team with Book with, memberships, good reviews (first names), hours, map, Call / WhatsApp | Pass + Seen |
+
 ## 6. Not tested here (needs a real try)
 
 These need real accounts or servers that this test environment does not have. Please try them once
@@ -170,6 +209,7 @@ before telling customers.
 | Pop-up notifications on a real phone | Needs a phone and Firebase | App → More → Test notifications |
 | Google sign-in (dashboard and shop customers) | Needs Google switched on in Supabase | Sign in with Google on /login, and on a store page. In Supabase → Authentication → URL Configuration, add `https://wamacrm.magnetora.in/s/**` to Redirect URLs, or shoppers land on the business sign-up page. |
 | WhatsApp tick-box booking form | Needs Meta | Send "Book" to the business number |
+| Memberships and appointments in the mobile app | Built on the web only this round | Next step |
 | Real database speed and the "Loading…" Website tab | No production database here | Run the storefront SQL in Supabase first (see the earlier note), then open the Website tab |
 
 ## 7. How to run the checks again

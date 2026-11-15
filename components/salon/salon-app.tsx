@@ -101,8 +101,8 @@ export function SalonApp() {
   return (
     <div ref={scroller} className="@container flex-1 overflow-y-auto bg-[#f6f8fc] dark:bg-[#0b141a]">
       <div className="max-w-6xl mx-auto px-3 min-[400px]:px-4 @xl:px-6 py-4 @xl:py-7 space-y-4 @xl:space-y-5">
-        <header className="flex flex-col @4xl:flex-row @4xl:items-center justify-between gap-3 @xl:gap-4">
-          <div className="flex items-center gap-3 @xl:gap-3.5 min-w-0 w-full @4xl:w-auto">
+        <header className="flex flex-col @6xl:flex-row @6xl:items-center justify-between gap-3 @xl:gap-4">
+          <div className="flex items-center gap-3 @xl:gap-3.5 min-w-0 w-full @6xl:w-auto">
             {isSafeLogoUrl(setup.settings.logo_url)
               // eslint-disable-next-line @next/next/no-img-element
               ? <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-white border border-[#e3e8f2] dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-sm"><img src={setup.settings.logo_url} alt="" className="max-h-full max-w-full object-contain p-1.5" /></span>
@@ -119,10 +119,10 @@ export function SalonApp() {
               </button>
             )}
           </div>
-          <div role="tablist" aria-label="Front Desk" className="max-md:hidden flex w-full @4xl:w-auto rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
+          <div role="tablist" aria-label="Front Desk" className="max-md:hidden flex w-full @6xl:w-auto overflow-x-auto no-scrollbar rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 shadow-[0_1px_2px_rgba(14,27,61,0.04)]">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go(id)}
-                className={`flex-1 @4xl:flex-none min-w-0 inline-flex flex-col @xl:flex-row items-center justify-center gap-0.5 @xl:gap-2 h-[52px] @xl:h-11 px-1 @xl:px-4 rounded-xl text-[11.5px] min-[400px]:text-[12.5px] @xl:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
+                className={`flex-auto @6xl:flex-none min-w-fit inline-flex flex-col @xl:flex-row items-center justify-center gap-0.5 @xl:gap-2 h-[52px] @xl:h-11 px-1 @xl:px-4 rounded-xl text-[11.5px] min-[400px]:text-[12.5px] @xl:text-[15px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${tab === id ? 'bg-[#0E1B3D] text-white shadow-sm dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:text-[#0E1B3D] hover:bg-[#f4f6fa] dark:hover:text-white dark:hover:bg-slate-800'}`}>
                 <Icon size={18} className="shrink-0" /> <span className="truncate max-w-full">{label}</span>
               </button>
             ))}

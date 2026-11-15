@@ -132,7 +132,7 @@ function CardList({ orgId, reload, onOpen, noPlans, canManage, onAddPlan }: { or
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, mobile or card number" aria-label="Search cards" className={`${input} pl-10`} />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar [&>*]:shrink-0 whitespace-nowrap">
           {STATES.map((s) => <Chip key={s.id || 'all'} selected={state === s.id} onClick={() => setState(s.id)}>{s.label}</Chip>)}
         </div>
       </div>

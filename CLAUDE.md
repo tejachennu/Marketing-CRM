@@ -117,6 +117,31 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
+  desk appointment module strong and landing page", "membership cards and membership utilisation"):
+  - Store product page `/s/[slug]/p/[productId]` (and `/p/<id>` on own domains: middleware rewrites it and sets
+    `x-store-via-domain`; `basePath` prop), schema.org Product data, Buy now, Share, Ask on WhatsApp, related.
+    The old product pop-up is gone; cards link to the page.
+  - Memberships: `lib/salon/memberships.ts` (SQL, lock 724519019, migration `20261122_front_desk_memberships.sql`:
+    `salon_membership_plans`, `salon_memberships`, `salon_membership_usage`, invoices `membership_id` /
+    `membership_paid`), pure rules in `membership-rules.ts` (no imports; browser-safe: `readPlan`, `applyCard`
+    sessions → discount, `creditToUse`, `cardState`, `membershipReport`…), DB in `membership-store.ts`
+    (`cardsForCustomer` by contact or last 10 phone digits, `insertCard` MB-0001…, `recordCardUse`,
+    `undoCardsForInvoice`, `adjustCard`, compare-and-set on `updated_at`). Counter actions: `sell_membership`;
+    `membership_id` on `complete_and_bill` / `walk_in_bill` (`issueInvoice` takes `membership` credit; payment
+    method `membership` when the card covers it); `void_invoice` gives use back / cancels a sold card.
+    `GET/POST /api/salon/memberships`; card page `/m/[token]`; WhatsApp `cardMessage`. UI: Front Desk →
+    **Members** tab (`salon-members.tsx`: Cards, Plans, Usage, Sell), bill sheet `MembershipBox`
+    (`membership-box.tsx`).
+  - Appointments: `lib/salon/calendar.ts` (`dayWindow`, `layoutDay` lanes, `weekOf`, `findClash`,
+    `periodSummary`), `GET /api/salon/appointments?from&to` and `?history=1`, counter action `reschedule`
+    (keeps length, new person takes every service, clash warning, WhatsApp). UI: Front Desk → **Appointments**
+    tab (`salon-appointments.tsx`: Day grid by person / phone list, Week, List, filters, numbers, sheet with
+    Move, Bill, No-show, Cancel, past visits). Phone bottom bar: Desk · Calendar · Members · Bills (+More);
+    managers reach Reviews / Team from a chip row on phones.
+  - Business page `/v/[slug]` (services with Book `?s=`, team with `?p=`, memberships, good reviews with first
+    names, hours, map); linked in Setup → Booking page. **Mobile app not updated for these yet.**
+
 - **Shop customer accounts** (owner: "for the shop add the oauth for users also they can see their products
   purchased, cart and history tracking"): shoppers sign in with Google on the store page (setting
   `storefront.accounts`, default on; web + app switch). `lib/commerce/store-accounts.ts`: table `store_shoppers`

@@ -19,7 +19,7 @@ type Flash = (tone: 'success' | 'error', text: string) => void
 type View = 'day' | 'week' | 'list'
 type Sheet = { kind: 'open'; appointment: Appointment } | { kind: 'book'; draft: BookingDraft } | { kind: 'bill'; target: BillTarget } | { kind: 'result'; result: any } | null
 
-const PX_PER_MIN = 1.2
+const PX_PER_MIN = 1.5
 const sectionTitle = 'text-[13px] font-bold uppercase tracking-wide text-[#6B7894] dark:text-slate-400'
 const errorBox = 'rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark:text-red-300 px-4 py-3 text-[14.5px] font-medium'
 
@@ -121,11 +121,11 @@ export function SalonAppointments({ orgId, setup, canWrite, flash }: { orgId: st
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Customer, mobile or service" aria-label="Search appointments" className={`${input} pl-10 h-10`} />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar [&>*]:shrink-0 whitespace-nowrap">
           <Chip selected={!staffFilter} onClick={() => setStaffFilter('')}>Everyone</Chip>
           {staff.map((m) => <Chip key={m.id} selected={staffFilter === m.id} onClick={() => setStaffFilter(staffFilter === m.id ? '' : m.id)}>{m.name}</Chip>)}
         </div>
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar [&>*]:shrink-0 whitespace-nowrap">
           {[['', 'All'], ['booked', 'Coming / in'], ['completed', 'Done'], ['no_show', 'No-show'], ['cancelled', 'Cancelled']].map(([id, label]) => <Chip key={id || 'all'} selected={statusFilter === id} onClick={() => setStatusFilter(id)}>{label}</Chip>)}
         </div>
       </div>
