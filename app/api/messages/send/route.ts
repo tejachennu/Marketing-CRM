@@ -11,6 +11,7 @@ import { isUuid } from '@/lib/record-visibility'
 import fs from 'fs'
 import path from 'path'
 import { cleanWhatsAppRecipient, isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
+import { buildSendComponents, missingTemplateValues } from '@/lib/whatsapp-templates/send-components'
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -434,107 +435,18 @@ export async function POST(request: NextRequest) {
           } else if (metaComponents && Array.isArray(metaComponents) && metaComponents.length > 0) {
             // We have the template's Meta component definitions (HEADER, BODY, BUTTONS etc.)
             // Build proper Meta API components from templateVariables using the structure
-            const reqComponents: any[] = []
+            // The same builder as campaigns: every template type, and the template's own examples for blanks
             const mappedVars = (templateVariables || {}) as Record<string, string>
-
-            for (const comp of metaComponents) {
-              if (comp.type === 'HEADER') {
-                if (comp.format === 'IMAGE') {
-                  const imgVal = mappedVars['header_image_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
-                  if (imgVal) {
-                    const mediaParam: any = imgVal.startsWith('http') ? { link: imgVal } : { id: imgVal }
-                    reqComponents.push({
-                      type: 'header',
-                      parameters: [{ type: 'image', image: mediaParam }]
-                    })
-                  }
-                } else if (comp.format === 'VIDEO') {
-                  const videoVal = mappedVars['header_video_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
-                  if (videoVal) {
-                    const mediaParam: any = videoVal.startsWith('http') ? { link: videoVal } : { id: videoVal }
-                    reqComponents.push({
-                      type: 'header',
-                      parameters: [{ type: 'video', video: mediaParam }]
-                    })
-                  }
-                } else if (comp.format === 'DOCUMENT') {
-                  const docVal = mappedVars['header_document_url'] || mappedVars['header_link'] || mappedVars['header_media_url'] || comp.example?.header_handle?.[0] || msgMediaUrl || ''
-                  if (docVal) {
-                    const filename = mappedVars['header_document_filename'] || 'document.pdf'
-                    const mediaParam: any = docVal.startsWith('http') ? { link: docVal, filename } : { id: docVal, filename }
-                    reqComponents.push({
-                      type: 'header',
-                      parameters: [{ type: 'document', document: mediaParam }]
-                    })
-                  }
-                } else if (comp.format === 'TEXT') {
-                  const headerVal = mappedVars['header_text_1'] || mappedVars['header_1'] || comp.example?.header_text?.[0] || ''
-                  if (headerVal) {
-                    reqComponents.push({
-                      type: 'header',
-                      parameters: [{ type: 'text', text: headerVal }]
-                    })
-                  }
-                }
-              } else if (comp.type === 'BODY') {
-                const bodyText = comp.text || ''
-                let uniqueKeys: string[] = []
-
-                const namedParams = comp.example?.body_text_named_params
-                if (Array.isArray(namedParams) && namedParams.length > 0) {
-                  uniqueKeys = namedParams.map((p: any) => p.param_name).filter(Boolean)
-                } else {
-                  const placeholders = bodyText.match(/\{\{([^}]+)\}\}/g) || []
-                  const rawKeys = Array.from(new Set(placeholders.map((m: string) => m.replace(/[\{\}]/g, '')))) as string[]
-                  uniqueKeys = rawKeys.filter((k: string) => /^[a-zA-Z0-9_]+$/.test(k))
-                  const isNumeric = uniqueKeys.every((k: string) => !isNaN(Number(k)))
-                  if (isNumeric) {
-                    uniqueKeys.sort((a, b) => Number(a) - Number(b))
-                  }
-                }
-
-                const parameters = uniqueKeys.map((key, idx) => {
-                  const positionalKey = String(idx + 1)
-                  const val = mappedVars[key] !== undefined
-                    ? mappedVars[key]
-                    : (mappedVars[key.toLowerCase()] !== undefined
-                        ? mappedVars[key.toLowerCase()]
-                        : (mappedVars[positionalKey] !== undefined ? mappedVars[positionalKey] : ''))
-                  const paramObj: any = { type: 'text', text: String(val) }
-                  if (isNaN(Number(key))) {
-                    paramObj.parameter_name = key
-                  }
-                  return paramObj
-                })
-
-                if (parameters.length > 0) {
-                  reqComponents.push({ type: 'body', parameters })
-                }
-              } else if (comp.type === 'BUTTONS' && Array.isArray(comp.buttons)) {
-                comp.buttons.forEach((btn: any, idx: number) => {
-                  if (btn.type === 'URL' && btn.url?.includes('{{1}}')) {
-                    const val = mappedVars[`button_url_${idx + 1}`] || mappedVars['button_url_1'] || ''
-                    reqComponents.push({
-                      type: 'button',
-                      sub_type: 'url',
-                      index: String(idx),
-                      parameters: [{ type: 'text', text: val }]
-                    })
-                  } else if (btn.type === 'COPY_CODE') {
-                    const val = mappedVars[`button_copy_code_${idx + 1}`] || mappedVars['button_copy_code'] || ''
-                    if (val) {
-                      reqComponents.push({
-                        type: 'button',
-                        sub_type: 'copy_code',
-                        index: String(idx),
-                        parameters: [{ type: 'text', text: val }]
-                      })
-                    }
-                  }
-                })
-              }
+            const missing = missingTemplateValues(metaComponents, mappedVars)
+            if (missing.length) {
+              return NextResponse.json({ error: `This template needs ${missing.join(', ')}. Fill ${missing.length === 1 ? 'it' : 'them'} in and send again.`, missing }, { status: 400 })
             }
-
+            let reqComponents: any[]
+            try {
+              reqComponents = await buildSendComponents(metaComponents, { vars: mappedVars, mediaUrl: publicMediaUrl })
+            } catch (error: any) {
+              return NextResponse.json({ error: error?.message || 'This template could not be filled in.' }, { status: 400 })
+            }
             if (reqComponents.length > 0) {
               payload.template.components = reqComponents
             }

@@ -4,17 +4,61 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 
+/// A blank outside the message text: in the title, or at the end of a button's link.
+class ExtraBlank {
+  const ExtraBlank(this.key, this.label, this.prefix, this.suggested);
+
+  /// The name the server reads (header_text_1, button_url_1…).
+  final String key;
+  final String label;
+
+  /// The fixed start of a link (shown before the box).
+  final String prefix;
+
+  /// What the template was approved with, filled in to start.
+  final String suggested;
+}
+
+/// The ending of a link button's example ("https://g.page/r/abc" with url "https://g.page/r/{{1}}" → "abc").
+String urlExampleEnding(Map b) {
+  final url = '${b['url'] ?? ''}';
+  final example = '${((b['example'] as List?) ?? const []).firstOrNull ?? ''}'.trim();
+  if (example.isEmpty) return '';
+  final fixed = url.split('{{1}}').first;
+  if (fixed.isNotEmpty && example.startsWith(fixed)) return example.substring(fixed.length).trim();
+  return example.startsWith(RegExp('https?://')) ? '' : example;
+}
+
 /// Pieces of a Meta template, read from its components.
 class TemplateParts {
   TemplateParts(Map<String, dynamic> template) {
     for (final c in (template['components'] as List? ?? const [])) {
       final type = '${c['type']}'.toUpperCase();
-      if (type == 'HEADER' && c['text'] != null) header = '${c['text']}';
+      if (type == 'HEADER' && c['text'] != null) {
+        header = '${c['text']}';
+        final examples = ((c['example'] as Map?)?['header_text'] as List?) ?? const [];
+        final keys = RegExp(r'\{\{\s*([\w]+)\s*\}\}').allMatches(header!).map((m) => m.group(1)!).toSet().toList();
+        for (var i = 0; i < keys.length; i++) {
+          extras.add(ExtraBlank('header_text_${i + 1}', 'Title {{${keys[i]}}}', '', i < examples.length ? '${examples[i]}' : ''));
+        }
+      }
       if (type == 'BODY') body = '${c['text'] ?? ''}';
       if (type == 'FOOTER') footer = '${c['text'] ?? ''}';
-      if (type == 'BUTTONS') buttons = [for (final b in (c['buttons'] as List? ?? const [])) '${b['text']}'];
+      if (type == 'BUTTONS') {
+        final list = (c['buttons'] as List? ?? const []);
+        buttons = [for (final b in list) '${b['text']}'];
+        for (var i = 0; i < list.length; i++) {
+          final b = list[i] as Map;
+          if ('${b['type']}'.toUpperCase() == 'URL' && '${b['url'] ?? ''}'.contains('{{1}}')) {
+            extras.add(ExtraBlank('button_url_${i + 1}', 'Link of the button "${b['text']}"', '${b['url']}'.split('{{1}}').first, urlExampleEnding(b)));
+          }
+        }
+      }
     }
   }
+
+  /// Blanks in the title and in button links (WhatsApp refuses the message if one is empty).
+  final List<ExtraBlank> extras = [];
   String? header;
   String body = '';
   String? footer;
@@ -145,8 +189,12 @@ class _TemplatePickerState extends State<_TemplatePicker> {
                       onTap: () => setState(() {
                         _chosen = t;
                         _values.clear();
-                        final blanks = TemplateParts(t).blanks;
+                        final chosen = TemplateParts(t);
+                        final blanks = chosen.blanks;
                         if (blanks.isNotEmpty && widget.firstName.isNotEmpty) _values[blanks.first] = widget.firstName;
+                        for (final extra in chosen.extras) {
+                          if (extra.suggested.isNotEmpty) _values[extra.key] = extra.suggested;
+                        }
                       }),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,6 +230,15 @@ class _TemplatePickerState extends State<_TemplatePicker> {
                       onChanged: (v) => setState(() => _values[blank] = v),
                     ),
                   ),
+                for (final extra in parts.extras)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: TextFormField(
+                      initialValue: _values[extra.key],
+                      decoration: InputDecoration(labelText: extra.label, helperText: extra.prefix.isEmpty ? null : 'Link: ${extra.prefix}…', helperMaxLines: 2),
+                      onChanged: (v) => setState(() => _values[extra.key] = v),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -191,7 +248,7 @@ class _TemplatePickerState extends State<_TemplatePicker> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
-                        onPressed: parts.blanks.every((b) => (_values[b] ?? '').trim().isNotEmpty)
+                        onPressed: [...parts.blanks, ...parts.extras.map((e) => e.key)].every((b) => (_values[b] ?? '').trim().isNotEmpty)
                             ? () => Navigator.pop(context, {
                                 'name': _chosen!['name'],
                                 'language': _chosen!['language'] ?? 'en',

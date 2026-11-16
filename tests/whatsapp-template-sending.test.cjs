@@ -116,3 +116,35 @@ test('Insights: Meta\'s daily data points become a gap-free series with totals a
   assert.deepEqual(insights.totals, { sent: 15, delivered: 14, read: 8, clicked: 6 })
   assert.deepEqual(insights.buttons, [{ text: 'Shop', type: 'url_button', count: 4 }, { text: 'Stop', type: 'quick_reply_button', count: 2 }])
 })
+
+test('Chat template sends: link blanks fall back to the approved example; missing blanks are named, never sent empty', async () => {
+  const S = require('../lib/whatsapp-templates/send-components.ts')
+  const review = { type: 'URL', text: 'Leave a review', url: 'https://g.page/r/{{1}}', example: ['https://g.page/r/CbX12/review'] }
+  assert.equal(S.urlExampleEnding(review), 'CbX12/review')
+  assert.equal(S.urlExampleEnding({ url: 'https://x.in/{{1}}', example: ['abc'] }), 'abc', 'some templates keep only the ending')
+  assert.equal(S.urlExampleEnding({ url: 'https://x.in/{{1}}', example: ['https://other.in/abc'] }), '')
+  assert.equal(S.urlExampleEnding({ url: 'https://x.in/{{1}}' }), '')
+
+  const feedback = [
+    { type: 'HEADER', format: 'TEXT', text: 'Hi {{1}}', example: { header_text: ['Priya'] } },
+    { type: 'BODY', text: 'Hello {{1}}, thank you for visiting {{2}}.' },
+    { type: 'BUTTONS', buttons: [review, { type: 'URL', text: 'Book again', url: 'https://wama.in/b/{{1}}' }, { type: 'QUICK_REPLY', text: 'Stop' }] },
+  ]
+  // The screenshot's case: no button value → used to go out empty
+  const missing = S.missingTemplateValues(feedback, { 1: 'Teja' })
+  assert.deepEqual(missing, ["the message's {{2}}", 'the link of the button "Book again"'])
+  assert.deepEqual(S.missingTemplateValues(feedback, { 1: 'Teja', 2: 'Glow', button_url_2: 'glow' }), [])
+
+  const built = await S.buildSendComponents(feedback, { vars: { 1: 'Teja', 2: 'Glow', button_url_2: 'glow' } })
+  const buttons = built.filter((c) => c.type === 'button')
+  assert.deepEqual(buttons.map((b) => b.parameters[0].text), ['CbX12/review', 'glow'])
+  assert.ok(built.every((c) => (c.parameters || []).every((p) => p.type !== 'text' || String(p.text).length > 0)), 'no empty text sent to Meta')
+})
+
+test('Chat sends use the shared template builder and stop with plain words when a blank is missing', () => {
+  const fs = require('fs')
+  const src = fs.readFileSync(require('path').join(__dirname, '../app/api/messages/send/route.ts'), 'utf8')
+  assert.match(src, /missingTemplateValues\(metaComponents, mappedVars\)/)
+  assert.match(src, /buildSendComponents\(metaComponents/)
+  assert.doesNotMatch(src, /mappedVars\[`button_url_\$\{idx \+ 1\}`\] \|\| mappedVars\['button_url_1'\] \|\| ''/, 'the old builder that sent empty links is gone')
+})

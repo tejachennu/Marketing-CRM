@@ -152,6 +152,46 @@ function expirationMs(value: string, now: number): number {
  * The components a send of this template needs, given the template as Meta returns it
  * (its `components`) and the recipient's values.
  */
+/** The ending of a link button's example ("https://g.page/r/abc" with url "https://g.page/r/{{1}}" → "abc"). */
+export function urlExampleEnding(button: { url?: string; example?: string[] }): string {
+  const url = String(button?.url || '')
+  const example = String(button?.example?.[0] || '').trim()
+  if (!example) return ''
+  const fixed = url.split('{{1}}')[0]
+  if (fixed && example.startsWith(fixed)) return example.slice(fixed.length).trim()
+  // Some templates store only the ending as the example
+  return /^https?:\/\//i.test(example) ? '' : example
+}
+
+/**
+ * The blanks a template still needs before it can be sent, in plain words ("the message's {{2}}",
+ * "the link of the button Leave a review"). WhatsApp refuses a template with any of these empty.
+ */
+export function missingTemplateValues(templateComponents: any[], vars: Record<string, any>): string[] {
+  const missing: string[] = []
+  for (const component of templateComponents || []) {
+    if (component.type === 'HEADER' && String(component.format || 'TEXT') === 'TEXT') {
+      const keys = textKeys(component.text, component.example?.header_text_named_params)
+      keys.forEach((key, index) => {
+        if (!lookup(vars, ...(isNaN(Number(key)) ? [key] : []), `header_text_${index + 1}`, `header_${index + 1}`) && !component.example?.header_text?.[index]) missing.push(`the title's {{${key}}}`)
+      })
+    } else if (component.type === 'BODY') {
+      if ((templateComponents || []).some((c: any) => c.type === 'BUTTONS' && (c.buttons || []).some((b: any) => b.type === 'OTP'))) continue
+      const keys = textKeys(component.text, component.example?.body_text_named_params)
+      keys.forEach((key, index) => {
+        if (!lookup(vars, key, String(index + 1))) missing.push(`the message's {{${key}}}`)
+      })
+    } else if (component.type === 'BUTTONS') {
+      ;(component.buttons || []).forEach((button: any, index: number) => {
+        if (button.type === 'URL' && String(button.url || '').includes('{{1}}') && !lookup(vars, `button_url_${index + 1}`, 'button_url_1') && !urlExampleEnding(button)) {
+          missing.push(`the link of the button "${button.text || index + 1}"`)
+        }
+      })
+    }
+  }
+  return missing
+}
+
 export async function buildSendComponents(templateComponents: any[], context: SendContext): Promise<any[]> {
   const { vars } = context
   const now = context.now ?? Date.now()
@@ -195,7 +235,9 @@ export async function buildSendComponents(templateComponents: any[], context: Se
       for (const [index, button] of (component.buttons || []).entries()) {
         const n = index + 1
         if (button.type === 'URL' && String(button.url || '').includes('{{1}}')) {
-          components.push({ type: 'button', sub_type: 'url', index: String(index), parameters: [{ type: 'text', text: lookup(vars, `button_url_${n}`, 'button_url_1') }] })
+          // The link's ending: as given, else the example the template was approved with
+          const ending = lookup(vars, `button_url_${n}`, 'button_url_1') || urlExampleEnding(button)
+          components.push({ type: 'button', sub_type: 'url', index: String(index), parameters: [{ type: 'text', text: ending }] })
         } else if (button.type === 'COPY_CODE') {
           const code = lookup(vars, `button_copy_code_${n}`, `coupon_code_${n}`, 'button_copy_code', 'coupon_code') || button.example?.[0] || ''
           if (code) components.push({ type: 'button', sub_type: 'copy_code', index: String(index), parameters: [{ type: 'coupon_code', coupon_code: code }] })
