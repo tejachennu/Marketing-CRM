@@ -97,10 +97,13 @@ test('store server: records point at it and DNS decides connected', async () => 
   s = await D.domainStatus('shop.glowstore.in', { cname: async () => [], a: async () => ['198.51.100.1'] })
   assert.match(s.note, /points somewhere else/)
 
-  s = await D.domainStatus('shop.glowstore.in', { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] })
+  s = await D.domainStatus('shop.glowstore.in', { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] }, async () => false)
+  assert.equal(s.state, 'waiting', 'pointing here is not enough: it must open over https')
+  assert.match(s.note, /secure \(https\) link/)
+  s = await D.domainStatus('shop.glowstore.in', { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] }, async () => true)
   assert.equal(s.state, 'connected')
 
-  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'] })
+  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'] }, async () => true)
   assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }])
   assert.equal(s.state, 'connected')
 
@@ -128,4 +131,16 @@ test('the gateway files are complete and keep no secrets', () => {
   const mw = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
   assert.match(mw, /x-gateway-key'\) === gatewayKey/)
   assert.match(mw, /gatewayKey\.length >= 16/)
+})
+
+test('nginx servers: one command adds a business domain, and only its own site file', () => {
+  const root = path.join(__dirname, '..')
+  const add = fs.readFileSync(path.join(root, 'deploy/nginx/add-store-domain.sh'), 'utf8')
+  assert.match(add, /store-domain-check\?domain=/, 'only domains a store has connected in WAMA')
+  assert.match(add, /nginx -t/, 'tests nginx before reloading')
+  assert.match(add, /systemctl reload nginx/)
+  assert.doesNotMatch(add, /systemctl (restart|stop) nginx/, 'never restarts or stops the existing nginx')
+  assert.match(add, /rm -f "\/etc\/nginx\/sites-enabled\/wama-store-\$DOMAIN\.conf" "\$SITE"/, 'a refused site is removed again')
+  assert.match(add, /certbot --nginx -d "\$DOMAIN"/)
+  assert.ok(fs.existsSync(path.join(root, 'deploy/nginx/remove-store-domain.sh')))
 })

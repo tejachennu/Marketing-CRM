@@ -134,14 +134,28 @@ const realDns: DnsLookup = {
 }
 
 /** Where the domain stands: connected once its DNS points at the store server, else the record to add. */
-export async function domainStatus(domain: string | null, lookup: DnsLookup = realDns): Promise<DomainStatus> {
+/** Does the domain really open the store over https? (Asks the store's own domain check through it.) */
+async function opensOverHttps(domain: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://${domain}/api/public/store-domain-check?domain=${encodeURIComponent(domain)}`, { signal: AbortSignal.timeout(6000), cache: 'no-store' })
+    return res.status === 200
+  } catch {
+    return false
+  }
+}
+
+export async function domainStatus(domain: string | null, lookup: DnsLookup = realDns, opens: (domain: string) => Promise<boolean> = opensOverHttps): Promise<DomainStatus> {
   if (!domain) return { domain: null, state: null, records: [], note: '' }
   const gateway = gatewayConfig()
   if (!gateway) return { domain, state: 'unavailable', records: [], note: NOT_SET_UP }
   const records = dnsRecordsFor(domain, gateway)
   const [cnames, addresses] = await Promise.all([lookup.cname(domain), lookup.a(domain)])
   const pointsHere = cnames.some((c) => c.toLowerCase().replace(/\.$/, '') === gateway.host) || addresses.includes(gateway.ip)
-  if (pointsHere) return { domain, state: 'connected', records, note: 'Your store opens on this address. The first visit can take a few seconds while the secure (https) certificate is made.' }
+  if (pointsHere) {
+    // Connected only once the address really opens the store with https
+    if (await opens(domain)) return { domain, state: 'connected', records, note: 'Your store opens on this address.' }
+    return { domain, state: 'waiting', records, note: 'Your domain points to us. WAMA is now turning on the secure (https) link for it; this usually takes less than a day. Tap Check again later.' }
+  }
   return {
     domain,
     state: 'waiting',

@@ -117,6 +117,15 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop server is live on the owner's Linux server (nginx)** (16 Nov 2026): `https://stores.magnetora.in` is
+  served by nginx 1.24 on Ubuntu → Next.js (checked from outside: latest code, Supabase settings in place).
+  80/443 belong to the existing nginx, so business domains are added one at a time:
+  `deploy/nginx/add-store-domain.sh <domain> <email> [port]` (checks the domain is connected in WAMA and points
+  here, adds only `/etc/nginx/sites-available/wama-store-<domain>.conf`, `nginx -t`, reload, certbot) and
+  `remove-store-domain.sh`; steps in `deploy/nginx/README.md`. `domainStatus` now says **Connected** only when
+  `https://<domain>/api/public/store-domain-check` answers 200 (else "points to us, https being turned on").
+  Vercel still needs `STORE_GATEWAY_HOST` / `STORE_GATEWAY_IP` for the Website tab to accept domains.
+
 - **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
   desk appointment module strong and landing page", "membership cards and membership utilisation"):
   - Store product page `/s/[slug]/p/[productId]` (and `/p/<id>` on own domains: middleware rewrites it and sets
