@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, Globe, ImagePlus, Loader2, Plus, RefreshCw, Sparkles, Trash2, Clock } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
+import { MAX_PAGE_TEXT, STORE_PAGES, STORE_PAGE_TITLES, starterPage, type StorePageKey } from '@/lib/commerce/store-pages'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
 const COLOURS = ['#1D5BEA', '#0E1B3D', '#008069', '#B45309', '#BE185D', '#6D28D9', '#0F766E', '#B91C1C']
@@ -633,6 +634,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
 
       {canManage && <RazorpayConnect orgId={orgId} payment={settings.payment || 'later'} onPayment={(payment) => set({ payment })} showToast={showToast} />}
 
+      <PagesEditor settings={settings} set={set} disabled={disabled} heading={heading} sub={sub} />
+
       <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
         <h2 className={heading}>Contact and about</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -667,5 +670,42 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
         </div>
       )}
     </div>
+  )
+}
+
+/** Info and policy pages: About, Shipping, Returns, Terms, Privacy, Contact (linked at the bottom of the store). */
+function PagesEditor({ settings, set, disabled, heading, sub }: { settings: any; set: (changes: Record<string, any>) => void; disabled: boolean; heading: string; sub: string }) {
+  const [key, setKey] = useState<StorePageKey>('returns')
+  const pages = settings.pages || {}
+  const facts = {
+    name: settings.title || 'our shop', phone: settings.phone, whatsapp: settings.whatsapp, address: settings.address,
+    pickup: settings.pickup, delivery: settings.delivery, deliveryFee: settings.delivery_fee, freeFrom: settings.free_delivery_from, payOnline: settings.payment !== 'later',
+  }
+  const value = pages[key] || ''
+  const setText = (text: string) => set({ pages: { ...pages, [key]: text } })
+  return (
+    <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
+      <div>
+        <h2 className={heading}>Pages: shipping, returns, terms…</h2>
+        <p className={sub}>Linked at the bottom of your store. Razorpay and Google look for them, and customers read them before paying.</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Pages">
+        {STORE_PAGES.map((k) => (
+          <button key={k} type="button" role="tab" aria-selected={k === key} onClick={() => setKey(k)}
+            className={`h-8 px-3 rounded-full border text-xs font-semibold cursor-pointer ${k === key ? 'border-[#1D5BEA] bg-[#1D5BEA]/5 text-[#1D5BEA]' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            {STORE_PAGE_TITLES[k]}{pages[k] ? ' ✓' : ''}
+          </button>
+        ))}
+      </div>
+      <textarea aria-label={STORE_PAGE_TITLES[key]} rows={8} maxLength={MAX_PAGE_TEXT} value={value} disabled={disabled} onChange={(e) => setText(e.target.value)}
+        placeholder={key === 'about' ? 'Leave empty to use "About your shop" below.' : key === 'contact' ? 'Leave empty to show your phone, WhatsApp and address.' : 'Write it in your own words, or start with a sample.'}
+        className={textareaClass} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={disabled} className={secondaryButton} onClick={() => (!value || window.confirm('Replace what you wrote with the sample?')) && setText(starterPage(key, facts))}>
+          <Sparkles size={13} /> Start with a sample
+        </button>
+        <span className="text-[11px] text-slate-500">The sample uses your delivery charges and contact. Read it and change what is not right for your shop. Press Save website to publish.</span>
+      </div>
+    </section>
   )
 }

@@ -160,8 +160,8 @@ WhatsApp messages outside the 24-hour window go out only with a template the bus
 | 1.2 | More photos per product, plus a short video | Done: up to 8 more photos (upload), a YouTube / .mp4 link, gallery on the product page |
 | 1.3 | Discount codes and offers (code, free delivery above, buy X get Y, first order) | Done: Offers tab, checkout code box, decided on the server, use counts, once per phone |
 | 1.4 | Delivery check by PIN code (served, charge, days) | Done (product page: served, days, charge, COD) |
-| 1.5 | Policy and info pages (About, Returns, Shipping, Contact, Terms) | To do |
-| 1.6 | Google findability (site map, titles, share previews) | To do |
+| 1.5 | Policy and info pages (About, Returns, Shipping, Contact, Terms) | Done: + Privacy; Website tab editor with samples; footer links; /info/<page> |
+| 1.6 | Google findability (site map, titles, share previews) | Done: sitemap.xml, robots.txt (own domains too), canonical, Open Graph + Twitter cards |
 | 2.1 | Cart reminder on WhatsApp | To do |
 | 2.2 | COD confirmation on WhatsApp ("Yes, send it") | To do |
 | 2.3 | Order updates on WhatsApp + "How was it?" review ask | Shipping updates done; packed + review ask to do |

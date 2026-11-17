@@ -8,6 +8,7 @@ import { showPhone } from '@/lib/phone-display'
 import { AccountPanel, useShopper } from './account'
 import type { StoreView } from '@/lib/commerce/storefront'
 import { findVariant, valueAvailable } from '@/lib/commerce/variants'
+import { STORE_PAGE_TITLES } from '@/lib/commerce/store-pages'
 
 type Product = StoreView['products'][number]
 
@@ -613,6 +614,11 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
             {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-full bg-[#25D366] text-white font-bold items-center gap-2">Chat on WhatsApp</a>}
           </div>
         </div>
+        {store.pages.length > 0 && (
+          <nav aria-label="Store pages" className="max-w-6xl mx-auto px-4 pb-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[13.5px]">
+            {store.pages.map((key) => <a key={key} href={`${basePath}/info/${key}`} className="font-semibold text-[#4a5672] hover:text-[var(--c)]">{STORE_PAGE_TITLES[key]}</a>)}
+          </nav>
+        )}
         <p className="pb-2 text-center">
           <button type="button" onClick={() => setAccountView(shopper.session ? 'orders' : 'track')} className="text-[14px] font-semibold text-[#4a5672] underline cursor-pointer">{shopper.session ? 'My orders' : 'Track your order'}</button>
         </p>

@@ -13,11 +13,14 @@ export async function middleware(request: NextRequest) {
   const gatewayKey = process.env.STORE_GATEWAY_KEY || ''
   const viaGateway = gatewayKey.length >= 16 && request.headers.get('x-gateway-key') === gatewayKey ? request.headers.get('x-store-domain') : null
   const host = (viaGateway || request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '')
-  if (host && !isOwnHost(host) && !pathname.startsWith('/_next') && !pathname.startsWith('/api') && !/\.[a-z0-9]{2,5}$/i.test(pathname)) {
+  const seoFile = pathname === '/sitemap.xml' || pathname === '/robots.txt'
+  if (host && !isOwnHost(host) && !pathname.startsWith('/_next') && !pathname.startsWith('/api') && (seoFile || !/\.[a-z0-9]{2,5}$/i.test(pathname))) {
     const url = request.nextUrl.clone()
-    // The store's home, or one product's page (/p/<id>); every other address shows the home
+    // The store's home, one product's page (/p/<id>), an info page (/info/returns), the site map and robots.txt;
+    // every other address shows the home
     const product = pathname.match(/^\/p\/([0-9a-f-]{36})\/?$/i)?.[1]
-    url.pathname = product ? `/s/${host}/p/${product.toLowerCase()}` : `/s/${host}`
+    const info = pathname.match(/^\/info\/(about|shipping|returns|terms|privacy|contact)\/?$/)?.[1]
+    url.pathname = seoFile ? `/s/${host}${pathname}` : product ? `/s/${host}/p/${product.toLowerCase()}` : info ? `/s/${host}/info/${info}` : `/s/${host}`
     const forwarded = new Headers(request.headers)
     forwarded.set('x-store-via-domain', '1')
     return NextResponse.rewrite(url, { request: { headers: forwarded } })

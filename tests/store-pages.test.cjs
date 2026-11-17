@@ -1,0 +1,50 @@
+require('./register-typescript.cjs')
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('fs')
+const path = require('path')
+const P = require('../lib/commerce/store-pages.ts')
+const SEO = require('../lib/commerce/store-seo.ts')
+const SF = require('../lib/commerce/storefront.ts')
+const root = path.join(__dirname, '..')
+
+test('pages are cleaned; samples use the shop\'s own facts', () => {
+  assert.deepEqual(P.cleanPages({ returns: '  7 days\r\n\n\n\nreturns ', bad: 'x', terms: '' }), { returns: '7 days\n\nreturns' })
+  const facts = { name: 'Glow Store', phone: '+919876543210', address: 'Banjara Hills', delivery: true, pickup: true, deliveryFee: 60, freeFrom: 999, payOnline: true }
+  assert.match(P.starterPage('shipping', facts), /Delivery costs ₹60, and is free on orders of ₹999 or more/)
+  assert.match(P.starterPage('shipping', facts), /pick up your order from our shop \(Banjara Hills\)/)
+  assert.match(P.starterPage('returns', facts), /same card, UPI or bank account/)
+  assert.match(P.starterPage('privacy', facts), /Razorpay; we never see your card/)
+  assert.equal(P.pageText('about', {}, { name: 'S', about: 'Since 1998' }), 'Since 1998', 'About falls back to the about text')
+  assert.match(P.pageText('contact', {}, { name: 'S', phone: '+91 1' }), /Call \+91 1/)
+  assert.equal(P.pageText('terms', {}, { name: 'S' }), '', 'no terms written: no page')
+  assert.deepEqual(SF.readStorefront({ pages: { terms: 'Our terms', x: 'y' } }).pages, { terms: 'Our terms' })
+})
+
+test('site map lists home, products and pages at the store\'s own address', () => {
+  const settings = SF.readStorefront({ enabled: true, about: 'Hello', pages: { returns: 'R' } })
+  const page = { organization: { id: 'o', name: 'Glow', slug: 'glow', currency: 'INR', domain: 'codeswipes.com' }, settings, products: [{ id: 'p1' }, { id: 'p2' }], categories: [], fees: { fee: 0, freeFrom: 0 }, pay: { online: false, later: true } }
+  const xml = SEO.sitemapXml(page, new Date('2026-11-18T00:00:00Z'))
+  assert.match(xml, /<loc>https:\/\/codeswipes\.com\/<\/loc><lastmod>2026-11-18<\/lastmod>/)
+  assert.match(xml, /<loc>https:\/\/codeswipes\.com\/p\/p2<\/loc>/)
+  assert.match(xml, /<loc>https:\/\/codeswipes\.com\/info\/returns<\/loc>/)
+  assert.match(xml, /<loc>https:\/\/codeswipes\.com\/info\/about<\/loc>/)
+  assert.doesNotMatch(xml, /info\/terms/)
+  assert.match(SEO.robotsTxt(page), /Sitemap: https:\/\/codeswipes\.com\/sitemap\.xml/)
+  process.env.NEXT_PUBLIC_APP_URL = 'https://wamacrm.magnetora.in'
+  assert.equal(SEO.storeBase({ organization: { slug: 'glow', domain: null } }), 'https://wamacrm.magnetora.in/s/glow')
+})
+
+test('own domains: /info/<page>, /sitemap.xml and /robots.txt reach the store', () => {
+  const mw = fs.readFileSync(path.join(root, 'middleware.ts'), 'utf8')
+  assert.match(mw, /const seoFile = pathname === '\/sitemap\.xml' \|\| pathname === '\/robots\.txt'/)
+  assert.match(mw, /\/\^\\\/info\\\/\(about\|shipping\|returns\|terms\|privacy\|contact\)/)
+  assert.ok(fs.existsSync(path.join(root, 'app/s/[slug]/sitemap.xml/route.ts')))
+  assert.ok(fs.existsSync(path.join(root, 'app/s/[slug]/robots.txt/route.ts')))
+  assert.ok(fs.existsSync(path.join(root, 'app/s/[slug]/info/[page]/page.tsx')))
+  const home = fs.readFileSync(path.join(root, 'app/s/[slug]/page.tsx'), 'utf8')
+  assert.match(home, /alternates: \{ canonical: url \}/)
+  assert.match(home, /summary_large_image/)
+  const store = fs.readFileSync(path.join(root, 'app/s/[slug]/storefront.tsx'), 'utf8')
+  assert.match(store, /href=\{`\$\{basePath\}\/info\/\$\{key\}`\}/)
+})

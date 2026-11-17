@@ -15,6 +15,7 @@ import { readyPartners } from './shipping'
 import { readOptions, variantsFor } from './variant-store'
 import { listDiscounts, publicOffers } from './discount-store'
 import { isOpen } from './discounts'
+import { STORE_PAGES, cleanPages, pageText, type StorePageKey } from './store-pages'
 import { cleanImages, readVideo, type ProductVideo } from './product-media'
 import { priceRange, variantInStock, variantPrice, type ProductOption } from './variants'
 
@@ -91,6 +92,8 @@ export interface StorefrontSettings {
   payment: 'later' | 'online' | 'both'
   /** Customers may sign in with Google to see their orders, track them and keep their cart. */
   accounts: boolean
+  /** Info and policy pages (About, Shipping, Returns, Terms, Privacy, Contact): the business's own words. */
+  pages: Partial<Record<StorePageKey, string>>
 }
 
 export const MAX_BANNERS = 8
@@ -100,7 +103,7 @@ export function defaultStorefront(): StorefrontSettings {
   return {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
-    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true,
+    min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true, pages: {},
   }
 }
 
@@ -176,6 +179,7 @@ export function readStorefront(raw: any): StorefrontSettings {
     address: longText(raw.address, 300),
     about: longText(raw.about, 1200),
     show_out_of_stock: raw.show_out_of_stock === true,
+    pages: cleanPages(raw.pages),
     payment: raw.payment === 'online' || raw.payment === 'both' ? raw.payment : 'later',
     accounts: raw.accounts !== false,
   }
@@ -313,6 +317,8 @@ export function storeView(page: StorePage) {
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
     offers: page.offers || [], hasCodes: page.hasCodes === true,
+    // Which info pages have something to show (for the footer links)
+    pages: STORE_PAGES.filter((key) => pageText(key, s.pages, { name: page.organization.name, about: s.about, phone: s.phone, whatsapp: s.whatsapp, address: s.address })),
   }
 }
 export type StoreView = ReturnType<typeof storeView>

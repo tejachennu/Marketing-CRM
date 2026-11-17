@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore, storeView } from '@/lib/commerce/storefront'
+import { storeBase } from '@/lib/commerce/store-seo'
 import { Storefront } from './storefront'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const name = page.organization.name
   const description = page.settings.tagline || `Shop at ${name} online. Order for pick up or delivery.`
   const image = page.settings.banners[0]?.image || page.settings.logo || page.products.find((p) => p.image)?.image
-  return { title: name, description, openGraph: { title: name, description, ...(image ? { images: [image] } : {}) } }
+  const url = `${storeBase(page)}/`
+  return {
+    title: page.settings.tagline ? `${name} · ${page.settings.tagline}` : name,
+    description,
+    alternates: { canonical: url },
+    openGraph: { type: 'website', url, siteName: name, title: name, description, ...(image ? { images: [image] } : {}) },
+    twitter: { card: image ? 'summary_large_image' : 'summary', title: name, description, ...(image ? { images: [image] } : {}) },
+  }
 }
 
 /** A business's online store: /s/<workspace slug>, ?c=<category> to open on one category. */

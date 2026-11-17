@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore, storeView } from '@/lib/commerce/storefront'
+import { storeBase } from '@/lib/commerce/store-seo'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { Storefront } from '../../storefront'
 
@@ -20,7 +21,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!page || !product) return { title: 'Product' }
   const description = (product.description || `${product.title} at ${page.organization.name}. Order online for pick up or delivery.`).slice(0, 200)
   const title = `${product.title} · ${formatMoney(product.price, product.currency)} · ${page.organization.name}`
-  return { title, description, openGraph: { title, description, ...(product.image ? { images: [product.image] } : {}) } }
+  const url = `${storeBase(page)}/p/${product.id}`
+  const images = [product.image, ...(product.images || [])].filter(Boolean)
+  return {
+    title, description, alternates: { canonical: url },
+    openGraph: { type: 'website', url, siteName: page.organization.name, title, description, ...(images.length ? { images } : {}) },
+    twitter: { card: images.length ? 'summary_large_image' : 'summary', title, description, ...(images.length ? { images: [images[0]] } : {}) },
+  }
 }
 
 /** One product's own page: /s/<slug>/p/<product id>, or /p/<product id> on the store's own domain. */

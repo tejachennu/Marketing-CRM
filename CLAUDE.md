@@ -117,6 +117,13 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: info / policy pages and Google** (1.5, 1.6): `lib/commerce/store-pages.ts` (About, Shipping, Returns, Terms,
+  Privacy, Contact; `cleanPages`, `starterPage` samples from the shop's own fees / contact, `pageText` falls back to About
+  text and contact details), kept in `storefront.pages`; Website tab `PagesEditor`; page `/s/[slug]/info/[page]`; footer
+  links (`store.pages`). `lib/commerce/store-seo.ts` (`storeBase` own domain or /s/slug, `sitemapXml`, `robotsTxt`);
+  routes `/s/[slug]/sitemap.xml`, `/s/[slug]/robots.txt`; middleware sends `/info/<page>`, `/sitemap.xml`, `/robots.txt`
+  on own domains to them. Home / product metadata: canonical, Open Graph (site name, url), Twitter large image.
+
 - **Shop: more photos and a video per product** (1.2): `lib/commerce/product-media.ts` (browser-safe; database side in `product-media-store.ts`; `cleanImages` ≤8 https, `readVideo`
   YouTube watch / youtu.be / shorts / embed or .mp4/.webm/.mov, lock 724519023, migration `20261126_shop_product_media.sql`:
   `commerce_products.images`, `video_url`), saved apart in the products route (`productMediaValues`), product form
