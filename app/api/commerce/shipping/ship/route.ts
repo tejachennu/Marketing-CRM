@@ -6,6 +6,7 @@ import {
   shiprocketFor, shipmentsForOrder, withShippingSchema,
 } from '@/lib/commerce/shipping'
 import { notifyParcel } from '@/lib/commerce/shipping-notify'
+import { askForReviewOf } from '@/lib/commerce/review-store'
 import { shipBlocker, type ShippingProvider } from '@/lib/commerce/shipping-rules'
 
 export const runtime = 'nodejs'
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
   const [org, loaded] = await Promise.all([loadOrg(db, organizationId), loadOrderForShipping(db, organizationId, orderId)])
   if (!org || !loaded) return NextResponse.json({ error: 'Order not found.' }, { status: 404 })
   const notify = (args: any) => notifyParcel(db, args)
+  const onDelivered = (id: string) => askForReviewOf(db, organizationId, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin))
 
   try {
     if (action === 'rates') return NextResponse.json(await ratesForOrder(db, org, loaded))
@@ -57,14 +59,14 @@ export async function POST(request: NextRequest) {
       if (provider !== 'shiprocket' && provider !== 'delhivery') return NextResponse.json({ error: 'Pick a courier.' }, { status: 400 })
       const shipment = await bookShipment(db, org, loaded, { provider, courierId: String(body.courierId || ''), price: body.price ?? null }, (access.user as any)?.id || null)
       // Ask where it is straight away: a pickup that already happened moves the order to Shipped
-      await refreshShipment(db, org, shipment, { notify }).catch(() => null)
+      await refreshShipment(db, org, shipment, { notify, onDelivered }).catch(() => null)
       return NextResponse.json({ success: true, shipments: await shipmentsForOrder(db, organizationId, orderId) })
     }
     const shipments = await shipmentsForOrder(db, organizationId, orderId)
     const shipment = shipments.find((s: any) => s.id === body.shipmentId)
     if (!shipment) return NextResponse.json({ error: 'That courier booking was not found.' }, { status: 404 })
     if (action === 'cancel') await cancelShipment(db, org, shipment)
-    else if (action === 'refresh') await refreshShipment(db, org, shipment, { notify })
+    else if (action === 'refresh') await refreshShipment(db, org, shipment, { notify, onDelivered })
     else if (action === 'label') {
       if (shipment.provider !== 'shiprocket' || !shipment.provider_shipment_id) return NextResponse.json({ error: 'Print the Delhivery label from the Delhivery panel.' }, { status: 400 })
       const url = await shiprocketFor(db, org).label(String(shipment.provider_shipment_id))

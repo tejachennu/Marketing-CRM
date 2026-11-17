@@ -11,7 +11,7 @@ export type ConnectorApp = 'front-desk' | 'pipeline' | 'commerce'
 export const CONNECTOR_APPS: Record<ConnectorApp, { paths: string[]; tabs: string[]; first: string }> = {
   'front-desk': { paths: ['/dashboard/front-desk', '/dashboard/salon'], tabs: ['counter', 'appointments', 'invoices', 'members', 'reviews', 'team', 'setup'], first: 'counter' },
   pipeline: { paths: ['/dashboard/leads'], tabs: ['board', 'list', 'follow-ups', 'reports', 'setup'], first: 'board' },
-  commerce: { paths: ['/dashboard/commerce'], tabs: ['orders', 'products', 'offers', 'website', 'flow', 'settings'], first: 'orders' },
+  commerce: { paths: ['/dashboard/commerce'], tabs: ['orders', 'products', 'reviews', 'offers', 'website', 'flow', 'settings'], first: 'orders' },
 }
 
 /** The bottom bar asks a connector page to open a tab: { app, tab } */

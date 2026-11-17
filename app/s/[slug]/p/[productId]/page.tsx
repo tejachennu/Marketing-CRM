@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore, storeView } from '@/lib/commerce/storefront'
 import { storeBase } from '@/lib/commerce/store-seo'
+import { productReviews } from '@/lib/commerce/review-store'
+import { ratingSummary } from '@/lib/commerce/reviews'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { Storefront } from '../../storefront'
 
@@ -37,6 +39,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!page || !product) notFound()
   const view = storeView(page)
   const ownDomain = (await headers()).get('x-store-via-domain') === '1'
+  const reviews = await productReviews(getSupabaseAdminClient(), page.organization.id, product.id).catch(() => [])
+  const summary = ratingSummary(reviews)
   // For search engines: what it is, what it costs, whether it is in stock
   const data = {
     '@context': 'https://schema.org',
@@ -45,12 +49,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     ...(product.image || product.images?.length ? { image: [product.image, ...(product.images || [])].filter(Boolean) } : {}),
     ...(product.description ? { description: product.description.slice(0, 1000) } : {}),
     category: product.category,
+    ...(summary.count ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: summary.average, reviewCount: summary.count } } : {}),
     offers: { '@type': 'Offer', price: product.price, priceCurrency: product.currency, availability: product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', seller: { '@type': 'Organization', name: page.organization.name } },
   }
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }} />
-      <Storefront store={view} appUrl={(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')} basePath={ownDomain ? '' : `/s/${page.organization.slug}`} productId={product.id} startCategory={null} />
+      <Storefront store={view} appUrl={(process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')} basePath={ownDomain ? '' : `/s/${page.organization.slug}`} productId={product.id} startCategory={null} reviews={reviews} />
     </>
   )
 }

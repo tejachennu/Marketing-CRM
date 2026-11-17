@@ -20,7 +20,8 @@ export async function middleware(request: NextRequest) {
     // every other address shows the home
     const product = pathname.match(/^\/p\/([0-9a-f-]{36})\/?$/i)?.[1]
     const info = pathname.match(/^\/info\/(about|shipping|returns|terms|privacy|contact)\/?$/)?.[1]
-    url.pathname = seoFile ? `/s/${host}${pathname}` : product ? `/s/${host}/p/${product.toLowerCase()}` : info ? `/s/${host}/info/${info}` : `/s/${host}`
+    const review = pathname.match(/^\/review\/([A-Za-z0-9_-]{16,30})\/?$/)?.[1]
+    url.pathname = seoFile ? `/s/${host}${pathname}` : product ? `/s/${host}/p/${product.toLowerCase()}` : info ? `/s/${host}/info/${info}` : review ? `/s/${host}/review/${review}` : `/s/${host}`
     const forwarded = new Headers(request.headers)
     forwarded.set('x-store-via-domain', '1')
     return NextResponse.rewrite(url, { request: { headers: forwarded } })

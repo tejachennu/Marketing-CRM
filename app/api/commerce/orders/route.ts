@@ -7,6 +7,7 @@ import { getCommerceSummary } from '@/lib/commerce/commerce-stats'
 import { createOrderNumber, notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
 import { createManualOrder, parseManualOrder } from '@/lib/commerce/manual-order'
 import { changeVariantStock } from '@/lib/commerce/variant-store'
+import { askForReviewOf } from '@/lib/commerce/review-store'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -221,6 +222,11 @@ export async function PATCH(request: NextRequest) {
         notifyError = result.error
         // Updating WhatsApp's order card to "canceled" withdraws the payment request as well
         paymentRequestCanceled = status === 'canceled' && result.viaCard
+      }
+
+      // Delivered: "How was it?" on WhatsApp with the review link (once per order)
+      if (status === 'delivered') {
+        await askForReviewOf(supabase, organizationId, orderId, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)).catch(() => null)
       }
 
       // A cancelled order gives the stock of its sizes / colours back

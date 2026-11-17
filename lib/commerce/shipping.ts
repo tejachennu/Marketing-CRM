@@ -278,7 +278,7 @@ export async function cancelShipment(db: any, org: any, shipment: any, fetcher?:
  * A tracking update for one shipment: save it, move the order (Shipped / Delivered), and tell the customer
  * on WhatsApp once per step. Older or repeated updates change nothing.
  */
-export async function applyTracking(db: any, shipment: any, update: TrackingUpdate, deps: { notify?: (args: { org: any; order: any; status: 'shipped' | 'delivered'; text: string }) => Promise<boolean> } = {}) {
+export async function applyTracking(db: any, shipment: any, update: TrackingUpdate, deps: { notify?: (args: { org: any; order: any; status: 'shipped' | 'delivered'; text: string }) => Promise<boolean>; onDelivered?: (orderId: string) => Promise<unknown> } = {}) {
   const now = new Date().toISOString()
   const next = update.status as ShipmentStatus | null
   const changes: Record<string, unknown> = { last_checked_at: now, updated_at: now }
@@ -299,7 +299,9 @@ export async function applyTracking(db: any, shipment: any, update: TrackingUpda
     if (target === 'delivered') shipping.delivered_at = now
     const updates: Record<string, unknown> = { status: target, shipping_address: shipping, updated_at: now }
     if (target === 'delivered' && order.payment_method === 'cod') updates.payment_status = 'paid'
-    await db.from('commerce_orders').update(updates).eq('id', order.id).eq('status', order.status)
+    const { data: moved } = await db.from('commerce_orders').update(updates).eq('id', order.id).eq('status', order.status).select('id')
+    // Delivered: "How was it?" (a little later in the same request is fine; it never blocks tracking)
+    if (target === 'delivered' && moved?.length && deps.onDelivered) await deps.onDelivered(order.id).catch(() => null)
   }
 
   const { data: org } = await db.from('organizations').select('*').eq('id', shipment.organization_id).maybeSingle()

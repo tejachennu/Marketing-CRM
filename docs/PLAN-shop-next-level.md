@@ -164,13 +164,13 @@ WhatsApp messages outside the 24-hour window go out only with a template the bus
 | 1.6 | Google findability (site map, titles, share previews) | Done: sitemap.xml, robots.txt (own domains too), canonical, Open Graph + Twitter cards |
 | 2.1 | Cart reminder on WhatsApp | Done: cart kept with the phone at checkout, one reminder after an hour (scheduled shop job), link brings the cart back |
 | 2.2 | COD confirmation on WhatsApp ("Yes, send it") | Done: buttons after a COD store order; Yes kept on the order, Cancel cancels before shipping |
-| 2.3 | Order updates on WhatsApp + "How was it?" review ask | Shipping updates done; packed + review ask to do |
+| 2.3 | Order updates on WhatsApp + "How was it?" review ask | Done: courier updates (on the way, out for delivery, delivered) + review link when Delivered |
 | 2.4 | "Ask on WhatsApp" with the product attached, answered by the AI | Done: the message carries the product, option, price and link; the shopping assistant answers |
 | 2.5 | Back-in-stock alerts on WhatsApp | Done: "Tell me when it's back" (product or size / colour); one message when stock returns |
 | 2.6 | Reorder in one tap ("Same as last time?") | Done: Order again in My orders (same products and options) |
 | 3.1 | Shiprocket / Delhivery from the order screen | Done |
 | 3.2 | GST invoice for every online order | To do |
-| 3.3 | Customer reviews with photos on product pages | To do |
+| 3.3 | Customer reviews with photos on product pages | Done: review page from WhatsApp (stars, words, up to 4 photos), product page reviews + Google stars, Reviews tab (hide / show) |
 | 3.4 | Shop reports (visitors, orders, what sells, carts left, best customers) | To do |
 | 3.5 | Returns and refunds (Razorpay refund) | To do |
 | 4.1 | Store layouts (3–4) and an Instagram feed | To do |

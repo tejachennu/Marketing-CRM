@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Play, Plus, MessageCircle, Search, Share2, ShieldCheck, ShoppingBag, Store, Truck, UserRound, X } from 'lucide-react'
+import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Play, Plus, MessageCircle, Search, Share2, ShieldCheck, ShoppingBag, Star, Store, Truck, UserRound, X } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
@@ -9,6 +9,7 @@ import { AccountPanel, useShopper } from './account'
 import type { StoreView } from '@/lib/commerce/storefront'
 import { findVariant, valueAvailable } from '@/lib/commerce/variants'
 import { STORE_PAGE_TITLES } from '@/lib/commerce/store-pages'
+import { ratingSummary, type PublicReview } from '@/lib/commerce/reviews'
 
 type Product = StoreView['products'][number]
 
@@ -123,7 +124,7 @@ function Stepper({ value, onChange, small }: { value: number; onChange: (n: numb
   )
 }
 
-export function Storefront({ store, startCategory, appUrl = '', basePath = '', productId = null }: { store: StoreView; startCategory: string | null; appUrl?: string; basePath?: string; productId?: string | null }) {
+export function Storefront({ store, startCategory, appUrl = '', basePath = '', productId = null, reviews = [] }: { store: StoreView; startCategory: string | null; appUrl?: string; basePath?: string; productId?: string | null; reviews?: PublicReview[] }) {
   // Addresses inside the store: /s/<slug>/… on WAMA, or /… on the store's own domain
   const homeHref = basePath || '/'
   const productHref = (id: string) => `${basePath}/p/${id}`
@@ -615,6 +616,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                   <p className="mt-1.5 text-[15px] leading-relaxed text-[#4a5672] whitespace-pre-line break-words">{viewing.description}</p>
                 </div>
               )}
+              {reviews.length > 0 && <Reviews reviews={reviews} />}
             </div>
           </div>
 
@@ -926,5 +928,40 @@ function BackInStock({ slug, productId, variantId, label }: { slug: string; prod
       </div>
       {state?.text && <p role="status" className="text-[13px] text-[#b91c1c]">{state.text}</p>}
     </form>
+  )
+}
+
+function StarRow({ value, size = 16 }: { value: number; size?: number }) {
+  return (
+    <span className="inline-flex" aria-label={`${value} out of 5`}>
+      {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={size} className={n <= Math.round(value) ? 'text-[#f5a623]' : 'text-[#d5ddeb]'} fill={n <= Math.round(value) ? 'currentColor' : 'none'} />)}
+    </span>
+  )
+}
+
+/** Customer reviews on the product page: the average, then each review with its photos. */
+function Reviews({ reviews }: { reviews: PublicReview[] }) {
+  const sum = ratingSummary(reviews)
+  const [all, setAll] = useState(false)
+  const shown = all ? reviews : reviews.slice(0, 5)
+  return (
+    <section className="mt-6" aria-labelledby="reviews-title">
+      <h2 id="reviews-title" className="text-[16px] font-extrabold">Customer reviews</h2>
+      <p className="mt-1 flex items-center gap-2 text-[14.5px]"><StarRow value={sum.average} size={18} /> <b>{sum.average}</b> <span className="text-[#6B7894]">from {sum.count} review{sum.count === 1 ? '' : 's'}</span></p>
+      <ul className="mt-3 space-y-3">
+        {shown.map((r, i) => (
+          <li key={i} className="rounded-xl bg-[#f4f6fa] p-3">
+            <p className="flex items-center gap-2 text-[13.5px]"><StarRow value={r.rating} /> <b>{r.name}</b> <span className="text-[#8a94a8]">{new Date(r.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span></p>
+            {r.text && <p className="mt-1.5 text-[14.5px] text-[#4a5672] break-words">{r.text}</p>}
+            {r.photos.length > 0 && (
+              <div className="mt-2 flex gap-2 overflow-x-auto">
+                {r.photos.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer" className="shrink-0"><Picture src={url} alt="Customer photo" className="h-20 w-20 rounded-lg" /></a>)}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {reviews.length > 5 && !all && <button type="button" onClick={() => setAll(true)} className="mt-2 text-[14px] font-bold text-[var(--c)] underline cursor-pointer">Show all {reviews.length} reviews</button>}
+    </section>
   )
 }

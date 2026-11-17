@@ -77,7 +77,7 @@ test('the middleware sends custom domains to the store and leaves API calls alon
   const src = fs.readFileSync(path.join(__dirname, '../middleware.ts'), 'utf8')
   assert.match(src, /from '@\/lib\/commerce\/store-host'/)
   assert.match(src, /!pathname\.startsWith\('\/api'\)/)
-  assert.match(src, /url\.pathname = seoFile \? `\/s\/\$\{host\}\$\{pathname\}` : product \? `\/s\/\$\{host\}\/p\/\$\{product\.toLowerCase\(\)\}` : info \? `\/s\/\$\{host\}\/info\/\$\{info\}` : `\/s\/\$\{host\}`/)
+  assert.match(src, /url\.pathname = seoFile \? `\/s\/\$\{host\}\$\{pathname\}` : product \? `\/s\/\$\{host\}\/p\/\$\{product\.toLowerCase\(\)\}` : info \? `\/s\/\$\{host\}\/info\/\$\{info\}` : review \? `\/s\/\$\{host\}\/review\/\$\{review\}` : `\/s\/\$\{host\}`/)
   assert.match(src, /x-store-via-domain/)
   // store-host must stay import-free (the middleware runs at the edge)
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/commerce/store-host.ts'), 'utf8'), /^import /m)

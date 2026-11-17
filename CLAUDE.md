@@ -117,6 +117,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: reviews with photos + "How was it?"** (3.3, 2.3): `lib/commerce/reviews.ts` (pure: `cleanReview` 1–5 stars,
+  ≤1000 chars, ≤4 https photos; `publicName` "Asha R."; `ratingSummary`), `review-store.ts` (lock 724519025, migration
+  `20261128_shop_reviews.sql`: `commerce_reviews` unique per order + product; `reviewToken` kept in
+  `shipping_address.review_token`; `askForReview` once per order (`review_asked_at`, purpose review_ask);
+  `askForReviewOf` used by orders PATCH → delivered and by courier tracking (`applyTracking` `deps.onDelivered`);
+  `saveReviews`, `productReviews`). Customer page `/s/[slug]/review/[token]` (`review-form.tsx`; own domains `/review/<t>`),
+  `GET/POST /api/public/store/[slug]/review`, `POST .../review-photo` (token-checked, images ≤4 MB, storage bucket
+  `media-attachments` under `reviews/`). Product page `Reviews` + schema.org aggregateRating. Dashboard **Reviews** tab
+  (`reviews-tab.tsx`, `GET/PATCH /api/commerce/reviews` hide / show).
+
 - **Shop: selling on WhatsApp** (2.1–2.6): `lib/commerce/shop-messages.ts` (pure: purposes cart_reminder, cod_confirm,
   review_ask, back_in_stock; `readShopMessages` {on, template, language} in `organizations.shop_messages`;
   `templatePayload` with quick-reply payloads; `codok:`/`codno:` button ids; `codCheckLabel`), `shop-messages-send.ts`
