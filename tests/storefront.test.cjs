@@ -84,3 +84,11 @@ test('Store page: the public view carries no workspace id', () => {
   assert.equal(view.slug, 'glow')
   assert.equal(JSON.stringify(view).includes('org-1'), false)
 })
+
+test('the website on/off switch saves at once, and unsaved changes are shown', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '../components/commerce/storefront-settings.tsx'), 'utf8')
+  assert.match(ui, /onChange=\{\(e\) => toggleStore\(e\.target\.checked\)\}/, 'the switch saves, it does not only change the screen')
+  assert.match(ui, /const toggleStore = \(enabled: boolean\) => \{[\s\S]*?save\(next\)/)
+  assert.match(ui, /Changes not saved yet/)
+  assert.match(ui, /setLiveEnabled\(data\.settings\.enabled === true\)/, 'the page knows when the store is really open')
+})

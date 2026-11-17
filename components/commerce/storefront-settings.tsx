@@ -337,6 +337,11 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
 }
 
 /** E-commerce → Website: the business's online store page. */
+/** The parts of the website settings that Save writes, to tell when something is not saved. */
+function snapshot(settings: any, categories: { name: string; image?: string }[]) {
+  return JSON.stringify({ settings, categories: (categories || []).map((c) => ({ name: c.name, image: c.image || '' })) })
+}
+
 export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: string; canManage: boolean; showToast: ShowToast }) {
   const [settings, setSettings] = useState<any>(null)
   const [link, setLink] = useState<string | null>(null)
@@ -347,6 +352,9 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
   const [qr, setQr] = useState('')
   const [suggested, setSuggested] = useState<any>(null)
   const [prefilled, setPrefilled] = useState(false)
+  // What is saved: the page shows "not saved" until these match, and whether the store is really open
+  const [savedSnap, setSavedSnap] = useState('')
+  const [liveEnabled, setLiveEnabled] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -359,6 +367,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
       setLink(data.link)
       setStoreOn(data.storeOn !== false)
       setCategories(data.categories || [])
+      setSavedSnap(snapshot(data.settings, data.categories || []))
+      setLiveEnabled(data.prefilled !== true && data.settings?.enabled === true)
     } catch (err: any) {
       setError(err.message)
     }
@@ -403,23 +413,35 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
   }
   const ordered = categories
 
-  async function save() {
+  async function save(next: any = settings) {
     setSaving(true)
     try {
-      const body = { ...settings, categories: ordered.map((c) => ({ name: c.name, image: c.image })) }
+      const body = { ...next, categories: ordered.map((c) => ({ name: c.name, image: c.image })) }
       const res = await fetch('/api/commerce/storefront', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, settings: body }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The website settings could not be saved.')
       setSettings(data.settings)
       setLink(data.link)
       setCategories(data.categories || ordered)
+      setSavedSnap(snapshot(data.settings, data.categories || ordered))
+      setLiveEnabled(data.settings.enabled === true)
+      setPrefilled(false)
       showToast('success', data.settings.enabled ? 'Saved. Your online store is live.' : 'Saved. Your online store is switched off.')
     } catch (err: any) {
       showToast('error', err.message)
+      // The switch saves by itself: if that failed, put it back the way it is saved
+      if (next !== settings) setSettings((current: any) => ({ ...current, enabled: liveEnabled }))
     } finally {
       setSaving(false)
     }
   }
+  /** The on/off switch saves straight away, so "on" always means the store is open. */
+  const toggleStore = (enabled: boolean) => {
+    const next = { ...settings, enabled }
+    setSettings(next)
+    save(next)
+  }
+  const unsaved = canManage && (prefilled || snapshot(settings, categories) !== savedSnap)
 
   const disabled = !canManage
   const heading = 'text-sm font-bold text-slate-900 dark:text-white'
@@ -434,11 +456,12 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
             <span className={`block ${sub}`}>A shop page with your banners, categories and products. Customers add to a cart and order for pick up or delivery; orders come to Orders as “Website”.</span>
           </span>
           <span className="relative shrink-0">
-            <input type="checkbox" role="switch" checked={settings.enabled} disabled={disabled} onChange={(e) => set({ enabled: e.target.checked })} className="peer sr-only" />
+            <input type="checkbox" role="switch" checked={settings.enabled} disabled={disabled || saving} onChange={(e) => toggleStore(e.target.checked)} className="peer sr-only" />
             <span className="block h-6 w-11 rounded-full bg-slate-300 peer-checked:bg-[#1D5BEA] transition-colors" />
             <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
           </span>
         </label>
+        {canManage && !liveEnabled && <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Your store is closed. Customers who open the link see “This store is not open right now” until you switch it on.</p>}
         {!storeOn && <p className="mt-3 text-xs font-semibold text-[#b91c1c]">Your store is switched off in Store settings, so the website shows nothing until you switch it on.</p>}
         {link && (
           <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
@@ -630,9 +653,12 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
       </section>
 
       {canManage && (
-        <div className="flex justify-end gap-2">
-          {link && settings.enabled && <a href={link} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={13} /> See the website</a>}
-          <button type="button" onClick={save} disabled={saving} className={primaryButton}>
+        <div className={unsaved
+          ? 'sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 rounded-xl border border-[#d5ddeb] bg-white dark:bg-slate-900 p-3 shadow-[0_-4px_16px_rgba(14,27,61,0.08)]'
+          : 'flex flex-wrap justify-end gap-2'}>
+          {unsaved && <p className="mr-auto text-[13px] font-semibold text-[#0E1B3D] dark:text-white">Changes not saved yet</p>}
+          {link && liveEnabled && !unsaved && <a href={link} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={13} /> See the website</a>}
+          <button type="button" onClick={() => save()} disabled={saving} className={primaryButton}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} Save website
           </button>
         </div>
