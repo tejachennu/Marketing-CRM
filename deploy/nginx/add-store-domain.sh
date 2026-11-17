@@ -117,8 +117,8 @@ if ! certbot --nginx "${NAMES[@]}" --cert-name "$DOMAIN" --expand --non-interact
 fi
 nginx -t && systemctl reload nginx
 
-echo "== 6. Check"
-CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$DOMAIN/")"
+echo "== 6. Check (through this server's nginx: the server's own DNS cache may still hold an old address)"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/")"
 echo "https://$DOMAIN answered $CODE"
-[ -n "$WWW" ] && echo "https://$WWW answered $(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$WWW/") (301 = sends people to $DOMAIN)"
+[ -n "$WWW" ] && echo "https://$WWW answered $(curl -s -o /dev/null -w '%{http_code}' --max-time 15 --resolve "$WWW:443:127.0.0.1" "https://$WWW/") (301 = sends people to $DOMAIN)"
 [ "$CODE" = "200" ] && echo "Done. $DOMAIN now opens the store." || echo "Opened with $CODE: check the store is switched on in WAMA (Website tab)."
