@@ -133,6 +133,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   **The shop must run with `next start -H localhost`**, not `-H 127.0.0.1`: with 127.0.0.1, Next treats the
   own-domain rewrite as external and fetches `https://localhost:<port>` → 500 on every business domain
   (reproduced with Next 16.2.6; see `deploy/nginx/README.md`). codeswipes.com was the first domain connected (17 Nov 2026).
+  **www**: a main domain's records include `CNAME www → <domain>`; when `www.<domain>` points here,
+  `add-store-domain.sh` adds a second server block that 301s to `https://<domain>` and expands the certificate
+  (`--cert-name <domain> --expand`); if certbot fails, the old site file is put back. The sync job looks at www
+  for already-connected domains every 30 minutes (`<domain>.www-next`).
 
 - **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
   desk appointment module strong and landing page", "membership cards and membership utilisation"):

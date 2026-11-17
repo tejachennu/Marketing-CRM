@@ -114,7 +114,10 @@ export const NOT_SET_UP = 'Custom domains are not set up on WAMA yet. Please ask
 
 /** The one record the business adds at its domain company. */
 export function dnsRecordsFor(domain: string, gateway: { host: string; ip: string }): DnsRecord[] {
-  return isRootDomain(domain) ? [{ type: 'A', name: '@', value: gateway.ip }] : [{ type: 'CNAME', name: hostLabel(domain), value: gateway.host }]
+  // A main domain also gets www (it opens the store at the main domain)
+  return isRootDomain(domain)
+    ? [{ type: 'A', name: '@', value: gateway.ip }, { type: 'CNAME', name: 'www', value: domain }]
+    : [{ type: 'CNAME', name: hostLabel(domain), value: gateway.host }]
 }
 
 export interface DnsLookup {

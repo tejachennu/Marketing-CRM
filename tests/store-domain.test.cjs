@@ -28,7 +28,7 @@ test('root domains get an A record, sub-domains a CNAME, both to the store serve
   assert.equal(D.isRootDomain('glowstore.co.in'), true)
   assert.equal(D.isRootDomain('shop.glowstore.in'), false)
   assert.equal(D.isRootDomain('shop.glowstore.co.in'), false)
-  assert.deepEqual(D.dnsRecordsFor('glowstore.com', gw), [{ type: 'A', name: '@', value: '203.0.113.10' }])
+  assert.deepEqual(D.dnsRecordsFor('glowstore.com', gw), [{ type: 'A', name: '@', value: '203.0.113.10' }, { type: 'CNAME', name: 'www', value: 'glowstore.com' }])
   assert.deepEqual(D.dnsRecordsFor('shop.glowstore.co.in', gw), [{ type: 'CNAME', name: 'shop', value: 'stores.magnetora.in' }])
 })
 
@@ -104,7 +104,7 @@ test('store server: records point at it and DNS decides connected', async () => 
   assert.equal(s.state, 'connected')
 
   s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'] }, async () => true)
-  assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }])
+  assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }, { type: 'CNAME', name: 'www', value: 'glowstore.in' }])
   assert.equal(s.state, 'connected')
 
   process.env.STORE_GATEWAY_IP = 'not-an-ip'
@@ -141,7 +141,7 @@ test('nginx servers: one command adds a business domain, and only its own site f
   assert.match(add, /systemctl reload nginx/)
   assert.doesNotMatch(add, /systemctl (restart|stop) nginx/, 'never restarts or stops the existing nginx')
   assert.match(add, /rm -f "\/etc\/nginx\/sites-enabled\/wama-store-\$DOMAIN\.conf" "\$SITE"/, 'a refused site is removed again')
-  assert.match(add, /certbot --nginx -d "\$DOMAIN"/)
+  assert.match(add, /certbot --nginx "\$\{NAMES\[@\]\}"/)
   assert.ok(fs.existsSync(path.join(root, 'deploy/nginx/remove-store-domain.sh')))
 })
 
@@ -165,12 +165,18 @@ test('Automatic domains: the list needs the server key, and the job never touche
   assert.doesNotMatch(sync, /systemctl (restart|stop)/)
   assert.match(sync, /"\$RC" = "3" \][\s\S]*?\+ 300 \)\)/, 'DNS not changed yet: tried again in 5 minutes')
   assert.match(sync, /\+ 1800 \)\)/, 'a failed certificate waits 30 minutes (Let\'s Encrypt limits)')
+  assert.match(sync, /www-next/, 'www for connected domains is looked at every 30 minutes, not every run')
   const add = fs.readFileSync(path.join(root, 'deploy/nginx/add-store-domain.sh'), 'utf8')
   assert.equal((add.match(/exit 3$/gm) || []).length, 2, 'not connected in WAMA / DNS not here = exit 3')
   assert.doesNotMatch(add, /\*magnetora\.in/, 'books.magnetora.in can be a store; WAMA decides in step 2')
-  assert.match(add, /dns\.google\/resolve\?name=\$DOMAIN&type=A/, 'asks public DNS, not the server\'s own cache')
+  assert.match(add, /dns\.google\/resolve\?name=\$1&type=A/, 'asks public DNS, not the server\'s own cache')
   assert.doesNotMatch(add, /127\.0\.0\.1/, 'the shop may listen on [::1] only (next start -H localhost)')
   assert.match(add, /proxy_pass http:\/\/localhost:\$PORT;/)
+  // www.<domain> comes along when it points here, and sends people to the main domain
+  assert.match(add, /if \[\[ "\$DOMAIN" != www\.\* \]\] && points_here "www\.\$DOMAIN"; then WWW="www\.\$DOMAIN"; fi/)
+  assert.match(add, /return 301 https:\/\/\$DOMAIN\\\$request_uri;/)
+  assert.match(add, /--cert-name "\$DOMAIN" --expand/)
+  assert.match(add, /certificate could not be made, so the site was put back/, 'adding www never breaks a working domain')
   const install = fs.readFileSync(path.join(root, 'deploy/nginx/install-auto-domains.sh'), 'utf8')
   assert.match(install, /openssl rand -hex 32/, 'the key is made on the server, never typed or shown')
   assert.match(install, /OnUnitActiveSec=2min/)

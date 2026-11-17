@@ -25,7 +25,18 @@ LIST="$(printf '%s' "$JSON" | python3 -I -c 'import json,sys; d=json.load(sys.st
 # 2. Add new ones. Not ready yet (DNS not changed yet): tried again in 5 minutes. Anything else (e.g. the
 #    certificate failed): in 30 minutes, to stay well inside Let's Encrypt's limits.
 for DOMAIN in $LIST; do
-  if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then continue; fi
+  if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+    # Connected. Add www.<domain> once it points here too (looked at every 30 minutes)
+    if [[ "$DOMAIN" != www.* ]] && ! grep -q "server_name www.$DOMAIN;" "/etc/nginx/sites-available/wama-store-$DOMAIN.conf"; then
+      WNEXT="$(cat "$STATE/$DOMAIN.www-next" 2>/dev/null || echo 0)"
+      if [ "$(date +%s)" -ge "$WNEXT" ]; then
+        echo $(( $(date +%s) + 1800 )) > "$STATE/$DOMAIN.www-next"
+        bash "$HERE/add-store-domain.sh" "$DOMAIN" "$ACME_EMAIL" "$APP_PORT" >>"$STATE/$DOMAIN.log" 2>&1 || log "www.$DOMAIN could not be added (see $STATE/$DOMAIN.log)"
+        grep -q "server_name www.$DOMAIN;" "/etc/nginx/sites-available/wama-store-$DOMAIN.conf" && log "www.$DOMAIN added (opens $DOMAIN)"
+      fi
+    fi
+    continue
+  fi
   NEXT="$(cat "$STATE/$DOMAIN.next" 2>/dev/null || echo 0)"
   [ "$(date +%s)" -lt "$NEXT" ] && continue
   log "Connecting $DOMAIN"

@@ -24,8 +24,23 @@ fi
 if [ "$(id -u)" != "0" ]; then echo "Run with sudo." >&2; exit 1; fi
 command -v nginx >/dev/null || { echo "nginx is not installed on this server." >&2; exit 1; }
 
+MY_IPS="$(hostname -I) $(curl -s --max-time 5 https://api.ipify.org || true)"
+# Where a name points. Public DNS first: this server's own DNS cache can keep an old address for hours.
+dns_ips() {
+  local ips
+  ips="$(curl -s --max-time 8 "https://dns.google/resolve?name=$1&type=A" | python3 -I -c 'import json,sys; print(" ".join(a["data"] for a in json.load(sys.stdin).get("Answer", []) if a.get("type") == 1))' 2>/dev/null || true)"
+  echo "${ips:-$(getent ahostsv4 "$1" | awk '{print $1}' | sort -u | tr '\n' ' ')}"
+}
+points_here() { local ip; for ip in $(dns_ips "$1"); do [[ " $MY_IPS " == *" $ip "* ]] && return 0; done; return 1; }
+
+# www.<domain> comes along when it points here too (it opens the store at <domain>)
+WWW=""
+if [[ "$DOMAIN" != www.* ]] && points_here "www.$DOMAIN"; then WWW="www.$DOMAIN"; fi
+
+SITE="/etc/nginx/sites-available/wama-store-$DOMAIN.conf"
 if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-  echo "$DOMAIN is already connected."; exit 0
+  if [ -z "$WWW" ] || grep -q "server_name $WWW;" "$SITE"; then echo "$DOMAIN is already connected."; exit 0; fi
+  echo "$DOMAIN is connected; adding $WWW to it."
 fi
 
 echo "== 1. Is the shop running on port $PORT?"
@@ -39,19 +54,20 @@ if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://localhost:$
 fi
 
 echo "== 3. Does $DOMAIN point to this server?"
-MY_IPS="$(hostname -I) $(curl -s --max-time 5 https://api.ipify.org || true)"
-# Ask public DNS first: this server's own DNS cache can keep a domain's old address for hours
-PUBLIC_IPS="$(curl -s --max-time 8 "https://dns.google/resolve?name=$DOMAIN&type=A" | python3 -I -c 'import json,sys; print(" ".join(a["data"] for a in json.load(sys.stdin).get("Answer", []) if a.get("type") == 1))' 2>/dev/null || true)"
-DNS_IPS="${PUBLIC_IPS:-$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' ')}"
-POINTS=no
-for ip in $DNS_IPS; do [[ " $MY_IPS " == *" $ip "* ]] && POINTS=yes; done
-if [ "$POINTS" != "yes" ]; then
+if ! points_here "$DOMAIN"; then
+  DNS_IPS="$(dns_ips "$DOMAIN")"
   echo "$DOMAIN points to: ${DNS_IPS:-nothing yet}. This server is: $MY_IPS" >&2
   echo "Ask the business to add the DNS record shown in WAMA, wait a few minutes, then run this again." >&2; exit 3
 fi
 
-SITE="/etc/nginx/sites-available/wama-store-$DOMAIN.conf"
 echo "== 4. Adding the nginx site $SITE (only this file)"
+# A site that is already there (adding www to it) is kept aside, and put back if anything fails
+BACKUP=""
+if [ -f "$SITE" ]; then BACKUP="$(mktemp)"; cp "$SITE" "$BACKUP"; fi
+put_back() {
+  if [ -n "$BACKUP" ]; then cp "$BACKUP" "$SITE"; else rm -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" "$SITE"; fi
+  nginx -t && systemctl reload nginx
+}
 cat > "$SITE" <<NGINX
 # WAMA online store for $DOMAIN (added by add-store-domain.sh)
 server {
@@ -71,19 +87,38 @@ server {
   }
 }
 NGINX
+if [ -n "$WWW" ]; then cat >> "$SITE" <<NGINX
+
+# $WWW opens the store at $DOMAIN
+server {
+  listen 80;
+  listen [::]:80;
+  server_name $WWW;
+  location / {
+    return 301 https://$DOMAIN\$request_uri;
+  }
+}
+NGINX
+fi
 ln -sf "$SITE" "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf"
 if ! nginx -t; then
-  echo "nginx refused the new site, so it was removed again. Nothing else changed." >&2
-  rm -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" "$SITE"; exit 1
+  echo "nginx refused the new site, so it was put back as it was. Nothing else changed." >&2
+  put_back; exit 1
 fi
 systemctl reload nginx
 
 echo "== 5. https certificate (Let's Encrypt)"
 command -v certbot >/dev/null || apt-get install -y certbot python3-certbot-nginx
-certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect --keep-until-expiring
+NAMES=(-d "$DOMAIN"); [ -n "$WWW" ] && NAMES+=(-d "$WWW")
+if ! certbot --nginx "${NAMES[@]}" --cert-name "$DOMAIN" --expand --non-interactive --agree-tos -m "$EMAIL" --redirect --keep-until-expiring; then
+  echo "The certificate could not be made, so the site was put back as it was." >&2
+  if [ -n "$BACKUP" ]; then put_back; fi
+  exit 1
+fi
 nginx -t && systemctl reload nginx
 
 echo "== 6. Check"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$DOMAIN/")"
 echo "https://$DOMAIN answered $CODE"
+[ -n "$WWW" ] && echo "https://$WWW answered $(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$WWW/") (301 = sends people to $DOMAIN)"
 [ "$CODE" = "200" ] && echo "Done. $DOMAIN now opens the store." || echo "Opened with $CODE: check the store is switched on in WAMA (Website tab)."
