@@ -11,6 +11,7 @@ import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schem
 import { normalizePhone } from '../public-api/keys'
 import { isUuid } from '../record-visibility'
 import type { ManualOrderInput } from './manual-order'
+import { readyPartners } from './shipping'
 
 /** supabase/migrations/20261119_storefront.sql word for word. */
 export const STOREFRONT_SQL = `-- The online store page's settings (banners, categories, colour, delivery). Safe to run more than once.
@@ -213,6 +214,8 @@ export interface StorePage {
   fees: { fee: number; freeFrom: number }
   /** How customers can pay right now: online needs the business's Razorpay keys. */
   pay: { online: boolean; later: boolean }
+  /** A courier partner is connected, so the page can check a PIN code. */
+  pinCheck?: boolean
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -248,6 +251,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     products,
     categories: storeCategories(settings, products),
     pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
+    pinCheck: settings.delivery && readyPartners(org).length > 0,
     fees: {
       fee: settings.delivery_fee ?? (Number(org.commerce_default_shipping_fee) || 0),
       freeFrom: settings.free_delivery_from ?? (Number(org.commerce_free_shipping_threshold) || 0),
@@ -265,7 +269,7 @@ export function storeView(page: StorePage) {
     deliveryNote: s.delivery_note, deliveryFee: page.fees.fee, freeFrom: page.fees.freeFrom, minOrder: s.min_order,
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
     payOnline: page.pay.online, payLater: page.pay.later,
-    accounts: s.accounts, domain: page.organization.domain,
+    accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
   }
 }
 export type StoreView = ReturnType<typeof storeView>

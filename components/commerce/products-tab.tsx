@@ -17,6 +17,8 @@ const EMPTY_FORM = {
   id: '', title: '', retailer_id: '', price: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true,
   // Details the WhatsApp catalog asks for
   brand: '', condition: 'new', origin_country: '', is_service: false, importer_name: '', importer_street: '', importer_city: '', importer_postal_code: '',
+  // For couriers (Shiprocket / Delhivery)
+  weight_grams: '', hsn_code: '',
 }
 type ProductForm = typeof EMPTY_FORM
 
@@ -273,6 +275,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       importer_street: attributes.importer_address?.street1 || '',
       importer_city: attributes.importer_address?.city || '',
       importer_postal_code: attributes.importer_address?.postal_code || '',
+      weight_grams: (product as any).weight_grams ? String((product as any).weight_grams) : '',
+      hsn_code: (product as any).hsn_code || '',
     })
   }
 
@@ -611,6 +615,16 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <div>
                 <label htmlFor="product-stock" className={labelClass}>In stock (optional)</label>
                 <input id="product-stock" type="number" min={0} step={1} placeholder="Not tracked" value={form.inventory_count} onChange={(event) => setForm({ ...form, inventory_count: event.target.value })} className={inputClass} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="product-weight" className={labelClass}>Weight in grams (optional)</label>
+                <input id="product-weight" type="number" min={1} step={1} placeholder="For couriers" value={form.weight_grams} onChange={(event) => setForm({ ...form, weight_grams: event.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label htmlFor="product-hsn" className={labelClass}>HSN code (optional)</label>
+                <input id="product-hsn" inputMode="numeric" maxLength={8} placeholder="For GST" value={form.hsn_code} onChange={(event) => setForm({ ...form, hsn_code: event.target.value.replace(/\D/g, '') })} className={inputClass} />
               </div>
             </div>
             <div>

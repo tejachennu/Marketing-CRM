@@ -15,6 +15,7 @@ import { OrdersTab } from '@/components/commerce/orders-tab'
 import { OrderFlowTab } from '@/components/commerce/order-flow-tab'
 import { ProductsTab } from '@/components/commerce/products-tab'
 import { StoreSettings } from '@/components/commerce/store-settings'
+import { DeliveryPartners } from '@/components/commerce/delivery-partners'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
 type Tab = 'orders' | 'products' | 'website' | 'flow' | 'settings'
@@ -295,6 +296,7 @@ export default function CommercePage() {
             showToast={showToast}
           />
         )}
+        {orgId && activeTab === 'settings' && canManageStore && <DeliveryPartners orgId={orgId} canManage={can(viewer, 'settings.manage')} showToast={showToast} />}
       </div>
 
       {/* Result of the last action */}

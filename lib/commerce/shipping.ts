@@ -359,3 +359,11 @@ export async function deliveryCheck(db: any, org: any, pin: string, fetcher?: Fe
   }
   return null
 }
+
+/** A product's weight (grams) and HSN code from the product form; null when the form sent neither. */
+export function productShippingValues(product: any): { weight_grams: number | null; hsn_code: string | null } | null {
+  if (!product || (product.weight_grams === undefined && product.hsn_code === undefined)) return null
+  const grams = Math.round(Number(product.weight_grams))
+  const hsn = String(product.hsn_code ?? '').replace(/\D/g, '').slice(0, 8)
+  return { weight_grams: Number.isFinite(grams) && grams > 0 && grams <= 100000 ? grams : null, hsn_code: hsn.length >= 4 ? hsn : null }
+}

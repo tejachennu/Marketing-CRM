@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, Plus, RefreshCw, Search, Store, Truck, X } from 'lucide-react'
 import { NewOrderModal } from './new-order'
+import { CourierPanel } from './courier-panel'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
@@ -620,6 +621,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   </p>
                 )}
               </section>
+              <CourierPanel key={selected.id} orgId={orgId} orderId={selected.id} canEdit={canEdit} onChanged={() => { void refresh() }} showToast={showToast} />
             </div>
 
             {/* Actions: only the moves that make sense from the current status */}

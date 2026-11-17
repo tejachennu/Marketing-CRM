@@ -514,6 +514,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                     <span>Home delivery{store.deliveryFee ? ` · ${money(store.deliveryFee)}` : ' · free'}{store.deliveryFee && store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}</span>
                   </li>
                 )}
+                {store.pinCheck && <li><PinCheck slug={store.slug} /></li>}
                 {store.pickup && <li className="flex gap-2"><Store size={17} className="shrink-0 mt-px text-[var(--c)]" /><span>Pick up from the shop{store.address ? ` · ${store.address.split('\n')[0]}` : ''}</span></li>}
                 <li className="flex gap-2"><ShieldCheck size={17} className="shrink-0 mt-px text-[var(--c)]" />
                   <span>{store.payOnline && store.payLater ? 'Pay online, or cash when you get it' : store.payOnline ? 'Pay online by UPI, card or net banking' : 'Pay cash when you get it'}</span>
@@ -697,5 +698,38 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       {/* Sign in, My orders, Track an order */}
       {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} initialView={accountView} onClose={() => setAccountView(null)} />}
     </div>
+  )
+}
+
+/** "Check delivery to your PIN code": asks the store's own courier partners (Shiprocket / Delhivery). */
+function PinCheck({ slug }: { slug: string }) {
+  const [pin, setPin] = useState('')
+  const [state, setState] = useState<{ busy?: boolean; text?: string; ok?: boolean } | null>(null)
+  async function check(e: React.FormEvent) {
+    e.preventDefault()
+    if (!/^[1-9]\d{5}$/.test(pin)) { setState({ text: 'Type a 6-digit PIN code.', ok: false }); return }
+    setState({ busy: true })
+    try {
+      const res = await fetch(`/api/public/store/${slug}/delivery-check?pin=${pin}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) setState({ text: data.error || 'Could not check right now.', ok: false })
+      else if (!data.checked) setState({ text: 'Could not check right now. Order and the shop will confirm.', ok: true })
+      else if (!data.served) setState({ text: `Sorry, we do not deliver to ${pin} yet.`, ok: false })
+      else setState({ text: `We deliver to ${pin}${data.days ? ` in about ${data.days} day${data.days === 1 ? '' : 's'}` : ''}.${data.cod ? ' Cash on delivery available.' : ''}`, ok: true })
+    } catch {
+      setState({ text: 'Could not check right now.', ok: false })
+    }
+  }
+  return (
+    <form onSubmit={check} className="flex flex-col gap-1.5">
+      <label htmlFor="pin-check" className="flex gap-2 items-center"><MapPin size={17} className="shrink-0 text-[var(--c)]" /><span>Check delivery to your PIN code</span></label>
+      <div className="flex gap-2 pl-[25px]">
+        <input id="pin-check" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="PIN code" className="min-w-0 flex-1 h-9 px-3 rounded-lg border border-[#d5ddeb] bg-white text-[14px] text-[#0E1B3D]" />
+        <button type="submit" disabled={state?.busy} className="h-9 px-4 rounded-lg bg-[var(--c)] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60">
+          {state?.busy ? <Loader2 size={14} className="animate-spin" /> : null} Check
+        </button>
+      </div>
+      {state?.text && <p role="status" className={`pl-[25px] text-[13px] ${state.ok ? 'text-[#0E1B3D]' : 'text-[#b91c1c]'}`}>{state.text}</p>}
+    </form>
   )
 }

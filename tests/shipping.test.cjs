@@ -277,3 +277,19 @@ test('routes: webhook checks the business key; public PIN check is rate limited;
   const settings = fs.readFileSync(path.join(root, 'app/api/commerce/shipping/route.ts'), 'utf8')
   assert.match(settings, /permission: 'settings\.manage'/)
 })
+
+test('screens: settings card, courier panel in orders, PIN check on the store, product weight and HSN', () => {
+  assert.deepEqual(S.productShippingValues({ weight_grams: '350', hsn_code: '4901 10' }), { weight_grams: 350, hsn_code: '490110' })
+  assert.deepEqual(S.productShippingValues({ weight_grams: '', hsn_code: '12' }), { weight_grams: null, hsn_code: null }, 'blank or too short clears them')
+  assert.equal(S.productShippingValues({ title: 'x' }), null, 'a form without them leaves them alone')
+  const page = fs.readFileSync(path.join(root, 'app/dashboard/commerce/page.tsx'), 'utf8')
+  assert.match(page, /<DeliveryPartners orgId=\{orgId\} canManage=\{can\(viewer, 'settings\.manage'\)\}/)
+  const orders = fs.readFileSync(path.join(root, 'components/commerce/orders-tab.tsx'), 'utf8')
+  assert.match(orders, /<CourierPanel key=\{selected\.id\}/)
+  const store = fs.readFileSync(path.join(root, 'app/s/[slug]/storefront.tsx'), 'utf8')
+  assert.match(store, /\{store\.pinCheck && <li><PinCheck slug=\{store\.slug\} \/><\/li>\}/)
+  const products = fs.readFileSync(path.join(root, 'app/api/commerce/products/route.ts'), 'utf8')
+  assert.match(products, /productShippingValues\(product\)/)
+  const view = require('../lib/commerce/storefront.ts').storeView
+  assert.equal(view({ organization: { id: ORG, name: 'S', slug: 's', currency: 'INR', domain: null }, settings: require('../lib/commerce/storefront.ts').readStorefront({ enabled: true }), products: [], categories: [], fees: { fee: 0, freeFrom: 0 }, pay: { online: false, later: true }, pinCheck: true }).pinCheck, true)
+})

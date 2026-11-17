@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { productShippingValues, withShippingSchema } from '@/lib/commerce/shipping'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
@@ -253,6 +254,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
     const savedProduct = saved[0]
+
+    // Weight and HSN for couriers (Shiprocket / Delhivery); saved apart so a missing column never blocks the product
+    const shippingValues = productShippingValues(product)
+    if (shippingValues) {
+      const { data: withShipping } = await withShippingSchema(() => supabase.from('commerce_products').update(shippingValues).eq('id', savedProduct.id).eq('organization_id', organizationId).select())
+      if (withShipping?.[0]) Object.assign(savedProduct, withShipping[0])
+    }
 
     // Send the product to the Meta catalog, so it can be shared and ordered in WhatsApp
     const org = await loadOrg()
