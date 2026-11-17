@@ -142,7 +142,7 @@ Delhivery's real tracking response, and the WhatsApp templates for order updates
 | Part | Status |
 |------|--------|
 | Plan | Done (this file) |
-| 1. Delivery partners | Not started |
+| 1. Delivery partners | **Done** (17 Nov 2026): server, settings, ship from order, tracking webhook + 30-min check, WhatsApp updates, PIN check on the product page, product weight / HSN. Not tried with real accounts; screens not looked at in a browser yet. Still to do: template fallback for WhatsApp updates outside 24 h, PIN check in checkout |
 | 2. Product options | Not started |
 | 3. Discount codes | Not started |
 | 4. Cart reminder | Not started |

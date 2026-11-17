@@ -117,6 +117,31 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop delivery partners: Shiprocket and Delhivery** (owner: "e-commerce next level ... top 2 delivery integrations
+  ... check their official documentations"; plan in `docs/PLAN-shop-next-level.md`, read it first). Each business
+  connects its **own** account (like its Razorpay). Built from the official docs (Shiprocket Postman collection at
+  apidocs.shiprocket.in; Delhivery delhivery-express-api-doc.readme.io), field notes in the plan and the file headers.
+  - `lib/commerce/shipping-rules.ts` (pure: our statuses `booked…delivered/returned/lost`, Shiprocket status ids,
+    Delhivery StatusType, `shouldMoveTo` never backwards, `orderStatusFor`, `noticeFor`/`noticeText` WhatsApp words,
+    `parcelFor`, `sortRates`, `shipBlocker`, `trackingLink`), `shiprocket.ts` (API user login, JWT 10 days → re-login
+    after 9 or on 401, rates, adhoc order → AWB → pickup → label, cancel; a refused AWB cancels the Shiprocket order),
+    `delhivery.ts` (`Authorization: Token`, test/live hosts, PIN check, approximate charges S/E, `format=json&data=`
+    shipment with the exact warehouse name, pickup request, cancel, tracking), `shipping.ts` (SQL + lock 724519020,
+    `withShippingSchema`, settings `organizations.shipping_settings` + secret columns `shiprocket_api_password`,
+    `shiprocket_api_token`, `shiprocket_token_at`, `delhivery_api_token`, `shipping_webhook_token`; table
+    `commerce_shipments`; products `weight_grams`, `hsn_code`; `ratesForOrder`, `bookShipment`, `cancelShipment`,
+    `applyTracking` (moves the order to Shipped / Delivered, COD paid on delivery, one WhatsApp notice per step via
+    `shipping-notify.ts` → `notifyOrderStatus`), `refreshShipment`, `dueShipments`, `deliveryCheck`).
+  - APIs: `GET/PUT/DELETE /api/commerce/shipping` (admins change), `GET/POST /api/commerce/shipping/ship`
+    (rates / book / cancel / refresh / label; records.write), `POST /api/webhooks/parcel-updates` (both partners,
+    key in `x-api-key`; no "sr"/"kr" in the path, Shiprocket refuses those), `GET /api/cron/shop` (CRON_SECRET; checks
+    open parcels every 30 min: needs a scheduler), `GET /api/public/store/[slug]/delivery-check?pin=` (30/h per IP).
+  - Screens: Store settings → **Delivery partners** (`components/commerce/delivery-partners.tsx`), order details →
+    **Send with courier** (`courier-panel.tsx`), product form weight + HSN, store product page "Check delivery to your
+    PIN code" (`PinCheck`, shown when `store.pinCheck`). Migration `20261123_shop_delivery_partners.sql`.
+  - **Not tried with real Shiprocket / Delhivery accounts yet**; Delhivery's tracking answer is not in its public docs
+    (read carefully, check with a real token). Mobile app not updated yet.
+
 - **Shop server is live on the owner's Linux server (nginx)** (16 Nov 2026): `https://stores.magnetora.in` is
   served by nginx 1.24 on Ubuntu → Next.js (checked from outside: latest code, Supabase settings in place).
   80/443 belong to the existing nginx, so business domains are added one at a time:
