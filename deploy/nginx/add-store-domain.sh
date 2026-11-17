@@ -32,10 +32,27 @@ dns_ips() {
   echo "${ips:-$(getent ahostsv4 "$1" | awk '{print $1}' | sort -u | tr '\n' ' ')}"
 }
 points_here() { local ip; for ip in $(dns_ips "$1"); do [[ " $MY_IPS " == *" $ip "* ]] && return 0; done; return 1; }
+# Records of one kind from public DNS (28 = AAAA, 257 = CAA), one per line
+dns_records() {
+  curl -s --max-time 8 "https://dns.google/resolve?name=$1&type=$2" | python3 -I -c 'import json,sys; t=int(sys.argv[1]); print("\n".join(a["data"] for a in json.load(sys.stdin).get("Answer", []) if a.get("type") == t))' "$2" 2>/dev/null || true
+}
+# IPv6 (AAAA) addresses that are not this server. Domain companies often add one by default ("parking");
+# Let's Encrypt and many phones then go there instead, the certificate fails and the store never opens.
+foreign_v6() { local ip; for ip in $(dns_records "$1" 28); do [[ " $MY_IPS " == *" $ip "* ]] || echo "$ip"; done; }
+# CAA records can allow only some certificate companies; Let's Encrypt must be one of them
+caa_blocks() {
+  local name="$1" caa
+  while [[ "$name" == *.* ]]; do
+    caa="$(dns_records "$name" 257 | grep -E '^[0-9]+ issue(wild)? ' || true)"
+    if [ -n "$caa" ]; then printf '%s\n' "$caa" | grep -qi 'letsencrypt\.org' && return 1; return 0; fi
+    name="${name#*.}"
+  done
+  return 1
+}
 
 # www.<domain> comes along when it points here too (it opens the store at <domain>)
 WWW=""
-if [[ "$DOMAIN" != www.* ]] && points_here "www.$DOMAIN"; then WWW="www.$DOMAIN"; fi
+if [[ "$DOMAIN" != www.* ]] && points_here "www.$DOMAIN" && [ -z "$(foreign_v6 "www.$DOMAIN")" ]; then WWW="www.$DOMAIN"; fi
 
 SITE="/etc/nginx/sites-available/wama-store-$DOMAIN.conf"
 if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
@@ -44,7 +61,13 @@ if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letse
 fi
 
 echo "== 1. Is the shop running on port $PORT?"
-if ! curl -s -o /dev/null --max-time 10 "http://localhost:$PORT/"; then
+# nginx is pointed at the exact address the shop listens on ("localhost" makes nginx try 127.0.0.1 first,
+# which is refused on every request when the shop listens on [::1] only)
+UPSTREAM=""
+for H in 127.0.0.1 '[::1]'; do
+  if curl -s -o /dev/null --max-time 10 "http://$H:$PORT/"; then UPSTREAM="$H"; break; fi
+done
+if [ -z "$UPSTREAM" ]; then
   echo "Nothing answers on localhost:$PORT. Check: sudo -u wamashop pm2 status" >&2; exit 1
 fi
 
@@ -58,6 +81,15 @@ if ! points_here "$DOMAIN"; then
   DNS_IPS="$(dns_ips "$DOMAIN")"
   echo "$DOMAIN points to: ${DNS_IPS:-nothing yet}. This server is: $MY_IPS" >&2
   echo "Ask the business to add the DNS record shown in WAMA, wait a few minutes, then run this again." >&2; exit 3
+fi
+V6="$(foreign_v6 "$DOMAIN" | tr '\n' ' ')"
+if [ -n "$V6" ]; then
+  echo "$DOMAIN also has an IPv6 (AAAA) record pointing elsewhere: $V6" >&2
+  echo "Ask the business to delete the AAAA record for it at their domain company; then it connects by itself." >&2; exit 3
+fi
+if caa_blocks "$DOMAIN"; then
+  echo "$DOMAIN has a CAA record that does not allow Let's Encrypt, so no https certificate can be made." >&2
+  echo "Ask the business to delete the CAA record, or add: CAA 0 issue \"letsencrypt.org\"." >&2; exit 3
 fi
 
 echo "== 4. Adding the nginx site $SITE (only this file)"
@@ -76,7 +108,7 @@ server {
   server_name $DOMAIN;
   client_max_body_size 10m;
   location / {
-    proxy_pass http://localhost:$PORT;
+    proxy_pass http://$UPSTREAM:$PORT;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Host \$host;
