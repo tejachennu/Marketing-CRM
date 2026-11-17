@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { productShippingValues, withShippingSchema } from '@/lib/commerce/shipping'
 import { productMediaValues } from '@/lib/commerce/product-media'
+import { notifyBackInStock, storeLinkFor } from '@/lib/commerce/stock-alerts'
 import { withMediaSchema } from '@/lib/commerce/product-media-store'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
@@ -263,6 +264,11 @@ export async function POST(request: NextRequest) {
     if (mediaValues) {
       const { data: withMedia } = await withMediaSchema(() => supabase.from('commerce_products').update(mediaValues).eq('id', savedProduct.id).eq('organization_id', organizationId).select())
       if (withMedia?.[0]) Object.assign(savedProduct, withMedia[0])
+    }
+    // Back in stock: everyone who asked gets one WhatsApp message (best effort, never blocks the save)
+    if (savedProduct.is_available !== false && (savedProduct.inventory_count ?? 1) > 0) {
+      const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)
+      await notifyBackInStock(supabase, organizationId, savedProduct.id, storeLinkFor(appUrl)).catch(() => null)
     }
     const shippingValues = productShippingValues(product)
     if (shippingValues) {

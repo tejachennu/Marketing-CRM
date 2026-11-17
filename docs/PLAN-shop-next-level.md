@@ -145,7 +145,7 @@ Delhivery's real tracking response, and the WhatsApp templates for order updates
 | 1. Delivery partners | **Done** (17 Nov 2026): server, settings, ship from order, tracking webhook + 30-min check, WhatsApp updates, PIN check on the product page, product weight / HSN. Not tried with real accounts; screens not looked at in a browser yet. Still to do: template fallback for WhatsApp updates outside 24 h, PIN check in checkout |
 | 2. Product options | **Done on the web** (17 Nov 2026): options editor in the product form, store page option buttons (sold-out crossed out), price / photo follow the pick, cart lines per choice, order lines keep `variant_id` / `variant_name`, stock down on order and back on cancel. Still to do: WhatsApp catalog groups, New order (shop / phone) picking an option, the app |
 | 3. Discount codes | Done (see 1.3 below) |
-| 4. Cart reminder | Not started |
+| 4. Cart reminder | Done (see 2.1 below) |
 | 5. App, tests, report | Not started |
 
 ## Full list (owner, 17 Nov 2026: "Please work on all the things")
@@ -162,12 +162,12 @@ WhatsApp messages outside the 24-hour window go out only with a template the bus
 | 1.4 | Delivery check by PIN code (served, charge, days) | Done (product page: served, days, charge, COD) |
 | 1.5 | Policy and info pages (About, Returns, Shipping, Contact, Terms) | Done: + Privacy; Website tab editor with samples; footer links; /info/<page> |
 | 1.6 | Google findability (site map, titles, share previews) | Done: sitemap.xml, robots.txt (own domains too), canonical, Open Graph + Twitter cards |
-| 2.1 | Cart reminder on WhatsApp | To do |
-| 2.2 | COD confirmation on WhatsApp ("Yes, send it") | To do |
+| 2.1 | Cart reminder on WhatsApp | Done: cart kept with the phone at checkout, one reminder after an hour (scheduled shop job), link brings the cart back |
+| 2.2 | COD confirmation on WhatsApp ("Yes, send it") | Done: buttons after a COD store order; Yes kept on the order, Cancel cancels before shipping |
 | 2.3 | Order updates on WhatsApp + "How was it?" review ask | Shipping updates done; packed + review ask to do |
-| 2.4 | "Ask on WhatsApp" with the product attached, answered by the AI | To do |
-| 2.5 | Back-in-stock alerts on WhatsApp | To do |
-| 2.6 | Reorder in one tap ("Same as last time?") | To do |
+| 2.4 | "Ask on WhatsApp" with the product attached, answered by the AI | Done: the message carries the product, option, price and link; the shopping assistant answers |
+| 2.5 | Back-in-stock alerts on WhatsApp | Done: "Tell me when it's back" (product or size / colour); one message when stock returns |
+| 2.6 | Reorder in one tap ("Same as last time?") | Done: Order again in My orders (same products and options) |
 | 3.1 | Shiprocket / Delhivery from the order screen | Done |
 | 3.2 | GST invoice for every online order | To do |
 | 3.3 | Customer reviews with photos on product pages | To do |

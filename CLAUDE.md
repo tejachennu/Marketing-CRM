@@ -117,6 +117,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: selling on WhatsApp** (2.1–2.6): `lib/commerce/shop-messages.ts` (pure: purposes cart_reminder, cod_confirm,
+  review_ask, back_in_stock; `readShopMessages` {on, template, language} in `organizations.shop_messages`;
+  `templatePayload` with quick-reply payloads; `codok:`/`codno:` button ids; `codCheckLabel`), `shop-messages-send.ts`
+  (`sendShopMessage`: off → nothing; inside 24 h free text / buttons; outside only the business's template; logs in the
+  chat via `logInChat`, now exported from `lib/salon/whatsapp.ts`). `shop-sales-store.ts` (lock 724519024, migration
+  `20261127_shop_whatsapp_selling.sql`: `shop_messages`, `commerce_checkouts`, `commerce_stock_alerts`).
+  Cart reminder `cart-reminders.ts` (store checkout saves the cart with the phone → `POST/GET
+  /api/public/store/[slug]/checkout`; `sendDueReminders` from `/api/cron/shop`, once, 1–48 h; `?cart=<token>` restores;
+  an order marks it recovered). COD check `cod-check.ts` (sent after a COD delivery store order; webhook hands
+  `codok/codno` taps to `handleCodButton`; Cancel cancels before shipping and returns option stock; order screen shows
+  the answer). Back in stock `stock-alerts.ts` (`POST /api/public/store/[slug]/stock-alert`, product page `BackInStock`;
+  `notifyBackInStock` after product / options saves). Reorder: My orders → "Same as last time? Order again" (order
+  lines carry `key`). Store settings → **WhatsApp messages** card (`shop-messages-card.tsx`, `/api/commerce/shop-messages`).
+
 - **Shop: info / policy pages and Google** (1.5, 1.6): `lib/commerce/store-pages.ts` (About, Shipping, Returns, Terms,
   Privacy, Contact; `cleanPages`, `starterPage` samples from the shop's own fees / contact, `pageText` falls back to About
   text and contact details), kept in `storefront.pages`; Website tab `PagesEditor`; page `/s/[slug]/info/[page]`; footer

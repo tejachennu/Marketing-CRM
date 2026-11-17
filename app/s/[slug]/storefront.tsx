@@ -255,6 +255,32 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerKey])
+  // The cart is kept with the phone at checkout, so the shop can send one reminder if no order comes
+  useEffect(() => {
+    if (panel !== 'checkout' || !lines.length || phone.replace(/\D/g, '').length < 10) return
+    const timer = setTimeout(() => {
+      fetch(`/api/public/store/${store.slug}/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, name, cart }) }).catch(() => {})
+    }, 1500)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, phone, JSON.stringify(cart)])
+  // A reminder link (?cart=…) brings the same cart back
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('cart')
+    if (!token) return
+    fetch(`/api/public/store/${store.slug}/checkout?token=${encodeURIComponent(token)}`).then((r) => r.json()).then((data) => {
+      if (data?.cart && Object.keys(data.cart).length) {
+        setCart(data.cart)
+        if (data.name) setName(data.name)
+        if (data.phone) setPhone(data.phone)
+        setPanel('cart')
+      }
+      const params = new URLSearchParams(window.location.search)
+      params.delete('cart')
+      history.replaceState(null, '', window.location.pathname + (params.toString() ? `?${params}` : ''))
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const offOk = offer?.ok === true
   const discountOff = offOk ? Number(offer!.amount) || 0 : 0
   const deliveryToPay = offOk && offer!.freeDelivery ? 0 : delivery
@@ -511,6 +537,8 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
               <p className={`mt-2 inline-flex w-fit items-center gap-1.5 h-7 px-3 rounded-full text-[13px] font-bold ${viewInStock ? 'bg-[#eef1f6] text-[#0E1B3D]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
                 {viewInStock ? <><Check size={14} /> In stock</> : chosen ? `${chosen.name} is out of stock` : 'Out of stock right now'}
               </p>
+
+              {!viewInStock && (!needsChoice || !viewing.variants?.length) && <BackInStock slug={store.slug} productId={viewing.id} variantId={chosen?.id || null} label={chosen ? chosen.name : null} />}
 
               {(viewing.options || []).length > 0 && viewing.variants?.length ? (
                 <div className="mt-5 space-y-4">
@@ -778,7 +806,16 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       )}
 
       {/* Sign in, My orders, Track an order */}
-      {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} initialView={accountView} onClose={() => setAccountView(null)} />}
+      {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} initialView={accountView} onClose={() => setAccountView(null)} onReorder={(items) => {
+        // "Same as last time?": the same products (and sizes / colours) that are still sold and in stock
+        const next = { ...cart }
+        let added = 0
+        for (const item of items) if (lineFor(store.products, item.key)?.inStock) { next[item.key] = Math.min(99, (next[item.key] || 0) + item.quantity); added++ }
+        setCart(next)
+        setAccountView(null)
+        setPanel('cart')
+        if (!added) setError('Those products are not available right now.')
+      }} />}
     </div>
   )
 }
@@ -861,5 +898,33 @@ function Gallery({ main, images, video, title, dim }: { main: string; images: st
         </div>
       )}
     </div>
+  )
+}
+
+/** On a sold-out product (or size / colour): leave a WhatsApp number, get one message when it is back. */
+function BackInStock({ slug, productId, variantId, label }: { slug: string; productId: string; variantId: string | null; label: string | null }) {
+  const [phone, setPhone] = useState('')
+  const [state, setState] = useState<{ busy?: boolean; text?: string; ok?: boolean } | null>(null)
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setState({ busy: true })
+    try {
+      const res = await fetch(`/api/public/store/${slug}/stock-alert`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, variantId, phone }) })
+      const data = await res.json().catch(() => ({}))
+      setState(data.ok ? { ok: true, text: 'Done! We will message you on WhatsApp when it is back.' } : { ok: false, text: data.reason || 'Could not save it.' })
+    } catch {
+      setState({ ok: false, text: 'Could not save it.' })
+    }
+  }
+  if (state?.ok) return <p role="status" className="mt-4 rounded-xl bg-[#f4f6fa] p-3 text-[14px] font-semibold">{state.text}</p>
+  return (
+    <form onSubmit={save} className="mt-4 rounded-xl bg-[#f4f6fa] p-3 space-y-2">
+      <p className="text-[14px] font-semibold">Tell me on WhatsApp when {label ? `${label} is` : 'it is'} back</p>
+      <div className="flex gap-2">
+        <PhoneField value={phone} onChange={setPhone} inputClassName="min-w-0 flex-1 h-10 px-3 rounded-lg border border-[#d5ddeb] bg-white text-[14px]" placeholder="WhatsApp number" />
+        <button type="submit" disabled={state?.busy || phone.replace(/\D/g, '').length < 10} className="h-10 px-4 rounded-lg bg-[var(--c)] text-white text-[13.5px] font-bold cursor-pointer disabled:opacity-50 shrink-0">Notify me</button>
+      </div>
+      {state?.text && <p role="status" className="text-[13px] text-[#b91c1c]">{state.text}</p>}
+    </form>
   )
 }

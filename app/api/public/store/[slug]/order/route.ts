@@ -6,6 +6,8 @@ import { createManualOrder } from '@/lib/commerce/manual-order'
 import { changeVariantStock } from '@/lib/commerce/variant-store'
 import { cartForDiscount, deliveryCharge, loadStore, parseStoreOrder } from '@/lib/commerce/storefront'
 import { decideDiscount, recordDiscountUse } from '@/lib/commerce/discount-store'
+import { markRecovered } from '@/lib/commerce/cart-reminders'
+import { askCodCheck } from '@/lib/commerce/cod-check'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
@@ -45,6 +47,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const total = formatMoney(order.total_amount, order.currency)
     // Stock of the chosen sizes / colours goes down (put back if the order is cancelled)
     for (const item of parsed.order.items) if (item.variantId) await changeVariantStock(db, page.organization.id, item.variantId, -item.quantity).catch(() => null)
+    await markRecovered(db, page.organization.id, parsed.order.customer.phone, order.id).catch(() => null)
+    // Cash on Delivery: ask on WhatsApp before shipping ("Yes, send it" / "Cancel order")
+    if (!keys && parsed.order.handover === 'delivery' && parsed.order.customer.phone) {
+      const { data: fullOrg } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
+      if (fullOrg) await askCodCheck(db, fullOrg, order, parsed.order.customer.phone).catch(() => null)
+    }
     if (decided?.ok) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, Number(order.discount_amount) || decided.amount).catch(() => null)
 
     // A signed-in shopper: the order goes in their history, and their details are kept for next time

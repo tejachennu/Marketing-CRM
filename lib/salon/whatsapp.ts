@@ -86,7 +86,7 @@ async function connectedOrganization(db: any, organizationId: string) {
 }
 
 /** Note a message in the customer's chat, when there is one. */
-async function logInChat(db: any, organizationId: string, phone: string, body: string, messageId: string | null | undefined) {
+export async function logInChat(db: any, organizationId: string, phone: string, body: string, messageId: string | null | undefined) {
   try {
     const { data: contacts } = await db.from('contacts').select('id').eq('organization_id', organizationId).ilike('phone_number', `%${phoneKey(phone)}`).limit(1)
     const contactId = contacts?.[0]?.id

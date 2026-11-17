@@ -175,7 +175,7 @@ export function Timeline({ order }: { order: ShopperOrder }) {
 }
 
 /** One order: where it is, what is in it, and how it is paid. */
-export function OrderDetail({ order, money }: { order: ShopperOrder; money: (n: number) => string }) {
+export function OrderDetail({ order, money, onReorder }: { order: ShopperOrder; money: (n: number) => string; onReorder?: (items: { key: string; quantity: number }[]) => void }) {
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
@@ -216,12 +216,17 @@ export function OrderDetail({ order, money }: { order: ShopperOrder; money: (n: 
         <MapPin size={17} className="shrink-0 mt-0.5 text-[var(--c)]" />
         {order.handover === 'delivery' ? <span>Delivering to {order.address || 'your address'}</span> : <span>Pick up from the shop</span>}
       </p>
+      {onReorder && order.items.some((i: any) => i.key) && (
+        <button type="button" onClick={() => onReorder(order.items.filter((i: any) => i.key).map((i: any) => ({ key: i.key, quantity: i.quantity })))} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer">
+          Same as last time? Order again
+        </button>
+      )}
     </div>
   )
 }
 
 /** The account panel: sign in, My orders, one order, or Track an order (for guests too). */
-export function AccountPanel({ slug, shopper, money, storeName, initialView, onClose }: { slug: string; shopper: ShopperState; money: (n: number) => string; storeName: string; initialView: 'orders' | 'track'; onClose: () => void }) {
+export function AccountPanel({ slug, shopper, money, storeName, initialView, onClose, onReorder }: { slug: string; shopper: ShopperState; money: (n: number) => string; storeName: string; initialView: 'orders' | 'track'; onClose: () => void; onReorder?: (items: { key: string; quantity: number }[]) => void }) {
   const [view, setView] = useState<'orders' | 'track'>(initialView)
   const [openOrder, setOpenOrder] = useState<ShopperOrder | null>(null)
   const [trackNumber, setTrackNumber] = useState('')
@@ -250,7 +255,7 @@ export function AccountPanel({ slug, shopper, money, storeName, initialView, onC
 
         <div className="flex-1 overflow-y-auto p-4">
           {openOrder ? (
-            <OrderDetail order={openOrder} money={money} />
+            <OrderDetail order={openOrder} money={money} onReorder={onReorder} />
           ) : view === 'track' ? (
             <TrackForm
               slug={slug}

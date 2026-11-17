@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { dueShipments, refreshShipment, withShippingSchema, SHIPPING_ORG_COLUMNS } from '@/lib/commerce/shipping'
 import { notifyParcel } from '@/lib/commerce/shipping-notify'
+import { sendDueReminders } from '@/lib/commerce/cart-reminders'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
 /**
  * GET with "Authorization: Bearer <CRON_SECRET>" (Vercel Cron or any scheduler, every 30 minutes): asks the
- * couriers where open parcels are (for businesses without webhooks, and in case one was missed).
+ * couriers where open parcels are (for businesses without webhooks, and in case one was missed), and sends
+ * the WhatsApp reminder for carts left at checkout an hour ago.
  * Off until CRON_SECRET is set.
  */
 export async function GET(request: NextRequest) {
@@ -41,5 +43,11 @@ export async function GET(request: NextRequest) {
       await db.from('commerce_shipments').update({ last_checked_at: new Date().toISOString() }).eq('id', shipment.id)
     }
   }
-  return NextResponse.json({ success: true, parcels: { due: due.length, checked, moved, failed: failed.slice(0, 20) } })
+  // Carts left at checkout an hour ago: one WhatsApp reminder each
+  const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, '')
+  const carts = await sendDueReminders(db, {
+    storeLink: (org) => (org.store_domain ? `https://${org.store_domain}/` : `${appUrl}/s/${org.slug}`),
+    loadOrg: async (id) => (await db.from('organizations').select('*').eq('id', id).maybeSingle()).data,
+  }).catch(() => ({ due: 0, sent: 0 }))
+  return NextResponse.json({ success: true, parcels: { due: due.length, checked, moved, failed: failed.slice(0, 20) }, carts })
 }

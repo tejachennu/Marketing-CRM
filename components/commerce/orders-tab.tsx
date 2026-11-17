@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, Plus, RefreshCw, Search, Store, Truck, X } from 'lucide-react'
 import { NewOrderModal } from './new-order'
 import { CourierPanel } from './courier-panel'
+import { codCheckLabel } from '@/lib/commerce/shop-messages'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
@@ -579,6 +580,9 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   <span className={`font-semibold ${paymentLabel(selected).tone}`}>{paymentLabel(selected).text}</span>
                   {selected.payment_method && selected.payment_status === 'paid' && <span className="text-slate-500"> · {METHOD_LABELS[selected.payment_method] || selected.payment_method}</span>}
                 </p>
+                {codCheckLabel(selected) && (
+                  <p className={`mt-1 text-xs font-semibold ${codCheckLabel(selected)!.red ? 'text-[#b91c1c]' : 'text-slate-600 dark:text-slate-300'}`}>{codCheckLabel(selected)!.text}</p>
+                )}
                 {hasPaymentRequest(selected) && selected.payment_status !== 'paid' && isOpen && (
                   <p className={hintClass}>A payment request is waiting in the customer&apos;s chat (reference {selected.meta_payment_reference}).</p>
                 )}

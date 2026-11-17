@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { isUuid } from '@/lib/record-visibility'
 import { readOptions, saveProductOptions, variantsFor, withVariantSchema } from '@/lib/commerce/variant-store'
+import { notifyBackInStock, storeLinkFor } from '@/lib/commerce/stock-alerts'
 
 export const runtime = 'nodejs'
 
@@ -29,5 +30,7 @@ export async function PUT(request: NextRequest) {
   const edits = Array.isArray(body?.variants) ? body.variants.slice(0, 200) : []
   const result = await saveProductOptions(getSupabaseAdminClient(), body.organizationId, body.productId, body?.options, edits)
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: 400 })
+  // A size / colour back in stock: tell the people waiting for it
+  await notifyBackInStock(getSupabaseAdminClient(), body.organizationId, body.productId, storeLinkFor(String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin))).catch(() => null)
   return NextResponse.json({ success: true, ...result })
 }

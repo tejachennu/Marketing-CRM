@@ -17,6 +17,7 @@ import { ProductsTab } from '@/components/commerce/products-tab'
 import { StoreSettings } from '@/components/commerce/store-settings'
 import { DeliveryPartners } from '@/components/commerce/delivery-partners'
 import { Offers } from '@/components/commerce/offers'
+import { ShopMessagesCard } from '@/components/commerce/shop-messages-card'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
 type Tab = 'orders' | 'products' | 'offers' | 'website' | 'flow' | 'settings'
@@ -308,6 +309,7 @@ export default function CommercePage() {
             showToast={showToast}
           />
         )}
+        {orgId && activeTab === 'settings' && canManageStore && <ShopMessagesCard orgId={orgId} showToast={showToast} />}
         {orgId && activeTab === 'settings' && canManageStore && <DeliveryPartners orgId={orgId} canManage={can(viewer, 'settings.manage')} showToast={showToast} />}
       </div>
 

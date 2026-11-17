@@ -183,7 +183,12 @@ export function shopperOrderView(order: any, items: any[]) {
     handover: ship.handover === 'delivery' ? 'delivery' : 'pickup',
     address: [ship.address_line_1, ship.address_line_2, ship.city, [ship.state, ship.pincode].filter(Boolean).join(' ')].map((p) => String(p || '').trim()).filter(Boolean).join(', '),
     tracking: ship.tracking_number ? { number: String(ship.tracking_number), carrier: String(ship.carrier || '') } : null,
-    items: (items || []).map((item) => ({ title: String(item.title || 'Item'), quantity: Number(item.quantity) || 1, price: Number(item.unit_price) || 0, total: Number(item.total_price) || 0, image: /^https:\/\//.test(String(item.image_url || '')) ? item.image_url : '' })),
+    items: (items || []).map((item) => ({
+      title: String(item.title || 'Item'), quantity: Number(item.quantity) || 1, price: Number(item.unit_price) || 0, total: Number(item.total_price) || 0,
+      image: /^https:\/\//.test(String(item.image_url || '')) ? item.image_url : '',
+      // What "Order again" puts back in the cart (the product, and its size / colour)
+      key: item.product_id ? `${item.product_id}${item.variant_id ? `:${item.variant_id}` : ''}` : null,
+    })),
     subtotal: Number(order.subtotal) || 0,
     delivery: Number(order.shipping_fee) || 0,
     total: Number(order.total_amount) || 0,
@@ -226,7 +231,7 @@ export async function shopperOrders(db: any, organizationId: string, userId: str
   )
   const list = orders || []
   if (!list.length) return []
-  const { data: items } = await db.from('commerce_order_items').select('order_id, title, quantity, unit_price, total_price, image_url').in('order_id', list.map((o: any) => o.id))
+  const { data: items } = await db.from('commerce_order_items').select('*').in('order_id', list.map((o: any) => o.id))
   return list.map((order: any) => shopperOrderView(order, (items || []).filter((item: any) => item.order_id === order.id)))
 }
 
@@ -242,6 +247,6 @@ export async function trackOrder(db: any, organizationId: string, orderNumber: s
     orderPhone = contact?.phone_number
   }
   if (!samePhone(orderPhone, phone)) return null
-  const { data: items } = await db.from('commerce_order_items').select('title, quantity, unit_price, total_price, image_url').eq('order_id', order.id)
+  const { data: items } = await db.from('commerce_order_items').select('*').eq('order_id', order.id)
   return shopperOrderView(order, items || [])
 }

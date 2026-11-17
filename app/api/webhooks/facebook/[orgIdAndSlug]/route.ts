@@ -1,4 +1,5 @@
 import { notifyTicketRaised } from '@/lib/push-events'
+import { handleCodButton } from '@/lib/commerce/cod-check'
 import { createClient } from '@supabase/supabase-js'
 import { sendPush } from '@/lib/push'
 import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
@@ -694,6 +695,16 @@ async function processEvent(
         } catch (commErr: any) {
           console.error('[Facebook Webhook Commerce] Failed to handle payment update:', commErr)
           return NextResponse.json({ error: 'Payment update could not be recorded' }, { status: 500 })
+        }
+      }
+
+      // C2. The shop's Cash on Delivery check: "Yes, send it" / "Cancel order" (also from a template's buttons)
+      if (interactiveButtonId && /^cod(ok|no):/i.test(interactiveButtonId)) {
+        try {
+          const cod = await handleCodButton(supabase, orgData, interactiveButtonId, phoneNumber)
+          if (cod.handled) return NextResponse.json({ success: true, handled_by: 'shop_cod_check', outcome: cod.outcome })
+        } catch (codErr: any) {
+          console.error('[Facebook Webhook Shop] COD check failed:', codErr?.message)
         }
       }
 
