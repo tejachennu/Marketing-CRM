@@ -17,7 +17,7 @@ export type HandPaymentMethod = keyof typeof HAND_PAYMENT_METHODS
 export interface ManualOrderInput {
   channel: OrderChannel
   customer: { contactId: string | null; name: string; phone: string | null }
-  items: Array<{ productId: string | null; title: string; price: number | null; quantity: number }>
+  items: Array<{ productId: string | null; title: string; price: number | null; quantity: number; variantId?: string | null; variantName?: string | null }>
   handover: Handover
   paid: boolean
   paymentMethod: HandPaymentMethod | null
@@ -25,6 +25,8 @@ export interface ManualOrderInput {
   address: Record<string, string> | null
   note: string | null
 }
+
+import { withVariantSchema } from './variant-store'
 
 const text = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const money = (value: unknown): number | null => {
@@ -122,7 +124,7 @@ export async function createManualOrder(db: any, organization: { id: string; cur
     ? await db.from('commerce_products').select('id, retailer_id, title, price, image_url').eq('organization_id', organization.id).in('id', productIds)
     : { data: [] }
   const byId = new Map<string, any>((products || []).map((product: any) => [product.id, product]))
-  const lines = []
+  const lines: Record<string, any>[] = []
   for (const item of input.items) {
     const product = item.productId ? byId.get(item.productId) : null
     if (item.productId && !product) return { error: 'One of the products is no longer in your list. Refresh and try again.' }
@@ -135,6 +137,7 @@ export async function createManualOrder(db: any, organization: { id: string; cur
       unit_price: unit,
       total_price: Math.round(unit * item.quantity * 100) / 100,
       image_url: product?.image_url || null,
+      ...(item.variantId ? { variant_id: item.variantId, variant_name: item.variantName || null } : {}),
     })
   }
   const subtotal = Math.round(lines.reduce((sum, line) => sum + line.total_price, 0) * 100) / 100
@@ -179,7 +182,9 @@ export async function createManualOrder(db: any, organization: { id: string; cur
     customer_note: input.note,
   }).select('*').single()
   if (error) throw new Error(error.message)
-  const { error: linesError } = await db.from('commerce_order_items').insert(lines.map((line) => ({ ...line, order_id: order.id })))
+  const insertLines = () => db.from('commerce_order_items').insert(lines.map((line) => ({ ...line, order_id: order.id })))
+  // Lines with a product option need the variant columns (added on first use)
+  const { error: linesError } = lines.some((line: any) => line.variant_id) ? await withVariantSchema(insertLines) : await insertLines()
   if (linesError) {
     await db.from('commerce_orders').delete().eq('id', order.id)
     throw new Error(linesError.message)

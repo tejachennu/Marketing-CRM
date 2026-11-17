@@ -7,6 +7,7 @@ import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
+import { ProductOptions } from './product-options'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
 const PAGE_SIZE = 24
@@ -710,6 +711,13 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               </button>
             </div>
           </form>
+          {form.id ? (
+            <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <ProductOptions orgId={orgId} productId={form.id} productPrice={Number(form.price) || 0} canEdit={canManageStore} showToast={showToast} />
+            </div>
+          ) : (
+            <p className="mt-4 text-xs text-slate-500">Sizes, colours and other options can be added after you save the product.</p>
+          )}
         </Modal>
       )}
     </div>

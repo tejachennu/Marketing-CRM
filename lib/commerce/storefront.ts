@@ -12,6 +12,8 @@ import { normalizePhone } from '../public-api/keys'
 import { isUuid } from '../record-visibility'
 import type { ManualOrderInput } from './manual-order'
 import { readyPartners } from './shipping'
+import { readOptions, variantsFor } from './variant-store'
+import { priceRange, variantInStock, variantPrice, type ProductOption } from './variants'
 
 /** supabase/migrations/20261119_storefront.sql word for word. */
 export const STOREFRONT_SQL = `-- The online store page's settings (banners, categories, colour, delivery). Safe to run more than once.
@@ -185,6 +187,20 @@ export interface StoreProduct {
   image: string
   category: string
   inStock: boolean
+  /** Size, Colour…: when set, the shopper picks one of `variants`. */
+  options?: ProductOption[]
+  variants?: StoreVariant[]
+  /** Lowest price over the options (the card says "from"). */
+  priceFrom?: number
+}
+
+export interface StoreVariant {
+  id: string
+  name: string
+  options: Record<string, string>
+  price: number
+  inStock: boolean
+  image: string
 }
 
 /** The categories in the page's order: the business's order first, then the rest by name. */
@@ -234,7 +250,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
   const settings = readStorefront(org.storefront)
   if (!settings.enabled) return null
   const { data: rows } = await db.from('commerce_products')
-    .select('id, title, description, price, currency, image_url, category, is_available, inventory_count')
+    .select('*')
     .eq('organization_id', org.id)
     .order('title', { ascending: true })
     .limit(1000)
@@ -243,13 +259,25 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
       id: p.id, title: text(p.title, 150), description: longText(p.description, 2000), price: Number(p.price) || 0,
       currency: String(p.currency || org.currency || 'INR').toUpperCase(), image: isImageUrl(p.image_url) ? p.image_url : '',
       category: text(p.category, 60) || 'Other', inStock: p.is_available !== false && (p.inventory_count ?? 1) > 0,
+      options: readOptions(p.options),
     }))
-    .filter((p: StoreProduct) => p.inStock || settings.show_out_of_stock)
+  // Products with options: each combination's price, stock and photo
+  const withOptions = products.filter((p) => p.options && p.options.length)
+  const variantMap = withOptions.length ? await variantsFor(db, org.id, withOptions.map((p) => p.id)) : new Map()
+  for (const p of products) {
+    const variants = (variantMap.get(p.id) || []).filter((v: any) => v.active && v.id)
+    if (!p.options?.length || !variants.length) { delete p.options; continue }
+    const list: StoreVariant[] = variants.map((v: any) => ({ id: v.id, name: v.name, options: v.options, price: variantPrice(v, p.price), inStock: p.inStock && variantInStock(v), image: isImageUrl(v.image_url) ? v.image_url : '' }))
+    p.variants = list
+    p.inStock = list.some((v) => v.inStock)
+    p.priceFrom = priceRange(p.price, variants).min
+  }
+  const shownProducts = products.filter((p: StoreProduct) => p.inStock || settings.show_out_of_stock)
   return {
     organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase(), domain: org.store_domain || null },
     settings,
-    products,
-    categories: storeCategories(settings, products),
+    products: shownProducts,
+    categories: storeCategories(settings, shownProducts),
     pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
     pinCheck: settings.delivery && readyPartners(org).length > 0,
     fees: {
@@ -311,6 +339,15 @@ export function parseStoreOrder(body: any, page: StorePage): { order: ManualOrde
     if (!product.inStock) return { error: `${product.title} is out of stock. Please remove it from your cart.` }
     const quantity = Number(line?.quantity)
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return { error: 'Please choose between 1 and 99 of each product.' }
+    if (product.variants?.length) {
+      // A product with options is ordered as one of its combinations, at that combination's price
+      const variant = product.variants.find((v) => v.id === line?.variantId)
+      if (!variant) return { error: `Please choose the ${product.options!.map((o) => o.name.toLowerCase()).join(' and ')} for ${product.title}.` }
+      if (!variant.inStock) return { error: `${product.title} (${variant.name}) is out of stock. Please remove it from your cart.` }
+      items.push({ productId: product.id, variantId: variant.id, variantName: variant.name, title: `${product.title} · ${variant.name}`, price: variant.price, quantity })
+      subtotal += variant.price * quantity
+      continue
+    }
     items.push({ productId: product.id, title: '', price: null, quantity })
     subtotal += product.price * quantity
   }

@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: product options** (size, colour…; Part 2 of `docs/PLAN-shop-next-level.md`): `lib/commerce/variants.ts`
+  (pure, browser-safe: `cleanOptions` ≤3 options × ≤20 choices, ≤100 combinations; `buildVariants` keeps id / price /
+  stock / SKU of combinations that stay; `findVariant`, `valueAvailable`, `priceRange`), `variant-store.ts` (SQL lock
+  724519021, migration `20261124_shop_product_options.sql`: `commerce_products.options`, table
+  `commerce_product_variants`, `commerce_order_items.variant_id / variant_name`; `saveProductOptions`, `variantsFor`,
+  `changeVariantStock` compare-and-set, never below 0, untracked stays untracked). `GET/PUT /api/commerce/products/options`.
+  Store: `loadStore` adds `options`, `variants`, `priceFrom` (`select('*')` on products now); cards say "from" and
+  **Choose**; product page option buttons; cart keys are `productId` or `productId:variantId` (also in `cleanCart`);
+  `parseStoreOrder` needs a choice and takes its price; stock down in the store order route, back on cancel (orders PATCH).
+  Dashboard: product form → **Options (size, colour…)** (`components/commerce/product-options.tsx`, own Save).
+
 - **Shop delivery partners: Shiprocket and Delhivery** (owner: "e-commerce next level ... top 2 delivery integrations
   ... check their official documentations"; plan in `docs/PLAN-shop-next-level.md`, read it first). Each business
   connects its **own** account (like its Razorpay). Built from the official docs (Shiprocket Postman collection at

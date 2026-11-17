@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { createOrderNumber } from '@/lib/commerce/commerce-webhook-handler'
 import { createManualOrder } from '@/lib/commerce/manual-order'
+import { changeVariantStock } from '@/lib/commerce/variant-store'
 import { deliveryCharge, loadStore, parseStoreOrder } from '@/lib/commerce/storefront'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
     const order = made.order
     const total = formatMoney(order.total_amount, order.currency)
+    // Stock of the chosen sizes / colours goes down (put back if the order is cancelled)
+    for (const item of parsed.order.items) if (item.variantId) await changeVariantStock(db, page.organization.id, item.variantId, -item.quantity).catch(() => null)
 
     // A signed-in shopper: the order goes in their history, and their details are kept for next time
     const shopper = page.settings.accounts ? await shopperFrom(request, db) : null

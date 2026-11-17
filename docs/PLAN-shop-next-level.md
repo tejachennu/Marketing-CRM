@@ -143,7 +143,7 @@ Delhivery's real tracking response, and the WhatsApp templates for order updates
 |------|--------|
 | Plan | Done (this file) |
 | 1. Delivery partners | **Done** (17 Nov 2026): server, settings, ship from order, tracking webhook + 30-min check, WhatsApp updates, PIN check on the product page, product weight / HSN. Not tried with real accounts; screens not looked at in a browser yet. Still to do: template fallback for WhatsApp updates outside 24 h, PIN check in checkout |
-| 2. Product options | Not started |
+| 2. Product options | **Done on the web** (17 Nov 2026): options editor in the product form, store page option buttons (sold-out crossed out), price / photo follow the pick, cart lines per choice, order lines keep `variant_id` / `variant_name`, stock down on order and back on cancel. Still to do: WhatsApp catalog groups, New order (shop / phone) picking an option, the app |
 | 3. Discount codes | Not started |
 | 4. Cart reminder | Not started |
 | 5. App, tests, report | Not started |

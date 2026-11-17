@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
 import { AccountPanel, useShopper } from './account'
 import type { StoreView } from '@/lib/commerce/storefront'
+import { findVariant, valueAvailable } from '@/lib/commerce/variants'
 
 type Product = StoreView['products'][number]
 
@@ -142,7 +143,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     try {
       const saved = JSON.parse(localStorage.getItem(cartKey) || '{}')
       const valid: Cart = {}
-      for (const [id, qty] of Object.entries(saved)) if (store.products.some((p) => p.id === id && p.inStock) && Number(qty) > 0) valid[id] = Math.min(99, Number(qty))
+      for (const [key, qty] of Object.entries(saved)) if (lineFor(store.products, key)?.inStock && Number(qty) > 0) valid[key] = Math.min(99, Number(qty))
       setCart(valid)
     } catch {}
   }, [cartKey, store.products])
@@ -175,9 +176,10 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     return store.products.filter((p) => (!category || p.category === category) && (!q || `${p.title} ${p.description} ${p.category}`.toLowerCase().includes(q)))
   }, [store.products, category, query])
 
-  const lines = store.products.filter((p) => cart[p.id]).map((p) => ({ product: p, qty: cart[p.id] }))
+  // A cart key is the product id, or "product id:option id" for a size / colour
+  const lines = Object.entries(cart).map(([key, qty]) => ({ key, qty, ...lineFor(store.products, key)! })).filter((l) => l.product)
   const count = lines.reduce((sum, line) => sum + line.qty, 0)
-  const subtotal = lines.reduce((sum, line) => sum + line.product.price * line.qty, 0)
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0)
 
   const pickCategory = (name: string | null) => {
     setCategory(name)
@@ -291,7 +293,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       const res = await fetch(`/api/public/store/${store.slug}/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...shopper.headers() },
-        body: JSON.stringify({ name, phone, handover, pay, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty })) }),
+        body: JSON.stringify({ name, phone, handover, pay, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
@@ -328,7 +330,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   }
 
   const waLink = (text: string) => `https://wa.me/${store.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
-  const cartText = () => [`Hi ${store.name}, I would like to order:`, ...lines.map((l) => `• ${l.qty} × ${l.product.title} (${money(l.product.price * l.qty)})`), `Total: ${money(subtotal)}`].join('\n')
+  const cartText = () => [`Hi ${store.name}, I would like to order:`, ...lines.map((l) => `• ${l.qty} × ${l.title} (${money(l.price * l.qty)})`), `Total: ${money(subtotal)}`].join('\n')
 
   /** One product in a grid: picture and name open its page; Add / amount right on the card. */
   const card = (p: Product) => (
@@ -340,12 +342,14 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
         </div>
         <div className="px-3 pt-2.5">
           <h3 className="text-[14.5px] font-semibold leading-snug line-clamp-2 min-h-[2.6em]">{p.title}</h3>
-          <p className="mt-1 text-[16px] font-extrabold">{money(p.price)}</p>
+          <p className="mt-1 text-[16px] font-extrabold">{p.variants?.length && p.priceFrom !== undefined && p.variants.some((v) => v.price !== p.priceFrom) ? <><span className="text-[12.5px] font-semibold text-[#6B7894]">from </span>{money(p.priceFrom)}</> : money(p.variants?.length ? p.priceFrom ?? p.price : p.price)}</p>
         </div>
       </a>
       <div className="p-3 mt-auto">
         {!p.inStock ? (
           <span className="block h-10 leading-10 text-center text-[13.5px] text-[#8a94a8] font-semibold">Not available now</span>
+        ) : p.variants?.length ? (
+          <a href={productHref(p.id)} className="block w-full h-10 leading-[36px] text-center rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[14px] font-bold hover:bg-[var(--c)] hover:text-white transition-colors">Choose</a>
         ) : cart[p.id] ? (
           <div className="flex justify-center"><Stepper small value={cart[p.id]} onChange={(n) => setQty(p.id, n)} /></div>
         ) : (
@@ -357,16 +361,30 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
 
   const related = viewing ? store.products.filter((p) => p.category === viewing.category && p.id !== viewing.id).slice(0, 8) : []
   // A product page starts with the amount already in the cart
+  // Size / colour picked on the product page
+  const [picked, setPicked] = useState<Record<string, string>>({})
   useEffect(() => {
-    if (viewing && cart[viewing.id]) setOpenQty(cart[viewing.id])
+    // One choice per option is picked for you when there is only one
+    const start: Record<string, string> = {}
+    for (const o of viewing?.options || []) if (o.values.length === 1) start[o.name] = o.values[0]
+    setPicked(start)
+  }, [viewing?.id])
+  const chosen = viewing?.variants?.length ? findVariant(viewing.variants, picked, viewing.options || []) : null
+  const needsChoice = Boolean(viewing?.variants?.length) && !chosen
+  const viewKey = viewing ? (chosen ? `${viewing.id}:${chosen.id}` : viewing.id) : ''
+  const viewPrice = chosen ? chosen.price : viewing ? (viewing.variants?.length ? viewing.priceFrom ?? viewing.price : viewing.price) : 0
+  const viewInStock = chosen ? chosen.inStock : Boolean(viewing?.inStock)
+  const viewImage = chosen?.image || viewing?.image || ''
+  useEffect(() => {
+    if (viewKey && cart[viewKey]) setOpenQty(cart[viewKey])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewing?.id, Boolean(viewing && cart[viewing.id])])
+  }, [viewKey, Boolean(viewKey && cart[viewKey])])
 
   const share = async () => {
     if (!viewing) return
     const url = window.location.href
     try {
-      if (navigator.share) await navigator.share({ title: viewing.title, text: `${viewing.title} · ${money(viewing.price)}`, url })
+      if (navigator.share) await navigator.share({ title: viewing.title, text: `${viewing.title} · ${money(viewPrice)}`, url })
       else {
         await navigator.clipboard.writeText(url)
         setShared(true)
@@ -465,33 +483,56 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           </nav>
           <div className="bg-white rounded-2xl border border-[#e3e8f2] p-3 sm:p-6 grid md:grid-cols-2 gap-5 md:gap-10">
             <div className="relative">
-              <Picture src={viewing.image} alt={viewing.title} className={`w-full aspect-square rounded-xl ${viewing.inStock ? '' : 'opacity-60 grayscale'}`} />
+              <Picture src={viewImage} alt={viewing.title} className={`w-full aspect-square rounded-xl ${viewInStock ? '' : 'opacity-60 grayscale'}`} />
             </div>
             <div className="flex flex-col min-w-0">
               <a href={categoryHref(viewing.category)} className="text-[12.5px] font-bold text-[#6B7894] uppercase tracking-wide hover:text-[var(--c)]">{viewing.category}</a>
               <h1 className="mt-1 text-[24px] sm:text-[30px] font-extrabold leading-tight break-words">{viewing.title}</h1>
-              <p className="mt-2 text-[26px] font-extrabold text-[var(--c)]">{money(viewing.price)}</p>
-              <p className={`mt-2 inline-flex w-fit items-center gap-1.5 h-7 px-3 rounded-full text-[13px] font-bold ${viewing.inStock ? 'bg-[#eef1f6] text-[#0E1B3D]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
-                {viewing.inStock ? <><Check size={14} /> In stock</> : 'Out of stock right now'}
+              <p className="mt-2 text-[26px] font-extrabold text-[var(--c)]">{needsChoice && viewing.variants!.some((v) => v.price !== viewPrice) ? <span className="text-[15px] font-semibold text-[#6B7894]">from </span> : null}{money(viewPrice)}</p>
+              <p className={`mt-2 inline-flex w-fit items-center gap-1.5 h-7 px-3 rounded-full text-[13px] font-bold ${viewInStock ? 'bg-[#eef1f6] text-[#0E1B3D]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+                {viewInStock ? <><Check size={14} /> In stock</> : chosen ? `${chosen.name} is out of stock` : 'Out of stock right now'}
               </p>
 
-              {viewing.inStock && (
+              {(viewing.options || []).length > 0 && viewing.variants?.length ? (
+                <div className="mt-5 space-y-4">
+                  {viewing.options!.map((o) => (
+                    <fieldset key={o.name}>
+                      <legend className="text-[14px] font-semibold text-[#4a5672] mb-2">{o.name}{picked[o.name] ? <span className="text-[#0E1B3D]">: {picked[o.name]}</span> : null}</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {o.values.map((value) => {
+                          const on = picked[o.name] === value
+                          const can = valueAvailable(viewing.variants!, viewing.options!, picked, o.name, value)
+                          return (
+                            <button key={value} type="button" aria-pressed={on} onClick={() => setPicked({ ...picked, [o.name]: value })}
+                              className={`min-w-11 h-10 px-3.5 rounded-full border-2 text-[14px] font-semibold cursor-pointer ${on ? 'border-[var(--c)] bg-[var(--c)] text-white' : can ? 'border-[#d5ddeb] bg-white text-[#0E1B3D] hover:border-[var(--c)]' : 'border-[#e3e8f2] bg-[#f4f6fa] text-[#8a94a8] line-through'}`}>
+                              {value}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              ) : null}
+
+              {viewInStock && (
                 <div className="mt-5 space-y-3">
                   <div className="flex items-center gap-3">
                     <span className="text-[14px] font-semibold text-[#4a5672]">Quantity</span>
                     <Stepper value={openQty} onChange={(n) => setOpenQty(Math.max(1, Math.min(99, n)))} />
                   </div>
                   <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setQty(viewing.id, openQty)} className="h-12 rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer hover:bg-[var(--c)]/5">
-                      <ShoppingBag size={17} /> {cart[viewing.id] ? 'Update cart' : 'Add to cart'}
+                    <button type="button" disabled={needsChoice} onClick={() => setQty(viewKey, openQty)} className="h-12 rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer hover:bg-[var(--c)]/5 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <ShoppingBag size={17} /> {cart[viewKey] ? 'Update cart' : 'Add to cart'}
                     </button>
-                    <button type="button" onClick={() => { setQty(viewing.id, openQty); setPanel('cart') }} className="h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer">
-                      Buy now · {money(viewing.price * openQty)}
+                    <button type="button" disabled={needsChoice} onClick={() => { setQty(viewKey, openQty); setPanel('cart') }} className="h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                      Buy now · {money(viewPrice * openQty)}
                     </button>
                   </div>
-                  {cart[viewing.id] > 0 && (
+                  {needsChoice && <p className="text-[13.5px] text-[#4a5672]">Choose {viewing.options!.filter((o) => !picked[o.name]).map((o) => o.name.toLowerCase()).join(' and ')} first.</p>}
+                  {cart[viewKey] > 0 && (
                     <p className="text-[13.5px] text-[#4a5672]">
-                      {cart[viewing.id]} in your cart · <button type="button" onClick={() => setPanel('cart')} className="font-bold text-[var(--c)] underline cursor-pointer">View cart</button>
+                      {cart[viewKey]} in your cart · <button type="button" onClick={() => setPanel('cart')} className="font-bold text-[var(--c)] underline cursor-pointer">View cart</button>
                     </p>
                   )}
                 </div>
@@ -499,7 +540,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {store.whatsapp && (
-                  <a href={waLink(`Hi ${store.name}, I have a question about ${viewing.title} (${money(viewing.price)}): ${typeof window !== 'undefined' ? window.location.href : ''}`)} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-semibold inline-flex items-center gap-2">
+                  <a href={waLink(`Hi ${store.name}, I have a question about ${viewing.title}${chosen ? ` (${chosen.name})` : ''} (${money(viewPrice)}): ${typeof window !== 'undefined' ? window.location.href : ''}`)} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-semibold inline-flex items-center gap-2">
                     <MessageCircle size={16} className="text-[#25D366]" /> Ask on WhatsApp
                   </a>
                 )}
@@ -582,14 +623,15 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
               <>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {lines.length === 0 && <p className="py-16 text-center text-[#6B7894]">Your cart is empty.</p>}
-                  {lines.map(({ product, qty }) => (
-                    <div key={product.id} className="flex gap-3 items-center">
-                      <Picture src={product.image} alt="" className="h-16 w-16 rounded-xl shrink-0" />
+                  {lines.map(({ key, product, variant, image, price, qty }) => (
+                    <div key={key} className="flex gap-3 items-center">
+                      <Picture src={image} alt="" className="h-16 w-16 rounded-xl shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-[14.5px] font-semibold leading-snug line-clamp-2">{product.title}</p>
-                        <p className="text-[14px] font-bold mt-0.5">{money(product.price * qty)}</p>
+                        {variant && <p className="text-[13px] text-[#6B7894]">{variant.name}</p>}
+                        <p className="text-[14px] font-bold mt-0.5">{money(price * qty)}</p>
                       </div>
-                      <Stepper small value={qty} onChange={(n) => setQty(product.id, n)} />
+                      <Stepper small value={qty} onChange={(n) => setQty(key, n)} />
                     </div>
                   ))}
                 </div>
@@ -732,4 +774,18 @@ function PinCheck({ slug }: { slug: string }) {
       {state?.text && <p role="status" className={`pl-[25px] text-[13px] ${state.ok ? 'text-[#0E1B3D]' : 'text-[#b91c1c]'}`}>{state.text}</p>}
     </form>
   )
+}
+
+/** A cart key ("product id" or "product id:option id") as the line it stands for, or null if it is gone. */
+function lineFor(products: StoreView['products'], key: string) {
+  const [productId, variantId] = key.split(':')
+  const product = products.find((p) => p.id === productId)
+  if (!product) return null
+  if (product.variants?.length) {
+    const variant = product.variants.find((v) => v.id === variantId)
+    if (!variant) return null
+    return { product, variant, title: `${product.title} · ${variant.name}`, price: variant.price, image: variant.image || product.image, inStock: variant.inStock }
+  }
+  if (variantId) return null
+  return { product, variant: null, title: product.title, price: product.price, image: product.image, inStock: product.inStock }
 }

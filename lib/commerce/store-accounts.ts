@@ -85,7 +85,9 @@ export function cleanCart(raw: unknown, productIds?: Set<string>): Record<string
   const out: Record<string, number> = {}
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
   for (const [id, qty] of Object.entries(raw as Record<string, unknown>)) {
-    if (!isUuid(id) || (productIds && !productIds.has(id))) continue
+    // "productId", or "productId:variantId" for a product with options (size, colour…)
+    const [productId, variantId, extra] = id.split(':')
+    if (extra !== undefined || !isUuid(productId) || (variantId !== undefined && !isUuid(variantId)) || (productIds && !productIds.has(productId))) continue
     const n = Math.floor(Number(qty))
     if (n >= 1) out[id] = Math.min(99, n)
     if (Object.keys(out).length >= 60) break
