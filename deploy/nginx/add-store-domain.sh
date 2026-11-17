@@ -40,7 +40,9 @@ fi
 
 echo "== 3. Does $DOMAIN point to this server?"
 MY_IPS="$(hostname -I) $(curl -s --max-time 5 https://api.ipify.org || true)"
-DNS_IPS="$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' ')"
+# Ask public DNS first: this server's own DNS cache can keep a domain's old address for hours
+PUBLIC_IPS="$(curl -s --max-time 8 "https://dns.google/resolve?name=$DOMAIN&type=A" | python3 -I -c 'import json,sys; print(" ".join(a["data"] for a in json.load(sys.stdin).get("Answer", []) if a.get("type") == 1))' 2>/dev/null || true)"
+DNS_IPS="${PUBLIC_IPS:-$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' ')}"
 POINTS=no
 for ip in $DNS_IPS; do [[ " $MY_IPS " == *" $ip "* ]] && POINTS=yes; done
 if [ "$POINTS" != "yes" ]; then

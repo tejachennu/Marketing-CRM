@@ -168,6 +168,7 @@ test('Automatic domains: the list needs the server key, and the job never touche
   const add = fs.readFileSync(path.join(root, 'deploy/nginx/add-store-domain.sh'), 'utf8')
   assert.equal((add.match(/exit 3$/gm) || []).length, 2, 'not connected in WAMA / DNS not here = exit 3')
   assert.doesNotMatch(add, /\*magnetora\.in/, 'books.magnetora.in can be a store; WAMA decides in step 2')
+  assert.match(add, /dns\.google\/resolve\?name=\$DOMAIN&type=A/, 'asks public DNS, not the server\'s own cache')
   const install = fs.readFileSync(path.join(root, 'deploy/nginx/install-auto-domains.sh'), 'utf8')
   assert.match(install, /openssl rand -hex 32/, 'the key is made on the server, never typed or shown')
   assert.match(install, /OnUnitActiveSec=2min/)
