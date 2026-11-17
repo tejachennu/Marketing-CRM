@@ -123,6 +123,8 @@ export function dnsRecordsFor(domain: string, gateway: { host: string; ip: strin
 export interface DnsLookup {
   cname: (name: string) => Promise<string[]>
   a: (name: string) => Promise<string[]>
+  /** IPv6 addresses (optional: older callers and tests leave it out) */
+  aaaa?: (name: string) => Promise<string[]>
 }
 
 const realDns: DnsLookup = {
@@ -134,7 +136,18 @@ const realDns: DnsLookup = {
     const { promises } = await import('node:dns')
     return promises.resolve4(name).catch(() => [])
   },
+  aaaa: async (name) => {
+    const { promises } = await import('node:dns')
+    return promises.resolve6(name).catch(() => [])
+  },
 }
+
+/** The store server's own IPv6 address, if it has one people may point to (STORE_GATEWAY_IP6, optional). */
+function gatewayIp6(env: Record<string, string | undefined> = process.env): string {
+  return String(env.STORE_GATEWAY_IP6 || '').trim().toLowerCase()
+}
+
+export const IPV6_NOTE = 'Your domain also has an IPv6 (AAAA) record that points somewhere else. Delete the AAAA record at the company where you bought the domain; then your store connects by itself within a few minutes.'
 
 /** Where the domain stands: connected once its DNS points at the store server, else the record to add. */
 /** Does the domain really open the store over https? (Asks the store's own domain check through it.) */
@@ -157,14 +170,18 @@ export async function domainStatus(domain: string | null, lookup: DnsLookup = re
   if (pointsHere) {
     // Connected only once the address really opens the store with https
     if (await opens(domain)) return { domain, state: 'connected', records, note: 'Your store opens on this address.' }
-    return { domain, state: 'waiting', records, note: 'Your domain points to us. WAMA is now turning on the secure (https) link for it; this usually takes less than a day. Tap Check again later.' }
+    // A leftover IPv6 record (domain companies often add one) sends the certificate check elsewhere: it never connects
+    const v6 = lookup.aaaa ? await lookup.aaaa(domain) : []
+    const ip6 = gatewayIp6()
+    if (v6.some((ip) => ip.toLowerCase() !== ip6)) return { domain, state: 'waiting', records, note: IPV6_NOTE }
+    return { domain, state: 'waiting', records, note: 'Your domain points to us. WAMA is now turning on the secure (https) link for it; this usually takes a few minutes. Tap Check again soon.' }
   }
   return {
     domain,
     state: 'waiting',
     records,
     note: addresses.length || cnames.length
-      ? 'Your domain still points somewhere else. Change the record below at the company where you bought the domain (GoDaddy, Hostinger, …).'
+      ? 'Your domain still points somewhere else. Change the record below at the company where you bought the domain (GoDaddy, Hostinger, …). Using Cloudflare? Set the record to "DNS only" (grey cloud).'
       : 'Add the record below at the company where you bought the domain (GoDaddy, Hostinger, …). It can take from a few minutes up to a day to work.',
   }
 }

@@ -23,12 +23,24 @@ Business domains reach the store through a Next.js rewrite. When the shop is sta
 `-H 127.0.0.1`, Next mixes up `127.0.0.1` and `localhost`, treats the rewrite as another website and
 fetches `https://localhost:<port>`, so every business domain shows **Internal Server Error** (500,
 header `x-middleware-rewrite: https://localhost:…`). Start it with `-H localhost` instead (still private
-to the server). `localhost` may be IPv6 only (`[::1]`) on the server, so nginx and the scripts talk to
-`http://localhost:<port>` (nginx tries both addresses), never `127.0.0.1`. E.g.
+to the server). `localhost` may be IPv6 only (`[::1]`) on the server, so `add-store-domain.sh` finds the
+address the shop really answers on (`127.0.0.1` or `[::1]`) and points the nginx site straight at it
+(with plain `localhost`, nginx tries `127.0.0.1` first and logs a refused connection on every request). E.g.
 
 ```
 pm2 start npm --name wama-shop -- start -- -p 3002 -H localhost
 ```
+
+### What stops a domain from connecting by itself
+
+The automatic job tries again every 5 minutes and writes the reason to
+`/var/lib/wama-shop/domains/<domain>.log`; WAMA's Website tab shows the business the same advice.
+
+- The DNS record is not there yet, or points elsewhere (Cloudflare: the record must be **DNS only**, grey cloud).
+- A leftover **AAAA (IPv6) record** pointing elsewhere (domain companies often add a "parking" one): the
+  certificate check goes there and fails. The business deletes it.
+- A **CAA record** that does not allow `letsencrypt.org`. The business deletes it or adds
+  `CAA 0 issue "letsencrypt.org"`.
 
 ## By hand (what the timer runs)
 

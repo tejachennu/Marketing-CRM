@@ -103,6 +103,19 @@ test('store server: records point at it and DNS decides connected', async () => 
   s = await D.domainStatus('shop.glowstore.in', { cname: async () => ['Stores.Magnetora.in.'], a: async () => ['203.0.113.10'] }, async () => true)
   assert.equal(s.state, 'connected')
 
+  // A leftover IPv6 record keeps it from connecting: the business is told to delete it
+  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'], aaaa: async () => ['2a02:4780:1::1'] }, async () => false)
+  assert.equal(s.state, 'waiting')
+  assert.equal(s.note, D.IPV6_NOTE)
+  process.env.STORE_GATEWAY_IP6 = '2a02:4780:1::1'
+  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'], aaaa: async () => ['2A02:4780:1::1'] }, async () => false)
+  assert.match(s.note, /few minutes/, 'our own IPv6 is fine')
+  delete process.env.STORE_GATEWAY_IP6
+  s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'], aaaa: async () => ['2a02:4780:1::1'] }, async () => true)
+  assert.equal(s.state, 'connected', 'once it opens, the IPv6 record no longer matters')
+  s = await D.domainStatus('shop.glowstore.in', { cname: async () => [], a: async () => ['104.21.1.1'] })
+  assert.match(s.note, /DNS only/, 'Cloudflare users are told to turn the proxy off')
+
   s = await D.domainStatus('glowstore.in', { cname: async () => [], a: async () => ['203.0.113.10'] }, async () => true)
   assert.deepEqual(s.records, [{ type: 'A', name: '@', value: '203.0.113.10' }, { type: 'CNAME', name: 'www', value: 'glowstore.in' }])
   assert.equal(s.state, 'connected')
@@ -167,13 +180,17 @@ test('Automatic domains: the list needs the server key, and the job never touche
   assert.match(sync, /\+ 1800 \)\)/, 'a failed certificate waits 30 minutes (Let\'s Encrypt limits)')
   assert.match(sync, /www-next/, 'www for connected domains is looked at every 30 minutes, not every run')
   const add = fs.readFileSync(path.join(root, 'deploy/nginx/add-store-domain.sh'), 'utf8')
-  assert.equal((add.match(/exit 3$/gm) || []).length, 2, 'not connected in WAMA / DNS not here = exit 3')
+  assert.equal((add.match(/exit 3$/gm) || []).length, 4, 'not connected in WAMA / DNS not here / stray IPv6 / CAA = exit 3')
   assert.doesNotMatch(add, /\*magnetora\.in/, 'books.magnetora.in can be a store; WAMA decides in step 2')
   assert.match(add, /dns\.google\/resolve\?name=\$1&type=A/, 'asks public DNS, not the server\'s own cache')
   assert.doesNotMatch(add, /http:\/\/127\.0\.0\.1:\$PORT/, 'the shop may listen on [::1] only (next start -H localhost)')
-  assert.match(add, /proxy_pass http:\/\/localhost:\$PORT;/)
+  assert.match(add, /for H in 127\.0\.0\.1 '\[::1\]'; do/, 'finds the address the shop really listens on')
+  assert.match(add, /proxy_pass http:\/\/\$UPSTREAM:\$PORT;/, 'no "localhost": nginx would try 127.0.0.1 first and be refused on every request')
+  assert.match(add, /foreign_v6 "\$DOMAIN"/, 'a leftover IPv6 (AAAA) record is caught before the certificate')
+  assert.match(add, /caa_blocks "\$DOMAIN"/, 'a CAA record that refuses Let\'s Encrypt is caught before the certificate')
+  assert.match(add, /points_here "www\.\$DOMAIN" && \[ -z "\$\(foreign_v6 "www\.\$DOMAIN"\)" \]/, 'www with a stray AAAA is left out, not failed')
   // www.<domain> comes along when it points here, and sends people to the main domain
-  assert.match(add, /if \[\[ "\$DOMAIN" != www\.\* \]\] && points_here "www\.\$DOMAIN"; then WWW="www\.\$DOMAIN"; fi/)
+  assert.match(add, /if \[\[ "\$DOMAIN" != www\.\* \]\] && points_here "www\.\$DOMAIN" && /)
   assert.match(add, /return 301 https:\/\/\$DOMAIN\\\$request_uri;/)
   assert.match(add, /--cert-name "\$DOMAIN" --expand/)
   assert.match(add, /--resolve "\$DOMAIN:443:127\.0\.0\.1" "https:\/\/\$DOMAIN\/"/, 'the final check goes through this server, not its DNS cache')
