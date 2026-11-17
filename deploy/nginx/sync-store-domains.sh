@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Runs every 2 minutes (systemd timer from install-auto-domains.sh). Reads the list of business domains
+# connected in WAMA and makes nginx match it:
+#   - a new domain that points to this server → its own nginx site + https certificate (add-store-domain.sh)
+#   - a domain no longer in WAMA → its site and certificate removed (only sites this job made: wama-store-*)
+# Existing websites on this server are never touched. Settings: /etc/wama-shop/domains.env
+set -uo pipefail
+
+CONF=/etc/wama-shop/domains.env
+[ -f "$CONF" ] || { echo "Missing $CONF (run install-auto-domains.sh)"; exit 1; }
+# shellcheck disable=SC1090
+. "$CONF"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+STATE=/var/lib/wama-shop/domains
+mkdir -p "$STATE"
+exec 9>/run/wama-store-domains.lock
+flock -n 9 || exit 0   # the last run is still busy
+log() { echo "$(date '+%F %T') $*"; }
+
+# 1. The list from WAMA (a failure changes nothing on this server)
+JSON="$(curl -s --max-time 20 -H "X-Gateway-Key: $STORE_GATEWAY_KEY" "$LIST_URL")" || { log "Could not reach $LIST_URL"; exit 0; }
+LIST="$(printf '%s' "$JSON" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d.get("domains"), list); print("\n".join(d["domains"]))' 2>/dev/null)" \
+  || { log "WAMA did not send a domain list (check STORE_GATEWAY_KEY)"; exit 0; }
+
+# 2. Add new ones (each tried again after 30 minutes if it is not ready yet)
+for DOMAIN in $LIST; do
+  if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then continue; fi
+  NEXT="$(cat "$STATE/$DOMAIN.next" 2>/dev/null || echo 0)"
+  [ "$(date +%s)" -lt "$NEXT" ] && continue
+  log "Connecting $DOMAIN"
+  if bash "$HERE/add-store-domain.sh" "$DOMAIN" "$ACME_EMAIL" "$APP_PORT" >>"$STATE/$DOMAIN.log" 2>&1; then
+    log "$DOMAIN connected"; rm -f "$STATE/$DOMAIN.next"
+  else
+    log "$DOMAIN not ready yet (see $STATE/$DOMAIN.log); trying again in 30 minutes"
+    echo $(( $(date +%s) + 1800 )) > "$STATE/$DOMAIN.next"
+  fi
+done
+
+# 3. Remove domains a business took off (never more than half at once: a safety net)
+mapfile -t HAVE < <(ls /etc/nginx/sites-enabled/ 2>/dev/null | sed -n 's/^wama-store-\(.*\)\.conf$/\1/p')
+GONE=()
+for DOMAIN in "${HAVE[@]}"; do printf '%s\n' "$LIST" | grep -qxF "$DOMAIN" || GONE+=("$DOMAIN"); done
+if [ "${#GONE[@]}" -gt 0 ]; then
+  if [ "${#HAVE[@]}" -gt 2 ] && [ $(( ${#GONE[@]} * 2 )) -gt "${#HAVE[@]}" ]; then
+    log "Not removing ${#GONE[@]} of ${#HAVE[@]} domains at once; check WAMA and run remove-store-domain.sh by hand"
+  else
+    for DOMAIN in "${GONE[@]}"; do log "Removing $DOMAIN"; bash "$HERE/remove-store-domain.sh" "$DOMAIN" >>"$STATE/$DOMAIN.log" 2>&1; done
+  fi
+fi
+exit 0

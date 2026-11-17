@@ -125,6 +125,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `remove-store-domain.sh`; steps in `deploy/nginx/README.md`. `domainStatus` now says **Connected** only when
   `https://<domain>/api/public/store-domain-check` answers 200 (else "points to us, https being turned on").
   Vercel still needs `STORE_GATEWAY_HOST` / `STORE_GATEWAY_IP` for the Website tab to accept domains.
+  **Automatic since 17 Nov 2026**: `deploy/nginx/install-auto-domains.sh <email> [port]` (once) makes
+  `STORE_GATEWAY_KEY` in the shop's `.env.local` (openssl, never shown) and a systemd timer
+  (`wama-store-domains`, every 2 min) running `sync-store-domains.sh`: reads `GET /api/public/store-domains`
+  (header `X-Gateway-Key`, `lib/commerce/server-key.ts`; domains only) from the local shop, adds new domains
+  (30-min retry), removes ones taken off (only `wama-store-*`, never more than half at once, nothing on a failed list).
 
 - **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
   desk appointment module strong and landing page", "membership cards and membership utilisation"):

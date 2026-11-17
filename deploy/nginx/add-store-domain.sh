@@ -23,6 +23,10 @@ if [[ "$DOMAIN" == *magnetora.in ]]; then echo "That is WAMA's own address, not 
 if [ "$(id -u)" != "0" ]; then echo "Run with sudo." >&2; exit 1; fi
 command -v nginx >/dev/null || { echo "nginx is not installed on this server." >&2; exit 1; }
 
+if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  echo "$DOMAIN is already connected."; exit 0
+fi
+
 echo "== 1. Is the shop running on port $PORT?"
 if ! curl -s -o /dev/null --max-time 10 "http://127.0.0.1:$PORT/"; then
   echo "Nothing answers on 127.0.0.1:$PORT. Check: sudo -u wamashop pm2 status" >&2; exit 1
