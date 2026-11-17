@@ -277,9 +277,9 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
       {choice === 'own' && (
         <div className="space-y-3">
           {info && !info.available && !info.domain && (
-            <p className="text-xs font-semibold text-[#b91c1c]">Custom domains are not set up on WAMA yet. Please ask WAMA support.</p>
+            <p className="text-xs font-semibold text-[#b91c1c]">{NOT_SET_UP_WORDS}</p>
           )}
-          <div className="flex flex-col sm:flex-row gap-2">
+          {(info?.available || info?.domain) && <div className="flex flex-col sm:flex-row gap-2">
             <input
               value={domain}
               onChange={(e) => setDomain(e.target.value.trim().toLowerCase())}
@@ -292,8 +292,8 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
             {domain !== info?.domain && <button type="button" onClick={connect} disabled={!canManage || busy || !domain} className={`${primaryButton} shrink-0 justify-center`}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} {info?.domain ? 'Change' : 'Connect'}
             </button>}
-          </div>
-          {error && <p role="alert" className="text-xs font-semibold text-[#b91c1c]">{error}</p>}
+          </div>}
+          {error && error !== NOT_SET_UP_WORDS && <p role="alert" className="text-xs font-semibold text-[#b91c1c]">{error}</p>}
 
           {info?.domain && (
             <div className="rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 space-y-3">
@@ -337,6 +337,9 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
 }
 
 /** E-commerce → Website: the business's online store page. */
+/** Same words as NOT_SET_UP in lib/commerce/store-domain.ts (that file is server code). */
+const NOT_SET_UP_WORDS = 'Custom domains are not set up on WAMA yet. Please ask WAMA support.'
+
 /** The parts of the website settings that Save writes, to tell when something is not saved. */
 function snapshot(settings: any, categories: { name: string; image?: string }[]) {
   return JSON.stringify({ settings, categories: (categories || []).map((c) => ({ name: c.name, image: c.image || '' })) })

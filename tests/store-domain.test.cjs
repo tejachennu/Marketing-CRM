@@ -168,3 +168,11 @@ test('Automatic domains: the list needs the server key, and the job never touche
   assert.match(install, /OnUnitActiveSec=2min/)
   assert.doesNotMatch(install, /echo "?\$KEY"?$/m)
 })
+
+test('the own-domain box says "not set up" once and hides the form until it is set up', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '../components/commerce/storefront-settings.tsx'), 'utf8')
+  const { NOT_SET_UP } = require('../lib/commerce/store-domain.ts')
+  assert.ok(ui.includes(`const NOT_SET_UP_WORDS = '${NOT_SET_UP}'`), 'same words as the server')
+  assert.match(ui, /\{\(info\?\.available \|\| info\?\.domain\) && <div/)
+  assert.match(ui, /error !== NOT_SET_UP_WORDS/)
+})
