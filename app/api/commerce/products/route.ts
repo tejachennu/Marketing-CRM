@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { productShippingValues, withShippingSchema } from '@/lib/commerce/shipping'
-import { productMediaValues, withMediaSchema } from '@/lib/commerce/product-media'
+import { productMediaValues } from '@/lib/commerce/product-media'
+import { withMediaSchema } from '@/lib/commerce/product-media-store'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'

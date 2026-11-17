@@ -117,7 +117,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
-- **Shop: more photos and a video per product** (1.2): `lib/commerce/product-media.ts` (`cleanImages` ≤8 https, `readVideo`
+- **Shop: more photos and a video per product** (1.2): `lib/commerce/product-media.ts` (browser-safe; database side in `product-media-store.ts`; `cleanImages` ≤8 https, `readVideo`
   YouTube watch / youtu.be / shorts / embed or .mp4/.webm/.mov, lock 724519023, migration `20261126_shop_product_media.sql`:
   `commerce_products.images`, `video_url`), saved apart in the products route (`productMediaValues`), product form
   `ProductMedia` (upload several, remove, video link check), store `Gallery` (thumbnails, YouTube nocookie embed or

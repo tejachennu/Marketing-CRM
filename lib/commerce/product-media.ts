@@ -1,10 +1,8 @@
 /**
  * More photos and a short video for each product: commerce_products.images (up to 8 https links, besides the
- * main photo) and video_url (a YouTube link or a direct .mp4 / .webm link). Pure rules at the top (safe in the
- * browser), the auto-migration below.
+ * main photo) and video_url (a YouTube link or a direct .mp4 / .webm link). Pure rules, safe in the browser;
+ * the auto-migration is in product-media-store.ts.
  */
-
-import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 
 export const MAX_EXTRA_PHOTOS = 8
 
@@ -37,25 +35,4 @@ export function productMediaValues(product: any): { images: string[]; video_url:
   if (!product || (product.images === undefined && product.video_url === undefined)) return null
   const video = readVideo(product.video_url)
   return { images: cleanImages(product.images), video_url: video ? video.url : null }
-}
-
-/** supabase/migrations/20261126_shop_product_media.sql word for word. */
-export const MEDIA_SQL = `-- More photos and a video for each product. Safe to run more than once. The app runs it when first needed.
-ALTER TABLE commerce_products ADD COLUMN IF NOT EXISTS images JSONB;
-ALTER TABLE commerce_products ADD COLUMN IF NOT EXISTS video_url TEXT;
-NOTIFY pgrst, 'reload schema';
-`
-export const MEDIA_LOCK = 724519023
-export const mediaSchemaSetup = createAutoSetup('Product photos', (connectionString) => runMigrationSql(connectionString, MEDIA_SQL, MEDIA_LOCK))
-
-export async function withMediaSchema(step: () => PromiseLike<any>, setup: { ensure: () => Promise<boolean> } = mediaSchemaSetup): Promise<any> {
-  const first = await step()
-  if (!isMissingSchemaError(first.error, /images|video_url/)) return first
-  if (!(await setup.ensure())) return first
-  let result = await step()
-  for (let attempt = 1; attempt < 4 && isMissingSchemaError(result.error, /images|video_url/); attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 600 * attempt))
-    result = await step()
-  }
-  return result
 }

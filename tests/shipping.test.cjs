@@ -287,7 +287,7 @@ test('screens: settings card, courier panel in orders, PIN check on the store, p
   const orders = fs.readFileSync(path.join(root, 'components/commerce/orders-tab.tsx'), 'utf8')
   assert.match(orders, /<CourierPanel key=\{selected\.id\}/)
   const store = fs.readFileSync(path.join(root, 'app/s/[slug]/storefront.tsx'), 'utf8')
-  assert.match(store, /\{store\.pinCheck && <li><PinCheck slug=\{store\.slug\} \/><\/li>\}/)
+  assert.match(store, /\{store\.pinCheck && <li><PinCheck slug=\{store\.slug\} charge=/)
   const products = fs.readFileSync(path.join(root, 'app/api/commerce/products/route.ts'), 'utf8')
   assert.match(products, /productShippingValues\(product\)/)
   const view = require('../lib/commerce/storefront.ts').storeView
