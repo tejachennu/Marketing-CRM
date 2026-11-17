@@ -29,12 +29,12 @@ if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letse
 fi
 
 echo "== 1. Is the shop running on port $PORT?"
-if ! curl -s -o /dev/null --max-time 10 "http://127.0.0.1:$PORT/"; then
-  echo "Nothing answers on 127.0.0.1:$PORT. Check: sudo -u wamashop pm2 status" >&2; exit 1
+if ! curl -s -o /dev/null --max-time 10 "http://localhost:$PORT/"; then
+  echo "Nothing answers on localhost:$PORT. Check: sudo -u wamashop pm2 status" >&2; exit 1
 fi
 
 echo "== 2. Has a store connected $DOMAIN in WAMA?"
-if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:$PORT/api/public/store-domain-check?domain=$DOMAIN")" != "200" ]; then
+if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://localhost:$PORT/api/public/store-domain-check?domain=$DOMAIN")" != "200" ]; then
   echo "No store has $DOMAIN yet. The business must type it in WAMA first (Website → Store address → My own domain)." >&2; exit 3
 fi
 
@@ -60,7 +60,7 @@ server {
   server_name $DOMAIN;
   client_max_body_size 10m;
   location / {
-    proxy_pass http://127.0.0.1:$PORT;
+    proxy_pass http://localhost:$PORT;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Host \$host;

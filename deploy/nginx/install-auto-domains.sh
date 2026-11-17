@@ -24,7 +24,7 @@ fi
 install -d -m 700 /etc/wama-shop
 umask 077
 cat > /etc/wama-shop/domains.env <<ENV
-LIST_URL=http://127.0.0.1:$PORT/api/public/store-domains
+LIST_URL=http://localhost:$PORT/api/public/store-domains
 STORE_GATEWAY_KEY=$KEY
 ACME_EMAIL=$EMAIL
 APP_PORT=$PORT
