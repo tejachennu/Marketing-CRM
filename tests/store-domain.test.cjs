@@ -156,6 +156,7 @@ test('Automatic domains: the list needs the server key, and the job never touche
   const route = fs.readFileSync(path.join(root, 'app/api/public/store-domains/route.ts'), 'utf8')
   assert.match(route, /hasServerKey\(request\.headers\.get\('x-gateway-key'\)\)/)
   assert.match(route, /select\('store_domain'\)/, 'domains only, nothing about the businesses')
+  assert.match(route, /isMissingSchemaError\(error, \/store_domain\/\)\) return NextResponse\.json\(\{ domains: \[\] \}/, 'before the first domain, the list is empty, not an error')
   const sync = fs.readFileSync(path.join(root, 'deploy/nginx/sync-store-domains.sh'), 'utf8')
   assert.match(sync, /flock -n 9/, 'one run at a time')
   assert.match(sync, /sed -n 's\/\^wama-store-/, 'removes only sites it made')
