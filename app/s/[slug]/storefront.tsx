@@ -240,6 +240,24 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel, shopper.account])
   const delivery = handover === 'delivery' ? (store.freeFrom > 0 && subtotal >= store.freeFrom ? 0 : store.deliveryFee) : 0
+  // Offers: a typed code, or the best offer that applies by itself (the server checks again when ordering)
+  const [codeInput, setCodeInput] = useState('')
+  const [code, setCode] = useState('')
+  const [offer, setOffer] = useState<{ ok: boolean; title?: string; amount?: number; freeDelivery?: boolean; reason?: string } | null>(null)
+  const offerKey = JSON.stringify([panel === 'checkout' || panel === 'cart', code, handover, Object.entries(cart).sort()])
+  useEffect(() => {
+    if (!(panel === 'checkout' || panel === 'cart') || !lines.length || (!code && !store.offers.length)) { setOffer(null); return }
+    const timer = setTimeout(() => {
+      fetch(`/api/public/store/${store.slug}/discount`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, handover, phone, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }) })
+        .then((r) => r.json()).then(setOffer).catch(() => setOffer(null))
+    }, 300)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerKey])
+  const offOk = offer?.ok === true
+  const discountOff = offOk ? Number(offer!.amount) || 0 : 0
+  const deliveryToPay = offOk && offer!.freeDelivery ? 0 : delivery
+  const toPay = Math.max(0, Math.round((subtotal - discountOff + deliveryToPay) * 100) / 100)
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
   const confirmPayment = async (orderNumber: string, razorpayOrderId: string, extra: Record<string, string>) => {
@@ -293,7 +311,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       const res = await fetch(`/api/public/store/${store.slug}/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...shopper.headers() },
-        body: JSON.stringify({ name, phone, handover, pay, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }),
+        body: JSON.stringify({ name, phone, handover, pay, code, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
@@ -637,6 +655,8 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 </div>
                 {lines.length > 0 && (
                   <div className="p-4 border-t border-[#e3e8f2] space-y-3 shrink-0">
+                    {offOk && <p className="text-[13.5px] font-semibold text-[var(--c)]">Offer: {offer!.title}{discountOff > 0 ? ` · you save ${money(discountOff)}` : ''}</p>}
+                    {!offOk && store.offers.length > 0 && <p className="text-[13px] text-[#4a5672]">Offers: {store.offers.map((o) => o.title).join(' · ')}</p>}
                     <div className="flex justify-between text-[16px] font-extrabold"><span>Total</span><span>{money(subtotal)}</span></div>
                     {short && <p className="text-[13.5px] text-[#b91c1c] font-semibold">The smallest order here is {money(store.minOrder)}. Add {money(store.minOrder - subtotal)} more.</p>}
                     <button type="button" disabled={short} onClick={() => setPanel('checkout')} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] disabled:opacity-50 cursor-pointer">Continue</button>
@@ -697,10 +717,24 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                     ))}
                   </div>
                 )}
+                {store.hasCodes && (
+                  <div>
+                    <div className="flex gap-2">
+                      <input value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} placeholder="Have a code?" aria-label="Discount code" maxLength={20} className={`${input} uppercase`} />
+                      {code ? (
+                        <button type="button" onClick={() => { setCode(''); setCodeInput('') }} className="h-12 px-4 rounded-xl border-2 border-[#d5ddeb] font-bold text-[14px] cursor-pointer shrink-0">Remove</button>
+                      ) : (
+                        <button type="button" disabled={codeInput.length < 3} onClick={() => setCode(codeInput)} className="h-12 px-4 rounded-xl bg-[var(--c)] text-white font-bold text-[14px] cursor-pointer disabled:opacity-50 shrink-0">Apply</button>
+                      )}
+                    </div>
+                    {code && offer && !offer.ok && offer.reason && <p role="status" className="mt-1.5 text-[13.5px] text-[#b91c1c]">{offer.reason}</p>}
+                  </div>
+                )}
                 <div className="rounded-xl bg-[#f4f6fa] p-4 space-y-1.5 text-[14.5px]">
                   <div className="flex justify-between"><span>Items</span><span>{money(subtotal)}</span></div>
-                  {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{delivery ? money(delivery) : 'Free'}</span></div>}
-                  <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(subtotal + delivery)}</span></div>
+                  {offOk && discountOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{offer!.title}</span><span>− {money(discountOff)}</span></div>}
+                  {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{deliveryToPay ? money(deliveryToPay) : offOk && offer!.freeDelivery && delivery ? <><s className="text-[#8a94a8] mr-1">{money(delivery)}</s>Free</> : 'Free'}</span></div>}
+                  <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(toPay)}</span></div>
                   {pay === 'online' ? (
                     <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> Pay securely by UPI, card or net banking with Razorpay.</p>
                   ) : (
@@ -709,7 +743,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 </div>
                 {error && <p role="alert" className="rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}
                 <button type="submit" disabled={placing} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] inline-flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer">
-                  {placing && <Loader2 size={17} className="animate-spin" />} {pay === 'online' ? `Pay ${money(subtotal + delivery)}` : 'Place order'}
+                  {placing && <Loader2 size={17} className="animate-spin" />} {pay === 'online' ? `Pay ${money(toPay)}` : 'Place order'}
                 </button>
               </form>
             )}

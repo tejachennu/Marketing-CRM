@@ -117,6 +117,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: offers and discount codes** (1.3 in `docs/PLAN-shop-next-level.md`): `lib/commerce/discounts.ts` (pure: percent,
+  flat, free_delivery, buy_get — cheapest items free; min order, first order only, once per phone, dates, total uses;
+  `applyDiscount`, `bestAutomatic`, `parseDiscount`), `discount-store.ts` (lock 724519022, migration
+  `20261125_shop_discounts.sql`: `commerce_discounts`, `commerce_discount_uses`, orders `discount_code` /
+  `discount_amount`; `decideDiscount` typed code else best automatic, `recordDiscountUse` compare-and-set).
+  `ManualOrderInput.discount` (total = subtotal − discount + delivery; free delivery waives it). Store order route
+  decides on the server and refuses a bad code (field `code`); `POST /api/public/store/[slug]/discount` previews it.
+  Checkout "Have a code?" + offer line; cart shows open offers. Dashboard **Offers** tab (`components/commerce/offers.tsx`,
+  `GET/POST/DELETE /api/commerce/discounts`); on phones from the Store tab. Order details show the offer.
+
 - **Shop: product options** (size, colour…; Part 2 of `docs/PLAN-shop-next-level.md`): `lib/commerce/variants.ts`
   (pure, browser-safe: `cleanOptions` ≤3 options × ≤20 choices, ≤100 combinations; `buildVariants` keeps id / price /
   stock / SKU of combinations that stay; `findVariant`, `valueAvailable`, `priceRange`), `variant-store.ts` (SQL lock

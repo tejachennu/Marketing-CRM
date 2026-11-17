@@ -4,7 +4,8 @@ import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { createOrderNumber } from '@/lib/commerce/commerce-webhook-handler'
 import { createManualOrder } from '@/lib/commerce/manual-order'
 import { changeVariantStock } from '@/lib/commerce/variant-store'
-import { deliveryCharge, loadStore, parseStoreOrder } from '@/lib/commerce/storefront'
+import { cartForDiscount, deliveryCharge, loadStore, parseStoreOrder } from '@/lib/commerce/storefront'
+import { decideDiscount, recordDiscountUse } from '@/lib/commerce/discount-store'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const db = getSupabaseAdminClient()
   const page = await loadStore(db, slug)
   if (!page) return NextResponse.json({ error: 'This store is not taking orders online right now.' }, { status: 404 })
-  const parsed = parseStoreOrder(await request.json().catch(() => null), page)
+  const body = await request.json().catch(() => null)
+  const parsed = parseStoreOrder(body, page)
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
   if (!checkRateLimit(`store-order-phone:${parsed.order.customer.phone}`, 6, 24 * 60 * 60_000).allowed) return NextResponse.json({ error: 'You have placed several orders today. Please call the shop for more.' }, { status: 429 })
   try {
@@ -33,12 +35,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const keys = parsed.pay === 'online' ? storeRazorpayKeys(org) : null
     if (parsed.pay === 'online' && !keys) return NextResponse.json({ error: 'Online payment is not available here right now. Please choose to pay on delivery or pick up.' }, { status: 400 })
     if (parsed.order.handover === 'delivery') parsed.order.shippingFee = deliveryCharge(page.settings, parsed.subtotal, org || {})
+    // A typed code, or the best offer that applies by itself (decided here, never by the browser)
+    const decided = await decideDiscount(db, page.organization.id, body?.code, cartForDiscount(page, parsed.order.items, parsed.order.shippingFee || 0), parsed.order.customer.phone)
+    if (decided && !decided.ok) return NextResponse.json({ error: decided.reason, field: 'code' }, { status: 400 })
+    if (decided?.ok) parsed.order.discount = { code: decided.code, title: decided.title, amount: decided.amount, freeDelivery: decided.freeDelivery }
     const made = await createManualOrder(db, org || page.organization, parsed.order, createOrderNumber)
     if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
     const order = made.order
     const total = formatMoney(order.total_amount, order.currency)
     // Stock of the chosen sizes / colours goes down (put back if the order is cancelled)
     for (const item of parsed.order.items) if (item.variantId) await changeVariantStock(db, page.organization.id, item.variantId, -item.quantity).catch(() => null)
+    if (decided?.ok) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, Number(order.discount_amount) || decided.amount).catch(() => null)
 
     // A signed-in shopper: the order goes in their history, and their details are kept for next time
     const shopper = page.settings.accounts ? await shopperFrom(request, db) : null

@@ -144,6 +144,35 @@ Delhivery's real tracking response, and the WhatsApp templates for order updates
 | Plan | Done (this file) |
 | 1. Delivery partners | **Done** (17 Nov 2026): server, settings, ship from order, tracking webhook + 30-min check, WhatsApp updates, PIN check on the product page, product weight / HSN. Not tried with real accounts; screens not looked at in a browser yet. Still to do: template fallback for WhatsApp updates outside 24 h, PIN check in checkout |
 | 2. Product options | **Done on the web** (17 Nov 2026): options editor in the product form, store page option buttons (sold-out crossed out), price / photo follow the pick, cart lines per choice, order lines keep `variant_id` / `variant_name`, stock down on order and back on cancel. Still to do: WhatsApp catalog groups, New order (shop / phone) picking an option, the app |
-| 3. Discount codes | Not started |
+| 3. Discount codes | Done (see 1.3 below) |
 | 4. Cart reminder | Not started |
 | 5. App, tests, report | Not started |
+
+## Full list (owner, 17 Nov 2026: "Please work on all the things")
+
+Order of work: Phase 1 gaps first, then Phase 2 (WhatsApp selling), Phase 3, Phase 4. Each item is pushed on its own.
+WhatsApp messages outside the 24-hour window go out only with a template the business sets up once
+(E-commerce → Store settings → WhatsApp messages), like Front Desk; inside the window they are free text.
+
+| # | Item | Status |
+|---|------|--------|
+| 1.1 | Product options with price and stock each | Done (web) |
+| 1.2 | More photos per product, plus a short video | To do |
+| 1.3 | Discount codes and offers (code, free delivery above, buy X get Y, first order) | Done: Offers tab, checkout code box, decided on the server, use counts, once per phone |
+| 1.4 | Delivery check by PIN code (served, charge, days) | Done (product page); charge to add |
+| 1.5 | Policy and info pages (About, Returns, Shipping, Contact, Terms) | To do |
+| 1.6 | Google findability (site map, titles, share previews) | To do |
+| 2.1 | Cart reminder on WhatsApp | To do |
+| 2.2 | COD confirmation on WhatsApp ("Yes, send it") | To do |
+| 2.3 | Order updates on WhatsApp + "How was it?" review ask | Shipping updates done; packed + review ask to do |
+| 2.4 | "Ask on WhatsApp" with the product attached, answered by the AI | To do |
+| 2.5 | Back-in-stock alerts on WhatsApp | To do |
+| 2.6 | Reorder in one tap ("Same as last time?") | To do |
+| 3.1 | Shiprocket / Delhivery from the order screen | Done |
+| 3.2 | GST invoice for every online order | To do |
+| 3.3 | Customer reviews with photos on product pages | To do |
+| 3.4 | Shop reports (visitors, orders, what sells, carts left, best customers) | To do |
+| 3.5 | Returns and refunds (Razorpay refund) | To do |
+| 4.1 | Store layouts (3–4) and an Instagram feed | To do |
+| 4.2 | Coupons per customer and loyalty points | To do |
+| 4.3 | Product list from a spreadsheet; AI description from a photo | To do |

@@ -13,6 +13,8 @@ import { isUuid } from '../record-visibility'
 import type { ManualOrderInput } from './manual-order'
 import { readyPartners } from './shipping'
 import { readOptions, variantsFor } from './variant-store'
+import { listDiscounts, publicOffers } from './discount-store'
+import { isOpen } from './discounts'
 import { priceRange, variantInStock, variantPrice, type ProductOption } from './variants'
 
 /** supabase/migrations/20261119_storefront.sql word for word. */
@@ -232,6 +234,9 @@ export interface StorePage {
   pay: { online: boolean; later: boolean }
   /** A courier partner is connected, so the page can check a PIN code. */
   pinCheck?: boolean
+  /** Offers that apply by themselves ("Buy 2 get 1 free"), and whether any code exists. */
+  offers?: { title: string; kind: string; min_order: number }[]
+  hasCodes?: boolean
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -273,6 +278,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     p.priceFrom = priceRange(p.price, variants).min
   }
   const shownProducts = products.filter((p: StoreProduct) => p.inStock || settings.show_out_of_stock)
+  const discounts = await listDiscounts(db, org.id)
   return {
     organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase(), domain: org.store_domain || null },
     settings,
@@ -280,6 +286,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     categories: storeCategories(settings, shownProducts),
     pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
     pinCheck: settings.delivery && readyPartners(org).length > 0,
+    offers: publicOffers(discounts),
+    hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {
       fee: settings.delivery_fee ?? (Number(org.commerce_default_shipping_fee) || 0),
       freeFrom: settings.free_delivery_from ?? (Number(org.commerce_free_shipping_threshold) || 0),
@@ -298,6 +306,7 @@ export function storeView(page: StorePage) {
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
+    offers: page.offers || [], hasCodes: page.hasCodes === true,
   }
 }
 export type StoreView = ReturnType<typeof storeView>
@@ -486,4 +495,12 @@ export function fillStorefront(current: StorefrontSettings, suggested: Storefron
     ...suggested.categories.filter((s) => !names.has(s.name.toLowerCase())),
   ].slice(0, MAX_CATEGORIES)
   return out
+}
+
+/** The cart as the discount rules need it: each line's unit price (the option's, else the product's). */
+export function cartForDiscount(page: StorePage, items: { productId: string | null; price: number | null; quantity: number }[], delivery: number) {
+  const byId = new Map(page.products.map((p) => [p.id, p]))
+  const lines = items.map((i) => ({ price: i.price ?? (i.productId ? byId.get(i.productId)?.price ?? 0 : 0), quantity: i.quantity }))
+  const subtotal = Math.round(lines.reduce((sum, l) => sum + l.price * l.quantity, 0) * 100) / 100
+  return { lines, subtotal, delivery }
 }

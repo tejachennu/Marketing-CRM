@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { announceConnectorBadges, announceConnectorTab, connectorTabFromSearch, onTabRequest } from '@/lib/connector-nav'
-import { AlertCircle, CheckCircle2, ChevronRight, Circle, Clock, Globe, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Truck, Wallet, X } from 'lucide-react'
+import { AlertCircle, BadgePercent, CheckCircle2, ChevronRight, Circle, Clock, Globe, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Truck, Wallet, X } from 'lucide-react'
 import { StorefrontSettings } from '@/components/commerce/storefront-settings'
 import type { LucideIcon } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -16,9 +16,10 @@ import { OrderFlowTab } from '@/components/commerce/order-flow-tab'
 import { ProductsTab } from '@/components/commerce/products-tab'
 import { StoreSettings } from '@/components/commerce/store-settings'
 import { DeliveryPartners } from '@/components/commerce/delivery-partners'
+import { Offers } from '@/components/commerce/offers'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
-type Tab = 'orders' | 'products' | 'website' | 'flow' | 'settings'
+type Tab = 'orders' | 'products' | 'offers' | 'website' | 'flow' | 'settings'
 const MANAGER_TABS: Tab[] = ['website', 'flow', 'settings']
 
 export default function CommercePage() {
@@ -136,7 +137,7 @@ export default function CommercePage() {
   const tabs: Array<{ id: Tab; label: string; icon: LucideIcon; count?: number | null }> = [
     { id: 'orders', label: 'Orders', icon: Package, count: summary?.total },
     { id: 'products', label: 'Products', icon: ShoppingBag, count: productCount },
-    ...(canManageStore ? [{ id: 'website' as Tab, label: 'Website', icon: Globe }, { id: 'flow' as Tab, label: 'Order flow', icon: Rocket }, { id: 'settings' as Tab, label: 'Store settings', icon: Settings }] : []),
+    ...(canManageStore ? [{ id: 'offers' as Tab, label: 'Offers', icon: BadgePercent }, { id: 'website' as Tab, label: 'Website', icon: Globe }, { id: 'flow' as Tab, label: 'Order flow', icon: Rocket }, { id: 'settings' as Tab, label: 'Store settings', icon: Settings }] : []),
   ]
 
   const revenue = summary?.revenue || []
@@ -272,9 +273,20 @@ export default function CommercePage() {
           />
         )}
 
+        {orgId && activeTab === 'offers' && <Offers orgId={orgId} canManage={canManageStore} showToast={showToast} />}
         {orgId && activeTab === 'website' && canManageStore && <StorefrontSettings orgId={orgId} canManage={canManageStore} showToast={showToast} />}
 
-        {/* Phones: the bottom bar has no room for Website, so it opens from the Store tab */}
+        {/* Phones: the bottom bar has no room for Offers and Website, so they open from the Store tab */}
+        {activeTab === 'settings' && canManageStore && (
+          <button type="button" onClick={() => setActiveTab('offers')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
+            <BadgePercent size={20} className="text-[#1D5BEA] shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-bold text-slate-900 dark:text-white">Offers and discount codes</span>
+              <span className="block text-xs text-slate-500">DIWALI10, free delivery above ₹999, buy 2 get 1</span>
+            </span>
+            <ChevronRight size={18} className="text-slate-400" />
+          </button>
+        )}
         {activeTab === 'settings' && canManageStore && (
           <button type="button" onClick={() => setActiveTab('website')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
             <Globe size={20} className="text-[#1D5BEA] shrink-0" />

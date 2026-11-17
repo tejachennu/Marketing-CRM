@@ -24,9 +24,12 @@ export interface ManualOrderInput {
   shippingFee: number | null
   address: Record<string, string> | null
   note: string | null
+  /** An offer or code already decided on the server (discount-store.ts). */
+  discount?: { code: string | null; title: string; amount: number; freeDelivery: boolean } | null
 }
 
 import { withVariantSchema } from './variant-store'
+import { withDiscountSchema } from './discount-store'
 
 const text = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const money = (value: unknown): number | null => {
@@ -142,7 +145,7 @@ export async function createManualOrder(db: any, organization: { id: string; cur
   }
   const subtotal = Math.round(lines.reduce((sum, line) => sum + line.total_price, 0) * 100) / 100
   let shippingFee = 0
-  if (input.handover === 'delivery') {
+  if (input.handover === 'delivery' && !input.discount?.freeDelivery) {
     if (input.shippingFee !== null) shippingFee = input.shippingFee
     else {
       const fee = Number(organization.commerce_default_shipping_fee) || 0
@@ -164,23 +167,28 @@ export async function createManualOrder(db: any, organization: { id: string; cur
   const shipping: Record<string, unknown> = { ...(input.address || {}), handover: input.handover }
   if (input.handover === 'delivery') shipping.delivery_speed = 'standard'
   if (status === 'delivered') shipping.delivered_at = now
-  const { data: order, error } = await db.from('commerce_orders').insert({
+  const discountAmount = Math.min(subtotal, Math.max(0, Math.round((input.discount?.amount || 0) * 100) / 100))
+  const orderNumber = await createOrderNumber(db, organization.id)
+  const insertOrder = () => db.from('commerce_orders').insert({
     organization_id: organization.id,
     contact_id: customer?.id || null,
     conversation_id: conversationId,
-    order_number: await createOrderNumber(db, organization.id),
+    order_number: orderNumber,
     status,
     checkout_type: input.channel,
     subtotal,
     shipping_fee: shippingFee,
     tax_amount: 0,
-    total_amount: Math.round((subtotal + shippingFee) * 100) / 100,
+    total_amount: Math.round((subtotal - discountAmount + shippingFee) * 100) / 100,
+    ...(input.discount ? { discount_code: input.discount.code || input.discount.title, discount_amount: discountAmount } : {}),
     currency: String(organization.currency || 'INR').toUpperCase(),
     payment_method: input.paid ? input.paymentMethod : 'cod',
     payment_status: input.paid ? 'paid' : 'pending',
     shipping_address: shipping,
     customer_note: input.note,
   }).select('*').single()
+  // Orders with an offer need the discount columns (added on first use)
+  const { data: order, error } = input.discount ? await withDiscountSchema(insertOrder) : await insertOrder()
   if (error) throw new Error(error.message)
   const insertLines = () => db.from('commerce_order_items').insert(lines.map((line) => ({ ...line, order_id: order.id })))
   // Lines with a product option need the variant columns (added on first use)

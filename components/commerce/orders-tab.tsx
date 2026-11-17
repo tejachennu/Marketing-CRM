@@ -558,6 +558,9 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 </ul>
                 <dl className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs space-y-1">
                   <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(selected.subtotal, selected.currency)}</dd></div>
+                  {Number((selected as any).discount_amount) > 0 && (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Offer{(selected as any).discount_code ? ` (${(selected as any).discount_code})` : ''}</dt><dd className="tabular-nums">− {formatMoney((selected as any).discount_amount, selected.currency)}</dd></div>
+                  )}
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <dt>Shipping{selected.shipping_address?.delivery_speed === 'express' ? ' (express)' : ''}</dt>
                     <dd className="tabular-nums">{Number(selected.shipping_fee) ? formatMoney(selected.shipping_fee, selected.currency) : 'Free'}</dd>
