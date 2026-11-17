@@ -176,3 +176,10 @@ test('the own-domain box says "not set up" once and hides the form until it is s
   assert.match(ui, /\{\(info\?\.available \|\| info\?\.domain\) && <div/)
   assert.match(ui, /error !== NOT_SET_UP_WORDS/)
 })
+
+test('a <name>.magnetora.in address can be a store, but WAMA\'s own names cannot', () => {
+  for (const h of ['magnetora.in', 'www.magnetora.in', 'wamacrm.magnetora.in', 'stores.magnetora.in', 'api.magnetora.in', 'a.b.magnetora.in', 'x.wamacrm.magnetora.in']) assert.equal(D.isOwnHost(h), true, h)
+  for (const h of ['books.magnetora.in', 'unisalon.magnetora.in']) assert.equal(D.isOwnHost(h), false, h)
+  assert.equal(D.cleanDomain('books.magnetora.in').domain, 'books.magnetora.in')
+  assert.match(D.cleanDomain('stores.magnetora.in').error || '', /belongs to WAMA/)
+})
