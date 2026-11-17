@@ -130,6 +130,9 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   (`wama-store-domains`, every 2 min) running `sync-store-domains.sh`: reads `GET /api/public/store-domains`
   (header `X-Gateway-Key`, `lib/commerce/server-key.ts`; domains only) from the local shop, adds new domains
   (5-min retry while DNS is not ready, exit 3 from `add-store-domain.sh`; 30 min after a failed certificate), removes ones taken off (only `wama-store-*`, never more than half at once, nothing on a failed list).
+  **The shop must run with `next start -H localhost`**, not `-H 127.0.0.1`: with 127.0.0.1, Next treats the
+  own-domain rewrite as external and fetches `https://localhost:<port>` → 500 on every business domain
+  (reproduced with Next 16.2.6; see `deploy/nginx/README.md`). codeswipes.com was the first domain connected (17 Nov 2026).
 
 - **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
   desk appointment module strong and landing page", "membership cards and membership utilisation"):

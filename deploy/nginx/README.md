@@ -17,6 +17,18 @@ Existing sites are never touched; nginx is tested and reloaded gently, never res
 Watch it: `journalctl -u wama-store-domains -n 50`. Per-domain logs: `/var/lib/wama-shop/domains/`.
 Stop it: `sudo systemctl disable --now wama-store-domains.timer`.
 
+### Start the shop with `-H localhost` (not `-H 127.0.0.1`)
+
+Business domains reach the store through a Next.js rewrite. When the shop is started with
+`-H 127.0.0.1`, Next mixes up `127.0.0.1` and `localhost`, treats the rewrite as another website and
+fetches `https://localhost:<port>`, so every business domain shows **Internal Server Error** (500,
+header `x-middleware-rewrite: https://localhost:…`). Start it with `-H localhost` instead (still private
+to the server; check with `ss -ltnp | grep :<port>` that it listens on 127.0.0.1), e.g.
+
+```
+pm2 start npm --name wama-shop -- start -- -p 3002 -H localhost
+```
+
 ## By hand (what the timer runs)
 
 Our shop server (`stores.magnetora.in`) runs the WAMA shop behind the server's existing nginx. nginx cannot
