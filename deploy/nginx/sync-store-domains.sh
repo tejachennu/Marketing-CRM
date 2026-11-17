@@ -22,16 +22,22 @@ JSON="$(curl -s --max-time 20 -H "X-Gateway-Key: $STORE_GATEWAY_KEY" "$LIST_URL"
 LIST="$(printf '%s' "$JSON" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d.get("domains"), list); print("\n".join(d["domains"]))' 2>/dev/null)" \
   || { log "WAMA did not send a domain list (check STORE_GATEWAY_KEY)"; exit 0; }
 
-# 2. Add new ones (each tried again after 30 minutes if it is not ready yet)
+# 2. Add new ones. Not ready yet (DNS not changed yet): tried again in 5 minutes. Anything else (e.g. the
+#    certificate failed): in 30 minutes, to stay well inside Let's Encrypt's limits.
 for DOMAIN in $LIST; do
   if [ -f "/etc/nginx/sites-enabled/wama-store-$DOMAIN.conf" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then continue; fi
   NEXT="$(cat "$STATE/$DOMAIN.next" 2>/dev/null || echo 0)"
   [ "$(date +%s)" -lt "$NEXT" ] && continue
   log "Connecting $DOMAIN"
-  if bash "$HERE/add-store-domain.sh" "$DOMAIN" "$ACME_EMAIL" "$APP_PORT" >>"$STATE/$DOMAIN.log" 2>&1; then
+  RC=0
+  bash "$HERE/add-store-domain.sh" "$DOMAIN" "$ACME_EMAIL" "$APP_PORT" >>"$STATE/$DOMAIN.log" 2>&1 || RC=$?
+  if [ "$RC" = "0" ]; then
     log "$DOMAIN connected"; rm -f "$STATE/$DOMAIN.next"
+  elif [ "$RC" = "3" ]; then
+    log "$DOMAIN not ready yet (DNS or WAMA, see $STATE/$DOMAIN.log); trying again in 5 minutes"
+    echo $(( $(date +%s) + 300 )) > "$STATE/$DOMAIN.next"
   else
-    log "$DOMAIN not ready yet (see $STATE/$DOMAIN.log); trying again in 30 minutes"
+    log "$DOMAIN could not be connected (see $STATE/$DOMAIN.log); trying again in 30 minutes"
     echo $(( $(date +%s) + 1800 )) > "$STATE/$DOMAIN.next"
   fi
 done

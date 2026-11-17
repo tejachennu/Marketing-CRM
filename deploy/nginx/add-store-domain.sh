@@ -19,7 +19,8 @@ fi
 if ! [[ "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$ ]]; then
   echo "\"$DOMAIN\" does not look like a domain." >&2; exit 1
 fi
-if [[ "$DOMAIN" == *magnetora.in ]]; then echo "That is WAMA's own address, not a business domain." >&2; exit 1; fi
+# WAMA's own names (wamacrm, stores, www… .magnetora.in) are refused by WAMA in step 2.
+# Exit 3 = not ready yet (not connected in WAMA, or DNS not pointing here): the automatic job tries again soon.
 if [ "$(id -u)" != "0" ]; then echo "Run with sudo." >&2; exit 1; fi
 command -v nginx >/dev/null || { echo "nginx is not installed on this server." >&2; exit 1; }
 
@@ -34,7 +35,7 @@ fi
 
 echo "== 2. Has a store connected $DOMAIN in WAMA?"
 if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:$PORT/api/public/store-domain-check?domain=$DOMAIN")" != "200" ]; then
-  echo "No store has $DOMAIN yet. The business must type it in WAMA first (Website → Store address → My own domain)." >&2; exit 1
+  echo "No store has $DOMAIN yet. The business must type it in WAMA first (Website → Store address → My own domain)." >&2; exit 3
 fi
 
 echo "== 3. Does $DOMAIN point to this server?"
@@ -44,7 +45,7 @@ POINTS=no
 for ip in $DNS_IPS; do [[ " $MY_IPS " == *" $ip "* ]] && POINTS=yes; done
 if [ "$POINTS" != "yes" ]; then
   echo "$DOMAIN points to: ${DNS_IPS:-nothing yet}. This server is: $MY_IPS" >&2
-  echo "Ask the business to add the DNS record shown in WAMA, wait a few minutes, then run this again." >&2; exit 1
+  echo "Ask the business to add the DNS record shown in WAMA, wait a few minutes, then run this again." >&2; exit 3
 fi
 
 SITE="/etc/nginx/sites-available/wama-store-$DOMAIN.conf"

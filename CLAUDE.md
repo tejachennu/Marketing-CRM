@@ -129,7 +129,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `STORE_GATEWAY_KEY` in the shop's `.env.local` (openssl, never shown) and a systemd timer
   (`wama-store-domains`, every 2 min) running `sync-store-domains.sh`: reads `GET /api/public/store-domains`
   (header `X-Gateway-Key`, `lib/commerce/server-key.ts`; domains only) from the local shop, adds new domains
-  (30-min retry), removes ones taken off (only `wama-store-*`, never more than half at once, nothing on a failed list).
+  (5-min retry while DNS is not ready, exit 3 from `add-store-domain.sh`; 30 min after a failed certificate), removes ones taken off (only `wama-store-*`, never more than half at once, nothing on a failed list).
 
 - **Product page, memberships, appointments, business page** (owner: "product details page is missing", "front
   desk appointment module strong and landing page", "membership cards and membership utilisation"):
