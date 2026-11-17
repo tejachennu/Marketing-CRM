@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { productShippingValues, withShippingSchema } from '@/lib/commerce/shipping'
+import { productMediaValues, withMediaSchema } from '@/lib/commerce/product-media'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
@@ -256,6 +257,12 @@ export async function POST(request: NextRequest) {
     const savedProduct = saved[0]
 
     // Weight and HSN for couriers (Shiprocket / Delhivery); saved apart so a missing column never blocks the product
+    // More photos and a video, saved the same way
+    const mediaValues = productMediaValues(product)
+    if (mediaValues) {
+      const { data: withMedia } = await withMediaSchema(() => supabase.from('commerce_products').update(mediaValues).eq('id', savedProduct.id).eq('organization_id', organizationId).select())
+      if (withMedia?.[0]) Object.assign(savedProduct, withMedia[0])
+    }
     const shippingValues = productShippingValues(product)
     if (shippingValues) {
       const { data: withShipping } = await withShippingSchema(() => supabase.from('commerce_products').update(shippingValues).eq('id', savedProduct.id).eq('organization_id', organizationId).select())

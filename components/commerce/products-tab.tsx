@@ -8,6 +8,7 @@ import { toDialablePhone } from '@/lib/campaigns/audience'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
 import { ProductOptions } from './product-options'
+import { ProductMedia } from './product-media'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
 const PAGE_SIZE = 24
@@ -20,6 +21,8 @@ const EMPTY_FORM = {
   brand: '', condition: 'new', origin_country: '', is_service: false, importer_name: '', importer_street: '', importer_city: '', importer_postal_code: '',
   // For couriers (Shiprocket / Delhivery)
   weight_grams: '', hsn_code: '',
+  // More photos and a video for the store page
+  images: [] as string[], video_url: '',
 }
 type ProductForm = typeof EMPTY_FORM
 
@@ -278,6 +281,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       importer_postal_code: attributes.importer_address?.postal_code || '',
       weight_grams: (product as any).weight_grams ? String((product as any).weight_grams) : '',
       hsn_code: (product as any).hsn_code || '',
+      images: Array.isArray((product as any).images) ? (product as any).images : [],
+      video_url: (product as any).video_url || '',
     })
   }
 
@@ -637,6 +642,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <input id="product-image" type="url" placeholder="https://…" value={form.image_url} onChange={(event) => setForm({ ...form, image_url: event.target.value })} className={inputClass} />
               <p className={hintClass}>A JPEG or PNG of at least 500 × 500 pixels. WhatsApp needs one for every catalog item.</p>
             </div>
+            <ProductMedia images={form.images} video={form.video_url} onImages={(images) => setForm({ ...form, images })} onVideo={(video_url) => setForm({ ...form, video_url })} showToast={showToast} />
             <div>
               <label htmlFor="product-url" className={labelClass}>Product page on your website (optional)</label>
               <input id="product-url" type="url" placeholder="https://yourstore.com/products/…" value={form.website_url} onChange={(event) => setForm({ ...form, website_url: event.target.value })} className={inputClass} />

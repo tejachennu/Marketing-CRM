@@ -35,7 +35,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.title,
-    ...(product.image ? { image: [product.image] } : {}),
+    ...(product.image || product.images?.length ? { image: [product.image, ...(product.images || [])].filter(Boolean) } : {}),
     ...(product.description ? { description: product.description.slice(0, 1000) } : {}),
     category: product.category,
     offers: { '@type': 'Offer', price: product.price, priceCurrency: product.currency, availability: product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', seller: { '@type': 'Organization', name: page.organization.name } },

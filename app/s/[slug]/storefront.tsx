@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Plus, MessageCircle, Search, Share2, ShieldCheck, ShoppingBag, Store, Truck, UserRound, X } from 'lucide-react'
+import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Play, Plus, MessageCircle, Search, Share2, ShieldCheck, ShoppingBag, Store, Truck, UserRound, X } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
@@ -501,7 +501,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           </nav>
           <div className="bg-white rounded-2xl border border-[#e3e8f2] p-3 sm:p-6 grid md:grid-cols-2 gap-5 md:gap-10">
             <div className="relative">
-              <Picture src={viewImage} alt={viewing.title} className={`w-full aspect-square rounded-xl ${viewInStock ? '' : 'opacity-60 grayscale'}`} />
+              <Gallery key={viewing.id + (chosen?.id || '')} main={viewImage} images={viewing.images || []} video={viewing.video || null} title={viewing.title} dim={!viewInStock} />
             </div>
             <div className="flex flex-col min-w-0">
               <a href={categoryHref(viewing.category)} className="text-[12.5px] font-bold text-[#6B7894] uppercase tracking-wide hover:text-[var(--c)]">{viewing.category}</a>
@@ -573,7 +573,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                     <span>Home delivery{store.deliveryFee ? ` · ${money(store.deliveryFee)}` : ' · free'}{store.deliveryFee && store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}</span>
                   </li>
                 )}
-                {store.pinCheck && <li><PinCheck slug={store.slug} /></li>}
+                {store.pinCheck && <li><PinCheck slug={store.slug} charge={store.deliveryFee ? `Delivery ${money(store.deliveryFee)}${store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}.` : 'Free delivery.'} /></li>}
                 {store.pickup && <li className="flex gap-2"><Store size={17} className="shrink-0 mt-px text-[var(--c)]" /><span>Pick up from the shop{store.address ? ` · ${store.address.split('\n')[0]}` : ''}</span></li>}
                 <li className="flex gap-2"><ShieldCheck size={17} className="shrink-0 mt-px text-[var(--c)]" />
                   <span>{store.payOnline && store.payLater ? 'Pay online, or cash when you get it' : store.payOnline ? 'Pay online by UPI, card or net banking' : 'Pay cash when you get it'}</span>
@@ -778,7 +778,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
 }
 
 /** "Check delivery to your PIN code": asks the store's own courier partners (Shiprocket / Delhivery). */
-function PinCheck({ slug }: { slug: string }) {
+function PinCheck({ slug, charge }: { slug: string; charge: string }) {
   const [pin, setPin] = useState('')
   const [state, setState] = useState<{ busy?: boolean; text?: string; ok?: boolean } | null>(null)
   async function check(e: React.FormEvent) {
@@ -791,7 +791,7 @@ function PinCheck({ slug }: { slug: string }) {
       if (!res.ok) setState({ text: data.error || 'Could not check right now.', ok: false })
       else if (!data.checked) setState({ text: 'Could not check right now. Order and the shop will confirm.', ok: true })
       else if (!data.served) setState({ text: `Sorry, we do not deliver to ${pin} yet.`, ok: false })
-      else setState({ text: `We deliver to ${pin}${data.days ? ` in about ${data.days} day${data.days === 1 ? '' : 's'}` : ''}.${data.cod ? ' Cash on delivery available.' : ''}`, ok: true })
+      else setState({ text: `We deliver to ${pin}${data.days ? ` in about ${data.days} day${data.days === 1 ? '' : 's'}` : ''}. ${charge}${data.cod ? ' Cash on delivery available.' : ''}`, ok: true })
     } catch {
       setState({ text: 'Could not check right now.', ok: false })
     }
@@ -822,4 +822,38 @@ function lineFor(products: StoreView['products'], key: string) {
   }
   if (variantId) return null
   return { product, variant: null, title: product.title, price: product.price, image: product.image, inStock: product.inStock }
+}
+
+/** The product's photos (main first) and its video: a big view and a row of small ones to switch. */
+function Gallery({ main, images, video, title, dim }: { main: string; images: string[]; video: StoreView['products'][number]['video']; title: string; dim: boolean }) {
+  const photos = [main, ...images.filter((u) => u && u !== main)].filter(Boolean)
+  const [shown, setShown] = useState<number | 'video'>(0)
+  const many = photos.length + (video ? 1 : 0) > 1
+  return (
+    <div>
+      {shown === 'video' && video ? (
+        video.kind === 'youtube' ? (
+          <iframe src={`https://www.youtube-nocookie.com/embed/${video.id}?rel=0`} title={`${title} video`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="w-full aspect-square rounded-xl bg-black" />
+        ) : (
+          <video src={video.src} controls playsInline className="w-full aspect-square rounded-xl bg-black object-contain" />
+        )
+      ) : (
+        <Picture src={photos[typeof shown === 'number' ? shown : 0] || ''} alt={title} className={`w-full aspect-square rounded-xl ${dim ? 'opacity-60 grayscale' : ''}`} />
+      )}
+      {many && (
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1" role="list" aria-label="More photos">
+          {photos.map((url, i) => (
+            <button key={url + i} type="button" role="listitem" aria-label={`Photo ${i + 1}`} aria-pressed={shown === i} onClick={() => setShown(i)} className={`h-16 w-16 shrink-0 rounded-lg overflow-hidden border-2 cursor-pointer ${shown === i ? 'border-[var(--c)]' : 'border-transparent'}`}>
+              <Picture src={url} alt="" className="h-full w-full" />
+            </button>
+          ))}
+          {video && (
+            <button type="button" role="listitem" aria-label="Play the video" aria-pressed={shown === 'video'} onClick={() => setShown('video')} className={`h-16 w-16 shrink-0 rounded-lg border-2 bg-[#0E1B3D] text-white flex items-center justify-center cursor-pointer ${shown === 'video' ? 'border-[var(--c)]' : 'border-transparent'}`}>
+              <Play size={22} fill="currentColor" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }

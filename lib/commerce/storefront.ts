@@ -15,6 +15,7 @@ import { readyPartners } from './shipping'
 import { readOptions, variantsFor } from './variant-store'
 import { listDiscounts, publicOffers } from './discount-store'
 import { isOpen } from './discounts'
+import { cleanImages, readVideo, type ProductVideo } from './product-media'
 import { priceRange, variantInStock, variantPrice, type ProductOption } from './variants'
 
 /** supabase/migrations/20261119_storefront.sql word for word. */
@@ -194,6 +195,9 @@ export interface StoreProduct {
   variants?: StoreVariant[]
   /** Lowest price over the options (the card says "from"). */
   priceFrom?: number
+  /** More photos after the main one, and a video to play on the product page. */
+  images?: string[]
+  video?: ProductVideo | null
 }
 
 export interface StoreVariant {
@@ -265,6 +269,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
       currency: String(p.currency || org.currency || 'INR').toUpperCase(), image: isImageUrl(p.image_url) ? p.image_url : '',
       category: text(p.category, 60) || 'Other', inStock: p.is_available !== false && (p.inventory_count ?? 1) > 0,
       options: readOptions(p.options),
+      images: cleanImages(p.images).filter((url) => isImageUrl(url)),
+      video: readVideo(p.video_url),
     }))
   // Products with options: each combination's price, stock and photo
   const withOptions = products.filter((p) => p.options && p.options.length)
