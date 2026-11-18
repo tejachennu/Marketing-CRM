@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { actOnComment, listComments } from '@/lib/instagram/store'
+import { actOnComment, listComments, syncComments } from '@/lib/instagram/store'
 
 export const runtime = 'nodejs'
 
-/** GET ?organizationId=&filter=open|all: comments on the business's posts and reels, newest first. */
+/** GET ?organizationId=&filter=open|all&sync=1: comments on the business's posts and reels, newest first (sync=1 reads Instagram first). */
 export async function GET(request: NextRequest) {
   const params = new URL(request.url).searchParams
   const organizationId = params.get('organizationId')
   const access = await verifyOrgAccess(request, organizationId)
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
-  const comments = await listComments(getSupabaseAdminClient(), organizationId!, params.get('filter') === 'all' ? 'all' : 'open')
-  return NextResponse.json({ comments })
+  const db = getSupabaseAdminClient()
+  const synced = params.get('sync') === '1' ? await syncComments(db, organizationId!) : null
+  const comments = await listComments(db, organizationId!, params.get('filter') === 'all' ? 'all' : 'open')
+  return NextResponse.json({ comments, syncError: synced?.error || null })
 }
 
 /** POST { organizationId, commentId, action: 'reply' | 'private' | 'hide' | 'unhide' | 'delete', text? } */

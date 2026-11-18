@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { accountFor, connectInstagram, disconnectInstagram, publicAccount, subscribeWebhooks } from '@/lib/instagram/store'
+import { accountFor, connectInstagram, disconnectInstagram, instagramChecks, publicAccount, subscribeWebhooks } from '@/lib/instagram/store'
 import { IG_PERMISSIONS } from '@/lib/instagram/rules'
 
 export const runtime = 'nodejs'
 
-/** GET ?organizationId=: the connected Instagram account (no token), and what the login window needs. */
+/** GET ?organizationId=&checks=1: the connected Instagram account (no token), what the login window needs, and what still blocks DMs / comments. */
 export async function GET(request: NextRequest) {
-  const organizationId = new URL(request.url).searchParams.get('organizationId')
+  const params = new URL(request.url).searchParams
+  const organizationId = params.get('organizationId')
   const access = await verifyOrgAccess(request, organizationId)
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
-  const account = await accountFor(getSupabaseAdminClient(), organizationId!).catch(() => null)
+  const db = getSupabaseAdminClient()
+  const account = await accountFor(db, organizationId!).catch(() => null)
+  const checks = account && params.get('checks') === '1' ? await instagramChecks(db, organizationId!).catch(() => null) : null
   return NextResponse.json({
     account: publicAccount(account),
+    checks,
     login: { appId: process.env.NEXT_PUBLIC_META_APP_ID || process.env.META_APP_ID || '', configId: process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID || '', permissions: IG_PERMISSIONS },
   })
 }

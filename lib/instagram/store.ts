@@ -360,3 +360,113 @@ export async function publishPost(db: any, organizationId: string, input: { imag
     return { error: `Instagram did not post it: ${error?.message || 'please try again'}` }
   }
 }
+
+// ── Pulling from Instagram (works before webhooks do) ────────────────────────
+// Instagram sends comment webhooks only to a Live app with Advanced Access (after App Review), so the
+// screens also read comments and DMs straight from the API. Both paths save the same rows, once.
+
+const isOwn = (account: any, id: unknown) => String(id || '') === String(account.ig_user_id)
+const isDmsOff = (error: any) => Number(error?.code) === 200 && /messaging|direct/i.test(String(error?.message || ''))
+
+/** Comments on the latest posts and reels → `instagram_comments`; the business's own replies mark them answered. */
+export async function syncComments(db: any, organizationId: string, fetcher: Fetcher = fetch): Promise<{ added: number; error?: string }> {
+  const account = await accountFor(db, organizationId)
+  if (!account) return { added: 0 }
+  let added = 0
+  try {
+    const media = await igCall(account.access_token, `/${account.ig_user_id}/media`, { query: { fields: 'id,media_product_type,comments_count', limit: '20' } }, fetcher)
+    for (const m of (media?.data || []).filter((x: any) => Number(x?.comments_count) > 0)) {
+      const page = await igCall(account.access_token, `/${m.id}/comments`, { query: { fields: 'id,text,timestamp,from,username,replies{id,text,timestamp,from,username}', limit: '50' } }, fetcher)
+      for (const c of page?.data || []) {
+        const comment = (x: any, parentId: string | null): IgComment => ({
+          kind: 'comment', accountId: account.ig_user_id, commentId: String(x.id), parentId, text: String(x.text || '').slice(0, 2200),
+          fromId: String(x.from?.id || ''), fromUsername: String(x.from?.username || x.username || ''), mediaId: String(m.id), mediaType: String(m.media_product_type || ''),
+          timestamp: Date.parse(x.timestamp) || Date.now(),
+        })
+        if (!isOwn(account, c.from?.id)) { if (await saveComment(db, account, comment(c, null))) added++ }
+        for (const r of c.replies?.data || []) {
+          if (isOwn(account, r.from?.id)) {
+            // Answered (here or in the Instagram app): keep the first reply on the comment
+            await db.from('instagram_comments').update({ reply_text: String(r.text || '').slice(0, 1000), replied_at: new Date(Date.parse(r.timestamp) || Date.now()).toISOString() })
+              .eq('organization_id', organizationId).eq('comment_id', String(c.id)).is('replied_at', null)
+          } else if (await saveComment(db, account, comment(r, String(c.id)))) added++
+        }
+      }
+    }
+    return { added }
+  } catch (error: any) {
+    await noteError(db, account, error)
+    return { added, error: error?.message || 'Instagram did not answer' }
+  }
+}
+
+/** Recent DM threads → the inbox (Instagram contact, chat, messages). Needs "Allow access to messages" in the Instagram app. */
+export async function syncDms(db: any, organizationId: string, fetcher: Fetcher = fetch): Promise<{ added: number; messagesOff?: boolean; error?: string }> {
+  const account = await accountFor(db, organizationId)
+  if (!account) return { added: 0 }
+  let added = 0
+  try {
+    const threads = await igCall(account.access_token, `/${account.ig_user_id}/conversations`, { query: { platform: 'instagram', fields: 'id,updated_time', limit: '20' } }, fetcher)
+    for (const t of threads?.data || []) {
+      const thread = await igCall(account.access_token, `/${t.id}`, { query: { fields: 'messages.limit(25){id,created_time,from,to,message,attachments{image_data}}' } }, fetcher)
+      const messages = [...(thread?.messages?.data || [])].reverse() // oldest first
+      for (const x of messages) {
+        const echo = isOwn(account, x.from?.id)
+        const senderId = String(echo ? x.to?.data?.[0]?.id || '' : x.from?.id || '')
+        if (!senderId || !x.id) continue
+        const image = x.attachments?.data?.find((a: any) => /^https:\/\//.test(String(a?.image_data?.url || '')))
+        const saved = await saveIncomingDm(db, account, {
+          kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text: String(x.message || '').slice(0, 4000),
+          attachments: image ? [{ type: 'image', url: String(image.image_data.url) }] : [], timestamp: Date.parse(x.created_time) || Date.now(), echo, replyTo: null,
+        }, fetcher)
+        if (saved) added++
+      }
+    }
+    return { added }
+  } catch (error: any) {
+    if (isDmsOff(error)) return { added, messagesOff: true }
+    await noteError(db, account, error)
+    return { added, error: error?.message || 'Instagram did not answer' }
+  }
+}
+
+/** Instagram chats for the Messages tab: who, last message, unread. */
+export async function listIgChats(db: any, organizationId: string, options: { onlyAssignedTo?: string | null; limit?: number } = {}) {
+  const limit = options.limit || 50
+  const { data, error } = await withInstagramSchema(() => {
+    let q = db.from('conversations')
+      .select('id, contact_id, last_message_at, unread_count, auto_reply_enabled')
+      .eq('organization_id', organizationId).eq('channel', 'instagram')
+    if (options.onlyAssignedTo) q = q.eq('assigned_to', options.onlyAssignedTo)
+    return q.order('last_message_at', { ascending: false, nullsFirst: false }).limit(limit)
+  })
+  if (error || !data?.length) return []
+  const ids = data.map((c: any) => c.id)
+  const { data: people } = await db.from('contacts').select('id, first_name, last_name, instagram_username').in('id', [...new Set(data.map((c: any) => c.contact_id))])
+  const contactBy = new Map<string, any>((people || []).map((p: any) => [p.id, p]))
+  const { data: last } = await db.from('messages').select('conversation_id, body, sender_type, created_at').in('conversation_id', ids).order('created_at', { ascending: false }).limit(ids.length * 5)
+  const lastBy = new Map<string, any>()
+  for (const m of last || []) if (!lastBy.has(m.conversation_id)) lastBy.set(m.conversation_id, m)
+  return data.map((c: any) => {
+    const m = lastBy.get(c.id)
+    c = { ...c, contact: contactBy.get(c.contact_id) }
+    const name = [c.contact?.first_name, c.contact?.last_name].filter(Boolean).join(' ')
+    return { id: c.id, name: name || `@${c.contact?.instagram_username || 'instagram'}`, username: c.contact?.instagram_username || null, unread: Number(c.unread_count) || 0, at: c.last_message_at || m?.created_at || null, last: m ? `${m.sender_type === 'contact' ? '' : 'You: '}${m.body || ''}` : '', ai: c.auto_reply_enabled !== false }
+  })
+}
+
+/**
+ * What still blocks DMs and comments, in the owner's words: the Meta app has no Instagram webhook address,
+ * or the Instagram app does not allow access to messages. Unknown checks are left out, never guessed.
+ */
+export async function instagramChecks(db: any, organizationId: string, fetcher: Fetcher = fetch): Promise<{ webhook: boolean | null; messages: boolean | null }> {
+  const account = await accountFor(db, organizationId)
+  if (!account) return { webhook: null, messages: null }
+  const appId = String(process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || '').trim()
+  const secret = String(process.env.META_APP_SECRET || '').trim()
+  const webhook = appId && secret
+    ? await igCall(`${appId}|${secret}`, `/${appId}/subscriptions`, {}, fetcher).then((d) => (d?.data || []).some((s: any) => s?.object === 'instagram' && s?.active !== false)).catch(() => null)
+    : null
+  const messages = await igCall(account.access_token, `/${account.ig_user_id}/conversations`, { query: { platform: 'instagram', fields: 'id', limit: '1' } }, fetcher).then(() => true).catch((e) => (isDmsOff(e) ? false : null))
+  return { webhook, messages }
+}

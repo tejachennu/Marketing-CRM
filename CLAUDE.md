@@ -136,8 +136,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     `GET/POST /api/webhooks/instagram` (verify token `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, signed with `META_APP_SECRET`).
     `/api/messages/send` sends Instagram chats through `sendDm`. Inbox marks Instagram chats from the contact's
     "ig:" phone (no new column needed in the UI queries); `normalizePhoneDigits` refuses "ig:" so campaigns skip them.
+  - **Pulling without webhooks** (19 Nov 2026): Meta sends comment webhooks only to a Live app with Advanced Access, and
+    the Meta app had no `instagram` webhook object yet. `syncComments` (latest 20 posts' comments; own replies mark them
+    answered), `syncDms` (`/conversations?platform=instagram` threads → inbox; error #200 "disabled access to Instagram
+    Direct Messaging" = owner must turn on Instagram app → Message controls → Connected tools → Allow access to messages),
+    `listIgChats`, `instagramChecks` (app `/subscriptions` with the app token; DMs allowed). `GET /api/instagram/messages?sync=1`,
+    comments `?sync=1`, `/api/instagram?checks=1`.
   - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx`: connect via `loadMetaSdk` + `FB.login` config_id,
-    Comments, Posts); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
+    Messages (chats → `/dashboard?conversationId=`), Comments, Posts, "Still to do" checklist for admins); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
     (`storefront.instagram.live`, `loadStore` → `instagramFeed`).
 - **App: shop features synced** (18 Nov 2026): `mobile/lib/screens/store/shop_more.dart` (`OrderInvoiceBox`,
   `OrderReturnsBox`, `ShopReportsScreen`, `ShopReviewsScreen`, `ShopOffersScreen` + loyalty, settings screens for returns /

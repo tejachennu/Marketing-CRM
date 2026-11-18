@@ -160,3 +160,58 @@ test('wiring: migration, webhook signed, inbox replies go to Instagram, store li
   assert.match(read('lib/commerce/storefront.ts'), /settings\.instagram\.live \? /)
   assert.match(read('app/dashboard/layout.tsx'), /'\/dashboard\/instagram'/)
 })
+
+test('pull comments from Instagram (before webhooks work): others saved once, own replies mark them answered', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU' }
+  const db = salonDb({ instagram_accounts: [account], instagram_comments: [] })
+  const { fetcher } = graph([
+    [`/${IG}/media?`, { data: [{ id: 'med1', media_product_type: 'FEED', comments_count: 2 }, { id: 'med2', comments_count: 0 }] }],
+    ['/med1/comments', { data: [
+      { id: 'c1', text: 'Hey hi', timestamp: '2026-11-18T11:25:51+0000', from: { id: '777', username: 'dreamer' }, replies: { data: [{ id: 'r1', text: 'Hello!', timestamp: '2026-11-18T11:30:00+0000', from: { id: IG, username: 'shop' } }] } },
+      { id: 'c2', text: 'Price?', timestamp: '2026-11-18T12:00:00+0000', from: { id: '778', username: 'asha' } },
+      { id: 'c3', text: 'Our new range', timestamp: '2026-11-18T12:01:00+0000', from: { id: IG, username: 'shop' } },
+    ] }],
+  ])
+  assert.deepEqual(await S.syncComments(db, ORG, fetcher), { added: 2 })
+  assert.deepEqual(await S.syncComments(db, ORG, fetcher), { added: 0 }) // once only
+  const rows = db.tables.instagram_comments
+  assert.deepEqual(rows.map((r) => r.comment_id).sort(), ['c1', 'c2'])
+  assert.equal(rows.find((r) => r.comment_id === 'c1').reply_text, 'Hello!')
+  assert.equal((await S.listComments(db, ORG, 'open')).map((r) => r.comment_id).join(), 'c2')
+  assert.match((await S.syncComments(db, ORG, graph([]).fetcher)).error, /not mocked/)
+})
+
+test('pull DMs from Instagram: threads into the inbox once; "Allow access to messages" off is reported', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU' }
+  const db = salonDb({ instagram_accounts: [account], contacts: [], conversations: [], messages: [] })
+  const { fetcher } = graph([
+    [`/${IG}/conversations`, { data: [{ id: 't1' }] }],
+    ['/t1?', { messages: { data: [ // newest first, as Instagram sends them
+      { id: 'mid2', created_time: '2026-11-18T12:05:00+0000', from: { id: IG }, to: { data: [{ id: '901' }] }, message: 'Yes, in stock' },
+      { id: 'mid1', created_time: '2026-11-18T12:00:00+0000', from: { id: '901', username: 'ravik' }, to: { data: [{ id: IG }] }, message: 'Is this available?' },
+    ] } }],
+    ['/901?', { name: 'Ravi Kumar', username: 'ravik' }],
+  ])
+  assert.deepEqual(await S.syncDms(db, ORG, fetcher), { added: 2 })
+  assert.deepEqual(await S.syncDms(db, ORG, fetcher), { added: 0 })
+  assert.deepEqual(db.tables.messages.map((m) => [m.twilio_message_sid, m.sender_type]), [['IG_mid1', 'contact'], ['IG_mid2', 'user']])
+  assert.equal(db.tables.conversations[0].channel, 'instagram')
+  const chats = await S.listIgChats(db, ORG)
+  assert.equal(chats[0].name, 'Ravi Kumar')
+  const off = graph([[`/${IG}/conversations`, { error: { message: '(#200) The account owner has disabled access to Instagram Direct Messaging Outside of Instagram App.', code: 200 } }]])
+  assert.deepEqual(await S.syncDms(db, ORG, off.fetcher), { added: 0, messagesOff: true })
+})
+
+test('setup checks: webhook address on the Meta app, and DMs allowed', async () => {
+  process.env.META_APP_ID = 'app1'; process.env.META_APP_SECRET = 'sec'
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU' }
+  const db = salonDb({ instagram_accounts: [account] })
+  const none = graph([
+    ['/app1/subscriptions', { data: [{ object: 'whatsapp_business_account', active: true }] }],
+    [`/${IG}/conversations`, { error: { message: 'The account owner has disabled access to Instagram Direct Messaging', code: 200 } }],
+  ])
+  assert.deepEqual(await S.instagramChecks(db, ORG, none.fetcher), { webhook: false, messages: false })
+  assert.ok(none.calls.some((c) => c.url.includes('/app1/subscriptions')))
+  const ok = graph([['/app1/subscriptions', { data: [{ object: 'instagram', active: true }] }], [`/${IG}/conversations`, { data: [] }]])
+  assert.deepEqual(await S.instagramChecks(db, ORG, ok.fetcher), { webhook: true, messages: true })
+})
