@@ -266,6 +266,9 @@ test('two inboxes: Conversations is WhatsApp only, Instagram has its own with th
   assert.match(api, /channel === 'instagram' \? q\.eq\('channel', 'instagram'\) : q\.neq\('channel', 'instagram'\)/)
   assert.match(read('app/dashboard/page.tsx'), /<Inbox channel="whatsapp" \/>/)
   assert.match(read('app/dashboard/instagram/page.tsx'), /<Inbox channel="instagram" \/>/)
+  // One tab bar over the Instagram pages: Chats, Comments, Posts, Auto replies
+  assert.match(read('app/dashboard/instagram/layout.tsx'), /<InstagramShell>\{children\}<\/InstagramShell>/)
+  for (const page of ['comments', 'posts', 'auto-replies']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'app/dashboard/instagram', page, 'page.tsx')), page)
   const inbox = read('components/chat/inbox.tsx')
   assert.match(inbox, /channel=\$\{channel\}&page=/)
   assert.match(inbox, /isIg \? INSTAGRAM_WINDOW_MS/)

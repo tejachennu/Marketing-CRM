@@ -18,10 +18,11 @@ export async function GET(request: NextRequest) {
   let summary = null
   if (account) {
     const [chats, comments] = await Promise.all([
-      db.from('conversations').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).eq('channel', 'instagram').gt('unread_count', 0),
+      db.from('conversations').select('unread_count').eq('organization_id', organizationId).eq('channel', 'instagram').gt('unread_count', 0),
       db.from('instagram_comments').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).is('deleted_at', null).is('replied_at', null).is('private_reply_at', null),
     ])
-    summary = { unreadChats: chats.count || 0, openComments: comments.count || 0 }
+    // Unread messages, the same count as the sidebar and the inbox header
+    summary = { unreadChats: (chats.data || []).reduce((n: number, c: any) => n + (Number(c.unread_count) || 0), 0), openComments: comments.count || 0 }
   }
   return NextResponse.json({
     account: publicAccount(account),

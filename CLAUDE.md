@@ -166,8 +166,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     copied to `media-attachments/instagram/<org>/` (`keepIgMedia`; Instagram links expire) with body `[Media Attachment]`;
     shares keep label + link. The conversations API has no `sticker` field (asking fails the call) and marks some
     messages `is_unsupported` (e.g. voice notes): shown as `UNSUPPORTED_TEXT`; webhooks deliver those.
-  - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx` → `InstagramHome` + inbox; not connected → card to
-    Settings), **Comments and posts** (`/dashboard/instagram/comments`), **Settings → Instagram** (`InstagramSettings` in
+  - Screens: menu → **Instagram** = a tab bar (`app/dashboard/instagram/layout.tsx` → `InstagramShell`: connected check
+    → else card to Settings; counts; hides on phones while a chat is open) over **Chats** (`/dashboard/instagram`, the
+    inbox), **Comments** (`/comments`: posts list + Instagram-style thread, reply in place / as DM), **Posts** (`/posts`,
+    grid + New post), **Auto replies** (`/auto-replies`, same settings as Settings). **Settings → Instagram** (`InstagramSettings` in
     `components/instagram/instagram-parts.tsx`: connect / disconnect, "Still to do", tiles, Auto replies; `?tab=instagram`); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
     (`storefront.instagram.live`, `loadStore` → `instagramFeed`).
 - **App: shop features synced** (18 Nov 2026): `mobile/lib/screens/store/shop_more.dart` (`OrderInvoiceBox`,

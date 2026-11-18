@@ -1646,16 +1646,7 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
               <span className={`h-2 w-2 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-500' : realtimeStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'}`} />
               <span>{realtimeStatus === 'connected' ? 'Live' : realtimeStatus === 'connecting' ? 'Connecting' : 'Offline'}</span>
             </span>
-            {isIg ? (
-              <>
-                <button type="button" onClick={() => router.push('/dashboard/instagram/comments')} className="h-8 w-8 rounded-full flex items-center justify-center text-[#54656f] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#374248] cursor-pointer" title="Comments and posts" aria-label="Comments and posts">
-                  <MessageSquareText size={18} />
-                </button>
-                <button type="button" onClick={() => router.push('/dashboard/settings?tab=instagram')} className="h-8 w-8 rounded-full flex items-center justify-center text-[#54656f] dark:text-[#8696a0] hover:bg-[#e9edef] dark:hover:bg-[#374248] cursor-pointer" title="Instagram settings" aria-label="Instagram settings">
-                  <SettingsIcon size={18} />
-                </button>
-              </>
-            ) : user && (
+            {isIg ? null /* Comments, Posts, Auto replies and Settings are in the Instagram tab bar */ : user && (
               <AddContactDialog
                 organizationId={user.organization_id}
                 onContactAdded={reloadAll}

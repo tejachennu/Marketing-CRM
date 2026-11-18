@@ -1,5 +1,5 @@
-import { InstagramCommentsPage } from '@/components/instagram/instagram-parts'
+import { InstagramCommentsTab } from '@/components/instagram/instagram-parts'
 
-export default function Page() {
-  return <InstagramCommentsPage />
+export default function InstagramCommentsPage() {
+  return <InstagramCommentsTab />
 }

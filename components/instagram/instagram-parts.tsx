@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Check, Clock, EyeOff, Eye, ImagePlus, Camera as Instagram, Loader2, MessageCircle, MessageSquare, Plus, RefreshCw, Reply, Send, Settings as SettingsIcon, Sparkles, Trash2, Unlink, Zap } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, Clock, LayoutGrid, EyeOff, Eye, ImagePlus, Camera as Instagram, Loader2, MessageCircle, MessageSquare, Plus, RefreshCw, Reply, Send, Settings as SettingsIcon, Sparkles, Trash2, Unlink, Zap } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 import { can, type RoleSubject } from '@/lib/rbac'
@@ -166,7 +167,7 @@ export function InstagramSettings() {
           </section>
 
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <Tile label="Unread chats" value={String(summary?.unreadChats ?? 0)} icon={MessageSquare} href="/dashboard/instagram" />
+            <Tile label="Unread messages" value={String(summary?.unreadChats ?? 0)} icon={MessageSquare} href="/dashboard/instagram" />
             <Tile label="Comments waiting" value={String(summary?.openComments ?? 0)} icon={MessageCircle} href="/dashboard/instagram/comments" />
             <Tile label="Auto replies" value={autoOn(automation) ? 'On' : 'Off'} icon={Zap} href="#instagram-auto" />
           </div>
@@ -186,42 +187,127 @@ export function InstagramSettings() {
 }
 
 /** Instagram → Comments and posts (chats are in the Instagram inbox). */
-export function InstagramCommentsPage() {
+// ── The Instagram section: one tab bar over Chats, Comments, Posts and Auto replies ──────────────
+
+interface Shell { orgId: string; viewer: RoleSubject; account: Account; summary: Summary | null; automation: IgAutomation | null; setAutomation: (a: IgAutomation) => void; refresh: () => void }
+const ShellContext = createContext<Shell | null>(null)
+const useShell = () => useContext(ShellContext)
+
+const TABS = [
+  { href: '/dashboard/instagram', label: 'Chats', icon: MessageSquare, count: (s: Summary | null) => s?.unreadChats || 0 },
+  { href: '/dashboard/instagram/comments', label: 'Comments', icon: MessageCircle, count: (s: Summary | null) => s?.openComments || 0 },
+  { href: '/dashboard/instagram/posts', label: 'Posts', icon: LayoutGrid, count: () => 0 },
+  { href: '/dashboard/instagram/auto-replies', label: 'Auto replies', icon: Zap, count: () => 0 },
+]
+
+/**
+ * Wraps every Instagram page (app/dashboard/instagram/layout.tsx): checks Instagram is connected (else a way
+ * to connect), then the tab bar with counts, the account and Settings. On phones the bar steps aside while
+ * a chat is open, like the main bottom bar.
+ */
+export function InstagramShell({ children }: { children: React.ReactNode }) {
   const { orgId, viewer } = useViewer()
-  const [tab, setTab] = useState<'comments' | 'posts'>('comments')
-  const [open, setOpen] = useState<number | null>(null)
-  const [me, setMe] = useState<Account | null>(null)
+  const pathname = usePathname()
+  const [state, setState] = useState<'loading' | 'connected' | 'none'>('loading')
+  const [account, setAccount] = useState<Account | null>(null)
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [automation, setAutomation] = useState<IgAutomation | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
+
   const refresh = useCallback(() => {
     if (!orgId) return
-    void fetch(`/api/instagram?organizationId=${orgId}`).then((r) => r.json()).then((d) => { setOpen(d.summary?.openComments ?? null); setMe(d.account || null) }).catch(() => null)
+    void fetch(`/api/instagram?organizationId=${orgId}`).then((r) => r.json()).then((d) => {
+      setAccount(d.account || null)
+      setSummary(d.summary || null)
+      setAutomation(d.automation || null)
+      setState(d.account ? 'connected' : 'none')
+    }).catch(() => setState((s) => (s === 'loading' ? 'none' : s)))
   }, [orgId])
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { refresh() }, [refresh, pathname])
+  useEffect(() => {
+    if (!orgId) return
+    const timer = setInterval(refresh, 60_000)
+    return () => clearInterval(timer)
+  }, [orgId, refresh])
+  useEffect(() => {
+    const onChat = (e: Event) => setChatOpen(Boolean((e as CustomEvent).detail?.hasActiveConversation))
+    window.addEventListener('active-conversation-changed', onChat)
+    return () => window.removeEventListener('active-conversation-changed', onChat)
+  }, [])
 
+  if (state === 'loading' || !orgId) return <div className="h-full flex items-center justify-center bg-[#f4f6fa] dark:bg-[#0b141a]"><Loader2 className="animate-spin text-slate-400" /></div>
+  if (state === 'none' || !account) return <InstagramNotConnected canConnect={can(viewer, 'settings.manage')} />
+
+  const onChats = pathname === '/dashboard/instagram'
   return (
-    <div className="h-full overflow-y-auto bg-[#f4f6fa] dark:bg-[#0b141a] text-slate-900 dark:text-slate-100">
-      <div className="max-w-5xl mx-auto p-4 pb-24 md:p-8 space-y-4 sm:space-y-5">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard/instagram" className="h-10 w-10 shrink-0 rounded-full border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] flex items-center justify-center text-[#4a5672] hover:border-[#d5ddeb]" aria-label="Back to Instagram chats"><ArrowLeft size={17} /></Link>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Comments and posts</h1>
-            <p className="text-xs sm:text-[13px] text-[#6B7894] dark:text-slate-400">Answer comments on your posts and reels, and post new photos.</p>
-          </div>
-          <Link href="/dashboard/settings?tab=instagram" className={secondaryButton}><SettingsIcon size={13} /> <span className="hidden sm:inline">Settings</span></Link>
+    <ShellContext.Provider value={{ orgId, viewer, account, summary, automation, setAutomation, refresh }}>
+      <div className="h-full flex flex-col min-h-0 bg-[#f4f6fa] dark:bg-[#0b141a] text-slate-900 dark:text-slate-100">
+        <div className={`${onChats && chatOpen ? 'hidden md:flex' : 'flex'} shrink-0 items-center gap-2 h-12 pl-2 pr-3 sm:px-4 bg-white dark:bg-[#111b21] border-b border-[#e3e8f2] dark:border-slate-800`}>
+          <nav aria-label="Instagram" className="flex-1 min-w-0 flex items-stretch h-full overflow-x-auto no-scrollbar">
+            {TABS.map(({ href, label, icon: Icon, count }) => {
+              const on = href === '/dashboard/instagram' ? onChats : pathname.startsWith(href)
+              const n = count(summary)
+              return (
+                <Link key={href} href={href} aria-current={on ? 'page' : undefined} className={`relative shrink-0 flex items-center gap-1.5 px-3 text-[13px] font-semibold whitespace-nowrap ${on ? 'text-[#0E1B3D] dark:text-white' : 'text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>
+                  <Icon size={15} />
+                  {label}
+                  {n > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
+                  {on && <span className="absolute left-2 right-2 bottom-0 h-0.5 rounded-full bg-[#1D5BEA]" />}
+                </Link>
+              )
+            })}
+          </nav>
+          <span className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#4a5672] dark:text-slate-300 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {account.picture ? <img src={account.picture} alt="" className="h-6 w-6 rounded-full object-cover border border-[#e3e8f2]" /> : <Instagram size={14} />}
+            <span className="truncate max-w-[140px]">@{account.username}</span>
+          </span>
+          <Link href="/dashboard/settings?tab=instagram" className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-[#6B7894] hover:bg-[#f4f6fa] dark:hover:bg-slate-800" title="Instagram settings" aria-label="Instagram settings"><SettingsIcon size={16} /></Link>
         </div>
-
-        <div role="tablist" className="inline-flex p-1 rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800">
-          {(['comments', 'posts'] as const).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`h-9 px-4 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${tab === t ? 'bg-[#1D5BEA] text-white' : 'text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800'}`}>
-              {t === 'comments' ? 'Comments' : 'Posts'}
-              {t === 'comments' && Boolean(open) && <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${tab === t ? 'bg-white/25 text-white' : 'bg-[#e8effd] text-[#1D5BEA]'}`}>{open}</span>}
-            </button>
-          ))}
-        </div>
-
-        {orgId && tab === 'comments' && <CommentsPanel orgId={orgId} canReply={can(viewer, 'records.write')} me={me} onChange={refresh} />}
-        {orgId && tab === 'posts' && <PostsPanel orgId={orgId} canPost={can(viewer, 'automation.manage')} />}
+        {account.lastError && (
+          <p className="shrink-0 px-4 py-2 text-xs bg-[#fdf0f0] text-[#b91c1c] flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" /> {account.lastError} <Link href="/dashboard/settings?tab=instagram" className="underline font-semibold">Fix in Settings</Link></p>
+        )}
+        <div className="flex-1 min-h-0">{children}</div>
       </div>
+    </ShellContext.Provider>
+  )
+}
+
+/** A tab's page: scrolls on its own under the tab bar. */
+function TabPage({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className={`${wide ? 'max-w-6xl' : 'max-w-4xl'} mx-auto p-4 pb-24 md:p-6 space-y-4`}>{children}</div>
     </div>
+  )
+}
+
+/** Instagram → Comments. */
+export function InstagramCommentsTab() {
+  const shell = useShell()
+  if (!shell) return null
+  return <TabPage wide><CommentsPanel orgId={shell.orgId} canReply={can(shell.viewer, 'records.write')} me={shell.account} onChange={shell.refresh} /></TabPage>
+}
+
+/** Instagram → Posts. */
+export function InstagramPostsTab() {
+  const shell = useShell()
+  if (!shell) return null
+  return <TabPage><PostsPanel orgId={shell.orgId} canPost={can(shell.viewer, 'automation.manage')} /></TabPage>
+}
+
+/** Instagram → Auto replies (the same settings as Settings → Instagram). */
+export function InstagramAutoRepliesTab() {
+  const shell = useShell()
+  if (!shell) return null
+  return (
+    <TabPage>
+      <div>
+        <h1 className="text-lg font-bold flex items-center gap-2"><Zap size={18} className="text-[#1D5BEA]" /> Auto replies</h1>
+        <p className="text-xs text-[#6B7894] dark:text-slate-400 mt-0.5">Answer DMs and comments by themselves: with AI from your knowledge base, or with your own words for chosen keywords.</p>
+      </div>
+      <AutoRepliesPanel orgId={shell.orgId} initial={shell.automation || DEFAULT_AUTOMATION} canEdit={can(shell.viewer, 'automation.manage')} onSaved={(a) => { shell.setAutomation(a); shell.refresh() }} />
+    </TabPage>
   )
 }
 
@@ -239,19 +325,6 @@ export function InstagramNotConnected({ canConnect }: { canConnect: boolean }) {
       </div>
     </div>
   )
-}
-
-/** The Instagram menu: the inbox when connected, else a way to connect. */
-export function InstagramHome({ inbox }: { inbox: React.ReactNode }) {
-  const { orgId, viewer } = useViewer()
-  const [state, setState] = useState<'loading' | 'connected' | 'none'>('loading')
-  useEffect(() => {
-    if (!orgId) return
-    void fetch(`/api/instagram?organizationId=${orgId}`).then((r) => r.json()).then((d) => setState(d.account ? 'connected' : 'none')).catch(() => setState('connected'))
-  }, [orgId])
-  if (state === 'loading') return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>
-  if (state === 'none') return <InstagramNotConnected canConnect={can(viewer, 'settings.manage')} />
-  return <>{inbox}</>
 }
 
 function Tile({ label, value, icon: Icon, href }: { label: string; value: string; icon: typeof Zap; href: string }) {
@@ -491,7 +564,7 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
       {list === null ? <div className={`${cardClass} py-10 flex justify-center`}><Loader2 className="animate-spin text-slate-400" /></div>
         : shownThreads.length === 0 ? <Empty icon={MessageCircle} title={filter === 'open' ? 'All caught up' : 'No comments yet'} text={filter === 'open' ? 'Every comment has an answer. New ones show here.' : 'New comments on your posts and reels show here.'} />
         : (
-          <div className={`${cardClass} overflow-hidden md:grid md:grid-cols-[300px_1fr] md:h-[calc(100dvh-250px)] md:min-h-[460px]`}>
+          <div className={`${cardClass} overflow-hidden md:grid md:grid-cols-[300px_1fr] md:h-[calc(100dvh-170px)] md:min-h-[420px]`}>
             {/* Posts with comments */}
             <div className={`${current ? 'hidden md:block' : 'block'} md:border-r border-[#eef1f6] dark:border-slate-800 md:overflow-y-auto`}>
               <p className="px-4 pt-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-[#8a94a8]">Posts and reels</p>
