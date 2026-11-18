@@ -19,6 +19,7 @@ import { DeliveryPartners } from '@/components/commerce/delivery-partners'
 import { Offers } from '@/components/commerce/offers'
 import { ReviewsTab } from '@/components/commerce/reviews-tab'
 import { ShopMessagesCard } from '@/components/commerce/shop-messages-card'
+import { InvoiceSettingsCard } from '@/components/commerce/invoice-settings-card'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
 type Tab = 'orders' | 'products' | 'reviews' | 'offers' | 'website' | 'flow' | 'settings'
@@ -323,6 +324,7 @@ export default function CommercePage() {
           />
         )}
         {orgId && activeTab === 'settings' && canManageStore && <ShopMessagesCard orgId={orgId} showToast={showToast} />}
+        {orgId && activeTab === 'settings' && canManageStore && <InvoiceSettingsCard orgId={orgId} showToast={showToast} />}
         {orgId && activeTab === 'settings' && canManageStore && <DeliveryPartners orgId={orgId} canManage={can(viewer, 'settings.manage')} showToast={showToast} />}
       </div>
 

@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { dueShipments, refreshShipment, withShippingSchema, SHIPPING_ORG_COLUMNS } from '@/lib/commerce/shipping'
 import { notifyParcel } from '@/lib/commerce/shipping-notify'
 import { askForReviewOf } from '@/lib/commerce/review-store'
+import { issueInvoiceQuietly } from '@/lib/commerce/invoice-store'
 import { sendDueReminders } from '@/lib/commerce/cart-reminders'
 
 export const runtime = 'nodejs'
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
     if (!org) continue
     try {
-      const result = await refreshShipment(db, org, shipment, { notify: (args) => notifyParcel(db, args), onDelivered: (id) => askForReviewOf(db, shipment.organization_id, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)) })
+      const result = await refreshShipment(db, org, shipment, { notify: (args) => notifyParcel(db, args), onDelivered: async (id) => { await askForReviewOf(db, shipment.organization_id, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)).catch(() => null); await issueInvoiceQuietly(db, shipment.organization_id, id) } })
       checked++
       if (result.moved) moved++
     } catch (error: any) {

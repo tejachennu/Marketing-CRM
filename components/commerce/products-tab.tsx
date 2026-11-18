@@ -7,6 +7,7 @@ import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
+import { GST_RATES } from '@/lib/commerce/invoice'
 import { ProductOptions } from './product-options'
 import { ProductMedia } from './product-media'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
@@ -20,7 +21,7 @@ const EMPTY_FORM = {
   // Details the WhatsApp catalog asks for
   brand: '', condition: 'new', origin_country: '', is_service: false, importer_name: '', importer_street: '', importer_city: '', importer_postal_code: '',
   // For couriers (Shiprocket / Delhivery)
-  weight_grams: '', hsn_code: '',
+  weight_grams: '', hsn_code: '', gst_rate: '',
   // More photos and a video for the store page
   images: [] as string[], video_url: '',
 }
@@ -281,6 +282,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       importer_postal_code: attributes.importer_address?.postal_code || '',
       weight_grams: (product as any).weight_grams ? String((product as any).weight_grams) : '',
       hsn_code: (product as any).hsn_code || '',
+      gst_rate: (product as any).gst_rate === null || (product as any).gst_rate === undefined ? '' : String(Number((product as any).gst_rate)),
       images: Array.isArray((product as any).images) ? (product as any).images : [],
       video_url: (product as any).video_url || '',
     })
@@ -631,6 +633,14 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <div>
                 <label htmlFor="product-hsn" className={labelClass}>HSN code (optional)</label>
                 <input id="product-hsn" inputMode="numeric" maxLength={8} placeholder="For GST" value={form.hsn_code} onChange={(event) => setForm({ ...form, hsn_code: event.target.value.replace(/\D/g, '') })} className={inputClass} />
+              </div>
+              <div className="col-span-2">
+                <label htmlFor="product-gst" className={labelClass}>GST rate</label>
+                <select id="product-gst" value={form.gst_rate} onChange={(event) => setForm({ ...form, gst_rate: event.target.value })} className={inputClass}>
+                  <option value="">Shop&apos;s usual rate</option>
+                  {[...new Set([...GST_RATES, ...(form.gst_rate === '' ? [] : [Number(form.gst_rate)])])].sort((a, b) => a - b).map((rate) => <option key={rate} value={String(rate)}>{rate}%</option>)}
+                </select>
+                <p className={hintClass}>For the GST invoice. The price on the store includes it.</p>
               </div>
             </div>
             <div>

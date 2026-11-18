@@ -117,6 +117,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: GST invoices** (3.2): `lib/commerce/invoice.ts` (pure, browser-safe: `GST_RATES` 0/0.25/3/5/18/40, `readInvoiceSettings`
+  / `parseInvoiceSettings` {gstin, legalName, address, prefix ≤5, defaultRate} in `organizations.shop_invoice`, `stateCodeOf`
+  names / short forms → GST state code, `financialYear` April–March IST, `shopInvoiceNumber` "WEB/26-27/0001",
+  `computeShopInvoice`: prices include GST, offer shared by amount, delivery line at the highest goods rate, IGST when
+  the delivery state differs from the GSTIN's state, no GSTIN → plain bill). `invoice-store.ts` (lock 724519026, migration
+  `20261129_shop_invoices.sql`: `commerce_invoices` one per order, unique (org, fy, seq), snapshot of shop / customer /
+  lines; `commerce_products.gst_rate`; `issueInvoice` retries on a taken number, puts `invoice_token` in the order's
+  `shipping_address`; `cancelInvoiceFor`). Issued on Shipped / Delivered (orders PATCH, courier webhook, shop cron) or
+  `POST /api/commerce/invoices`; `GET/PUT` there for settings. Public page `/invoice/<token>` (A4 print). Screens: Store
+  settings → **GST invoices** (`invoice-settings-card.tsx`), order details → Invoice (`order-invoice.tsx`), product form
+  GST rate, My orders → Invoice link.
 - **Shop: reviews with photos + "How was it?"** (3.3, 2.3): `lib/commerce/reviews.ts` (pure: `cleanReview` 1–5 stars,
   ≤1000 chars, ≤4 https photos; `publicName` "Asha R."; `ratingSummary`), `review-store.ts` (lock 724519025, migration
   `20261128_shop_reviews.sql`: `commerce_reviews` unique per order + product; `reviewToken` kept in

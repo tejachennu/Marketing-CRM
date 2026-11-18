@@ -195,6 +195,8 @@ export function shopperOrderView(order: any, items: any[]) {
     currency: String(order.currency || 'INR'),
     timeline: orderTimeline(order),
     unpaid: order.status === 'payment_pending' && ship.payment?.order_id ? { razorpayOrderId: String(ship.payment.order_id) } : null,
+    // The GST invoice, once the order has one (opens on the main app address, also from own domains)
+    invoice: /^[A-Za-z0-9_-]{16,40}$/.test(String(ship.invoice_token || '')) ? `${String(process.env.NEXT_PUBLIC_APP_URL || 'https://wamacrm.magnetora.in').replace(/\/$/, '')}/invoice/${ship.invoice_token}` : null,
   }
 }
 

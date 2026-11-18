@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronRight, Loader2, LogOut, MapPin, Package, Search, Truck, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, FileText, Loader2, LogOut, MapPin, Package, Search, Truck, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { shopperAuth, unpackSession } from '@/lib/commerce/shopper-client'
 import { PhoneField } from '@/components/phone-field'
@@ -24,6 +24,7 @@ export interface ShopperOrder {
   total: number
   currency: string
   timeline: { key: string; label: string; state: 'done' | 'now' | 'next' | 'stopped'; at: string | null }[]
+  invoice?: string | null
 }
 
 export interface Account {
@@ -211,6 +212,11 @@ export function OrderDetail({ order, money, onReorder }: { order: ShopperOrder; 
         {order.handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{order.delivery ? money(order.delivery) : 'Free'}</span></div>}
         <div className="flex justify-between font-extrabold text-[16px] pt-1"><span>Total</span><span>{money(order.total)}</span></div>
         <p className="text-[13px] text-[#6B7894]">{order.payment}</p>
+        {order.invoice && (
+          <a href={order.invoice} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[var(--c)] hover:underline">
+            <FileText size={15} /> Invoice
+          </a>
+        )}
       </div>
       <p className="text-[14px] text-[#4a5672] flex gap-2">
         <MapPin size={17} className="shrink-0 mt-0.5 text-[var(--c)]" />

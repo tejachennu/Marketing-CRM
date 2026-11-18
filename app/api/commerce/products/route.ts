@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
 import { sanitizeSearchTerm } from '@/lib/utils'
 import { parseProductInput, type ProductInput } from '@/lib/commerce/commerce-utils'
+import { productGstValue, withInvoiceSchema } from '@/lib/commerce/invoice-store'
 import { getCatalogState, getProductAttributes, isInCatalog, parseProductAttributes, type ProductAttributes } from '@/lib/commerce/catalog-items'
 import { describeCatalogError, isGraphId } from '@/lib/commerce/meta-catalog'
 import { pullCatalogToDatabase, pushProductsToCatalog, refreshCatalogStatus, removeFromCatalog } from '@/lib/commerce/catalog-sync'
@@ -274,6 +275,12 @@ export async function POST(request: NextRequest) {
     if (shippingValues) {
       const { data: withShipping } = await withShippingSchema(() => supabase.from('commerce_products').update(shippingValues).eq('id', savedProduct.id).eq('organization_id', organizationId).select())
       if (withShipping?.[0]) Object.assign(savedProduct, withShipping[0])
+    }
+    // GST rate for the invoice (empty = the shop's usual rate), saved the same way
+    const gstValue = productGstValue(product)
+    if (gstValue) {
+      const { data: withGst } = await withInvoiceSchema(() => supabase.from('commerce_products').update(gstValue).eq('id', savedProduct.id).eq('organization_id', organizationId).select())
+      if (withGst?.[0]) Object.assign(savedProduct, withGst[0])
     }
 
     // Send the product to the Meta catalog, so it can be shared and ordered in WhatsApp

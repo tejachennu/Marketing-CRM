@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package, Phone, Plus, RefreshCw, Search, Store, Truck, X } from 'lucide-react'
 import { NewOrderModal } from './new-order'
 import { CourierPanel } from './courier-panel'
+import { OrderInvoice } from './order-invoice'
 import { codCheckLabel } from '@/lib/commerce/shop-messages'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
@@ -587,6 +588,8 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   <p className={hintClass}>A payment request is waiting in the customer&apos;s chat (reference {selected.meta_payment_reference}).</p>
                 )}
               </section>
+
+              <OrderInvoice key={`${selected.id}:${selected.status}`} orgId={orgId} orderId={selected.id} canEdit={canEdit} showToast={showToast} />
 
               {/* Delivery */}
               <section>

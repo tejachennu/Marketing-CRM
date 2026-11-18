@@ -8,6 +8,7 @@ import { createOrderNumber, notifyOrderStatus, resendCheckoutStep, voidPaymentRe
 import { createManualOrder, parseManualOrder } from '@/lib/commerce/manual-order'
 import { changeVariantStock } from '@/lib/commerce/variant-store'
 import { askForReviewOf } from '@/lib/commerce/review-store'
+import { cancelInvoiceFor, issueInvoiceQuietly } from '@/lib/commerce/invoice-store'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -228,9 +229,13 @@ export async function PATCH(request: NextRequest) {
       if (status === 'delivered') {
         await askForReviewOf(supabase, organizationId, orderId, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)).catch(() => null)
       }
+      // Shipped or delivered: the order's GST invoice (once; the customer sees it in My orders)
+      if (status === 'shipped' || status === 'delivered') await issueInvoiceQuietly(supabase, organizationId, orderId)
 
       // A cancelled order gives the stock of its sizes / colours back
       if (status === 'canceled') {
+        // and its invoice, if one was issued, says Cancelled
+        await cancelInvoiceFor(supabase, organizationId, orderId).catch(() => null)
         for (const item of (updatedOrder.items || []) as any[]) {
           if (item.variant_id) await changeVariantStock(supabase, organizationId, item.variant_id, Number(item.quantity) || 0).catch(() => null)
         }

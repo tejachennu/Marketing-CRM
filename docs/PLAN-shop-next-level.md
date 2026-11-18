@@ -169,7 +169,7 @@ WhatsApp messages outside the 24-hour window go out only with a template the bus
 | 2.5 | Back-in-stock alerts on WhatsApp | Done: "Tell me when it's back" (product or size / colour); one message when stock returns |
 | 2.6 | Reorder in one tap ("Same as last time?") | Done: Order again in My orders (same products and options) |
 | 3.1 | Shiprocket / Delhivery from the order screen | Done |
-| 3.2 | GST invoice for every online order | To do |
+| 3.2 | GST invoice for every online order | Done (18 Nov 2026): made when the order is shipped or delivered (or "Make invoice now" on the order), numbered per financial year (WEB/26-27/0001), prices include GST, CGST + SGST or IGST by the delivery state, plain bill without a GSTIN, Cancelled when the order is cancelled; Store settings → GST invoices; GST rate per product; Invoice link in My orders. Not looked at in a browser yet; no credit notes, no customer GSTIN (B2B) yet |
 | 3.3 | Customer reviews with photos on product pages | Done: review page from WhatsApp (stars, words, up to 4 photos), product page reviews + Google stars, Reviews tab (hide / show) |
 | 3.4 | Shop reports (visitors, orders, what sells, carts left, best customers) | To do |
 | 3.5 | Returns and refunds (Razorpay refund) | To do |
