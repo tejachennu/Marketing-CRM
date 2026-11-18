@@ -171,7 +171,7 @@ WhatsApp messages outside the 24-hour window go out only with a template the bus
 | 3.1 | Shiprocket / Delhivery from the order screen | Done |
 | 3.2 | GST invoice for every online order | Done (18 Nov 2026): made when the order is shipped or delivered (or "Make invoice now" on the order), numbered per financial year (WEB/26-27/0001), prices include GST, CGST + SGST or IGST by the delivery state, plain bill without a GSTIN, Cancelled when the order is cancelled; Store settings → GST invoices; GST rate per product; Invoice link in My orders. Not looked at in a browser yet; no credit notes, no customer GSTIN (B2B) yet |
 | 3.3 | Customer reviews with photos on product pages | Done: review page from WhatsApp (stars, words, up to 4 photos), product page reviews + Google stars, Reviews tab (hide / show) |
-| 3.4 | Shop reports (visitors, orders, what sells, carts left, best customers) | To do |
+| 3.4 | Shop reports (visitors, orders, what sells, carts left, best customers) | Done (18 Nov 2026): Reports tab, 7 / 30 / 90 days: store visits (counted from now on), orders, sales, average, sales each day, what sells, where orders came from, carts left / reminded / came back, best customers, new vs returning |
 | 3.5 | Returns and refunds (Razorpay refund) | To do |
 | 4.1 | Store layouts (3–4) and an Instagram feed | To do |
 | 4.2 | Coupons per customer and loyalty points | To do |

@@ -801,7 +801,7 @@ export default function DashboardLayout({
       ...(canManageConnector ? [
         { tab: 'flow', label: 'Go live', icon: Rocket, badge: 0 },
         { tab: 'settings', label: 'Store', icon: Settings, badge: 0 },
-      ] : []),
+      ] : [{ tab: 'reports', label: 'Reports', icon: BarChart3, badge: 0 }]),
     ] : []
   const mobileDrawerItems = [
     ...filteredNavItems.filter((item) => !mobileBarLinks.includes(item.href)),

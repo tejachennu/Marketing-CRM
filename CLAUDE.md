@@ -117,6 +117,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: reports** (3.4): `lib/commerce/shop-reports.ts` (pure: `buildShopReport` from orders, items, checkouts and visits;
+  cancelled and waiting-for-payment orders are not counted; IST days; `readPeriod` 7/30/90), `shop-reports-store.ts` (lock
+  724519027, migration `20261130_shop_reports.sql`: `commerce_store_visits` per org per day; `countVisit` exact with the
+  direct DB pool, read-then-write without; `loadShopReport`). `POST /api/public/store/[slug]/visit` (one per tab session,
+  product pages counted apart), `GET /api/commerce/reports`. Dashboard **Reports** tab (`reports-tab.tsx`); on phones from the
+  Store tab (managers) or the bottom bar (others).
 - **Shop: GST invoices** (3.2): `lib/commerce/invoice.ts` (pure, browser-safe: `GST_RATES` 0/0.25/3/5/18/40, `readInvoiceSettings`
   / `parseInvoiceSettings` {gstin, legalName, address, prefix ≤5, defaultRate} in `organizations.shop_invoice`, `stateCodeOf`
   names / short forms → GST state code, `financialYear` April–March IST, `shopInvoiceNumber` "WEB/26-27/0001",

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { announceConnectorBadges, announceConnectorTab, connectorTabFromSearch, onTabRequest } from '@/lib/connector-nav'
-import { AlertCircle, BadgePercent, CheckCircle2, ChevronRight, Circle, Clock, Globe, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Star, Truck, Wallet, X } from 'lucide-react'
+import { AlertCircle, BadgePercent, BarChart3, CheckCircle2, ChevronRight, Circle, Clock, Globe, Loader2, Package, PauseCircle, Rocket, Settings, ShoppingBag, Star, Truck, Wallet, X } from 'lucide-react'
 import { StorefrontSettings } from '@/components/commerce/storefront-settings'
 import type { LucideIcon } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -18,11 +18,12 @@ import { StoreSettings } from '@/components/commerce/store-settings'
 import { DeliveryPartners } from '@/components/commerce/delivery-partners'
 import { Offers } from '@/components/commerce/offers'
 import { ReviewsTab } from '@/components/commerce/reviews-tab'
+import { ReportsTab } from '@/components/commerce/reports-tab'
 import { ShopMessagesCard } from '@/components/commerce/shop-messages-card'
 import { InvoiceSettingsCard } from '@/components/commerce/invoice-settings-card'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
 
-type Tab = 'orders' | 'products' | 'reviews' | 'offers' | 'website' | 'flow' | 'settings'
+type Tab = 'orders' | 'products' | 'reports' | 'reviews' | 'offers' | 'website' | 'flow' | 'settings'
 const MANAGER_TABS: Tab[] = ['website', 'flow', 'settings']
 
 export default function CommercePage() {
@@ -140,6 +141,7 @@ export default function CommercePage() {
   const tabs: Array<{ id: Tab; label: string; icon: LucideIcon; count?: number | null }> = [
     { id: 'orders', label: 'Orders', icon: Package, count: summary?.total },
     { id: 'products', label: 'Products', icon: ShoppingBag, count: productCount },
+    { id: 'reports' as Tab, label: 'Reports', icon: BarChart3 },
     { id: 'reviews' as Tab, label: 'Reviews', icon: Star },
     ...(canManageStore ? [{ id: 'offers' as Tab, label: 'Offers', icon: BadgePercent }, { id: 'website' as Tab, label: 'Website', icon: Globe }, { id: 'flow' as Tab, label: 'Order flow', icon: Rocket }, { id: 'settings' as Tab, label: 'Store settings', icon: Settings }] : []),
   ]
@@ -277,11 +279,22 @@ export default function CommercePage() {
           />
         )}
 
+        {orgId && activeTab === 'reports' && <ReportsTab orgId={orgId} currency={currency} />}
         {orgId && activeTab === 'reviews' && <ReviewsTab orgId={orgId} canManage={canManageStore} showToast={showToast} />}
         {orgId && activeTab === 'offers' && <Offers orgId={orgId} canManage={canManageStore} showToast={showToast} />}
         {orgId && activeTab === 'website' && canManageStore && <StorefrontSettings orgId={orgId} canManage={canManageStore} showToast={showToast} />}
 
-        {/* Phones: the bottom bar has no room for Reviews, Offers and Website, so they open from the Store tab */}
+        {/* Phones: the bottom bar has no room for Reports, Reviews, Offers and Website, so they open from the Store tab */}
+        {activeTab === 'settings' && (
+          <button type="button" onClick={() => setActiveTab('reports')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
+            <BarChart3 size={20} className="text-[#1D5BEA] shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-bold text-slate-900 dark:text-white">Shop reports</span>
+              <span className="block text-xs text-slate-500">Visits, sales, what sells, carts left, best customers</span>
+            </span>
+            <ChevronRight size={18} className="text-slate-400" />
+          </button>
+        )}
         {activeTab === 'settings' && (
           <button type="button" onClick={() => setActiveTab('reviews')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
             <Star size={20} className="text-[#1D5BEA] shrink-0" />

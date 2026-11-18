@@ -162,6 +162,17 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     return next
   })
 
+  // Shop reports: one visit per browser tab, and each product page opened (counts only)
+  useEffect(() => {
+    try {
+      const key = `store-visit:${store.slug}`
+      const product = Boolean(productId)
+      if (!product && sessionStorage.getItem(key)) return
+      if (!product) sessionStorage.setItem(key, '1')
+      fetch(`/api/public/store/${store.slug}/visit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(product ? { product: true } : {}), keepalive: true }).catch(() => {})
+    } catch {}
+  }, [store.slug, productId])
+
   // Signed-in shoppers: orders, tracking, cart on every phone
   const shopper = useShopper(store.slug, store.accounts, cart, setCart, appUrl)
   const [accountView, setAccountView] = useState<null | 'orders' | 'track'>(null)
