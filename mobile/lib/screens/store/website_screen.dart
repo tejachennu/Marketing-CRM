@@ -421,6 +421,13 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
             ),
           ]),
           _section('Instagram on your store', subtitle: 'Shown above the footer. On Instagram open a post, tap ⋯ → Copy link, and paste it here (up to 9).', [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: (s['instagram'] as Map?)?['live'] == true,
+              onChanged: (v) => setState(() => s['instagram'] = {...((s['instagram'] as Map?) ?? const {'handle': '', 'posts': []}), 'live': v}),
+              title: const Text('Show my latest posts by themselves', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Needs Instagram connected. The links below are used when this is off.'),
+            ),
             TextFormField(
               initialValue: '${(s['instagram'] as Map?)?['handle'] ?? ''}',
               decoration: const InputDecoration(labelText: 'Your Instagram name (optional)', prefixText: '@'),

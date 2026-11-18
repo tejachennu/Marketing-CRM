@@ -53,6 +53,9 @@ class DemoShopExtras {
       case '/api/commerce/loyalty':
         return {'settings': _loyalty};
       case '/api/commerce/returns':
+        if (query?['orderId'] == 'o1') {
+          return {'return': {'status': 'asked', 'reason': 'Wrong size or fit', 'note': 'Need a size L instead', 'asked_at': DateTime.now().toIso8601String()}, 'refunds': [], 'paid': 2998, 'refunded': 0, 'left': 2998, 'viaRazorpay': true};
+        }
         if (query?['orderId'] != null) return {'return': null, 'refunds': [], 'paid': 0, 'refunded': 0, 'left': 0, 'viaRazorpay': false};
         return {'settings': _returns};
       case '/api/commerce/invoices':
@@ -75,6 +78,7 @@ class DemoShopExtras {
       case '/api/instagram/comments':
         return {'comments': [
           {'id': 'ic1', 'comment_id': 'c1', 'from_username': 'asha.r', 'text': 'Price of the linen shirt?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().toIso8601String()},
+          {'id': 'ic2', 'comment_id': 'c2', 'from_username': 'kavya.designs', 'text': 'Do you ship to Bengaluru?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().toIso8601String()},
         ]};
       case '/api/instagram/posts':
         return {'posts': [], 'connected': true};

@@ -82,7 +82,7 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Sizes and colours · ${widget.title}', overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(title: const Text('Sizes and colours')),
       body: !_loaded
           ? _loading()
           : ListView(
@@ -374,6 +374,7 @@ class _InstagramScreenState extends State<InstagramScreen> {
                   const SizedBox(height: 16),
                   const Text('Latest posts', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   const SizedBox(height: 8),
+                  if ((_posts ?? const []).isEmpty) const Text('No posts yet. New posts show here within 30 minutes.', style: TextStyle(color: Brand.muted)),
                   GridView.count(
                     crossAxisCount: 3,
                     shrinkWrap: true,

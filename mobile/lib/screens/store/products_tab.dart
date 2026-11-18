@@ -703,7 +703,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 child: TextField(
                   controller: _weight,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Weight in grams (optional)', hintText: 'For couriers'),
+                  decoration: const InputDecoration(labelText: 'Weight (grams)', hintText: 'For couriers'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -712,7 +712,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   controller: _hsn,
                   keyboardType: TextInputType.number,
                   maxLength: 8,
-                  decoration: const InputDecoration(labelText: 'HSN code (optional)', hintText: 'For GST', counterText: ''),
+                  decoration: const InputDecoration(labelText: 'HSN code', hintText: 'For GST', counterText: ''),
                 ),
               ),
             ],

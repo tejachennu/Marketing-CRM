@@ -171,6 +171,7 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
                     : 'This order was not paid through your Razorpay. Pay the customer back yourself (UPI, cash, bank), then record it here.'),
                 const SizedBox(height: 12),
                 TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Amount (at most ${formatMoney(left, widget.order['currency'])})')),
+                const SizedBox(height: 14),
                 TextField(controller: reason, maxLength: 200, decoration: const InputDecoration(labelText: 'Reason (optional)', counterText: '')),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -744,15 +745,18 @@ Widget invoiceSettingsScreen() => _SettingsScreen(
   intro: 'Every order gets an invoice when it is shipped or delivered. The customer sees it in My orders. Prices on your store include GST. Without a GSTIN the invoice is a plain bill.',
   builder: (v, update) => [
     TextFormField(initialValue: '${v['gstin'] ?? ''}', textCapitalization: TextCapitalization.characters, maxLength: 15, decoration: const InputDecoration(labelText: 'GSTIN (optional)', hintText: '36ABCDE1234F1Z5', counterText: ''), onChanged: (x) => v['gstin'] = x.trim().toUpperCase()),
+    const SizedBox(height: 14),
     TextFormField(initialValue: '${v['legalName'] ?? ''}', decoration: const InputDecoration(labelText: 'Name on GST certificate (optional)'), onChanged: (x) => v['legalName'] = x),
+    const SizedBox(height: 14),
     TextFormField(initialValue: '${v['address'] ?? ''}', minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Address on the invoice (optional)', hintText: "Uses the shop's contact address when empty"), onChanged: (x) => v['address'] = x),
-    const SizedBox(height: 8),
+    const SizedBox(height: 14),
     DropdownButtonFormField<String>(
       initialValue: '${num.tryParse('${v['defaultRate'] ?? 0}') ?? 0}'.replaceAll(RegExp(r'\.0$'), ''),
       decoration: const InputDecoration(labelText: 'Usual GST rate', helperText: 'For products without their own rate.'),
       items: [for (final r in {...gstRates, '${num.tryParse('${v['defaultRate'] ?? 0}') ?? 0}'.replaceAll(RegExp(r'\.0$'), '')}) DropdownMenuItem(value: r, child: Text('$r%'))],
       onChanged: (x) => update(() => v['defaultRate'] = num.tryParse(x ?? '0') ?? 0),
     ),
+    const SizedBox(height: 14),
     TextFormField(initialValue: '${v['prefix'] ?? 'WEB'}', textCapitalization: TextCapitalization.characters, maxLength: 5, decoration: const InputDecoration(labelText: 'Invoice number starts with', helperText: 'Like WEB/26-27/0001. Numbers start again each April.', counterText: ''), onChanged: (x) => v['prefix'] = x),
   ],
 );
@@ -773,17 +777,17 @@ Widget shopMessagesScreen() => _SettingsScreen(
   builder: (v, update) => [
     for (final e in _messageInfo.entries)
       if (v[e.key] is Map)
-        Panel(
+        Padding(padding: const EdgeInsets.only(bottom: 10), child: Panel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SwitchListTile(contentPadding: EdgeInsets.zero, value: (v[e.key] as Map)['on'] == true, onChanged: (x) => update(() => (v[e.key] as Map)['on'] = x), title: Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(e.value.$2)),
             if ((v[e.key] as Map)['on'] == true)
               Row(children: [
                 Expanded(child: TextFormField(initialValue: '${(v[e.key] as Map)['template'] ?? ''}', decoration: const InputDecoration(labelText: 'Template name (optional)'), onChanged: (x) => (v[e.key] as Map)['template'] = x.trim())),
                 const SizedBox(width: 8),
-                SizedBox(width: 70, child: TextFormField(initialValue: '${(v[e.key] as Map)['language'] ?? 'en'}', decoration: const InputDecoration(labelText: 'Language'), onChanged: (x) => (v[e.key] as Map)['language'] = x.trim())),
+                SizedBox(width: 96, child: TextFormField(initialValue: '${(v[e.key] as Map)['language'] ?? 'en'}', decoration: const InputDecoration(labelText: 'Language'), onChanged: (x) => (v[e.key] as Map)['language'] = x.trim())),
               ]),
           ]),
-        ),
+        )),
   ],
 );
 

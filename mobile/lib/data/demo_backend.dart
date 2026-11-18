@@ -299,6 +299,15 @@ class DemoBackend implements Backend {
       conv(4, 'Booked for 6:30 pm. See you!', 180, 0, fromCustomer: false),
       conv(2, 'What are your timings on Sunday?', 60 * 26, 0),
       conv(6, 'Please send my bill again', 60 * 50, 0),
+      // An Instagram DM (Instagram customers have no phone number: "ig:<id>")
+      {
+        'id': 'conv-ig',
+        'contact': {'id': 'c-ig', 'first_name': 'Meera', 'last_name': 'Iyer', 'phone_number': 'ig:17841400000000901', 'instagram_username': 'meera.iyer'},
+        'unread_count': 1,
+        'auto_reply_enabled': true,
+        'last_message_at': now.subtract(const Duration(minutes: 12)).toIso8601String(),
+        'last_message': {'body': 'Is the linen shirt there in size M?', 'sender_type': 'contact', 'created_at': now.subtract(const Duration(minutes: 12)).toIso8601String()},
+      },
     ];
     List<Map<String, dynamic>> thread(List<List<dynamic>> rows) => [
       for (final r in rows) {'id': _id(), 'body': r[1], 'sender_type': r[0], 'created_at': now.subtract(Duration(minutes: r[2] as int)).toIso8601String(), 'status': r[0] == 'user' ? 'read' : null},
@@ -316,6 +325,11 @@ class DemoBackend implements Backend {
       'conv-0': thread([
         ['user', 'Hi Priya, thank you for visiting Glow Salon! 🙏 Your bill GLOW-0042: ₹1,500 (paid, thank you!)', 45],
         ['contact', 'Thank you! Loved the facial 😊', 38],
+      ]),
+      'conv-ig': thread([
+        ['contact', 'Hi! Saw your reel 😍', 20],
+        ['user', 'Hi Meera! Thank you. How can we help?', 19],
+        ['contact', 'Is the linen shirt there in size M?', 12],
       ]),
       'conv-2': thread([
         ['contact', 'What are your timings on Sunday?', 60 * 26],
