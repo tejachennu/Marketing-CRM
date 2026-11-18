@@ -117,6 +117,13 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: spreadsheet upload and Write with AI** (4.3): `lib/commerce/product-import.ts` (browser-safe: `IMPORT_COLUMNS`
+  headings by name, `checkImport` → products + row errors, SKUs made from names, `given` = filled columns, `sampleCsv`;
+  max 500), `POST /api/commerce/products/import` (checks again; inserts new in 100s, updates existing SKUs with only the
+  given columns). `components/commerce/product-import-dialog.tsx` (reads .xlsx / .csv with the `xlsx` package, loaded on
+  demand). `lib/commerce/product-describe.ts` (prompt + answer check, `DESCRIBE_LANGUAGES`), `POST
+  /api/commerce/products/describe` (photo → title / description / category through `aiFetch`, feature
+  `product_description`, wallet-charged). Product form → Write with AI.
 - **Shop: codes for one customer and loyalty points** (4.2): `commerce_discounts.for_phone` (last 10 digits; `applyDiscount`
   needs `ctx.phoneKey`, which `phoneContext` returns; never in `publicOffers`). `lib/commerce/loyalty.ts` (pure:
   `readLoyaltySettings` {on, percent, minUse, maxPercent} in `organizations.shop_loyalty`, `pointsEarned`, `pointsUsable`,

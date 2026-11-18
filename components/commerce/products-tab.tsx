@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BookOpen, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, UploadCloud, User, X } from 'lucide-react'
+import { AlertCircle, BookOpen, FileSpreadsheet, Sparkles, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, UploadCloud, User, X } from 'lucide-react'
 import type { CommerceProduct } from '@/lib/types'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
@@ -9,6 +9,8 @@ import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSync, getProductAttributes, isInCatalog, type CatalogState } from '@/lib/commerce/catalog-items'
 import { GST_RATES } from '@/lib/commerce/invoice'
 import { ProductOptions } from './product-options'
+import { ProductImportDialog } from './product-import-dialog'
+import { DESCRIBE_LANGUAGES } from '@/lib/commerce/product-describe'
 import { ProductMedia } from './product-media'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
 
@@ -100,6 +102,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
   const [picked, setPicked] = useState<Map<string, CommerceProduct>>(new Map())
 
   const [form, setForm] = useState<ProductForm | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [writing, setWriting] = useState(false)
+  const [writeLanguage, setWriteLanguage] = useState<string>('English')
   const [formError, setFormError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [share, setShare] = useState<ShareTarget | null>(null)
@@ -288,6 +293,22 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
     })
   }
 
+  // "Write with AI": name (if empty), description and category (if empty) from the photo
+  async function writeWithAi() {
+    if (!form) return
+    setWriting(true)
+    try {
+      const res = await fetch('/api/commerce/products/describe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, imageUrl: form.image_url, title: form.title, category: form.category, language: writeLanguage }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not write it. Please try again.')
+      setForm((current) => current && ({ ...current, description: data.description, title: current.title || data.title, category: current.category || data.category }))
+    } catch (err: any) {
+      showToast('error', err.message)
+    } finally {
+      setWriting(false)
+    }
+  }
+
   async function saveProduct(event: React.FormEvent) {
     event.preventDefault()
     if (!form) return
@@ -428,6 +449,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <button type="button" onClick={syncCatalog} disabled={isSyncing || !catalogLinked} title={catalogLinked ? 'Bring this list up to date with your WhatsApp catalog' : 'Link a Meta catalog in Store settings first'} className={secondaryButton}>
                 <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
                 {isSyncing ? 'Syncing…' : 'Sync catalog'}
+              </button>
+              <button type="button" onClick={() => setImporting(true)} className={secondaryButton}>
+                <FileSpreadsheet size={13} /> Upload spreadsheet
               </button>
               <button type="button" onClick={openNew} className={primaryButton}>
                 <Plus size={14} /> Add product
@@ -572,6 +596,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         />
       )}
 
+      {importing && <ProductImportDialog orgId={orgId} currency={currency} onClose={() => setImporting(false)} onDone={() => { void load(1, { silent: true }) }} showToast={showToast} />}
+
       {form && (
         <Modal title={form.id ? 'Edit product' : 'Add product'} onClose={() => setForm(null)} wide>
           <form onSubmit={saveProduct} className="space-y-3.5">
@@ -644,7 +670,17 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               </div>
             </div>
             <div>
-              <label htmlFor="product-description" className={labelClass}>Description (optional)</label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor="product-description" className={labelClass}>Description (optional)</label>
+                <span className="inline-flex items-center gap-1.5 mb-1">
+                  <select aria-label="Language for AI writing" value={writeLanguage} onChange={(e) => setWriteLanguage(e.target.value)} className="h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] px-1">
+                    {DESCRIBE_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <button type="button" disabled={writing || !/^https:\/\//.test(form.image_url)} title={/^https:\/\//.test(form.image_url) ? 'Write the description from the photo' : 'Add a photo link first'} onClick={() => void writeWithAi()} className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-bold text-[#1D5BEA] border border-[#1D5BEA]/40 hover:bg-[#1D5BEA]/5 disabled:opacity-40 cursor-pointer">
+                    {writing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Write with AI
+                  </button>
+                </span>
+              </div>
               <textarea id="product-description" rows={2} maxLength={2000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={textareaClass} />
             </div>
             <div>
