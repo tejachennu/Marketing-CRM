@@ -143,8 +143,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `OrderReturnsBox`, `ShopReportsScreen`, `ShopReviewsScreen`, `ShopOffersScreen` + loyalty, settings screens for returns /
   invoices / WhatsApp messages, `DeliveryPartnersScreen`, `shopMoreTiles` on the Store tab); product form GST / HSN /
   weight / Write with AI; website screen layout + Instagram; `codCheckLabel`, `gstRates`, `storeLayouts`,
-  `instagramPost` in `store_logic.dart`; demo answers in `lib/data/demo_shop_extras.dart`. Web-only still: options editor,
-  extra photos / video, courier booking, info pages, spreadsheet upload.
+  `instagramPost` in `store_logic.dart`; demo answers in `lib/data/demo_shop_extras.dart`. 19 Nov: `shop_catchup.dart`
+  (`ProductOptionsScreen`, `CourierBox`, `uploadProductsSheet` via `readSheet`, `InstagramScreen` in More), product form
+  photos / video / sizes button, website Info pages (`storeInfoPages`), Instagram badge in Chats (`isInstagramContact`).
+  Build with Flutter 3.50 (`~/Documents/flutter_versions/flutter3.50.0`); 3.44.6 is too old for the app's Dart 3.13.7.
 - **Shop: spreadsheet upload and Write with AI** (4.3): `lib/commerce/product-import.ts` (browser-safe: `IMPORT_COLUMNS`
   headings by name, `checkImport` → products + row errors, SKUs made from names, `given` = filled columns, `sampleCsv`;
   max 500), `POST /api/commerce/products/import` (checks again; inserts new in 100s, updates existing SKUs with only the

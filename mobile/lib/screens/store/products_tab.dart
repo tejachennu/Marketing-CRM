@@ -6,6 +6,7 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../campaigns/audience.dart' show phoneDigits;
+import 'shop_catchup.dart';
 import 'store_logic.dart';
 import 'store_screen.dart';
 
@@ -386,6 +387,7 @@ class _ProductsTabState extends State<ProductsTab> with AutomaticKeepAliveClient
               runSpacing: 8,
               children: [
                 if (manage) FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add, size: 18), label: const Text('Add product')),
+                if (manage) OutlinedButton.icon(onPressed: () => uploadProductsSheet(context, () => _load(1)), icon: const Icon(Icons.upload_file, size: 18), label: const Text('Upload spreadsheet')),
                 if (canEdit && _catalogLinked)
                   OutlinedButton.icon(onPressed: () => _share(const ShareTarget.catalog()), icon: const Icon(Icons.menu_book_outlined, size: 18), label: const Text('Send catalog')),
                 if (manage && _catalogLinked && notSent > 0)
@@ -526,6 +528,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final _description = TextEditingController(text: '${_p['description'] ?? ''}');
   late final _image = TextEditingController(text: '${_p['image_url'] ?? ''}');
   late final _website = TextEditingController(text: '${_p['website_url'] ?? ''}');
+  late final _photos = TextEditingController(text: (_p['images'] as List? ?? const []).join('\n'));
+  late final _video = TextEditingController(text: '${_p['video_url'] ?? ''}');
   late final _brand = TextEditingController(text: '${_attr['brand'] ?? ''}');
   late String _condition = '${_attr['condition'] ?? 'new'}';
   late String _origin = '${_attr['origin_country'] ?? ''}';
@@ -578,6 +582,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       'description': _description.text.trim(),
       'image_url': _image.text.trim(),
       'website_url': _website.text.trim(),
+      'images': _photos.text.split(RegExp(r'\s+')).where((u) => u.startsWith('https://')).take(8).toList(),
+      'video_url': _video.text.trim(),
       'category': _category.text.trim(),
       'inventory_count': _stock.text.trim(),
       'is_available': _available,
@@ -762,6 +768,28 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               helperMaxLines: 3,
             ),
           ),
+          gap(),
+          TextField(
+            controller: _photos,
+            keyboardType: TextInputType.url,
+            minLines: 1,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'More photos (optional)', hintText: 'One link per line, up to 8', helperText: 'Shown in the gallery on your store page.'),
+          ),
+          gap(),
+          TextField(
+            controller: _video,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(labelText: 'Video (optional)', hintText: 'YouTube link or .mp4 link'),
+          ),
+          if (_p['id'] != null) ...[
+            gap(),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductOptionsScreen(productId: '${_p['id']}', title: '${_p['title'] ?? 'Product'}', currency: _currency))),
+              icon: const Icon(Icons.tune, size: 18),
+              label: const Text('Sizes and colours (price and stock each)'),
+            ),
+          ],
           gap(),
           TextField(
             controller: _website,

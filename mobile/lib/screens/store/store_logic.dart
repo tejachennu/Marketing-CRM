@@ -447,3 +447,6 @@ String? instagramPost(String link) {
   final kind = m.group(1)!.toLowerCase();
   return '${kind == 'tv' ? 'p' : kind}/${m.group(2)}';
 }
+
+/// The store's info pages, as on the web (Website → Info pages).
+const storeInfoPages = [('about', 'About us'), ('shipping', 'Shipping and delivery'), ('returns', 'Returns and refunds'), ('terms', 'Terms and conditions'), ('privacy', 'Privacy policy'), ('contact', 'Contact us')];

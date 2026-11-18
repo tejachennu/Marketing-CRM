@@ -62,6 +62,22 @@ class DemoShopExtras {
         return {'messages': _messages};
       case '/api/commerce/shipping':
         return {'shiprocket': {'connected': true}, 'delhivery': {'connected': false}};
+      case '/api/commerce/shipping/ship':
+        return {'ready': ['shiprocket'], 'blocker': null, 'shipments': [
+          {'id': 's1', 'provider': 'shiprocket', 'awb': '1234567890', 'courier_name': 'Delhivery Surface', 'status': 'in_transit', 'status_text': 'Reached Hyderabad hub', 'label_url': 'https://example.com/label.pdf'},
+        ]};
+      case '/api/commerce/products/options':
+        return {'options': [{'name': 'Size', 'values': ['S', 'M', 'L']}], 'variants': [
+          for (final size in ['S', 'M', 'L']) {'id': 'v$size', 'options': {'Size': size}, 'name': size, 'price': null, 'stock': 5, 'active': true},
+        ], 'productPrice': 1499};
+      case '/api/instagram':
+        return {'account': {'igUserId': '1784', 'username': 'glowstore', 'name': 'Glow Store', 'subscribed': true, 'lastError': null}, 'login': {'appId': '', 'configId': ''}};
+      case '/api/instagram/comments':
+        return {'comments': [
+          {'id': 'ic1', 'comment_id': 'c1', 'from_username': 'asha.r', 'text': 'Price of the linen shirt?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().toIso8601String()},
+        ]};
+      case '/api/instagram/posts':
+        return {'posts': [], 'connected': true};
     }
     return null;
   }
@@ -92,6 +108,14 @@ class DemoShopExtras {
         final saved = {'uses': 0, 'title': d['title'] == '' ? 'New offer' : d['title'], ...d, 'id': d['id'] ?? 'd${_offers.length + 1}'};
         if (i >= 0) { _offers[i] = saved; } else { _offers.insert(0, saved); }
         return {'success': true, 'discount': saved};
+      case '/api/commerce/products/options':
+        return {'success': true, 'options': body['options'], 'variants': body['variants']};
+      case '/api/commerce/products/import':
+        return {'success': true, 'added': (body['rows'] as List).length - 1, 'updated': 0, 'errors': []};
+      case '/api/commerce/shipping/ship':
+        return {'success': true, 'rates': [{'provider': 'shiprocket', 'courierId': '10', 'courierName': 'Delhivery Surface', 'price': 72, 'days': 4, 'recommended': true}], 'shipments': []};
+      case '/api/instagram/comments':
+        return {'success': true};
       case '/api/commerce/products/describe':
         return {'success': true, 'title': 'Linen shirt', 'description': 'A soft, breathable linen shirt for warm days. Easy to wash and comfortable all day.', 'category': 'Shirts'};
     }

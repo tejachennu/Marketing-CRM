@@ -73,5 +73,9 @@ String initials(String name) {
 String contactName(Map? contact) {
   if (contact == null) return 'Customer';
   final name = [contact['first_name'], contact['last_name']].where((p) => p != null && '$p'.trim().isNotEmpty).join(' ').trim();
+  if (name.isEmpty && '${contact['phone_number'] ?? ''}'.startsWith('ig:')) return 'Instagram user';
   return name.isNotEmpty ? name : (contact['phone_number'] ?? contact['whatsapp_number'] ?? 'Customer').toString().replaceFirst('whatsapp:', '');
 }
+
+/// An Instagram customer (DMs; no phone number).
+bool isInstagramContact(Map? contact) => '${contact?['phone_number'] ?? ''}'.startsWith('ig:');

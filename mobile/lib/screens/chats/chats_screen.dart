@@ -96,13 +96,21 @@ class _ChatRow extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Expanded(
+                      Flexible(
                         child: Text(
                           name,
                           style: TextStyle(fontSize: 15.5, fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w700),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (isInstagramContact(c['contact'] as Map?))
+                        Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(color: Brand.lineSoft, borderRadius: BorderRadius.circular(4)),
+                          child: const Text('Instagram', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Brand.textSoft)),
+                        ),
+                      const Spacer(),
                       Text(
                         formatWhen(c['last_message_at']),
                         style: TextStyle(fontSize: 12, fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w500, color: unread > 0 ? const Color(0xFF1DAA61) : Brand.faint),

@@ -184,8 +184,10 @@ order page → Returns and refunds (accept / decline / refund), Invoice (open, c
 Store tab → Shop reports, Customer reviews (hide / show), Offers and points (codes, one-customer codes, loyalty), Returns,
 GST invoices, WhatsApp messages, Delivery partners (status; connecting stays on the web); product form → weight, HSN,
 GST rate, Write with AI; Website → product layout and Instagram posts.
-Still web only: product options editor, extra photos / video, booking a courier and tracking from the order page,
-info pages editor, spreadsheet upload. Checked on 19 Nov 2026 with Flutter 3.50.0 (in ~/Documents/flutter_versions/
+Added on 19 Nov 2026 (`shop_catchup.dart`): sizes and colours with price / stock each, more photos and a video,
+booking a courier from the order page (rates, book, label, where is it, cancel), info pages, spreadsheet upload,
+Instagram (comments and posts in More; Instagram DMs in Chats with a badge). Still web only: connecting Instagram and
+the delivery partners (one-time set-up), posting on Instagram. Checked on 19 Nov 2026 with Flutter 3.50.0 (in ~/Documents/flutter_versions/
 flutter3.50.0): analyzer clean apart from the framework-wide material.dart notice, all 345 app tests pass (new screens
 fit at 320px and with large text).
 

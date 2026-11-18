@@ -705,6 +705,20 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
               decoration: const InputDecoration(labelText: 'About your shop', counterText: ''),
             ),
           ]),
+          _section('Info pages', subtitle: 'Linked at the bottom of your store. Razorpay and Google look for Returns, Shipping, Terms and Privacy. Leave one empty to hide it.', [
+            for (final (key, title) in storeInfoPages)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextFormField(
+                  initialValue: '${(s['pages'] as Map?)?[key] ?? ''}',
+                  maxLength: 6000,
+                  minLines: 2,
+                  maxLines: 8,
+                  decoration: InputDecoration(labelText: title, counterText: ''),
+                  onChanged: (v) => s['pages'] = {...((s['pages'] as Map?) ?? const {}), key: v},
+                ),
+              ),
+          ]),
           if (manage)
             FilledButton(
               onPressed: _saving ? null : _save,

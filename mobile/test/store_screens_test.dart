@@ -61,6 +61,7 @@ void main() {
     expect(instagramPost('https://instagram.com/asha/reel/AbCdE12/'), 'reel/AbCdE12');
     expect(instagramPost('https://evil.com/p/Cx1aB2cd'), isNull);
     expect(storeLayouts.keys, ['grid', 'big', 'list', 'compact']);
+    expect(storeInfoPages.map((p) => p.$1), ['about', 'shipping', 'returns', 'terms', 'privacy', 'contact']);
   });
 
   test('Money is shown in the order currency', () {
