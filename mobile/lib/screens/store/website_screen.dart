@@ -22,6 +22,7 @@ class WebsiteScreen extends StatefulWidget {
 }
 
 class _WebsiteScreenState extends State<WebsiteScreen> {
+  final _igLink = TextEditingController();
   Map<String, dynamic>? _s;
   String? _link;
   bool _storeOn = true;
@@ -398,6 +399,60 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                     ),
                   ),
               ],
+            ),
+            gap(),
+            const Text('How products are shown', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            RadioGroup<String>(
+              groupValue: '${s['layout'] ?? 'grid'}',
+              onChanged: (v) => setState(() => s['layout'] = v ?? 'grid'),
+              child: Column(
+                children: [
+                  for (final l in storeLayouts.entries)
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      value: l.key,
+                      title: Text(l.value.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(l.value.$2),
+                    ),
+                ],
+              ),
+            ),
+          ]),
+          _section('Instagram on your store', subtitle: 'Shown above the footer. On Instagram open a post, tap ⋯ → Copy link, and paste it here (up to 9).', [
+            TextFormField(
+              initialValue: '${(s['instagram'] as Map?)?['handle'] ?? ''}',
+              decoration: const InputDecoration(labelText: 'Your Instagram name (optional)', prefixText: '@'),
+              onChanged: (v) => s['instagram'] = {...((s['instagram'] as Map?) ?? const {'posts': []}), 'handle': v.replaceAll('@', '').trim()},
+            ),
+            const SizedBox(height: 8),
+            for (final post in ((s['instagram'] as Map?)?['posts'] as List? ?? const []).cast<String>())
+              Row(children: [
+                Expanded(child: Text('instagram.com/$post', overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.blue))),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Brand.red),
+                  onPressed: () => setState(() => s['instagram'] = {...(s['instagram'] as Map), 'posts': ((s['instagram'] as Map)['posts'] as List).where((p) => p != post).toList()}),
+                ),
+              ]),
+            TextField(
+              controller: _igLink,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: 'Post or reel link',
+                hintText: 'https://www.instagram.com/p/…',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () {
+                    final post = instagramPost(_igLink.text);
+                    if (post == null) { toast(context, 'Paste the link of an Instagram post or reel.'); return; }
+                    final ig = Map<String, dynamic>.from((s['instagram'] as Map?) ?? const {'handle': ''});
+                    final posts = [...((ig['posts'] as List?) ?? const []).cast<String>()];
+                    if (!posts.contains(post) && posts.length < 9) posts.add(post);
+                    setState(() { s['instagram'] = {...ig, 'posts': posts}; _igLink.clear(); });
+                  },
+                ),
+              ),
             ),
           ]),
           _section('Banners (slide at the top)', subtitle: 'Wide photos work best. A tap can open a category.', [

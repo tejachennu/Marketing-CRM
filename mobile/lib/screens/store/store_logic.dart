@@ -416,3 +416,34 @@ Color? madePicture(String url) {
   final hex = RegExp(r'[?&]c=([0-9A-Fa-f]{6})').firstMatch(url)?.group(1) ?? '1D5BEA';
   return Color(0xFF000000 | int.parse(hex, radix: 16));
 }
+
+/// GST rates a product can have (since September 2025), as the web form offers them.
+const gstRates = ['0', '0.25', '3', '5', '18', '40'];
+
+/// Languages "Write with AI" can write product descriptions in.
+const describeLanguages = ['English', 'Hindi', 'Telugu', 'Tamil', 'Kannada', 'Malayalam', 'Marathi', 'Bengali', 'Gujarati'];
+
+/// What the customer answered to the Cash on Delivery check on WhatsApp (null when it was not asked).
+(String, bool)? codCheckLabel(Map order) {
+  final c = (order['shipping_address'] as Map?)?['cod_check'];
+  if (c is! Map) return null;
+  if (c['answer'] == 'yes') return ('The customer said yes on WhatsApp', false);
+  if (c['answer'] == 'cancel') return ('The customer cancelled on WhatsApp', true);
+  return ("Waiting for the customer's yes on WhatsApp", false);
+}
+
+/// Store page layouts, as on the web's Website → Look.
+const storeLayouts = {
+  'grid': ('Tiles', 'Two on a phone, four on a computer. Suits most shops.'),
+  'big': ('Big photos', 'One large photo at a time on a phone. Clothes, jewellery, decor.'),
+  'list': ('List', 'Small photo, name, price and Add in a row. Groceries, medicines.'),
+  'compact': ('Small tiles', 'Three on a phone, six on a computer. Many small items.'),
+};
+
+/// An Instagram post or reel link → "p/<code>" or "reel/<code>" (null when it is not one).
+String? instagramPost(String link) {
+  final m = RegExp(r'^https?://(?:www\.)?instagram\.com/(?:[A-Za-z0-9._]+/)?(p|reel|tv)/([A-Za-z0-9_-]{5,40})', caseSensitive: false).firstMatch(link.trim());
+  if (m == null) return null;
+  final kind = m.group(1)!.toLowerCase();
+  return '${kind == 'tv' ? 'p' : kind}/${m.group(2)}';
+}

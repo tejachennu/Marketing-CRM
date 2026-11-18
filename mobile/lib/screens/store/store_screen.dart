@@ -12,6 +12,7 @@ import '../chats/chat_screen.dart';
 import 'flow_tab.dart';
 import 'new_order_screen.dart';
 import 'products_tab.dart';
+import 'shop_more.dart';
 import 'store_logic.dart';
 import 'store_settings.dart';
 
@@ -883,12 +884,19 @@ class _OrderScreenState extends State<OrderScreen> {
                   ],
                 ),
               ),
+              if (codCheckLabel(order) != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(codCheckLabel(order)!.$1, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: codCheckLabel(order)!.$2 ? Brand.red : Brand.textSoft)),
+                ),
               if (hasPaymentRequest(order) && order['payment_status'] != 'paid' && isOpen)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text('A payment request is waiting in the customer\'s chat (reference ${order['meta_payment_reference']}).', style: const TextStyle(color: Brand.muted, fontSize: 13)),
                 ),
             ]),
+            OrderReturnsBox(key: ValueKey('returns:${order['id']}:${order['status']}:${order['payment_status']}'), order: order, onChanged: () => _changed = true),
+            OrderInvoiceBox(key: ValueKey('invoice:${order['id']}:${order['status']}'), order: order),
             section(
               'Deliver to',
               [

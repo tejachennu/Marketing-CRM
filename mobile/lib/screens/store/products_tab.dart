@@ -535,7 +535,34 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final _city = TextEditingController(text: '${(_attr['importer_address'] as Map?)?['city'] ?? ''}');
   late final _pin = TextEditingController(text: '${(_attr['importer_address'] as Map?)?['postal_code'] ?? ''}');
   late bool _available = _p['is_available'] != false;
+  late final _weight = TextEditingController(text: _p['weight_grams'] == null ? '' : '${_p['weight_grams']}');
+  late final _hsn = TextEditingController(text: '${_p['hsn_code'] ?? ''}');
+  late String _gst = _p['gst_rate'] == null ? '' : '${num.tryParse('${_p['gst_rate']}') ?? ''}'.replaceAll(RegExp(r'\.0$'), '');
+  String _writeLanguage = 'English';
+  bool _writing = false;
   bool _saving = false;
+
+  /// "Write with AI": the description (and the name / category when empty) from the product photo
+  Future<void> _writeWithAi() async {
+    setState(() => _writing = true);
+    try {
+      final data = await AppScope.read(context).ask('/api/commerce/products/describe', {
+        'imageUrl': _image.text.trim(),
+        'title': _title.text.trim(),
+        'category': _category.text.trim(),
+        'language': _writeLanguage,
+      });
+      setState(() {
+        _description.text = '${data['description'] ?? ''}';
+        if (_title.text.trim().isEmpty) _title.text = '${data['title'] ?? ''}';
+        if (_category.text.trim().isEmpty) _category.text = '${data['category'] ?? ''}';
+      });
+    } catch (e) {
+      if (mounted) toast(context, plain(e));
+    } finally {
+      if (mounted) setState(() => _writing = false);
+    }
+  }
   String _error = '';
 
   Future<void> _save() async {
@@ -562,6 +589,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       'importer_street': _street.text.trim(),
       'importer_city': _city.text.trim(),
       'importer_postal_code': _pin.text.trim(),
+      'weight_grams': _weight.text.trim(),
+      'hsn_code': _hsn.text.trim(),
+      'gst_rate': _gst,
     };
     try {
       final data = await AppScope.read(context).ask('/api/commerce/products', {
@@ -661,12 +691,63 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             ],
           ),
           gap(),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _weight,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Weight in grams (optional)', hintText: 'For couriers'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _hsn,
+                  keyboardType: TextInputType.number,
+                  maxLength: 8,
+                  decoration: const InputDecoration(labelText: 'HSN code (optional)', hintText: 'For GST', counterText: ''),
+                ),
+              ),
+            ],
+          ),
+          gap(),
+          DropdownButtonFormField<String>(
+            initialValue: _gst,
+            decoration: const InputDecoration(labelText: 'GST rate', helperText: 'For the GST invoice. The price on the store includes it.'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text("Shop's usual rate")),
+              for (final r in {...gstRates, if (_gst.isNotEmpty) _gst}) DropdownMenuItem(value: r, child: Text('$r%')),
+            ],
+            onChanged: (v) => setState(() => _gst = v ?? ''),
+          ),
+          gap(),
           TextField(
             controller: _description,
             maxLength: 2000,
             minLines: 2,
             maxLines: 5,
             decoration: const InputDecoration(labelText: 'Description (optional)', counterText: ''),
+          ),
+          Row(
+            children: [
+              DropdownButton<String>(
+                value: _writeLanguage,
+                underline: const SizedBox.shrink(),
+                style: const TextStyle(fontSize: 13, color: Brand.text),
+                items: [for (final l in describeLanguages) DropdownMenuItem(value: l, child: Text(l))],
+                onChanged: (v) => setState(() => _writeLanguage = v ?? 'English'),
+              ),
+              const Spacer(),
+              ListenableBuilder(
+                listenable: _image,
+                builder: (context, _) => TextButton.icon(
+                  onPressed: _writing || !_image.text.trim().startsWith('https://') ? null : _writeWithAi,
+                  icon: _writing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome, size: 18),
+                  label: Text(_image.text.trim().startsWith('https://') ? 'Write with AI' : 'Add a photo link to write with AI'),
+                ),
+              ),
+            ],
           ),
           gap(),
           TextField(

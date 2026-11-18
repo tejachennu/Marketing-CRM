@@ -117,6 +117,12 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: shop features synced** (18 Nov 2026): `mobile/lib/screens/store/shop_more.dart` (`OrderInvoiceBox`,
+  `OrderReturnsBox`, `ShopReportsScreen`, `ShopReviewsScreen`, `ShopOffersScreen` + loyalty, settings screens for returns /
+  invoices / WhatsApp messages, `DeliveryPartnersScreen`, `shopMoreTiles` on the Store tab); product form GST / HSN /
+  weight / Write with AI; website screen layout + Instagram; `codCheckLabel`, `gstRates`, `storeLayouts`,
+  `instagramPost` in `store_logic.dart`; demo answers in `lib/data/demo_shop_extras.dart`. Web-only still: options editor,
+  extra photos / video, courier booking, info pages, spreadsheet upload.
 - **Shop: spreadsheet upload and Write with AI** (4.3): `lib/commerce/product-import.ts` (browser-safe: `IMPORT_COLUMNS`
   headings by name, `checkImport` → products + row errors, SKUs made from names, `given` = filled columns, `sampleCsv`;
   max 500), `POST /api/commerce/products/import` (checks again; inserts new in 100s, updates existing SKUs with only the

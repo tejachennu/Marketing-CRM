@@ -1,5 +1,6 @@
 import 'demo_billing.dart';
 import 'demo_commerce.dart';
+import 'demo_shop_extras.dart';
 import 'demo_templates.dart';
 import 'demo_media.dart';
 
@@ -572,12 +573,13 @@ class DemoBackend implements Backend {
   late final DemoTemplates _tpl = DemoTemplates(templates: _templates, id: _id);
   final DemoBilling _billing = DemoBilling();
   final DemoCommerce _store = DemoCommerce();
+  final DemoShopExtras _shopMore = DemoShopExtras();
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
-    final desk = _store.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
+    final desk = _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
@@ -672,7 +674,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
-    final desk = _store.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
+    final desk = _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

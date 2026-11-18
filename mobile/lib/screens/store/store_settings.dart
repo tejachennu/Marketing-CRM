@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'shop_more.dart';
 import 'store_logic.dart';
 import 'store_screen.dart';
 import 'website_screen.dart';
@@ -340,6 +341,7 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
       children: [
+        ...shopMoreTiles(context, currency: '${org['currency'] ?? 'INR'}', manage: true),
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
