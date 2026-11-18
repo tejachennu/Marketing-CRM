@@ -11,6 +11,7 @@ import { isUuid } from '@/lib/record-visibility'
 import fs from 'fs'
 import path from 'path'
 import { cleanWhatsAppRecipient, isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
+import { sendDm } from '@/lib/instagram/store'
 import { buildSendComponents, missingTemplateValues } from '@/lib/whatsapp-templates/send-components'
 
 function getSupabaseClient() {
@@ -312,6 +313,21 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
+    }
+
+    // An Instagram chat: the reply goes out as an Instagram DM (24-hour window, or 7 days as a person)
+    if ((conversation as any).channel === 'instagram') {
+      if (templateName || templateSid) return NextResponse.json({ error: 'Templates are for WhatsApp. On Instagram, type a normal reply.' }, { status: 400 })
+      const sent = await sendDm(supabase, orgId, conversation, { text: msgBody, imageUrl: msgMediaUrl || undefined, byPerson: true })
+      const { data: igSaved, error: igSaveError } = await supabase.from('messages').insert([{
+        organization_id: conversation.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: sender?.id || null,
+        body: msgBody || (msgMediaUrl ? '[Photo]' : '[Message]'), media_url: msgMediaUrl, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null,
+        status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error,
+      }]).select().single()
+      if (igSaveError) throw igSaveError
+      await supabase.from('conversations').update({ last_message_at: new Date().toISOString(), auto_reply_enabled: false }).eq('id', conversation.id)
+      if (!sent.ok) return NextResponse.json({ success: false, error: sent.error, message: igSaved, twilioSent: false }, { status: 400 })
+      return NextResponse.json({ success: true, message: igSaved, twilioSent: false, channel: 'instagram' })
     }
 
     // The message being replied to must be in this conversation. If WhatsApp gave it an id,

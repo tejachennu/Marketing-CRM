@@ -9,6 +9,7 @@
 
 import { readReturnSettings, type ReturnSettings } from './returns'
 import { readLoyaltySettings, type LoyaltySettings } from './loyalty'
+import { latestPosts } from '../instagram/store'
 import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, cleanInstagramHandle, instagramPost, type StoreLayout } from './store-look'
 export { STORE_LAYOUTS, STORE_LAYOUT_INFO, type StoreLayout } from './store-look'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
@@ -100,8 +101,8 @@ export interface StorefrontSettings {
   pages: Partial<Record<StorePageKey, string>>
   /** How products are laid out: tiles, big photos, a list, or small tiles */
   layout: StoreLayout
-  /** Instagram: the shop's handle and up to 9 post / reel links shown on the store */
-  instagram: { handle: string; posts: string[] }
+  /** Instagram: the shop's handle and up to 9 post / reel links shown on the store; live = the latest posts from the connected account */
+  instagram: { handle: string; posts: string[]; live: boolean }
 }
 
 
@@ -114,7 +115,7 @@ export function defaultStorefront(): StorefrontSettings {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
     min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true, pages: {},
-    layout: 'grid', instagram: { handle: '', posts: [] },
+    layout: 'grid', instagram: { handle: '', posts: [], live: false },
   }
 }
 
@@ -196,6 +197,7 @@ export function readStorefront(raw: any): StorefrontSettings {
     layout: (STORE_LAYOUTS as readonly string[]).includes(raw.layout) ? raw.layout : 'grid',
     instagram: {
       handle: cleanInstagramHandle(raw.instagram?.handle),
+      live: raw.instagram?.live === true,
       posts: [...new Set((Array.isArray(raw.instagram?.posts) ? raw.instagram.posts : []).map((p: unknown) => instagramPost(/^(p|reel)\//.test(String(p)) ? `https://www.instagram.com/${p}` : p)).filter(Boolean))].slice(0, MAX_INSTAGRAM_POSTS) as string[],
     },
   }
@@ -265,6 +267,8 @@ export interface StorePage {
   returns?: ReturnSettings
   /** Loyalty points: points back on every order, used at checkout by signed-in shoppers */
   loyalty?: LoyaltySettings
+  /** The latest posts of the connected Instagram account (when Website → Instagram → live is on) */
+  instagramFeed?: { id: string; image: string; link: string; caption: string }[]
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -309,6 +313,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
   }
   const shownProducts = products.filter((p: StoreProduct) => p.inStock || settings.show_out_of_stock)
   const discounts = await listDiscounts(db, org.id)
+  // Live Instagram: the connected account's latest posts (cached for 30 minutes)
+  const instagramFeed = settings.instagram.live ? ((await latestPosts(db, org.id).catch(() => ({ posts: [] }))).posts as any[]).filter((p) => p.image).slice(0, 8).map((p) => ({ id: p.id, image: p.image, link: p.link, caption: p.caption })) : []
   return {
     organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase(), domain: org.store_domain || null },
     settings,
@@ -318,6 +324,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     pinCheck: settings.delivery && readyPartners(org).length > 0,
     returns: readReturnSettings(org.shop_returns),
     loyalty: readLoyaltySettings(org.shop_loyalty),
+    instagramFeed,
     offers: publicOffers(discounts),
     hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {
@@ -338,7 +345,7 @@ export function storeView(page: StorePage) {
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
-    layout: s.layout, instagram: s.instagram,
+    layout: s.layout, instagram: s.instagram, instagramFeed: page.instagramFeed || [],
     offers: page.offers || [], hasCodes: page.hasCodes === true,
     returns: page.returns || { on: false, days: 7 },
     loyalty: page.loyalty || readLoyaltySettings(null),

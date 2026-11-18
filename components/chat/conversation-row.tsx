@@ -5,7 +5,7 @@ import { AlertCircle, Check, CheckCheck, Pin } from 'lucide-react'
 import type { ConversationWithContact } from '@/lib/types'
 import { formatChatListTimestamp } from '@/lib/chat-dates'
 import { formatBadgeCount, getAvatarTone, getMessagePreview } from '@/lib/chat-message-format'
-import { formatContactDisplayName, getContactAvatarInitials } from '@/lib/whatsapp-bsuid'
+import { formatContactDisplayName, getContactAvatarInitials, isInstagramContact } from '@/lib/whatsapp-bsuid'
 
 interface ConversationRowProps {
   conversation: ConversationWithContact
@@ -20,7 +20,8 @@ export const ConversationRow = memo(function ConversationRow({ conversation, sel
   const name = formatContactDisplayName(conversation.contact)
   const last = conversation.last_message
   const unread = conversation.unread_count > 0
-  const preview = last ? getMessagePreview(last) : conversation.contact?.phone_number || ''
+  const instagram = isInstagramContact(conversation.contact)
+  const preview = last ? getMessagePreview(last) : instagram ? 'Instagram' : conversation.contact?.phone_number || ''
 
   return (
     <div
@@ -44,7 +45,10 @@ export const ConversationRow = memo(function ConversationRow({ conversation, sel
 
       <div className="flex-1 min-w-0 self-stretch flex flex-col justify-center border-b border-[#e9edef] dark:border-[#222d34] -mb-2.5 pb-2.5 group-last/item:border-b-0">
         <div className="flex items-baseline justify-between gap-2">
-          <p className={`text-[15px] truncate text-[#111b21] dark:text-[#e9edef] ${unread ? 'font-semibold' : 'font-medium'}`}>{name}</p>
+          <p className={`text-[15px] truncate text-[#111b21] dark:text-[#e9edef] flex items-center gap-1.5 min-w-0 ${unread ? 'font-semibold' : 'font-medium'}`}>
+            <span className="truncate">{name}</span>
+            {instagram && <span title="Instagram chat" className="shrink-0 text-[10px] font-bold px-1.5 py-px rounded bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300">Instagram</span>}
+          </p>
           {conversation.last_message_at && (
             <span className={`text-[11.5px] whitespace-nowrap shrink-0 ${unread ? 'text-[#1fa855] dark:text-[#00a884] font-semibold' : 'text-[#667781] dark:text-[#8696a0]'}`}>
               {formatChatListTimestamp(conversation.last_message_at)}

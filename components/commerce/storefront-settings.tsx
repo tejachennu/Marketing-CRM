@@ -725,7 +725,7 @@ function PagesEditor({ settings, set, disabled, heading, sub }: { settings: any;
 }
 
 /** Website → Instagram: the shop's handle and the posts / reels to show on the store (Instagram's own embeds). */
-function InstagramCard({ value, disabled, onChange }: { value: { handle: string; posts: string[] }; disabled: boolean; onChange: (v: { handle: string; posts: string[] }) => void }) {
+function InstagramCard({ value, disabled, onChange }: { value: { handle: string; posts: string[]; live?: boolean }; disabled: boolean; onChange: (v: { handle: string; posts: string[]; live?: boolean }) => void }) {
   const [link, setLink] = useState('')
   const [error, setError] = useState('')
   const add = () => {
@@ -739,6 +739,10 @@ function InstagramCard({ value, disabled, onChange }: { value: { handle: string;
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
       <h2 className="text-sm font-bold text-slate-900 dark:text-white">Instagram on your store</h2>
+      <label className="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" checked={value.live === true} disabled={disabled} onChange={(e) => onChange({ ...value, live: e.target.checked })} />
+        <span>Show my latest posts by themselves<span className={`block ${hintClass} mt-0`}>Needs Instagram connected (menu → Instagram). New posts appear within 30 minutes. The links below are used when this is off.</span></span>
+      </label>
       <p className={`${hintClass} mt-0`}>Shown above the footer. On Instagram, open a post, tap ⋯ → Copy link, and paste it here. Up to {MAX_INSTAGRAM_POSTS} posts (6 show at a time).</p>
       <div>
         <label className={labelClass} htmlFor="ig-handle">Your Instagram name (optional)</label>

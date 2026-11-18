@@ -15,7 +15,7 @@ import {
 import { AddContactDialog } from '@/components/add-contact-dialog'
 import { authSessionManager } from '@/lib/auth-context'
 import { useAlert } from '@/lib/dialog-context'
-import { formatContactDisplayName, getContactAvatarInitials, isBsuid } from '@/lib/whatsapp-bsuid'
+import { formatContactDisplayName, getContactAvatarInitials, isBsuid, isInstagramContact } from '@/lib/whatsapp-bsuid'
 import { formatBadgeCount, formatWindowRemaining, getAvatarTone, getMessagePreview, getMessageText, getServiceWindow, parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { MessageList } from '@/components/chat/message-list'
 import { collectProductRefs, parseCommerceMessage, type ChatOrderCard, type ChatProductCard } from '@/lib/chat-commerce'
@@ -1818,7 +1818,9 @@ function ConversationsPageContent() {
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
                   <div className="flex items-center gap-1 min-w-0">
-                    {isBsuid(selectedContact.phone_number || selectedContact.first_name) ? (
+                    {isInstagramContact(selectedContact) ? (
+                      <span className="text-[10px] text-[#4a5672] dark:text-slate-300 bg-[#eef1f6] dark:bg-slate-800 px-1.5 py-0.5 rounded font-semibold">Instagram DM · replies go to Instagram</span>
+                    ) : isBsuid(selectedContact.phone_number || selectedContact.first_name) ? (
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
                         <ShieldCheck size={10} className="shrink-0" />
                         <span>Meta Phone Privacy (BSUID)</span>
@@ -1829,7 +1831,7 @@ function ConversationsPageContent() {
                         <span className="truncate">{selectedContact.phone_number}</span>
                       </p>
                     )}
-                    {selectedContact.phone_number && (
+                    {selectedContact.phone_number && !isInstagramContact(selectedContact) && (
                       <CopyPhoneButton phoneNumber={selectedContact.phone_number} iconSize={10} className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700/60" title="Copy WhatsApp ID / Phone" />
                     )}
                   </div>

@@ -69,7 +69,14 @@ export function formatContactDisplayName(contact?: {
     return formatBsuidLabel(contact.phone_number)
   }
 
+  // Instagram customers have no phone number ("ig:<id>")
+  if (contact.phone_number?.startsWith('ig:')) return fullName || 'Instagram user'
   return fullName || contact.phone_number || 'Unknown Contact'
+}
+
+/** Is this contact an Instagram customer (DMs, no phone)? */
+export function isInstagramContact(contact?: { phone_number?: string | null } | null): boolean {
+  return Boolean(contact?.phone_number?.startsWith('ig:'))
 }
 
 /**

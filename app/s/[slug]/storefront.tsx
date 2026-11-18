@@ -674,13 +674,23 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       )}
 
       {/* The shop's Instagram: posts it picked (Instagram's own embeds), and a follow link */}
-      {!viewing && !query && (store.instagram?.posts.length || store.instagram?.handle) ? (
+      {!viewing && !query && (store.instagram?.posts.length || store.instagram?.handle || store.instagramFeed?.length) ? (
         <section className="max-w-6xl mx-auto px-4 pb-24" aria-label="Instagram">
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <h2 className="text-[19px] font-extrabold mr-auto">On Instagram</h2>
             {store.instagram.handle && <a href={`https://www.instagram.com/${store.instagram.handle}/`} target="_blank" rel="noreferrer" className="h-9 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center">Follow @{store.instagram.handle}</a>}
           </div>
-          {store.instagram.posts.length > 0 && (
+          {(store.instagramFeed?.length || 0) > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
+              {store.instagramFeed!.map((p) => (
+                <a key={p.id} href={p.link} target="_blank" rel="noreferrer" className="block rounded-2xl overflow-hidden border border-[#e3e8f2] bg-white">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.image} alt={p.caption ? p.caption.slice(0, 100) : 'Instagram post'} loading="lazy" className="aspect-square w-full object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
+          {store.instagram.posts.length > 0 && !(store.instagramFeed?.length) && (
             <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 gap-4">
               {store.instagram.posts.slice(0, 6).map((post) => (
                 <iframe key={post} src={`https://www.instagram.com/${post}/embed`} title="Instagram post" loading="lazy" className="w-full h-[520px] rounded-2xl border border-[#e3e8f2] bg-white" allowTransparency scrolling="no" />

@@ -5,7 +5,7 @@ function salonDb(seed = {}) {
   let failNextInvoiceInsert = 0
   const from = (table) => {
     if (!tables[table]) tables[table] = []
-    let filters = [], op = 'select', values, singular = false, order = [], limit = Infinity, offset = 0
+    let filters = [], op = 'select', values, singular = false, order = [], limit = Infinity, offset = 0, upsertKeys = [], ignoreDup = false
     const q = {
       select() { return this },
       eq(k, v) { filters.push((r) => r[k] === v); return this },
@@ -37,6 +37,7 @@ function salonDb(seed = {}) {
       maybeSingle() { singular = true; return this },
       single() { singular = true; return this },
       insert(data) { op = 'insert'; values = data; return this },
+      upsert(data, opts = {}) { op = 'upsert'; values = data; upsertKeys = String(opts.onConflict || 'id').split(','); ignoreDup = opts.ignoreDuplicates === true; return this },
       update(data) { op = 'update'; values = data; return this },
       delete() { op = 'delete'; return this },
       then(resolve, reject) {
@@ -49,6 +50,14 @@ function salonDb(seed = {}) {
           }
           tables[table].push(...items)
           rows = items
+        } else if (op === 'upsert') {
+          const out = []
+          for (const v of Array.isArray(values) ? values : [values]) {
+            const hit = tables[table].find((r) => upsertKeys.every((k) => r[k] === v[k]))
+            if (hit) { if (!ignoreDup) { Object.assign(hit, structuredClone(v)); out.push(hit) } }
+            else { const row = { id: `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, created_at: new Date(Date.now() + seq).toISOString(), ...structuredClone(v) }; tables[table].push(row); out.push(row) }
+          }
+          rows = out
         } else if (op === 'update') rows.forEach((r) => Object.assign(r, structuredClone(values)))
         else if (op === 'delete') tables[table] = tables[table].filter((r) => !rows.includes(r))
         if (order.length) rows = [...rows].sort((a, b) => { for (const [k, dir] of order) { if (a[k] > b[k]) return dir; if (a[k] < b[k]) return -dir } return 0 })

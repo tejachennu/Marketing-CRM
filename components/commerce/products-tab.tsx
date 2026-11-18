@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BookOpen, FileSpreadsheet, Sparkles, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, UploadCloud, User, X } from 'lucide-react'
+import { AlertCircle, BookOpen, Camera, FileSpreadsheet, Sparkles, Loader2, Pencil, Plus, RefreshCw, Search, Send, ShoppingBag, Trash2, UploadCloud, User, X } from 'lucide-react'
 import type { CommerceProduct } from '@/lib/types'
 import { useAlert, useConfirm } from '@/lib/dialog-context'
 import { toDialablePhone } from '@/lib/campaigns/audience'
@@ -10,6 +10,7 @@ import { PRODUCT_CONDITIONS, getCatalogState, getCatalogStateLabel, getCatalogSy
 import { GST_RATES } from '@/lib/commerce/invoice'
 import { ProductOptions } from './product-options'
 import { ProductImportDialog } from './product-import-dialog'
+import { productCaption } from '@/lib/instagram/rules'
 import { DESCRIBE_LANGUAGES } from '@/lib/commerce/product-describe'
 import { ProductMedia } from './product-media'
 import { Modal, Pager, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, useDebounced, type ShowToast } from './ui'
@@ -103,6 +104,23 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
 
   const [form, setForm] = useState<ProductForm | null>(null)
   const [importing, setImporting] = useState(false)
+  const [igPost, setIgPost] = useState<{ images: string[]; caption: string } | null>(null)
+  const [igBusy, setIgBusy] = useState(false)
+  async function postToInstagram() {
+    if (!igPost) return
+    setIgBusy(true)
+    try {
+      const res = await fetch('/api/instagram/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, images: igPost.images, caption: igPost.caption }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not post on Instagram.')
+      showToast('success', 'Posted on Instagram.')
+      setIgPost(null)
+    } catch (err: any) {
+      showToast('error', err.message)
+    } finally {
+      setIgBusy(false)
+    }
+  }
   const [writing, setWriting] = useState(false)
   const [writeLanguage, setWriteLanguage] = useState<string>('English')
   const [formError, setFormError] = useState('')
@@ -596,6 +614,25 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         />
       )}
 
+      {igPost && (
+        <Modal title="Post on Instagram" onClose={() => setIgPost(null)}>
+          <div className="space-y-3">
+            <div className="flex gap-2 overflow-x-auto">
+              {igPost.images.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="" className="h-20 w-20 rounded-lg object-cover shrink-0" />
+              ))}
+            </div>
+            <p className={`${hintClass} mt-0`}>{igPost.images.length > 1 ? `${igPost.images.length} photos as a carousel.` : 'One photo.'} Instagram needs JPEG photos, square to 4:5 portrait or 1.91:1 wide. Needs Instagram connected (menu → Instagram).</p>
+            <textarea rows={6} maxLength={2200} value={igPost.caption} onChange={(e) => setIgPost({ ...igPost, caption: e.target.value })} className={textareaClass} aria-label="Caption" />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setIgPost(null)} className={secondaryButton}>Cancel</button>
+              <button type="button" onClick={postToInstagram} disabled={igBusy} className={primaryButton}>{igBusy ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />} {igBusy ? 'Posting…' : 'Post'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {importing && <ProductImportDialog orgId={orgId} currency={currency} onClose={() => setImporting(false)} onDone={() => { void load(1, { silent: true }) }} showToast={showToast} />}
 
       {form && (
@@ -755,7 +792,12 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <input type="checkbox" checked={form.is_available} onChange={(event) => setForm({ ...form, is_available: event.target.checked })} className="h-4 w-4 rounded accent-[#00a884]" />
               Available to sell
             </label>
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              {canManageStore && form.id && /^https:\/\//.test(form.image_url) && (
+                <button type="button" onClick={() => setIgPost({ images: [form.image_url, ...form.images.filter((u) => u !== form.image_url)].slice(0, 10), caption: productCaption({ title: form.title, price: Number(form.price) || 0, description: form.description }, '') })} className={`${secondaryButton} mr-auto`}>
+                  <Camera size={13} /> Post on Instagram
+                </button>
+              )}
               <button type="button" onClick={() => setForm(null)} className={secondaryButton}>Cancel</button>
               <button type="submit" disabled={isSaving} className={primaryButton}>
                 {isSaving && <Loader2 size={13} className="animate-spin" />}

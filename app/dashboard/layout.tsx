@@ -5,7 +5,7 @@ import { supabase, restoreSupabaseSession, ensureUserProfile } from '@/lib/supab
 import { authSessionManager, startSessionWatcher } from '@/lib/auth-context'
 import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
-import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, IdCard, CalendarDays, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock } from 'lucide-react'
+import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, IdCard, CalendarDays, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock, Camera } from 'lucide-react'
 import { FrontDeskIcon } from '@/components/salon/front-desk-icon'
 import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
@@ -701,6 +701,7 @@ export default function DashboardLayout({
     { href: '/dashboard', label: 'Conversations', icon: MessageCircle },
     { href: '/dashboard/front-desk', label: 'Front Desk', icon: FrontDeskIcon },
     { href: '/dashboard/commerce', label: 'Commerce', icon: ShoppingBag },
+    { href: '/dashboard/instagram', label: 'Instagram', icon: Camera },
     { href: '/dashboard/tickets', label: 'Tickets', icon: Ticket },
     { href: '/dashboard/flows', label: 'Flow Builder', icon: Workflow },
     { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },

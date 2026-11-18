@@ -117,6 +117,28 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Instagram** (owner, 19 Nov 2026: DMs in the inbox, comments, live feed on the store, posting). Built on Meta's
+  **Instagram API with Unified Login** (Meta says new apps can't set up "Instagram Login"; new features ship on Unified
+  Login): Facebook Login for Business with its own configuration `NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID` (never add these
+  permissions to the WhatsApp signup configuration), code exchanged with `META_APP_SECRET` at
+  `graph.facebook.com/v27.0/oauth/access_token` → Business Integration System User token → `/me/assigned_instagram_accounts`;
+  all calls on `graph.facebook.com/v27.0/<ig-user-id>/…` (`IG_GRAPH` in `lib/instagram/rules.ts`). Permissions
+  `instagram_basic`, `instagram_manage_messages`, `instagram_manage_comments`, `instagram_content_publish` + Human Agent
+  need **Advanced Access (App Review)** before other businesses can connect.
+  - `lib/instagram/rules.ts` (pure: `readIgWebhook` messaging[] + changes[] comments with `id`/`comment_id`, `dmBody`,
+    `replyWindow` 24 h / 7 days with HUMAN_AGENT for people only, `feedItem`, `checkCaption`, `productCaption`,
+    `igContactKey` "ig:<igsid>"), `store.ts` (lock 724519031, migration `20261204_instagram.sql`: `instagram_accounts`
+    one per workspace, `instagram_comments`, `contacts.instagram_id/username`, `conversations.channel`; `connectInstagram`,
+    `subscribeWebhooks`, `saveIncomingDm`, `sendDm`, `saveComment`, `actOnComment`, `latestPosts` (cached 30 min on the
+    account), `publishPost` single / carousel with status polling), `ai.ts` (`instagramAiReply`: knowledge base, handOff →
+    AI off + pop-up).
+  - Routes: `GET/POST(connect, resubscribe)/DELETE /api/instagram`, `/api/instagram/comments`, `/api/instagram/posts`,
+    `GET/POST /api/webhooks/instagram` (verify token `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, signed with `META_APP_SECRET`).
+    `/api/messages/send` sends Instagram chats through `sendDm`. Inbox marks Instagram chats from the contact's
+    "ig:" phone (no new column needed in the UI queries); `normalizePhoneDigits` refuses "ig:" so campaigns skip them.
+  - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx`: connect via `loadMetaSdk` + `FB.login` config_id,
+    Comments, Posts); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
+    (`storefront.instagram.live`, `loadStore` → `instagramFeed`).
 - **App: shop features synced** (18 Nov 2026): `mobile/lib/screens/store/shop_more.dart` (`OrderInvoiceBox`,
   `OrderReturnsBox`, `ShopReportsScreen`, `ShopReviewsScreen`, `ShopOffersScreen` + loyalty, settings screens for returns /
   invoices / WhatsApp messages, `DeliveryPartnersScreen`, `shopMoreTiles` on the Store tab); product form GST / HSN /

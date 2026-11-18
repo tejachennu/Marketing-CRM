@@ -53,6 +53,8 @@ export function hasActiveFilters(filters: AudienceFilters): boolean {
  * "98765 43210" and "+91 98765 43210" are the same recipient.
  */
 export function normalizePhoneDigits(raw: unknown): string {
+  // Instagram contacts have no phone ("ig:<id>"): never a number to call or message on WhatsApp
+  if (String(raw ?? '').startsWith('ig:')) return ''
   let digits = String(raw ?? '').replace(/\D/g, '')
   // 00 is the international call prefix in many countries
   if (digits.startsWith('00')) digits = digits.slice(2)
