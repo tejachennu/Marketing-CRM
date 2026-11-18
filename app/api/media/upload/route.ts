@@ -13,6 +13,17 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
+const TYPES_BY_ENDING: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp',
+  m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/opus', amr: 'audio/amr',
+  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain',
+}
+function typeFromName(name: string): string | null {
+  return TYPES_BY_ENDING[(name.split('.').pop() || '').toLowerCase()] || null
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Uploads land in a public bucket via the service role, so require a signed-in user
@@ -30,7 +41,9 @@ export async function POST(request: NextRequest) {
 
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const mimeType = file.type || 'application/octet-stream'
+    // Some browsers send no type (often .m4a / .heic): the file's ending tells it. Instagram and WhatsApp go by
+    // the type the file is served with, so a wrong one makes them refuse it.
+    const mimeType = (file.type && file.type !== 'application/octet-stream' ? file.type : typeFromName(file.name)) || 'application/octet-stream'
 
     // Try uploading to Supabase Storage 'media-attachments' public bucket
     try {

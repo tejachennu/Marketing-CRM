@@ -78,6 +78,7 @@ export default function DashboardLayout({
   const [showTickets, setShowTickets] = useState(false)
   const [activeTicketsCount, setActiveTicketsCount] = useState(0)
   const [unreadChatsCount, setUnreadChatsCount] = useState(0)
+  const [unreadInstagramCount, setUnreadInstagramCount] = useState(0)
   const [activeLeadsCount, setActiveLeadsCount] = useState(0)
   const [userId, setUserId] = useState<string | null>(null)
   // Start restricted: nothing role-gated is shown until the profile has loaded
@@ -133,7 +134,7 @@ export default function DashboardLayout({
     }
 
     // Dispatch reset event when leaving/entering chat page to clean active conversation state
-    if (targetHref === '/dashboard' || pathname === '/dashboard') {
+    if (targetHref === '/dashboard' || pathname === '/dashboard' || targetHref === '/dashboard/instagram' || pathname === '/dashboard/instagram') {
       window.dispatchEvent(new Event('reset-active-chat'))
     }
 
@@ -482,11 +483,14 @@ export default function DashboardLayout({
 
     const fetchUnreadChatsCount = async () => {
       try {
-        let query = supabase
+        // WhatsApp (Conversations) and Instagram keep their own counts; without the channel column every chat is WhatsApp
+        const build = (fields: string) => supabase
           .from('conversations')
-          .select('unread_count')
+          .select(fields)
           .eq('organization_id', orgId)
           .gt('unread_count', 0)
+        let query = build('unread_count, channel')
+        let scopeFilter: string | null = null
 
         if (!seeAll && userId) {
           // Fetch active leads assigned to the user (map by contact_id!)
@@ -512,13 +516,20 @@ export default function DashboardLayout({
           if (ticketConvIds.length > 0) {
             orConditions += `,id.in.(${ticketConvIds.map(id => `"${id}"`).join(',')})`
           }
+          scopeFilter = orConditions
           query = query.or(orConditions)
         }
 
-        const { data, error } = await query
+        let { data, error } = await query as { data: any[] | null; error: any }
+        if (error && /channel/.test(String(error.message || ''))) {
+          let plain = build('unread_count')
+          if (scopeFilter) plain = plain.or(scopeFilter)
+          ;({ data, error } = await plain as { data: any[] | null; error: any })
+        }
         if (error) throw error
-        const totalUnreadMessages = (data || []).reduce((sum, c) => sum + (c.unread_count || 0), 0)
-        setUnreadChatsCount(totalUnreadMessages)
+        const sum = (rows: any[]) => rows.reduce((total, c) => total + (c.unread_count || 0), 0)
+        setUnreadChatsCount(sum((data || []).filter((c) => c.channel !== 'instagram')))
+        setUnreadInstagramCount(sum((data || []).filter((c) => c.channel === 'instagram')))
       } catch (err) {
         console.error('Error fetching unread chats count:', err)
       }
@@ -965,6 +976,11 @@ export default function DashboardLayout({
                           {formatCount(unreadChatsCount)}
                         </span>
                       )}
+                      {item.href === '/dashboard/instagram' && unreadInstagramCount > 0 && (
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-[#1D5BEA] text-white shadow-xs">
+                          {formatCount(unreadInstagramCount)}
+                        </span>
+                      )}
                       {item.href === '/dashboard/leads' && activeLeadsCount > 0 && (
                         <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-indigo-600 text-white shadow-xs">
                           {formatCount(activeLeadsCount)}
@@ -1019,6 +1035,11 @@ export default function DashboardLayout({
                     {item.href === '/dashboard' && unreadChatsCount > 0 && (
                       <span className="absolute -top-1 -right-1 bg-[#ef4444] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
                         {formatCount(unreadChatsCount)}
+                      </span>
+                    )}
+                    {item.href === '/dashboard/instagram' && unreadInstagramCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-[#1D5BEA] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
+                        {formatCount(unreadInstagramCount)}
                       </span>
                     )}
 

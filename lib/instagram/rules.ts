@@ -29,6 +29,8 @@ export interface IgIncomingMessage {
   timestamp: number
   echo: boolean
   replyTo: string | null
+  /** Instagram's API does not share this kind (some voice notes, GIFs…): shown as a note to open Instagram. */
+  unsupported?: boolean
 }
 export interface IgSeen { kind: 'seen'; accountId: string; senderId: string; mid: string | null; timestamp: number }
 export interface IgComment {
@@ -59,13 +61,14 @@ export function readIgWebhook(payload: any): IgEvent[] {
     for (const m of Array.isArray(entry?.messaging) ? entry.messaging : []) {
       const sender = str(m?.sender?.id)
       const recipient = str(m?.recipient?.id)
-      if (m?.message && !m.message.is_deleted && !m.message.is_unsupported) {
+      if (m?.message && !m.message.is_deleted) {
         const echo = m.message.is_echo === true
         out.push({
           kind: 'message', accountId: accountId || (echo ? sender : recipient), senderId: echo ? recipient : sender,
           mid: str(m.message.mid), text: str(m.message.text).slice(0, 4000),
           attachments: (Array.isArray(m.message.attachments) ? m.message.attachments : []).map((a: any) => ({ type: str(a?.type), url: str(a?.payload?.url) })).filter((a: any) => a.type),
           timestamp: Number(m.timestamp) || Date.now(), echo, replyTo: m.message.reply_to?.mid ? str(m.message.reply_to.mid) : null,
+          unsupported: m.message.is_unsupported === true,
         })
       } else if (m?.postback) {
         out.push({ kind: 'message', accountId: accountId || recipient, senderId: sender, mid: str(m.postback.mid), text: str(m.postback.title || m.postback.payload), attachments: [], timestamp: Number(m.timestamp) || Date.now(), echo: false, replyTo: null })
@@ -88,23 +91,122 @@ export function readIgWebhook(payload: any): IgEvent[] {
   return out
 }
 
+export const UNSUPPORTED_TEXT = "[A message Instagram doesn't share with other apps (like some voice notes or GIFs). Open Instagram to see it.]"
+
 /** What the inbox shows for a DM (text, or a word for what was sent). */
-export function messageText(m: Pick<IgIncomingMessage, 'text' | 'attachments'>): string {
+export function messageText(m: Pick<IgIncomingMessage, 'text' | 'attachments'> & { unsupported?: boolean }): string {
   if (m.text) return m.text
+  if (m.unsupported) return UNSUPPORTED_TEXT
   const a = m.attachments[0]
   if (!a) return '[Message]'
-  const words: Record<string, string> = { image: '[Photo]', video: '[Video]', audio: '[Voice message]', file: '[File]', ig_reel: '[Shared a reel]', reel: '[Shared a reel]', ig_post: '[Shared a post]', share: '[Shared a post]', story_mention: '[Mentioned you in a story]', ig_story: '[Replied to a story]', story: '[Replied to a story]' }
+  const words: Record<string, string> = { image: '[Photo]', animated_image: '[GIF]', sticker: '[Sticker]', video: '[Video]', audio: '[Voice message]', file: '[File]', ig_reel: '[Shared a reel]', reel: '[Shared a reel]', ig_post: '[Shared a post]', share: '[Shared a post]', story_mention: '[Mentioned you in a story]', ig_story: '[Replied to a story]', story: '[Replied to a story]' }
   return words[a.type] || '[Attachment]'
 }
 
-/** A DM reply body: text (≤1000 bytes) or one image. */
-export function dmBody(recipientId: string, input: { text?: string; imageUrl?: string; humanAgent?: boolean }): Record<string, unknown> | { error: string } {
+// ── Sending files ────────────────────────────────────────────────────────────
+
+export type IgMediaKind = 'image' | 'video' | 'audio' | 'file'
+
+/** The type a file must be served with for Instagram to take it (it goes by the type, not the ending). */
+export const SEND_TYPES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', ogv: 'video/ogg', avi: 'video/x-msvideo',
+  m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', pdf: 'application/pdf',
+}
+
+/** What Instagram accepts (Messaging API: photos PNG / JPEG ≤ 8 MB; video, audio, PDF ≤ 25 MB). */
+const SEND_KINDS: Record<string, IgMediaKind> = {
+  png: 'image', jpg: 'image', jpeg: 'image',
+  mp4: 'video', mov: 'video', webm: 'video', ogv: 'video', avi: 'video',
+  m4a: 'audio', aac: 'audio', wav: 'audio',
+  pdf: 'file',
+}
+/** Photos in other formats are turned into JPEG before sending. */
+export const CONVERT_TO_JPEG = ['webp', 'gif', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'avif']
+export const IG_SEND_HELP = 'Instagram takes photos (JPEG, PNG up to 8 MB), videos (MP4, MOV, WebM up to 25 MB), audio (M4A, AAC, WAV up to 25 MB) and PDF files.'
+
+/** The file's extension from a link (our uploads keep it) or a data: link's type. */
+export function fileExtension(url: string): string {
+  const mime = /^data:([^;,]+)/.exec(url)?.[1]
+  if (mime) return mime.split('/')[1]?.replace('jpeg', 'jpg').replace('quicktime', 'mov').replace('x-m4a', 'm4a').replace('mpeg', 'mp3') || ''
+  const hash = /#media\.([a-z0-9]+)/i.exec(url)?.[1]
+  if (hash) return hash.toLowerCase()
+  return (url.split('?')[0].split('#')[0].split('/').pop() || '').split('.').slice(1).pop()?.toLowerCase() || ''
+}
+
+/** How a file goes to Instagram: as a kind it takes, after turning it into a JPEG, or not at all (why). */
+export function sendKind(url: string): { kind: IgMediaKind } | { convert: true } | { error: string } {
+  if (!/^https:\/\//.test(url)) return { error: 'The file did not upload. Please attach it again.' }
+  const ext = fileExtension(url)
+  if (SEND_KINDS[ext]) return { kind: SEND_KINDS[ext] }
+  if (CONVERT_TO_JPEG.includes(ext)) return { convert: true }
+  return { error: `Instagram can't take ${ext ? `.${ext} files` : 'this file'}. ${IG_SEND_HELP}` }
+}
+
+/**
+ * The request bodies for one reply: the file first (Instagram sends a file and its words as two
+ * messages), then the text (≤1000 bytes). Human Agent tag on each when a person answers after 24 hours.
+ */
+export function dmBodies(recipientId: string, input: { text?: string; media?: { url: string; kind: IgMediaKind }; humanAgent?: boolean }): Record<string, unknown>[] | { error: string } {
   const text = str(input.text).trim()
-  if (!text && !input.imageUrl) return { error: 'Type a message.' }
+  if (!text && !input.media) return { error: 'Type a message.' }
   if (text && new TextEncoder().encode(text).length > 1000) return { error: 'Instagram takes at most 1,000 characters (fewer with emoji). Shorten the message.' }
+  const tag = input.humanAgent ? { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' } : {}
+  const out: Record<string, unknown>[] = []
+  if (input.media) out.push({ recipient: { id: recipientId }, message: { attachment: { type: input.media.kind, payload: { url: input.media.url } } }, ...tag })
+  if (text) out.push({ recipient: { id: recipientId }, message: { text }, ...tag })
+  return out
+}
+
+/** One body (text or a photo link), kept for callers that send one thing. */
+export function dmBody(recipientId: string, input: { text?: string; imageUrl?: string; humanAgent?: boolean }): Record<string, unknown> | { error: string } {
   if (input.imageUrl && !/^https:\/\//.test(input.imageUrl)) return { error: 'The photo must be a web link (https).' }
-  const message = input.imageUrl ? { attachment: { type: 'image', payload: { url: input.imageUrl } } } : { text }
-  return { recipient: { id: recipientId }, message, ...(input.humanAgent ? { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' } : {}) }
+  const bodies = dmBodies(recipientId, { text: input.imageUrl ? '' : input.text, media: input.imageUrl ? { url: input.imageUrl, kind: 'image' } : undefined, humanAgent: input.humanAgent })
+  return 'error' in bodies ? bodies : bodies[0]
+}
+
+/** Meta's file errors in plain words. */
+export function igSendError(message: string): string {
+  if (/upload attachment|attachment.*(fail|invalid)|2534|file.*(large|size)/i.test(message)) return `Instagram could not take this file. ${IG_SEND_HELP}`
+  return message
+}
+
+// ── Receiving files ──────────────────────────────────────────────────────────
+
+/** A received attachment worth keeping a copy of (Instagram's links expire), and its kind. */
+export function keepableKind(type: string): IgMediaKind | null {
+  if (type === 'image' || type === 'animated_image' || type === 'sticker') return 'image'
+  if (type === 'video') return 'video'
+  if (type === 'audio') return 'audio'
+  if (type === 'file') return 'file'
+  return null
+}
+
+/** File extension for a downloaded file's type. */
+export function extensionForType(contentType: string, kind: IgMediaKind): string {
+  const t = contentType.split(';')[0].trim().toLowerCase()
+  const known: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+    'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+    'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/webm': 'webm',
+    'application/pdf': 'pdf',
+  }
+  return known[t] || { image: 'jpg', video: 'mp4', audio: 'm4a', file: 'bin' }[kind]
+}
+
+/** The attachments of a message read from the conversations API, in the webhook's shape. */
+export function apiAttachments(x: any): { type: string; url: string }[] {
+  const out: { type: string; url: string }[] = []
+  for (const a of x?.attachments?.data || []) {
+    if (a?.image_data?.url) out.push({ type: /gif/i.test(str(a.mime_type)) ? 'animated_image' : 'image', url: str(a.image_data.url) })
+    else if (a?.video_data?.url) out.push({ type: /^audio\//i.test(str(a.mime_type)) ? 'audio' : 'video', url: str(a.video_data.url) })
+    else if (a?.audio_data?.url) out.push({ type: 'audio', url: str(a.audio_data.url) })
+    else if (a?.file_url) out.push({ type: /^audio\//i.test(str(a.mime_type)) ? 'audio' : /^video\//i.test(str(a.mime_type)) ? 'video' : /^image\//i.test(str(a.mime_type)) ? 'image' : 'file', url: str(a.file_url) })
+  }
+  const share = x?.shares?.data?.[0]
+  if (share) out.push({ type: 'share', url: str(share.link || share.url) })
+  if (x?.story) out.push({ type: x.story.mention ? 'story_mention' : 'ig_story', url: str(x.story.mention?.link || x.story.reply_to?.link) })
+  return out
 }
 
 /**
@@ -180,17 +282,7 @@ export function syncAllowed(state: IgSyncState, kind: 'dms' | 'comments', now: n
 
 /** What a message from the conversations API says when it has no text (shares, stories, photos…). */
 export function apiMessageText(x: any): string {
-  const text = str(x?.message).trim()
-  if (text) return text.slice(0, 4000)
-  if (x?.story) return x.story?.mention ? '[Mentioned you in a story]' : '[Replied to your story]'
-  if (x?.shares?.data?.length) return '[Shared a post]'
-  if (x?.sticker) return '[Sticker]'
-  const a = x?.attachments?.data?.[0]
-  if (a?.image_data) return '[Photo]'
-  if (a?.video_data) return '[Video]'
-  if (a?.audio_data) return '[Voice message]'
-  if (a?.file_url) return '[File]'
-  return '[Message]'
+  return messageText({ text: str(x?.message).trim().slice(0, 4000), attachments: apiAttachments(x), unsupported: x?.is_unsupported === true })
 }
 
 // ── Automatic replies ────────────────────────────────────────────────────────

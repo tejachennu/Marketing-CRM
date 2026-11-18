@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 /**
- * GET ?organizationId=&sync=1: Instagram chats (who, last message, unread). sync=1 checks Instagram for new
+ * GET ?organizationId=&sync=1&list=0: Instagram chats (who, last message, unread). sync=1 checks Instagram for new
  * DMs first (at most once a minute, changed threads only) and lets the AI answer the newest ones when Auto
  * replies allow. `messagesOff`: the Instagram app does not allow access to messages. `waitMinutes`: Instagram
  * asked us to slow down.
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     for (const item of synced.fresh) latest.set(item.conversation.id, item) // oldest first, so the newest stays
     if (account) for (const item of latest.values()) await answerDm(db, account, { ...item, at: Date.parse(item.message.created_at) }).catch(() => null)
   }
-  // People who see only their own records get only the chats given to them
-  const chats = await listIgChats(db, organizationId!, { onlyAssignedTo: can(access.user, 'records.view_all') ? null : access.user?.id || '-' })
-  return NextResponse.json({ chats, messagesOff: synced?.messagesOff === true, waitMinutes: synced?.waitMinutes || 0, syncError: synced?.error || null })
+  // list=0: the inbox only wants Instagram checked (it lists chats itself)
+  const chats = params.get('list') === '0' ? [] : await listIgChats(db, organizationId!, { onlyAssignedTo: can(access.user, 'records.view_all') ? null : access.user?.id || '-' })
+  return NextResponse.json({ chats, added: synced?.added || 0, messagesOff: synced?.messagesOff === true, waitMinutes: synced?.waitMinutes || 0, syncError: synced?.error || null })
 }

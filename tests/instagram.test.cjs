@@ -106,7 +106,7 @@ test('DMs: saved once into an Instagram chat; replies honour the window; AI cann
   assert.equal(saved.conversation.channel, 'instagram')
   assert.equal(await S.saveIncomingDm(db, account, m, fetcher), null) // Meta retries: once only
   const sent = await S.sendDm(db, ORG, saved.conversation, { text: 'Yes, in stock', byPerson: true }, fetcher)
-  assert.deepEqual(sent, { ok: true, mid: 'out1' })
+  assert.deepEqual(sent, { ok: true, mid: 'out1', mids: ['out1'] })
   assert.deepEqual(calls.at(-1).body, { recipient: { id: '901' }, message: { text: 'Yes, in stock' } })
   // Three days later only a person may answer (Human Agent tag)
   db.tables.messages[0].created_at = new Date(Date.now() - 3 * 86_400_000).toISOString()
@@ -160,6 +160,10 @@ test('wiring: migration, webhook signed, inbox replies go to Instagram, store li
   assert.match(hook, /verifyMetaSignature\(raw/)
   assert.match(hook, /INSTAGRAM_WEBHOOK_VERIFY_TOKEN/)
   assert.match(read('app/api/messages/send/route.ts'), /channel === 'instagram'[\s\S]*sendDm\(supabase, orgId, conversation/)
+  // A sent Instagram reply must not look undelivered to the inbox (it treats twilioSent === false as failed)
+  assert.match(read('app/api/messages/send/route.ts'), /return NextResponse\.json\(\{ success: true, message: igSaved, \.\.\.\(fileSaved \? \{ fileMessage: fileSaved \} : \{\}\), channel: 'instagram' \}\)/)
+  // A file with words is saved as two messages with their own Instagram ids (no copy fetched back later)
+  assert.match(read('app/api/messages/send/route.ts'), /twilio_message_sid: `IG_\$\{fileMid\}`/)
   assert.match(read('lib/commerce/storefront.ts'), /settings\.instagram\.live \? /)
   assert.match(read('app/dashboard/layout.tsx'), /'\/dashboard\/instagram'/)
 })
@@ -224,7 +228,7 @@ test('pull DMs from Instagram: changed threads only, last 7 days only, shares na
   const first = await S.syncDms(db, ORG, fetcher, now)
   assert.equal(first.added, 3)
   assert.ok(!calls.some((c) => c.url.includes('/old?')))
-  assert.deepEqual(db.tables.messages.map((m) => [m.twilio_message_sid, m.sender_type, m.body]), [['IG_mid1', 'contact', 'Is this available?'], ['IG_mid2', 'user', 'Yes, in stock'], ['IG_mid3', 'contact', '[Shared a post]']])
+  assert.deepEqual(db.tables.messages.map((m) => [m.twilio_message_sid, m.sender_type, m.body]), [['IG_mid1', 'contact', 'Is this available?'], ['IG_mid2', 'user', 'Yes, in stock'], ['IG_mid3', 'contact', '[Shared a post]\nhttps://x']])
   assert.deepEqual(first.fresh.map((f) => f.message.twilio_message_sid), ['IG_mid3']) // mid1 was answered already
   assert.equal(db.tables.conversations[0].channel, 'instagram')
   assert.equal((await S.listIgChats(db, ORG))[0].name, 'Ravi Kumar')
@@ -234,6 +238,39 @@ test('pull DMs from Instagram: changed threads only, last 7 days only, shares na
   assert.equal(calls.length - before, 1)
   const off = graph([[`/${IG}/conversations`, { error: { message: '(#200) The account owner has disabled access to Instagram Direct Messaging Outside of Instagram App.', code: 200 } }]])
   assert.equal((await S.syncDms(db, ORG, off.fetcher, now + 240_000)).messagesOff, true)
+})
+
+test('names: "Instagram user" chats get the @username from the thread list, at no extra call', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU', sync_state: {} }
+  const db = salonDb({ instagram_accounts: [account], contacts: [
+    { id: 'k1', organization_id: ORG, instagram_id: '901', instagram_username: null, first_name: 'Instagram', last_name: 'user' },
+    { id: 'k2', organization_id: ORG, instagram_id: '902', instagram_username: null, first_name: 'Ravi', last_name: 'Kumar' },
+    { id: 'k3', organization_id: ORG, instagram_id: '903', instagram_username: '__deleted__abc123', first_name: '__deleted__abc123', last_name: null },
+  ], conversations: [], messages: [] })
+  const { fetcher, calls } = graph([[`/${IG}/conversations`, { data: [
+    { id: 'old1', updated_time: '2022-05-10T10:00:00+0000', participants: { data: [{ id: IG, username: 'shop' }, { id: '901', username: 'meena.k' }] } },
+    { id: 'old2', updated_time: '2022-05-11T10:00:00+0000', participants: { data: [{ id: '902', username: 'ravik' }, { id: IG, username: 'shop' }] } },
+    { id: 'old3', updated_time: '2022-05-12T10:00:00+0000', participants: { data: [{ id: '903', username: '__deleted__abc123' }, { id: IG, username: 'shop' }] } },
+  ] }]])
+  await S.syncDms(db, ORG, fetcher, Date.parse('2026-11-18T12:30:00Z'))
+  assert.equal(calls.length, 1)
+  assert.ok(calls[0].url.includes('participants'))
+  const [a, b] = db.tables.contacts
+  assert.deepEqual([a.first_name, a.last_name, a.instagram_username], ['meena.k', null, 'meena.k'])
+  assert.deepEqual([b.first_name, b.last_name, b.instagram_username], ['Ravi', 'Kumar', 'ravik'])
+  assert.deepEqual([db.tables.contacts[2].first_name, db.tables.contacts[2].instagram_username], ['Deleted account', null])
+})
+
+test('two inboxes: Conversations is WhatsApp only, Instagram has its own with the same screen', () => {
+  const api = read('app/api/conversations/route.ts')
+  assert.match(api, /channel === 'instagram' \? q\.eq\('channel', 'instagram'\) : q\.neq\('channel', 'instagram'\)/)
+  assert.match(read('app/dashboard/page.tsx'), /<Inbox channel="whatsapp" \/>/)
+  assert.match(read('app/dashboard/instagram/page.tsx'), /<Inbox channel="instagram" \/>/)
+  const inbox = read('components/chat/inbox.tsx')
+  assert.match(inbox, /channel=\$\{channel\}&page=/)
+  assert.match(inbox, /isIg \? INSTAGRAM_WINDOW_MS/)
+  assert.match(read('app/dashboard/settings/page.tsx'), /<InstagramSettings \/>/)
+  assert.match(read('app/dashboard/layout.tsx'), /setUnreadInstagramCount/)
 })
 
 test('auto replies: settings cleaned; hide words, keyword reply + DM, AI, every other comment', () => {
@@ -250,7 +287,8 @@ test('auto replies: settings cleaned; hide words, keyword reply + DM, AI, every 
   assert.equal(R.commentPlan({ ...a, commentAi: true }, { text: 'Lovely!', fromUsername: 'meena' }).ai, true)
   assert.equal(R.commentPlan(R.DEFAULT_AUTOMATION, { text: 'Lovely!' }), null)
   assert.equal(R.apiMessageText({ story: { mention: { link: 'x' } } }), '[Mentioned you in a story]')
-  assert.equal(R.apiMessageText({ attachments: { data: [{ video_data: {} }] } }), '[Video]')
+  assert.equal(R.apiMessageText({ attachments: { data: [{ video_data: { url: 'https://v' } }] } }), '[Video]')
+  assert.equal(R.apiMessageText({ is_unsupported: true, message: '' }), R.UNSUPPORTED_TEXT)
 })
 
 test('auto replies run once per comment: DM then public reply, marked Auto; old comments are left for a person', async () => {
@@ -288,4 +326,95 @@ test('setup checks: webhook address on the Meta app, and DMs allowed', async () 
   assert.ok(none.calls.some((c) => c.url.includes('/app1/subscriptions')))
   const ok = graph([['/app1/subscriptions', { data: [{ object: 'instagram', active: true }] }], [`/${IG}/conversations`, { data: [] }]])
   assert.deepEqual(await S.instagramChecks(db, ORG, ok.fetcher), { webhook: true, messages: true })
+})
+
+
+test('sending files: each kind Instagram takes, other photos become JPEG, the rest refused in plain words', () => {
+  assert.deepEqual(R.sendKind('https://x.supabase.co/storage/v1/object/public/media-attachments/uploads/1-a-photo.PNG'), { kind: 'image' })
+  assert.deepEqual(R.sendKind('https://x/uploads/clip.mov'), { kind: 'video' })
+  assert.deepEqual(R.sendKind('https://x/uploads/voice.m4a'), { kind: 'audio' })
+  assert.deepEqual(R.sendKind('https://x/uploads/1795009853610-a7oicw-1000878180.pdf'), { kind: 'file' })
+  assert.deepEqual(R.sendKind('https://x/uploads/pic.webp'), { convert: true })
+  assert.match(R.sendKind('https://x/uploads/list.docx').error, /can't take \.docx files/)
+  assert.match(R.sendKind('https://x/uploads/song.mp3').error, /M4A, AAC, WAV/)
+  assert.match(R.sendKind('data:image/png;base64,AAA').error, /did not upload/)
+  const bodies = R.dmBodies('901', { text: 'Here is the bill', media: { url: 'https://x/b.pdf', kind: 'file' }, humanAgent: true })
+  assert.deepEqual(bodies, [
+    { recipient: { id: '901' }, message: { attachment: { type: 'file', payload: { url: 'https://x/b.pdf' } } }, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' },
+    { recipient: { id: '901' }, message: { text: 'Here is the bill' }, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' },
+  ])
+  assert.match(R.igSendError('(#100) Upload attachment failure.'), /JPEG, PNG up to 8 MB/)
+})
+
+function fakeStorage(db) {
+  const files = {}
+  db.storage = { from: (bucket) => ({
+    upload: async (path, buffer, opts) => { files[`${bucket}/${path}`] = { size: buffer.length, type: opts.contentType }; return { error: null } },
+    getPublicUrl: (path) => ({ data: { publicUrl: `https://store.example/${bucket}/${path}` } }),
+  }) }
+  return files
+}
+const fileReply = (type, bytes = 10) => ({ ok: true, status: 200, headers: { get: (h) => (h === 'content-type' ? type : h === 'content-length' ? String(bytes) : null) }, arrayBuffer: async () => new Uint8Array(bytes).buffer, json: async () => ({}) })
+
+test('receiving files: photos, voice notes, videos and PDFs are copied (Instagram links expire); shares keep their link; unsupported says so', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU' }
+  const db = salonDb({ instagram_accounts: [account], contacts: [{ id: 'k1', organization_id: ORG, instagram_id: '901', first_name: 'Teja' }], conversations: [], messages: [] })
+  const files = fakeStorage(db)
+  const types = { photo: 'image/jpeg', voice: 'audio/mp4', clip: 'video/mp4', doc: 'application/pdf' }
+  const fetcher = async (url) => fileReply(types[String(url).split('/').pop()] || 'application/octet-stream')
+  const msg = (mid, attachments, extra = {}) => ({ kind: 'message', accountId: IG, senderId: '901', mid, text: '', attachments, timestamp: Date.now(), echo: false, replyTo: null, ...extra })
+  await S.saveIncomingDm(db, account, msg('m1', [{ type: 'image', url: 'https://lookaside.fbsbx.com/photo' }]), fetcher)
+  await S.saveIncomingDm(db, account, msg('m2', [{ type: 'audio', url: 'https://lookaside.fbsbx.com/voice' }]), fetcher)
+  await S.saveIncomingDm(db, account, msg('m3', [{ type: 'video', url: 'https://lookaside.fbsbx.com/clip' }]), fetcher)
+  await S.saveIncomingDm(db, account, msg('m4', [{ type: 'file', url: 'https://lookaside.fbsbx.com/doc' }]), fetcher)
+  await S.saveIncomingDm(db, account, msg('m5', [{ type: 'ig_reel', url: 'https://www.instagram.com/reel/abc' }]), fetcher)
+  await S.saveIncomingDm(db, account, msg('m6', [], { unsupported: true }), fetcher)
+  const rows = db.tables.messages
+  const kind = (r) => require('../lib/chat-message-format.ts').getMediaType(r.media_url)
+  assert.deepEqual(rows.slice(0, 4).map(kind), ['image', 'audio', 'video', 'document'])
+  assert.ok(rows.slice(0, 4).every((r) => r.media_url.startsWith('https://store.example/media-attachments/instagram/') && r.body === S.MEDIA_PLACEHOLDER))
+  assert.deepEqual(Object.values(files).map((f) => f.type), ['image/jpeg', 'audio/mp4', 'video/mp4', 'application/pdf'])
+  assert.equal(rows[4].body, '[Shared a reel]\nhttps://www.instagram.com/reel/abc')
+  assert.equal(rows[5].body, R.UNSUPPORTED_TEXT)
+  // Storage down: Instagram's own link with a type hint, so the inbox still shows it
+  delete db.storage
+  await S.saveIncomingDm(db, account, msg('m7', [{ type: 'audio', url: 'https://lookaside.fbsbx.com/voice' }]), fetcher)
+  assert.equal(rows[6].media_url, 'https://lookaside.fbsbx.com/voice#media.m4a')
+  assert.equal(kind(rows[6]), 'audio')
+})
+
+test('sendDm: a PDF goes as a file then the words; a WebP photo goes as a JPEG copy; a voice note without its type gets a typed copy; refused types never reach Instagram', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU' }
+  const db = salonDb({ instagram_accounts: [account], contacts: [{ id: 'k1', organization_id: ORG, instagram_id: '901' }], conversations: [], messages: [{ id: 'x', conversation_id: 'c1', sender_type: 'contact', created_at: new Date(Date.now() - 60_000).toISOString() }] })
+  const files = fakeStorage(db)
+  const sharp = require('sharp')
+  const webp = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#1D5BEA' } }).webp().toBuffer()
+  const posts = []
+  const fetcher = async (url, init = {}) => {
+    if (String(url).endsWith('.webp')) return { ok: true, status: 200, headers: { get: () => 'image/webp' }, arrayBuffer: async () => webp }
+    // Our storage: the PDF is served as a PDF; the voice note came up from the browser with no type
+    if (String(url).startsWith('https://x/uploads/')) {
+      const type = String(url).endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
+      return { ok: true, status: 200, headers: { get: (h) => (h === 'content-type' ? type : null) }, arrayBuffer: async () => new Uint8Array(8).buffer }
+    }
+    posts.push(init.body ? JSON.parse(init.body) : null)
+    return { ok: true, status: 200, json: async () => ({ message_id: `mid${posts.length}` }) }
+  }
+  const conv = { id: 'c1', contact_id: 'k1' }
+  const pdf = await S.sendDm(db, ORG, conv, { text: 'Your bill', mediaUrl: 'https://x/uploads/bill.pdf', byPerson: true }, fetcher)
+  assert.deepEqual(pdf, { ok: true, mid: 'mid2', mids: ['mid1', 'mid2'], mediaUrl: 'https://x/uploads/bill.pdf' })
+  assert.deepEqual(posts.map((b) => b.message.attachment?.type || 'text'), ['file', 'text'])
+  const pic = await S.sendDm(db, ORG, conv, { mediaUrl: 'https://x/uploads/pic.webp', byPerson: true }, fetcher)
+  assert.equal(pic.ok, true)
+  assert.match(pic.mediaUrl, /^https:\/\/store\.example\/media-attachments\/instagram\/.+\/out-.+\.jpg$/)
+  assert.equal(posts.at(-1).message.attachment.type, 'image')
+  assert.equal(Object.values(files)[0].type, 'image/jpeg')
+  // A voice note stored as "application/octet-stream": Instagram refuses that, so a copy served as audio/mp4 goes
+  const voice = await S.sendDm(db, ORG, conv, { mediaUrl: 'https://x/uploads/voice.m4a', byPerson: true }, fetcher)
+  assert.match(voice.mediaUrl, /^https:\/\/store\.example\/media-attachments\/instagram\/.+\/out-.+\.m4a$/)
+  assert.equal(posts.at(-1).message.attachment.type, 'audio')
+  assert.equal(Object.values(files).at(-1).type, 'audio/mp4')
+  const before = posts.length
+  assert.match((await S.sendDm(db, ORG, conv, { mediaUrl: 'https://x/uploads/a.docx', byPerson: true }, fetcher)).error, /can't take \.docx/)
+  assert.equal(posts.length, before)
 })

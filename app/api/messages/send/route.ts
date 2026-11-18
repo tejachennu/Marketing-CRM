@@ -318,16 +318,28 @@ export async function POST(request: NextRequest) {
     // An Instagram chat: the reply goes out as an Instagram DM (24-hour window, or 7 days as a person)
     if ((conversation as any).channel === 'instagram') {
       if (templateName || templateSid) return NextResponse.json({ error: 'Templates are for WhatsApp. On Instagram, type a normal reply.' }, { status: 400 })
-      const sent = await sendDm(supabase, orgId, conversation, { text: msgBody, imageUrl: msgMediaUrl || undefined, byPerson: true })
+      const sent = await sendDm(supabase, orgId, conversation, { text: msgBody, mediaUrl: msgMediaUrl || undefined, byPerson: true })
+      // A file with words goes to Instagram as two messages: the file is saved as its own message (with its
+      // Instagram id) and the words below, so a later check of Instagram finds both already here
+      const fileMid = msgMediaUrl && msgBody ? sent.mids?.[0] : undefined
+      let fileSaved: any = null
+      if (fileMid) {
+        ;({ data: fileSaved } = await supabase.from('messages').insert([{
+          organization_id: conversation.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: sender?.id || null,
+          body: '[Media Attachment]', media_url: (sent.ok && sent.mediaUrl) || msgMediaUrl, twilio_message_sid: `IG_${fileMid}`, status: 'sent',
+        }]).select().single())
+      }
       const { data: igSaved, error: igSaveError } = await supabase.from('messages').insert([{
         organization_id: conversation.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: sender?.id || null,
-        body: msgBody || (msgMediaUrl ? '[Photo]' : '[Message]'), media_url: msgMediaUrl, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null,
+        // A file alone shows as the file (the placeholder is hidden), never as "[Photo]" under it
+        body: msgBody || (msgMediaUrl ? '[Media Attachment]' : '[Message]'), media_url: fileMid ? null : (sent.ok && sent.mediaUrl) || msgMediaUrl, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null,
         status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error,
       }]).select().single()
       if (igSaveError) throw igSaveError
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString(), auto_reply_enabled: false }).eq('id', conversation.id)
       if (!sent.ok) return NextResponse.json({ success: false, error: sent.error, message: igSaved, twilioSent: false }, { status: 400 })
-      return NextResponse.json({ success: true, message: igSaved, twilioSent: false, channel: 'instagram' })
+      // No twilioSent here: screens read twilioSent === false as "not delivered", and this one was
+      return NextResponse.json({ success: true, message: igSaved, ...(fileSaved ? { fileMessage: fileSaved } : {}), channel: 'instagram' })
     }
 
     // The message being replied to must be in this conversation. If WhatsApp gave it an id,

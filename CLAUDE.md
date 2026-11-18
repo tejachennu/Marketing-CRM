@@ -151,8 +151,24 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     nothing), keyword rules (public reply and/or one DM, `{name}`), every other comment, hide words. `answerComment` once per
     comment under a day old (marks `instagram_comments.auto_replied`); `answerDm` for DMs under 2 hours. Run by the webhook
     and after each page check. `PUT /api/instagram` saves them (automation.manage).
-  - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx`: connect via `loadMetaSdk` + `FB.login` config_id,
-    Messages (chats → `/dashboard?conversationId=`), Comments, Posts, "Still to do" checklist for admins); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
+  - **Two inboxes** (owner, 18 Nov 2026: "don't combine"): the inbox lives in `components/chat/inbox.tsx` (`Inbox
+    channel="whatsapp" | "instagram"`). `/dashboard` = WhatsApp only, `/dashboard/instagram` = Instagram only, same
+    screen (`/api/conversations?channel=`; no channel = every chat, for the mobile app; falls back when the `channel`
+    column is missing). Instagram inbox: 7-day reply window (`getServiceWindow(..., windowMs)`), no templates, checks
+    Instagram on open and every minute (`/api/instagram/messages?sync=1&list=0`), note when DMs are not shared / slowed.
+    Sidebar badges are split (`unreadInstagramCount`). Thread `participants` fill "Instagram user" names
+    (`fillUsernames`; "__deleted__…" → "Deleted account").
+  - **Files** (checked live 18 Nov 2026): send `sendKind` (PNG/JPEG photos, MP4/MOV/WebM/OGG/AVI video, M4A/AAC/WAV
+    audio, PDF; WebP/GIF/HEIC… → JPEG copy with `sharp`; others refused in plain words), `dmBodies` (file then words =
+    two Instagram messages, saved as two rows with their own `IG_<mid>`, `fileMessage` returned to the inbox). Instagram
+    goes by the served Content-Type: `/api/media/upload` types files by their ending when the browser sends none, and
+    `typedFile` re-uploads an octet-stream file before sending. Received photos / GIFs / videos / voice notes / files are
+    copied to `media-attachments/instagram/<org>/` (`keepIgMedia`; Instagram links expire) with body `[Media Attachment]`;
+    shares keep label + link. The conversations API has no `sticker` field (asking fails the call) and marks some
+    messages `is_unsupported` (e.g. voice notes): shown as `UNSUPPORTED_TEXT`; webhooks deliver those.
+  - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx` → `InstagramHome` + inbox; not connected → card to
+    Settings), **Comments and posts** (`/dashboard/instagram/comments`), **Settings → Instagram** (`InstagramSettings` in
+    `components/instagram/instagram-parts.tsx`: connect / disconnect, "Still to do", tiles, Auto replies; `?tab=instagram`); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
     (`storefront.instagram.live`, `loadStore` → `instagramFeed`).
 - **App: shop features synced** (18 Nov 2026): `mobile/lib/screens/store/shop_more.dart` (`OrderInvoiceBox`,
   `OrderReturnsBox`, `ShopReportsScreen`, `ShopReviewsScreen`, `ShopOffersScreen` + loyalty, settings screens for returns /

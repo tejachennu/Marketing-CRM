@@ -3,6 +3,7 @@
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { TeamManager } from '@/components/team/team-manager'
 import { ApiKeysPanel } from '@/components/settings/api-keys'
+import { InstagramSettings } from '@/components/instagram/instagram-parts'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 
@@ -13,11 +14,11 @@ import { authSessionManager } from '@/lib/auth-context'
 import { useConfirm } from '@/lib/dialog-context'
 import { User, Organization } from '@/lib/types'
 import { ASSIGNABLE_ROLES, DEFAULT_TEAMMATE_ROLE, can, getRoleDisplay, getTeamChangeError, isAdmin, isManager, isOwner, isSuperAdmin, normalizeRole } from '@/lib/rbac'
-import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X, Download, Mail, Check, Copy, Server, Settings as SettingsIcon, Building2, User as UserIcon, Globe, LifeBuoy, Sparkles, MessageCircle, Phone, Palette, KeyRound } from 'lucide-react'
+import { Key, Bell, Lock, BookOpen, FileText, Trash2, Plus, Loader2, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Users, Sun, Moon, Shield, UserCheck, UserX, Search, Edit2, Tags, Pencil, X, Download, Mail, Check, Copy, Server, Settings as SettingsIcon, Building2, User as UserIcon, Globe, LifeBuoy, Sparkles, MessageCircle, Phone, Palette, KeyRound, Camera } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-type SettingsTab = 'general' | 'knowledge' | 'teammates' | 'api' | 'appearance'
+type SettingsTab = 'general' | 'knowledge' | 'instagram' | 'teammates' | 'api' | 'appearance'
 
 // ── Shared styles: defined once so every section looks and focuses the same ──
 const cardClass =
@@ -595,6 +596,7 @@ export default function SettingsPage() {
     const wanted = new URLSearchParams(window.location.search).get('tab')
     if (wanted === 'teammates' && isConsularHelpdesk(organization)) setActiveTab('teammates')
     if (wanted === 'api' && canManageSettings) setActiveTab('api')
+    if (wanted === 'instagram' && canManageKnowledge) setActiveTab('instagram')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization?.id])
 
@@ -909,6 +911,7 @@ export default function SettingsPage() {
     ...(organization?.enable_ai !== false && canManageKnowledge
       ? [{ id: 'knowledge' as const, label: 'Knowledge Base', icon: BookOpen }]
       : []),
+    ...(canManageKnowledge ? [{ id: 'instagram' as const, label: 'Instagram', icon: Camera }] : []),
     // Consular Helpdesk has no Team page, so its people are managed here, as they always were
     ...(isConsularHelpdesk(organization) ? [{ id: 'teammates' as const, label: 'Teammates', icon: Users }] : []),
     ...(canManageSettings ? [{ id: 'api' as const, label: 'API', icon: KeyRound }] : []),
@@ -2180,6 +2183,7 @@ export default function SettingsPage() {
       )}
       {activeTab === 'teammates' && isConsularHelpdesk(organization) && <TeamManager embedded />}
       {activeTab === 'api' && canManageSettings && organization?.id && <ApiKeysPanel orgId={organization.id} cardClass={cardClass} />}
+      {activeTab === 'instagram' && canManageKnowledge && <div className="w-full max-w-6xl mx-auto"><InstagramSettings /></div>}
 
       {activeTab === 'appearance' && (
         <div className="space-y-5 w-full max-w-6xl mx-auto">

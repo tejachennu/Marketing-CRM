@@ -73,6 +73,9 @@ export function getMediaType(url: string | null | undefined): MediaKind | null {
     // Not a parseable URL: fall through to the file extension
   }
 
+  // Instagram photo links saved before files were copied (they carry no extension; only photos were kept then)
+  if (/^https:\/\/lookaside\.fbsbx\.com\/ig_messaging_cdn\//.test(url)) return 'image'
+
   const path = url.split('?')[0].split('#')[0]
   return kindFromExtension(path.split('.').pop() || '') || 'document'
 }
@@ -233,7 +236,8 @@ export type ServiceWindow =
  * WhatsApp only delivers free-form messages for 24 hours after the customer's last message.
  * `messages` is the loaded history, oldest first.
  */
-export function getServiceWindow(messages: ChatMessageLike[], now: number = Date.now()): ServiceWindow {
+/** windowMs: 24 hours on WhatsApp; Instagram lets a person answer for 7 days (Human Agent tag). */
+export function getServiceWindow(messages: ChatMessageLike[], now: number = Date.now(), windowMs: number = SERVICE_WINDOW_MS): ServiceWindow {
   let lastInbound: ChatMessageLike | null = null
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].sender_type === 'contact') {
@@ -243,16 +247,18 @@ export function getServiceWindow(messages: ChatMessageLike[], now: number = Date
   }
   if (!lastInbound) return { state: 'none' }
 
-  const remainingMs = SERVICE_WINDOW_MS - (now - new Date(lastInbound.created_at).getTime())
+  const remainingMs = windowMs - (now - new Date(lastInbound.created_at).getTime())
   if (remainingMs <= 0) return { state: 'expired' }
   return { state: 'open', remainingMs, closingSoon: remainingMs < CLOSING_SOON_MS }
 }
 
-/** "23h 59m", "45m" — time left in an open window. */
+/** "6d 22h", "23h 59m", "45m" — time left in an open window. */
 export function formatWindowRemaining(remainingMs: number): string {
   const totalMinutes = Math.max(0, Math.floor(remainingMs / 60000))
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
+  // Instagram's 7-day window: "6d 22h" rather than "166h 8m"
+  if (hours >= 48) return `${Math.floor(hours / 24)}d ${hours % 24}h`
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
 }
 

@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
     const search = sanitizeSearchTerm(searchParams.get('search'))
     const specificId = searchParams.get('id')
     const requestedAssignee = searchParams.get('assignedTo') || null
+    // Each inbox lists its own chats: WhatsApp (Conversations) or Instagram. No channel: every chat (the mobile app).
+    const channelParam = searchParams.get('channel')
+    const channel = channelParam === 'instagram' || channelParam === 'whatsapp' ? channelParam : null
+    const onChannel = (q: any, use = true) => (!use || !channel ? q : channel === 'instagram' ? q.eq('channel', 'instagram') : q.neq('channel', 'instagram'))
     const offset = (page - 1) * limit
 
     if (!orgId) {
@@ -48,7 +52,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
-    let query = supabase
+    // ── Role-based filtering: assigned conversations plus those of the user's active leads and open tickets ──
+    // Applied to a single-conversation lookup too, so an id cannot be used to open someone else's chat.
+    const scope = assignedTo ? await getAssignedConversationScope(supabase, assignedTo, orgId) : null
+    const buildQuery = (useChannel: boolean) => { let query = onChannel(supabase
       .from('conversations')
       .select(
         `
@@ -75,26 +82,25 @@ export async function GET(request: NextRequest) {
       `,
         { count: 'exact' }
       )
-      .eq('organization_id', orgId)
+      .eq('organization_id', orgId), useChannel && !specificId)
 
     if (specificId) {
       query = query.eq('id', specificId)
     }
 
-    // ── Role-based filtering: assigned conversations plus those of the user's active leads and open tickets ──
-    // Applied to a single-conversation lookup too, so an id cannot be used to open someone else's chat.
-    const scope = assignedTo ? await getAssignedConversationScope(supabase, assignedTo, orgId) : null
     if (scope) {
       query = query.or(scope.orFilter)
     }
+    return query }
+    let query = buildQuery(true)
 
     // ── Calculate unread messages count (total unread messages for matching conversations) ──
     let unreadMessagesCount = 0
-    let sumQuery = supabase
+    let sumQuery = onChannel(supabase
       .from('conversations')
       .select('unread_count')
       .eq('organization_id', orgId)
-      .gt('unread_count', 0)
+      .gt('unread_count', 0))
 
     if (scope) {
       sumQuery = sumQuery.or(scope.orFilter)
@@ -107,15 +113,18 @@ export async function GET(request: NextRequest) {
       query = query.gt('unread_count', 0)
     }
 
+    let searchContactIds: string[] = []
     if (search && !specificId) {
       // Find matching contacts first, then scope conversations
       const { data: matchedContacts } = await supabase
         .from('contacts')
         .select('id')
         .eq('organization_id', orgId)
-        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%`)
+        // Instagram chats are found by @username too
+        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone_number.ilike.%${search}%${channel === 'instagram' ? `,instagram_username.ilike.%${search.replace(/^@/, '')}%` : ''}`)
 
       const contactIds = (matchedContacts || []).map((c: any) => c.id)
+      searchContactIds = contactIds
       if (contactIds.length > 0) {
         query = query.in('contact_id', contactIds)
       } else {
@@ -130,9 +139,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: conversations, count, error } = await query
-      .order('last_message_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit - 1)
+    const page_ = (q: any) => q.order('last_message_at', { ascending: false, nullsFirst: false }).range(offset, offset + limit - 1)
+    let { data: conversations, count, error } = await page_(query)
+    // A database without the channel column yet (Instagram never connected): every chat is WhatsApp
+    if (error && channel && /channel/.test(String(error.message || ''))) {
+      if (channel === 'instagram') return NextResponse.json({ success: true, conversations: [], count: 0, unreadMessagesCount: 0, page, limit, hasMore: false })
+      let retry = buildQuery(false)
+      if (unreadOnly && !specificId) retry = retry.gt('unread_count', 0)
+      if (search && !specificId) retry = retry.in('contact_id', searchContactIds)
+      ;({ data: conversations, count, error } = await page_(retry))
+    }
 
     if (error) throw error
 

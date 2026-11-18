@@ -10,7 +10,8 @@
  */
 
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
-import { IG_FIELDS, IG_GRAPH, OLDEST_MS, PER_SYNC, SLOW_DOWN_MS, apiMessageText, checkCaption, dmBody, feedItem, igContactKey, isRateLimit, messageText, readIgAutomation, readSyncState, replyWindow, syncAllowed, type IgAutomation, type IgComment, type IgIncomingMessage, type IgSyncState } from './rules'
+import { createHash } from 'node:crypto'
+import { IG_FIELDS, IG_GRAPH, OLDEST_MS, PER_SYNC, SEND_TYPES, SLOW_DOWN_MS, apiAttachments, fileExtension, checkCaption, dmBodies, extensionForType, feedItem, igSendError, keepableKind, sendKind, igContactKey, isRateLimit, messageText, readIgAutomation, readSyncState, replyWindow, syncAllowed, type IgAutomation, type IgComment, type IgIncomingMessage, type IgMediaKind, type IgSyncState } from './rules'
 
 /** supabase/migrations/20261204_instagram.sql word for word. */
 export const INSTAGRAM_SQL = `-- Instagram (DMs in the inbox, comments, feed, posting). Safe to run more than once. The app runs it on its own when first needed.
@@ -231,6 +232,35 @@ export async function igConversation(db: any, organizationId: string, contactId:
   return made
 }
 
+const MEDIA_BUCKET = 'media-attachments'
+const MAX_FILE = 25 * 1024 * 1024
+/** The inbox hides this word when a message has a file and no text (same as WhatsApp). */
+export const MEDIA_PLACEHOLDER = '[Media Attachment]'
+
+/**
+ * Keep our own copy of a file a customer sent: Instagram's links expire after a while. Saved in the
+ * public media bucket under instagram/<workspace>/; if that fails, Instagram's link with "#media.<ext>"
+ * so the inbox still knows how to show it.
+ */
+export async function keepIgMedia(db: any, organizationId: string, url: string, kind: IgMediaKind, key: string, fetcher: Fetcher = fetch): Promise<string> {
+  let ext = extensionForType('', kind)
+  try {
+    const res = await fetcher(url, { signal: AbortSignal.timeout(20000) })
+    if (!res.ok) return `${url}#media.${ext}`
+    const type = res.headers.get('content-type') || ''
+    ext = extensionForType(type, kind)
+    if (Number(res.headers.get('content-length')) > MAX_FILE || !db.storage) return `${url}#media.${ext}`
+    const buffer = Buffer.from(await res.arrayBuffer())
+    if (buffer.length > MAX_FILE) return `${url}#media.${ext}`
+    const path = `instagram/${organizationId}/${createHash('sha1').update(key).digest('hex').slice(0, 24)}.${ext}`
+    const { error } = await db.storage.from(MEDIA_BUCKET).upload(path, buffer, { contentType: type || undefined, upsert: true })
+    if (error) return `${url}#media.${ext}`
+    return db.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl
+  } catch {
+    return `${url}#media.${ext}`
+  }
+}
+
 /** A DM from the webhook (or an echo of one the business sent from the Instagram app). Saved once. */
 export async function saveIncomingDm(db: any, account: any, m: IgIncomingMessage, fetcher: Fetcher = fetch, options: { countUnread?: boolean } = {}) {
   const sid = `IG_${m.mid}`
@@ -239,10 +269,14 @@ export async function saveIncomingDm(db: any, account: any, m: IgIncomingMessage
   const contact = await igContact(db, account, m.senderId, fetcher)
   const conversation = await igConversation(db, account.organization_id, contact.id)
   const at = new Date(m.timestamp).toISOString()
-  const image = m.attachments.find((a) => a.type === 'image' && /^https:\/\//.test(a.url))
+  // Photos, GIFs, stickers, videos, voice notes and files: our own copy. Shared posts, reels and stories: the label and their link.
+  const file = m.attachments.find((a) => keepableKind(a.type) && /^https:\/\//.test(a.url))
+  const mediaUrl = file ? await keepIgMedia(db, account.organization_id, file.url, keepableKind(file.type)!, sid, fetcher) : null
+  const link = !file ? m.attachments.find((a) => /^https:\/\//.test(a.url))?.url : undefined
+  const body = m.text || (mediaUrl ? MEDIA_PLACEHOLDER : [messageText(m), link].filter(Boolean).join('\n'))
   const { data: saved, error } = await db.from('messages').insert({
     organization_id: account.organization_id, conversation_id: conversation.id, sender_type: m.echo ? 'user' : 'contact', sender_id: null,
-    body: messageText(m), media_url: image?.url || null, twilio_message_sid: sid, status: m.echo ? 'sent' : null, created_at: at,
+    body, media_url: mediaUrl, twilio_message_sid: sid, status: m.echo ? 'sent' : null, created_at: at,
   }).select('*').single()
   if (error) throw new Error(error.message)
   const later = !conversation.last_message_at || Date.parse(conversation.last_message_at) <= Date.parse(at)
@@ -260,11 +294,54 @@ export async function lastCustomerMessageAt(db: any, conversationId: string): Pr
   return data?.[0]?.created_at || null
 }
 
+/** A photo Instagram will not take (WebP, GIF, HEIC…) as a JPEG copy in our media bucket. */
+async function jpegCopy(db: any, organizationId: string, url: string, fetcher: Fetcher): Promise<string | { error: string }> {
+  try {
+    const res = await fetcher(url, { signal: AbortSignal.timeout(20000) })
+    if (!res.ok) return { error: 'The photo could not be read. Please attach it again.' }
+    const sharp = (await import('sharp')).default
+    const jpeg = await sharp(Buffer.from(await res.arrayBuffer())).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer()
+    if (jpeg.length > 8 * 1024 * 1024) return { error: 'This photo is too big for Instagram (8 MB). Please send a smaller one.' }
+    const path = `instagram/${organizationId}/out-${createHash('sha1').update(url).digest('hex').slice(0, 24)}.jpg`
+    const { error } = await db.storage.from(MEDIA_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: true })
+    if (error) return { error: 'The photo could not be prepared for Instagram. Please send it as a JPEG or PNG.' }
+    return db.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl
+  } catch {
+    return { error: 'This photo type could not be turned into a JPEG. Please send it as a JPEG or PNG.' }
+  }
+}
+
 /**
- * Send a reply in an Instagram chat (from the inbox, the app, or the AI). Inside 24 hours a normal
- * message; up to 7 days with the Human Agent tag when a person answers; never after.
+ * A file served without its real type (some browsers upload .m4a as "application/octet-stream"): Instagram
+ * refuses those, so a copy with the right type goes instead. Files already served right are sent as they are.
  */
-export async function sendDm(db: any, organizationId: string, conversation: any, input: { text?: string; imageUrl?: string; byPerson: boolean }, fetcher: Fetcher = fetch): Promise<{ ok: true; mid: string } | { ok: false; error: string }> {
+async function typedFile(db: any, organizationId: string, url: string, fetcher: Fetcher): Promise<string | { error: string }> {
+  const want = SEND_TYPES[fileExtension(url)]
+  if (!want) return url
+  try {
+    const head = await fetcher(url, { method: 'HEAD', signal: AbortSignal.timeout(15000) })
+    const served = (head.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+    if (head.ok && served && served !== 'application/octet-stream' && served !== 'binary/octet-stream') return url
+    if (!db.storage) return url
+    const res = await fetcher(url, { signal: AbortSignal.timeout(30000) })
+    if (!res.ok) return { error: 'The file could not be read. Please attach it again.' }
+    const buffer = Buffer.from(await res.arrayBuffer())
+    if (buffer.length > MAX_FILE) return { error: 'This file is too big for Instagram (25 MB).' }
+    const path = `instagram/${organizationId}/out-${createHash('sha1').update(url).digest('hex').slice(0, 24)}.${fileExtension(url)}`
+    const { error } = await db.storage.from(MEDIA_BUCKET).upload(path, buffer, { contentType: want, upsert: true })
+    if (error) return url
+    return db.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl
+  } catch {
+    return url
+  }
+}
+
+/**
+ * Send a reply in an Instagram chat (from the inbox, the app, or the AI): words, a photo, video, audio or
+ * PDF (other photo types become JPEG). A file and its words go as two Instagram messages. Inside 24 hours
+ * a normal message; up to 7 days with the Human Agent tag when a person answers; never after.
+ */
+export async function sendDm(db: any, organizationId: string, conversation: any, input: { text?: string; mediaUrl?: string; imageUrl?: string; byPerson: boolean }, fetcher: Fetcher = fetch): Promise<{ ok: true; mid: string; mids: string[]; mediaUrl?: string } | { ok: false; error: string; mids?: string[] }> {
   const account = await accountFor(db, organizationId)
   if (!account) return { ok: false, error: 'Instagram is not connected. Connect it in Settings → Instagram.' }
   const { data: contact } = await db.from('contacts').select('instagram_id').eq('id', conversation.contact_id).maybeSingle()
@@ -272,15 +349,42 @@ export async function sendDm(db: any, organizationId: string, conversation: any,
   const window = replyWindow(await lastCustomerMessageAt(db, conversation.id))
   if (!window.ok) return { ok: false, error: window.reason }
   if (window.humanAgent && !input.byPerson) return { ok: false, error: 'More than 24 hours since the customer wrote: only a person can reply now.' }
-  const body = dmBody(contact.instagram_id, { text: input.text, imageUrl: input.imageUrl, humanAgent: window.humanAgent })
-  if ('error' in body) return { ok: false, error: String(body.error) }
+
+  let media: { url: string; kind: IgMediaKind } | undefined
+  const fileUrl = input.mediaUrl || input.imageUrl
+  if (fileUrl) {
+    const how = sendKind(fileUrl)
+    if ('error' in how) return { ok: false, error: how.error }
+    if ('convert' in how) {
+      const copy = await jpegCopy(db, organizationId, fileUrl, fetcher)
+      if (typeof copy !== 'string') return { ok: false, error: copy.error }
+      media = { url: copy, kind: 'image' }
+    } else {
+      const ready = await typedFile(db, organizationId, fileUrl, fetcher)
+      if (typeof ready !== 'string') return { ok: false, error: ready.error }
+      media = { url: ready, kind: how.kind }
+    }
+  }
+  const bodies = dmBodies(contact.instagram_id, { text: input.text, media, humanAgent: window.humanAgent })
+  if ('error' in bodies) return { ok: false, error: bodies.error }
+  // One Instagram message id per part (file, then words), so each part is saved once and never fetched again
+  const mids: string[] = []
   try {
-    const sent = await igCall(account.access_token, `/${account.ig_user_id}/messages`, { method: 'POST', body }, fetcher)
-    return { ok: true, mid: String(sent?.message_id || '') }
+    for (const [i, body] of bodies.entries()) {
+      try {
+        const sent = await igCall(account.access_token, `/${account.ig_user_id}/messages`, { method: 'POST', body }, fetcher)
+        mids.push(String(sent?.message_id || ''))
+      } catch (error: any) {
+        // The file went but the words did not: say so, the customer already has the file
+        if (i > 0) throw Object.assign(new Error(`The file was sent, but the words were not: ${error?.message || 'please send them again'}`), { code: error?.code })
+        throw error
+      }
+    }
+    return { ok: true, mid: mids[mids.length - 1] || '', mids, ...(media ? { mediaUrl: media.url } : {}) }
   } catch (error: any) {
     await noteError(db, account, error)
-    if (isRateLimit(error)) return { ok: false, error: 'Instagram is busy (too many requests just now). Please send it again in a few minutes.' }
-    return { ok: false, error: `Instagram did not send it: ${error?.message || 'please try again'}` }
+    if (isRateLimit(error)) return { ok: false, error: 'Instagram is busy (too many requests just now). Please send it again in a few minutes.', mids }
+    return { ok: false, error: `Instagram did not send it: ${igSendError(error?.message || 'please try again')}`, mids }
   }
 }
 
@@ -459,7 +563,8 @@ export async function syncComments(db: any, organizationId: string, fetcher: Fet
   }
 }
 
-const RICH_FIELDS = 'messages.limit(20){id,created_time,from,to,message,attachments{image_data,video_data,file_url},shares,story,sticker}'
+// Read 18 Nov 2026 against the live API: "sticker" is not a field (asking for it fails the whole call)
+const RICH_FIELDS = 'messages.limit(20){id,created_time,from,to,message,is_unsupported,attachments{image_data,video_data,audio_data,file_url,mime_type,name},shares,story}'
 const PLAIN_FIELDS = 'messages.limit(20){id,created_time,from,to,message,attachments{image_data}}'
 
 /** Changed DM threads → the inbox (Instagram contact, chat, messages). Needs "Allow access to messages" in the Instagram app. */
@@ -474,7 +579,7 @@ export async function syncDms(db: any, organizationId: string, fetcher: Fetcher 
   const fresh: { conversation: any; contact: any; message: any; text: string }[] = []
   let added = 0
   try {
-    const threads = await igCall(account.access_token, `/${account.ig_user_id}/conversations`, { query: { platform: 'instagram', fields: 'id,updated_time', limit: '20' } }, fetcher)
+    const threads = await igCall(account.access_token, `/${account.ig_user_id}/conversations`, { query: { platform: 'instagram', fields: 'id,updated_time,participants', limit: '20' } }, fetcher)
     const changed: any[] = []
     for (const t of threads?.data || []) {
       if (!t?.id || seen[t.id] === t.updated_time) continue
@@ -492,21 +597,20 @@ export async function syncDms(db: any, organizationId: string, fetcher: Fetcher 
         const echo = isOwn(account, x.from?.id)
         const senderId = String(echo ? x.to?.data?.[0]?.id || '' : x.from?.id || '')
         if (!senderId || !x.id) continue
-        const image = x.attachments?.data?.find((a: any) => /^https:\/\//.test(String(a?.image_data?.url || '')))
-        const text = apiMessageText(x)
+        const text = String(x.message || '').slice(0, 4000)
         const saved = await saveIncomingDm(db, account, {
-          kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text: text.startsWith('[') ? '' : text,
-          attachments: image ? [{ type: 'image', url: String(image.image_data.url) }] : [], timestamp: at, echo, replyTo: null,
+          kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text,
+          attachments: apiAttachments(x), timestamp: at, echo, replyTo: null, unsupported: x.is_unsupported === true,
         }, fetcher, { countUnread: now - at < 86_400_000 })
         if (!saved) continue
         added++
-        if (text.startsWith('[') && saved.message.body !== text) await db.from('messages').update({ body: text }).eq('id', saved.message.id)
-        if (!echo) fresh.push({ ...saved, text: text.startsWith('[') ? '' : text })
+        if (!echo) fresh.push({ ...saved, text })
         else for (let i = fresh.length - 1; i >= 0; i--) if (fresh[i].conversation.id === saved.conversation.id) fresh.splice(i, 1) // answered already
       }
       seen[t.id] = t.updated_time
     }
     await saveSyncState(db, account, { threads: seen })
+    await fillUsernames(db, account, threads?.data || [])
     if (account.last_error) await db.from('instagram_accounts').update({ last_error: null }).eq('id', account.id)
     return { added, fresh }
   } catch (error: any) {
@@ -515,6 +619,28 @@ export async function syncDms(db: any, organizationId: string, fetcher: Fetcher 
     await noteError(db, account, error, now)
     if (isRateLimit(error)) return { added, fresh, waitMinutes: SLOW_DOWN_MS / 60_000 }
     return { added, fresh, error: error?.message || 'Instagram did not answer' }
+  }
+}
+
+/**
+ * The thread list carries each person's @username: chats saved as "Instagram user" (Instagram did not share
+ * the name, or was busy) get it, at no extra call.
+ */
+async function fillUsernames(db: any, account: any, threads: any[]) {
+  const people = new Map<string, string>()
+  for (const t of threads) for (const p of t?.participants?.data || []) if (p?.id && p?.username && !isOwn(account, p.id)) people.set(String(p.id), String(p.username))
+  if (!people.size) return
+  const { data: contacts } = await db.from('contacts').select('id, instagram_id, instagram_username, first_name, last_name').eq('organization_id', account.organization_id).in('instagram_id', [...people.keys()])
+  for (const c of contacts || []) {
+    const given = people.get(String(c.instagram_id))
+    if (!given) continue
+    // Instagram names a removed account "__deleted__…": shown as such, never as a username
+    const deleted = given.startsWith('__deleted__')
+    const username = deleted ? null : given
+    const name = deleted ? 'Deleted account' : given
+    const unnamed = !c.first_name || (c.first_name === 'Instagram' && c.last_name === 'user') || String(c.first_name).startsWith('__deleted__')
+    if (c.instagram_username === username && !unnamed) continue
+    await db.from('contacts').update({ instagram_username: username, ...(unnamed ? { first_name: name, last_name: null } : {}) }).eq('id', c.id)
   }
 }
 

@@ -47,7 +47,6 @@ export const ConversationRow = memo(function ConversationRow({ conversation, sel
         <div className="flex items-baseline justify-between gap-2">
           <p className={`text-[15px] truncate text-[#111b21] dark:text-[#e9edef] flex items-center gap-1.5 min-w-0 ${unread ? 'font-semibold' : 'font-medium'}`}>
             <span className="truncate">{name}</span>
-            {instagram && <span title="Instagram chat" className="shrink-0 text-[10px] font-bold px-1.5 py-px rounded bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300">Instagram</span>}
           </p>
           {conversation.last_message_at && (
             <span className={`text-[11.5px] whitespace-nowrap shrink-0 ${unread ? 'text-[#1fa855] dark:text-[#00a884] font-semibold' : 'text-[#667781] dark:text-[#8696a0]'}`}>

@@ -194,6 +194,8 @@ test('Service window: a customer who never wrote has no window', () => {
 test('Service window: time left reads naturally', () => {
   assert.equal(formatWindowRemaining(22 * 3600000 + 5 * 60000), '22h 5m')
   assert.equal(formatWindowRemaining(45 * 60000 + 59000), '45m')
+  assert.equal(formatWindowRemaining(166 * 3600000 + 8 * 60000), '6d 22h')
+  assert.equal(formatWindowRemaining(47 * 3600000), '47h 0m')
   assert.equal(formatWindowRemaining(0), '0m')
   assert.equal(formatWindowRemaining(-5000), '0m')
 })
