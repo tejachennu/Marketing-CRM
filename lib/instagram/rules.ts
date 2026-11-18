@@ -142,3 +142,120 @@ export function productCaption(p: { title: string; price?: number | null; descri
   const price = Number(p.price) > 0 ? ` · ${currencySymbol}${Number(p.price).toLocaleString('en-IN')}` : ''
   return [`${p.title}${price}`, str(p.description).slice(0, 600), link ? `Order: ${link}` : ''].filter(Boolean).join('\n\n')
 }
+
+// ── Limits ───────────────────────────────────────────────────────────────────
+
+/** Meta's "too many calls" answers (app, user, page and Instagram business limits). */
+export function isRateLimit(error: { code?: unknown } | null | undefined): boolean {
+  return [4, 17, 32, 613, 80002, 80006].includes(Number(error?.code))
+}
+
+/** How we keep in step with Instagram without spending its small hourly call allowance. */
+export interface IgSyncState {
+  dmsAt?: string
+  commentsAt?: string
+  waitUntil?: string
+  threads?: Record<string, string>
+  media?: Record<string, number>
+}
+export const SYNC_GAP_MS = 60_000
+export const SLOW_DOWN_MS = 15 * 60_000
+export const OLDEST_MS = 7 * 86_400_000
+export const PER_SYNC = 5
+
+export function readSyncState(raw: unknown): IgSyncState {
+  const s = raw && typeof raw === 'object' ? (raw as any) : {}
+  const map = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as any) : {})
+  return { dmsAt: s.dmsAt || undefined, commentsAt: s.commentsAt || undefined, waitUntil: s.waitUntil || undefined, threads: map(s.threads), media: map(s.media) }
+}
+
+/** Whether to ask Instagram now: never inside a slow-down, and at most once a minute per kind. */
+export function syncAllowed(state: IgSyncState, kind: 'dms' | 'comments', now: number = Date.now()): { ok: true } | { ok: false; waitMinutes?: number } {
+  const wait = state.waitUntil ? Date.parse(state.waitUntil) : 0
+  if (wait > now) return { ok: false, waitMinutes: Math.max(1, Math.ceil((wait - now) / 60_000)) }
+  const last = Date.parse(String(kind === 'dms' ? state.dmsAt : state.commentsAt || ''))
+  if (Number.isFinite(last) && now - last < SYNC_GAP_MS) return { ok: false }
+  return { ok: true }
+}
+
+/** What a message from the conversations API says when it has no text (shares, stories, photos…). */
+export function apiMessageText(x: any): string {
+  const text = str(x?.message).trim()
+  if (text) return text.slice(0, 4000)
+  if (x?.story) return x.story?.mention ? '[Mentioned you in a story]' : '[Replied to your story]'
+  if (x?.shares?.data?.length) return '[Shared a post]'
+  if (x?.sticker) return '[Sticker]'
+  const a = x?.attachments?.data?.[0]
+  if (a?.image_data) return '[Photo]'
+  if (a?.video_data) return '[Video]'
+  if (a?.audio_data) return '[Voice message]'
+  if (a?.file_url) return '[File]'
+  return '[Message]'
+}
+
+// ── Automatic replies ────────────────────────────────────────────────────────
+
+export interface IgRule { keywords: string[]; reply: string; dm: string }
+export interface IgAutomation {
+  /** AI answers DMs from the knowledge base (a person can still turn it off in one chat). */
+  dmAi: boolean
+  /** AI writes a short public reply to comments it can answer from the knowledge base. */
+  commentAi: boolean
+  /** Comment contains one of the words → public reply and/or a DM. First match wins. */
+  rules: IgRule[]
+  /** For every other comment. */
+  everyComment: { on: boolean; reply: string; dm: string }
+  /** Comments with these words are hidden (spam, abuse). */
+  hideWords: string[]
+}
+export const DEFAULT_AUTOMATION: IgAutomation = { dmAi: true, commentAi: false, rules: [], everyComment: { on: false, reply: '', dm: '' }, hideWords: [] }
+const MAX_RULES = 20
+
+const words = (v: unknown): string[] => {
+  const list = Array.isArray(v) ? v : str(v).split(',')
+  return [...new Set(list.map((w) => str(w).trim().toLowerCase()).filter(Boolean))].slice(0, 30).map((w) => w.slice(0, 40))
+}
+const short = (v: unknown, max: number) => str(v).trim().slice(0, max)
+
+/** Saved settings, cleaned (anything odd falls back to the default). */
+export function readIgAutomation(raw: unknown): IgAutomation {
+  const a = raw && typeof raw === 'object' ? (raw as any) : {}
+  const rules = (Array.isArray(a.rules) ? a.rules : []).map((r: any) => ({ keywords: words(r?.keywords), reply: short(r?.reply, 900), dm: short(r?.dm, 900) }))
+    .filter((r: IgRule) => r.keywords.length && (r.reply || r.dm)).slice(0, MAX_RULES)
+  const every = a.everyComment || {}
+  return {
+    dmAi: a.dmAi !== false,
+    commentAi: a.commentAi === true,
+    rules,
+    everyComment: { on: every.on === true && Boolean(short(every.reply, 900) || short(every.dm, 900)), reply: short(every.reply, 900), dm: short(every.dm, 900) },
+    hideWords: words(a.hideWords),
+  }
+}
+
+/** Settings from the screen: what is wrong in plain words, or the clean settings. */
+export function parseIgAutomation(body: any): { automation: IgAutomation } | { error: string } {
+  const rules = Array.isArray(body?.rules) ? body.rules : []
+  if (rules.length > MAX_RULES) return { error: `At most ${MAX_RULES} keyword replies.` }
+  for (const [i, r] of rules.entries()) {
+    if (!words(r?.keywords).length) return { error: `Reply ${i + 1}: add at least one word to look for.` }
+    if (!short(r?.reply, 900) && !short(r?.dm, 900)) return { error: `Reply ${i + 1}: write a public reply, a DM, or both.` }
+    if (str(r?.reply).length > 900 || str(r?.dm).length > 900) return { error: `Reply ${i + 1}: keep each message under 900 characters.` }
+  }
+  if (body?.everyComment?.on && !short(body.everyComment.reply, 900) && !short(body.everyComment.dm, 900)) return { error: 'Write the reply for every other comment, or switch it off.' }
+  return { automation: readIgAutomation(body) }
+}
+
+const has = (text: string, list: string[]) => list.some((w) => text.includes(w))
+const fill = (template: string, username: string) => template.replace(/\{name\}/g, username ? `@${username}` : '').replace(/\s{2,}/g, ' ').trim()
+
+/** What to do with a new comment: hide it, answer it (words to send), ask the AI, or nothing. */
+export function commentPlan(a: IgAutomation, comment: { text: string; fromUsername?: string | null }): { hide: true } | { reply: string; dm: string; ai: boolean } | null {
+  const text = str(comment.text).toLowerCase()
+  const who = str(comment.fromUsername)
+  if (a.hideWords.length && has(text, a.hideWords)) return { hide: true }
+  const rule = a.rules.find((r) => has(text, r.keywords))
+  if (rule) return { reply: fill(rule.reply, who), dm: fill(rule.dm, who), ai: false }
+  if (a.commentAi && text.trim()) return { reply: '', dm: a.everyComment.on ? fill(a.everyComment.dm, who) : '', ai: true }
+  if (a.everyComment.on) return { reply: fill(a.everyComment.reply, who), dm: fill(a.everyComment.dm, who), ai: false }
+  return null
+}

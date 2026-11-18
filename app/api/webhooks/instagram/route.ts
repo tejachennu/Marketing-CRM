@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { verifyMetaSignature } from '@/lib/meta-webhook'
 import { sendPush } from '@/lib/push'
-import { instagramAiReply } from '@/lib/instagram/ai'
+import { answerComment, answerDm } from '@/lib/instagram/automation'
 import { readIgWebhook } from '@/lib/instagram/rules'
-import { accountByIgId, saveComment, saveIncomingDm, sendDm } from '@/lib/instagram/store'
+import { accountByIgId, saveComment, saveIncomingDm } from '@/lib/instagram/store'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -45,7 +45,9 @@ export async function POST(request: NextRequest) {
       if (!account) continue
       if (event.kind === 'comment') {
         const saved = await saveComment(db, account, event)
-        if (saved) await sendPush(db, { organizationId: account.organization_id }, { kind: 'message', title: `@${event.fromUsername || 'Someone'} commented`, body: event.text.slice(0, 120) || 'New comment on Instagram', open: 'instagram', tag: `igc:${event.commentId}` }).catch(() => null)
+        if (!saved) continue
+        const done = await answerComment(db, account, saved)
+        if (done !== 'answered' && done !== 'hidden') await sendPush(db, { organizationId: account.organization_id }, { kind: 'message', title: `@${event.fromUsername || 'Someone'} commented`, body: event.text.slice(0, 120) || 'New comment on Instagram', open: 'instagram', tag: `igc:${event.commentId}` }).catch(() => null)
         continue
       }
       if (event.kind !== 'message') continue
@@ -54,17 +56,8 @@ export async function POST(request: NextRequest) {
       const { conversation, contact, message } = saved
       const who = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || `@${contact.instagram_username || 'instagram'}`
       await sendPush(db, { organizationId: account.organization_id, userIds: [conversation.assigned_to] }, { kind: 'message', title: `${who} (Instagram)`, body: message.body, open: `chat:${conversation.id}`, tag: `chat:${conversation.id}` }).catch(() => null)
-      // AI reply from the knowledge base, unless a person has taken this chat
-      if (conversation.auto_reply_enabled === false || !event.text) continue
-      const { data: org } = await db.from('organizations').select('*').eq('id', account.organization_id).maybeSingle()
-      const answer = org ? await instagramAiReply(db, org, conversation.id, event.text) : null
-      if (!answer) continue
-      const sent = await sendDm(db, account.organization_id, conversation, { text: answer.reply, byPerson: false })
-      await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: answer.reply, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
-      if (answer.handOff) {
-        await db.from('conversations').update({ auto_reply_enabled: false }).eq('id', conversation.id)
-        await sendPush(db, { organizationId: account.organization_id, userIds: [conversation.assigned_to] }, { kind: 'ticket', title: `${who} needs a person (Instagram)`, body: event.text.slice(0, 120), open: `chat:${conversation.id}`, tag: `chat:${conversation.id}` }).catch(() => null)
-      }
+      // AI reply from the knowledge base (Auto replies → AI answers DMs), unless a person has taken this chat
+      await answerDm(db, account, { conversation, contact, text: event.text })
     } catch (error: any) {
       console.error('[Instagram webhook]', error?.message)
     }

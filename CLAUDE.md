@@ -142,6 +142,15 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     Direct Messaging" = owner must turn on Instagram app → Message controls → Connected tools → Allow access to messages),
     `listIgChats`, `instagramChecks` (app `/subscriptions` with the app token; DMs allowed). `GET /api/instagram/messages?sync=1`,
     comments `?sync=1`, `/api/instagram?checks=1`.
+  - **Meta's call allowance is small** (the first full sync hit "(#4) Application request limit reached"). Syncing keeps
+    `instagram_accounts.sync_state` (migration `20261205_instagram_automation.sql`): at most once a minute per kind, only
+    threads whose `updated_time` / posts whose `comments_count` changed, ≤5 per check, nothing older than 7 days; a rate
+    limit (`isRateLimit`: 4, 17, 32, 613, 80002, 80006) pauses 15 min (`waitUntil`, `slowDownMinutes`) instead of `last_error`.
+  - **Auto replies** (`instagram_accounts.automation`, `readIgAutomation` / `parseIgAutomation` / `commentPlan` in rules.ts,
+    `lib/instagram/automation.ts`): `dmAi` (AI answers DMs), `commentAi` (`instagramCommentAi`, short public reply or
+    nothing), keyword rules (public reply and/or one DM, `{name}`), every other comment, hide words. `answerComment` once per
+    comment under a day old (marks `instagram_comments.auto_replied`); `answerDm` for DMs under 2 hours. Run by the webhook
+    and after each page check. `PUT /api/instagram` saves them (automation.manage).
   - Screens: menu → **Instagram** (`app/dashboard/instagram/page.tsx`: connect via `loadMetaSdk` + `FB.login` config_id,
     Messages (chats → `/dashboard?conversationId=`), Comments, Posts, "Still to do" checklist for admins); product form → Post on Instagram; Website → Instagram → "Show my latest posts by themselves"
     (`storefront.instagram.live`, `loadStore` → `instagramFeed`).

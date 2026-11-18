@@ -10,7 +10,7 @@
  */
 
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
-import { IG_FIELDS, IG_GRAPH, checkCaption, dmBody, feedItem, igContactKey, messageText, replyWindow, type IgComment, type IgIncomingMessage } from './rules'
+import { IG_FIELDS, IG_GRAPH, OLDEST_MS, PER_SYNC, SLOW_DOWN_MS, apiMessageText, checkCaption, dmBody, feedItem, igContactKey, isRateLimit, messageText, readIgAutomation, readSyncState, replyWindow, syncAllowed, type IgAutomation, type IgComment, type IgIncomingMessage, type IgSyncState } from './rules'
 
 /** supabase/migrations/20261204_instagram.sql word for word. */
 export const INSTAGRAM_SQL = `-- Instagram (DMs in the inbox, comments, feed, posting). Safe to run more than once. The app runs it on its own when first needed.
@@ -58,8 +58,15 @@ CREATE INDEX IF NOT EXISTS idx_instagram_comments_org ON instagram_comments(orga
 ALTER TABLE instagram_comments ENABLE ROW LEVEL SECURITY;
 NOTIFY pgrst, 'reload schema';
 `
+/** supabase/migrations/20261205_instagram_automation.sql word for word. */
+export const INSTAGRAM_AUTOMATION_SQL = `-- Instagram: keeping in step without webhooks, and automatic replies. Safe to run more than once.
+ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS sync_state JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS automation JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE instagram_comments ADD COLUMN IF NOT EXISTS auto_replied BOOLEAN NOT NULL DEFAULT FALSE;
+NOTIFY pgrst, 'reload schema';
+`
 export const INSTAGRAM_LOCK = 724519031
-export const instagramSchemaSetup = createAutoSetup('Instagram', (connectionString) => runMigrationSql(connectionString, INSTAGRAM_SQL, INSTAGRAM_LOCK))
+export const instagramSchemaSetup = createAutoSetup('Instagram', (connectionString) => runMigrationSql(connectionString, INSTAGRAM_SQL + INSTAGRAM_AUTOMATION_SQL, INSTAGRAM_LOCK))
 const IG_SCHEMA = /instagram_|channel/
 
 export async function withInstagramSchema(step: () => PromiseLike<any>, setup: { ensure: () => Promise<boolean> } = instagramSchemaSetup): Promise<any> {
@@ -97,7 +104,12 @@ export async function igCall(token: string, path: string, init: { method?: strin
 /** Account rows without the token, for screens. */
 export function publicAccount(row: any) {
   if (!row) return null
-  return { igUserId: row.ig_user_id, username: row.username, name: row.name, picture: row.picture_url, subscribed: row.subscribed === true, connectedAt: row.connected_at, lastError: row.last_error || null, tokenExpiresAt: row.token_expires_at || null }
+  const wait = Date.parse(readSyncState(row.sync_state).waitUntil || '')
+  return {
+    igUserId: row.ig_user_id, username: row.username, name: row.name, picture: row.picture_url, subscribed: row.subscribed === true, connectedAt: row.connected_at,
+    lastError: row.last_error || null, tokenExpiresAt: row.token_expires_at || null,
+    slowDownMinutes: wait > Date.now() ? Math.ceil((wait - Date.now()) / 60_000) : 0,
+  }
 }
 
 export async function accountFor(db: any, organizationId: string) {
@@ -170,8 +182,24 @@ export async function disconnectInstagram(db: any, organizationId: string, fetch
   await db.from('instagram_accounts').delete().eq('id', account.id)
 }
 
-/** A token Meta no longer accepts (expired, removed): the screen asks to connect again. */
-async function noteError(db: any, account: any, error: any) {
+/** Save how far we have read from Instagram (the column is made on first use). */
+async function saveSyncState(db: any, account: any, patch: Partial<IgSyncState>) {
+  const next = { ...readSyncState(account.sync_state), ...patch }
+  account.sync_state = next
+  await withInstagramSchema(() => db.from('instagram_accounts').update({ sync_state: next }).eq('id', account.id))
+  return next
+}
+
+/**
+ * A token Meta no longer accepts (expired, removed): the screen asks to connect again. Meta saying "too
+ * many calls" is not an error to show forever: we pause asking for 15 minutes instead.
+ */
+async function noteError(db: any, account: any, error: any, now: number = Date.now()) {
+  if (isRateLimit(error)) {
+    await saveSyncState(db, account, { waitUntil: new Date(now + SLOW_DOWN_MS).toISOString() }).catch(() => null)
+    if (/request limit|rate limit|too many/i.test(String(account.last_error || ''))) await db.from('instagram_accounts').update({ last_error: null }).eq('id', account.id)
+    return
+  }
   const expired = Number(error?.code) === 190
   await db.from('instagram_accounts').update({ last_error: expired ? 'Instagram needs connecting again (the login has expired or was removed).' : String(error?.message || 'Instagram error').slice(0, 300), updated_at: new Date().toISOString() }).eq('id', account.id)
 }
@@ -204,7 +232,7 @@ export async function igConversation(db: any, organizationId: string, contactId:
 }
 
 /** A DM from the webhook (or an echo of one the business sent from the Instagram app). Saved once. */
-export async function saveIncomingDm(db: any, account: any, m: IgIncomingMessage, fetcher: Fetcher = fetch) {
+export async function saveIncomingDm(db: any, account: any, m: IgIncomingMessage, fetcher: Fetcher = fetch, options: { countUnread?: boolean } = {}) {
   const sid = `IG_${m.mid}`
   const { data: dup } = await db.from('messages').select('id').eq('organization_id', account.organization_id).eq('twilio_message_sid', sid).limit(1)
   if (dup?.length) return null
@@ -217,7 +245,12 @@ export async function saveIncomingDm(db: any, account: any, m: IgIncomingMessage
     body: messageText(m), media_url: image?.url || null, twilio_message_sid: sid, status: m.echo ? 'sent' : null, created_at: at,
   }).select('*').single()
   if (error) throw new Error(error.message)
-  await db.from('conversations').update({ last_message_at: at, ...(m.echo ? {} : { unread_count: (Number(conversation.unread_count) || 0) + 1 }), updated_at: new Date().toISOString() }).eq('id', conversation.id)
+  const later = !conversation.last_message_at || Date.parse(conversation.last_message_at) <= Date.parse(at)
+  await db.from('conversations').update({
+    ...(later ? { last_message_at: at } : {}),
+    ...(m.echo || options.countUnread === false ? {} : { unread_count: (Number(conversation.unread_count) || 0) + 1 }),
+    updated_at: new Date().toISOString(),
+  }).eq('id', conversation.id)
   return { message: saved, conversation, contact }
 }
 
@@ -246,6 +279,7 @@ export async function sendDm(db: any, organizationId: string, conversation: any,
     return { ok: true, mid: String(sent?.message_id || '') }
   } catch (error: any) {
     await noteError(db, account, error)
+    if (isRateLimit(error)) return { ok: false, error: 'Instagram is busy (too many requests just now). Please send it again in a few minutes.' }
     return { ok: false, error: `Instagram did not send it: ${error?.message || 'please try again'}` }
   }
 }
@@ -301,6 +335,7 @@ export async function actOnComment(db: any, organizationId: string, commentId: s
     return { ok: true }
   } catch (error: any) {
     await noteError(db, account, error)
+    if (isRateLimit(error)) return { error: 'Instagram is busy (too many requests just now). Please try again in a few minutes.' }
     return { error: `Instagram did not do it: ${error?.message || 'please try again'}` }
   }
 }
@@ -363,71 +398,136 @@ export async function publishPost(db: any, organizationId: string, input: { imag
 
 // ── Pulling from Instagram (works before webhooks do) ────────────────────────
 // Instagram sends comment webhooks only to a Live app with Advanced Access (after App Review), so the
-// screens also read comments and DMs straight from the API. Both paths save the same rows, once.
+// screens also read comments and DMs straight from the API. Meta allows an app only a few hundred calls an
+// hour, so we ask at most once a minute, open only threads and posts that changed (a few per visit), skip
+// anything older than 7 days, and pause 15 minutes when Meta says "too many". Both paths save the same
+// rows, once.
 
 const isOwn = (account: any, id: unknown) => String(id || '') === String(account.ig_user_id)
 const isDmsOff = (error: any) => Number(error?.code) === 200 && /messaging|direct/i.test(String(error?.message || ''))
+type Pulled<T> = { added: number; fresh: T[]; skipped?: boolean; waitMinutes?: number; messagesOff?: boolean; error?: string }
 
-/** Comments on the latest posts and reels → `instagram_comments`; the business's own replies mark them answered. */
-export async function syncComments(db: any, organizationId: string, fetcher: Fetcher = fetch): Promise<{ added: number; error?: string }> {
+/** New comments on posts whose comment count changed → `instagram_comments`; own replies mark them answered. */
+export async function syncComments(db: any, organizationId: string, fetcher: Fetcher = fetch, now: number = Date.now()): Promise<Pulled<any>> {
   const account = await accountFor(db, organizationId)
-  if (!account) return { added: 0 }
+  if (!account) return { added: 0, fresh: [] }
+  const state = readSyncState(account.sync_state)
+  const allowed = syncAllowed(state, 'comments', now)
+  if (!allowed.ok) return { added: 0, fresh: [], skipped: true, waitMinutes: allowed.waitMinutes }
+  await saveSyncState(db, account, { commentsAt: new Date(now).toISOString() })
+  const counts = { ...(state.media || {}) }
+  const fresh: any[] = []
   let added = 0
   try {
     const media = await igCall(account.access_token, `/${account.ig_user_id}/media`, { query: { fields: 'id,media_product_type,comments_count', limit: '20' } }, fetcher)
-    for (const m of (media?.data || []).filter((x: any) => Number(x?.comments_count) > 0)) {
+    const changed = (media?.data || []).filter((m: any) => Number(m?.comments_count) > 0 && counts[m.id] !== Number(m.comments_count)).slice(0, PER_SYNC)
+    for (const m of changed) {
       const page = await igCall(account.access_token, `/${m.id}/comments`, { query: { fields: 'id,text,timestamp,from,username,replies{id,text,timestamp,from,username}', limit: '50' } }, fetcher)
       for (const c of page?.data || []) {
         const comment = (x: any, parentId: string | null): IgComment => ({
           kind: 'comment', accountId: account.ig_user_id, commentId: String(x.id), parentId, text: String(x.text || '').slice(0, 2200),
           fromId: String(x.from?.id || ''), fromUsername: String(x.from?.username || x.username || ''), mediaId: String(m.id), mediaType: String(m.media_product_type || ''),
-          timestamp: Date.parse(x.timestamp) || Date.now(),
+          timestamp: Date.parse(x.timestamp) || now,
         })
-        if (!isOwn(account, c.from?.id)) { if (await saveComment(db, account, comment(c, null))) added++ }
+        const ownReply = (c.replies?.data || []).find((r: any) => isOwn(account, r.from?.id))
+        if (!isOwn(account, c.from?.id)) {
+          const saved = await saveComment(db, account, comment(c, null))
+          if (saved) added++
+          if (saved && !ownReply) fresh.push(saved)
+        }
+        if (ownReply) {
+          // Answered (here or in the Instagram app): keep the first reply on the comment
+          await db.from('instagram_comments').update({ reply_text: String(ownReply.text || '').slice(0, 1000), replied_at: new Date(Date.parse(ownReply.timestamp) || now).toISOString() })
+            .eq('organization_id', organizationId).eq('comment_id', String(c.id)).is('replied_at', null)
+        }
         for (const r of c.replies?.data || []) {
-          if (isOwn(account, r.from?.id)) {
-            // Answered (here or in the Instagram app): keep the first reply on the comment
-            await db.from('instagram_comments').update({ reply_text: String(r.text || '').slice(0, 1000), replied_at: new Date(Date.parse(r.timestamp) || Date.now()).toISOString() })
-              .eq('organization_id', organizationId).eq('comment_id', String(c.id)).is('replied_at', null)
-          } else if (await saveComment(db, account, comment(r, String(c.id)))) added++
+          if (isOwn(account, r.from?.id)) continue
+          const saved = await saveComment(db, account, comment(r, String(c.id)))
+          if (saved) { added++; fresh.push(saved) }
         }
       }
+      counts[m.id] = Number(m.comments_count)
     }
-    return { added }
+    await saveSyncState(db, account, { media: counts })
+    if (account.last_error) await db.from('instagram_accounts').update({ last_error: null }).eq('id', account.id)
+    return { added, fresh }
   } catch (error: any) {
-    await noteError(db, account, error)
-    return { added, error: error?.message || 'Instagram did not answer' }
+    await saveSyncState(db, account, { media: counts }).catch(() => null)
+    await noteError(db, account, error, now)
+    if (isRateLimit(error)) return { added, fresh, waitMinutes: SLOW_DOWN_MS / 60_000 }
+    return { added, fresh, error: error?.message || 'Instagram did not answer' }
   }
 }
 
-/** Recent DM threads → the inbox (Instagram contact, chat, messages). Needs "Allow access to messages" in the Instagram app. */
-export async function syncDms(db: any, organizationId: string, fetcher: Fetcher = fetch): Promise<{ added: number; messagesOff?: boolean; error?: string }> {
+const RICH_FIELDS = 'messages.limit(20){id,created_time,from,to,message,attachments{image_data,video_data,file_url},shares,story,sticker}'
+const PLAIN_FIELDS = 'messages.limit(20){id,created_time,from,to,message,attachments{image_data}}'
+
+/** Changed DM threads → the inbox (Instagram contact, chat, messages). Needs "Allow access to messages" in the Instagram app. */
+export async function syncDms(db: any, organizationId: string, fetcher: Fetcher = fetch, now: number = Date.now()): Promise<Pulled<{ conversation: any; contact: any; message: any; text: string }>> {
   const account = await accountFor(db, organizationId)
-  if (!account) return { added: 0 }
+  if (!account) return { added: 0, fresh: [] }
+  const state = readSyncState(account.sync_state)
+  const allowed = syncAllowed(state, 'dms', now)
+  if (!allowed.ok) return { added: 0, fresh: [], skipped: true, waitMinutes: allowed.waitMinutes }
+  await saveSyncState(db, account, { dmsAt: new Date(now).toISOString() })
+  const seen = { ...(state.threads || {}) }
+  const fresh: { conversation: any; contact: any; message: any; text: string }[] = []
   let added = 0
   try {
     const threads = await igCall(account.access_token, `/${account.ig_user_id}/conversations`, { query: { platform: 'instagram', fields: 'id,updated_time', limit: '20' } }, fetcher)
+    const changed: any[] = []
     for (const t of threads?.data || []) {
-      const thread = await igCall(account.access_token, `/${t.id}`, { query: { fields: 'messages.limit(25){id,created_time,from,to,message,attachments{image_data}}' } }, fetcher)
+      if (!t?.id || seen[t.id] === t.updated_time) continue
+      // Old threads nobody can answer any more are noted, never opened
+      if (!seen[t.id] && now - (Date.parse(t.updated_time) || 0) > OLDEST_MS) { seen[t.id] = t.updated_time; continue }
+      changed.push(t)
+    }
+    for (const t of changed.slice(0, PER_SYNC)) {
+      const thread = await igCall(account.access_token, `/${t.id}`, { query: { fields: RICH_FIELDS } }, fetcher)
+        .catch((e) => (Number(e?.code) === 100 ? igCall(account.access_token, `/${t.id}`, { query: { fields: PLAIN_FIELDS } }, fetcher) : Promise.reject(e)))
       const messages = [...(thread?.messages?.data || [])].reverse() // oldest first
       for (const x of messages) {
+        const at = Date.parse(x.created_time) || now
+        if (now - at > OLDEST_MS) continue
         const echo = isOwn(account, x.from?.id)
         const senderId = String(echo ? x.to?.data?.[0]?.id || '' : x.from?.id || '')
         if (!senderId || !x.id) continue
         const image = x.attachments?.data?.find((a: any) => /^https:\/\//.test(String(a?.image_data?.url || '')))
+        const text = apiMessageText(x)
         const saved = await saveIncomingDm(db, account, {
-          kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text: String(x.message || '').slice(0, 4000),
-          attachments: image ? [{ type: 'image', url: String(image.image_data.url) }] : [], timestamp: Date.parse(x.created_time) || Date.now(), echo, replyTo: null,
-        }, fetcher)
-        if (saved) added++
+          kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text: text.startsWith('[') ? '' : text,
+          attachments: image ? [{ type: 'image', url: String(image.image_data.url) }] : [], timestamp: at, echo, replyTo: null,
+        }, fetcher, { countUnread: now - at < 86_400_000 })
+        if (!saved) continue
+        added++
+        if (text.startsWith('[') && saved.message.body !== text) await db.from('messages').update({ body: text }).eq('id', saved.message.id)
+        if (!echo) fresh.push({ ...saved, text: text.startsWith('[') ? '' : text })
+        else for (let i = fresh.length - 1; i >= 0; i--) if (fresh[i].conversation.id === saved.conversation.id) fresh.splice(i, 1) // answered already
       }
+      seen[t.id] = t.updated_time
     }
-    return { added }
+    await saveSyncState(db, account, { threads: seen })
+    if (account.last_error) await db.from('instagram_accounts').update({ last_error: null }).eq('id', account.id)
+    return { added, fresh }
   } catch (error: any) {
-    if (isDmsOff(error)) return { added, messagesOff: true }
-    await noteError(db, account, error)
-    return { added, error: error?.message || 'Instagram did not answer' }
+    await saveSyncState(db, account, { threads: seen }).catch(() => null)
+    if (isDmsOff(error)) return { added, fresh, messagesOff: true }
+    await noteError(db, account, error, now)
+    if (isRateLimit(error)) return { added, fresh, waitMinutes: SLOW_DOWN_MS / 60_000 }
+    return { added, fresh, error: error?.message || 'Instagram did not answer' }
   }
+}
+
+/** Automatic-reply settings for the screen and the webhook. */
+export function automationOf(account: any): IgAutomation {
+  return readIgAutomation(account?.automation)
+}
+
+export async function saveAutomation(db: any, organizationId: string, automation: IgAutomation) {
+  const account = await accountFor(db, organizationId)
+  if (!account) return { error: 'Instagram is not connected.' }
+  const { error } = await withInstagramSchema(() => db.from('instagram_accounts').update({ automation, updated_at: new Date().toISOString() }).eq('id', account.id))
+  return error ? { error: error.message } : { ok: true }
 }
 
 /** Instagram chats for the Messages tab: who, last message, unread. */

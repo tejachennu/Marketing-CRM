@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { accountFor, connectInstagram, disconnectInstagram, instagramChecks, publicAccount, subscribeWebhooks } from '@/lib/instagram/store'
+import { accountFor, automationOf, connectInstagram, disconnectInstagram, instagramChecks, publicAccount, saveAutomation, subscribeWebhooks } from '@/lib/instagram/store'
+import { parseIgAutomation } from '@/lib/instagram/rules'
 import { IG_PERMISSIONS } from '@/lib/instagram/rules'
 
 export const runtime = 'nodejs'
@@ -14,8 +15,18 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdminClient()
   const account = await accountFor(db, organizationId!).catch(() => null)
   const checks = account && params.get('checks') === '1' ? await instagramChecks(db, organizationId!).catch(() => null) : null
+  let summary = null
+  if (account) {
+    const [chats, comments] = await Promise.all([
+      db.from('conversations').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).eq('channel', 'instagram').gt('unread_count', 0),
+      db.from('instagram_comments').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId).is('deleted_at', null).is('replied_at', null).is('private_reply_at', null),
+    ])
+    summary = { unreadChats: chats.count || 0, openComments: comments.count || 0 }
+  }
   return NextResponse.json({
     account: publicAccount(account),
+    automation: account ? automationOf(account) : null,
+    summary,
     checks,
     login: { appId: process.env.NEXT_PUBLIC_META_APP_ID || process.env.META_APP_ID || '', configId: process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID || '', permissions: IG_PERMISSIONS },
   })
@@ -54,4 +65,16 @@ export async function DELETE(request: NextRequest) {
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
   await disconnectInstagram(getSupabaseAdminClient(), organizationId!)
   return NextResponse.json({ success: true })
+}
+
+/** PUT { organizationId, automation }: Auto replies for DMs and comments (managers). */
+export async function PUT(request: NextRequest) {
+  const body = await request.json().catch(() => ({}))
+  const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'automation.manage' })
+  if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
+  const parsed = parseIgAutomation(body.automation || {})
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
+  const saved = await saveAutomation(getSupabaseAdminClient(), body.organizationId, parsed.automation)
+  if ('error' in saved) return NextResponse.json({ error: saved.error }, { status: 400 })
+  return NextResponse.json({ success: true, automation: parsed.automation })
 }
