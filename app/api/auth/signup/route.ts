@@ -3,7 +3,7 @@ import { startPlan } from '@/lib/billing-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { isSuperAdminEmail } from '@/lib/api-auth-helper'
-import { checkSignupCode, clearSignupCode, parseSignup } from '@/lib/auth/signup-otp'
+import { checkSignupCode, clearSignupCode, parseSignup, signupCodeOn } from '@/lib/auth/signup-otp'
 
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -43,10 +43,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This email address cannot be used to sign up' }, { status: 403 })
     }
 
-    // The 6-digit code emailed by /api/auth/signup/send-code proves the email is theirs
-    const code = await checkSignupCode(supabase, email, body.code)
-    if ('error' in code) {
-      return NextResponse.json({ error: code.error, field: 'code' }, { status: 400 })
+    // The 6-digit code emailed by /api/auth/signup/send-code proves the email is theirs (only when
+    // SIGNUP_CODE=on; switched off by default)
+    if (signupCodeOn()) {
+      const code = await checkSignupCode(supabase, email, body.code)
+      if ('error' in code) {
+        return NextResponse.json({ error: code.error, field: 'code' }, { status: 400 })
+      }
     }
 
     // Create organization first

@@ -28,7 +28,8 @@ export default function SignupPage() {
     return () => window.clearTimeout(timer)
   }, [resendIn])
 
-  async function sendCode() {
+  // true = codes are switched off and the account can be made now
+  async function sendCode(): Promise<boolean> {
     setError(null)
     setLoading(true)
     try {
@@ -42,6 +43,7 @@ export default function SignupPage() {
         if (data.retryAfter) setResendIn(Number(data.retryAfter))
         throw new Error(data.error || 'The code could not be sent')
       }
+      if (data.codeNeeded === false) return true
       setCodeSent(true)
       setCode('')
       setResendIn(Number(data.resendAfterSeconds) || 60)
@@ -50,6 +52,7 @@ export default function SignupPage() {
     } finally {
       setLoading(false)
     }
+    return false
   }
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
 
@@ -76,8 +79,8 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     if (!codeSent) {
-      await sendCode()
-      return
+      // With codes switched off, the form is checked and the account is made in the same tap
+      if (!(await sendCode())) return
     }
     setError(null)
     setLoading(true)
@@ -291,10 +294,10 @@ export default function SignupPage() {
               className="w-full bg-[#1D5BEA] hover:bg-[#174bc4] text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-2 cursor-pointer border-0"
             >
               {loading ? (
-                <span>{codeSent ? 'Creating account...' : 'Sending code...'}</span>
+                <span>Creating account...</span>
               ) : (
                 <>
-                  <span>{codeSent ? 'Create Account' : 'Email me a code'}</span>
+                  <span>Create Account</span>
                   <ArrowRight size={14} />
                 </>
               )}

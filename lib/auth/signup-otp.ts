@@ -45,6 +45,10 @@ export async function withAuthSchema(step: () => PromiseLike<any>, setup: { ensu
   return result
 }
 
+// The emailed sign-up code is switched off (owner, 18 Nov 2026): the account is made straight from the form.
+// Set SIGNUP_CODE=on to ask for the code again.
+export const signupCodeOn = () => String(process.env.SIGNUP_CODE || '').trim().toLowerCase() === 'on'
+
 export interface SignupInput { email: string; password: string; fullName: string; companyName: string }
 
 /** The sign-up form, checked. */

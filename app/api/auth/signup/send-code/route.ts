@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { isSuperAdminEmail } from '@/lib/api-auth-helper'
-import { issueSignupCode, parseSignup, signupCodeEmail } from '@/lib/auth/signup-otp'
+import { issueSignupCode, parseSignup, signupCodeEmail, signupCodeOn } from '@/lib/auth/signup-otp'
 import { sendEmail } from '@/lib/email'
 
 export const runtime = 'nodejs'
@@ -26,6 +26,9 @@ export async function POST(request: NextRequest) {
     const db = admin()
     const { data: existing } = await db.from('users').select('id').ilike('email', email).limit(1)
     if (existing?.length) return NextResponse.json({ error: 'An account with this email already exists. Sign in instead.', field: 'email' }, { status: 409 })
+
+    // Codes switched off: the form is fine, the page creates the account at once
+    if (!signupCodeOn()) return NextResponse.json({ success: true, codeNeeded: false })
 
     const issued = await issueSignupCode(db, email)
     if ('error' in issued) return NextResponse.json({ error: issued.error, retryAfter: issued.retryAfter }, { status: 429 })

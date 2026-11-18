@@ -74,3 +74,18 @@ test('The email says the code plainly', () => {
   assert.match(mail.text, /^Hi Teja,/)
   assert.match(mail.html, /123456/)
 })
+
+test('Sign-up code is off unless SIGNUP_CODE=on', () => {
+  const before = process.env.SIGNUP_CODE
+  try {
+    delete process.env.SIGNUP_CODE
+    assert.equal(O.signupCodeOn(), false)
+    process.env.SIGNUP_CODE = ' On '
+    assert.equal(O.signupCodeOn(), true)
+    process.env.SIGNUP_CODE = 'off'
+    assert.equal(O.signupCodeOn(), false)
+  } finally {
+    if (before === undefined) delete process.env.SIGNUP_CODE
+    else process.env.SIGNUP_CODE = before
+  }
+})

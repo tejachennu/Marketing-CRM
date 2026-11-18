@@ -494,7 +494,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   the password alone** (`signInNow`) rather than lock anyone out — a mail outage never blocks login. `POST
   /api/auth/verify-otp` rewritten to use `checkLoginCode` (re-checks the password too). Bypass: `isBypassCode`
   honours `LOGIN_OTP_BYPASS` only for `SUPERADMIN_EMAILS` (never hardcoded; set it in Vercel) and lets a super
-  admin skip the code step with that code when email is working. **Switched off by default since 18 Nov 2026 (owner: "remove the login otp verification"): the password signs in; `OTP_LOGIN=on` brings the code step back.** Email itself is sent via `lib/email.ts` (platform mailbox from Super Admin → Platform Email,
+  admin skip the code step with that code when email is working. **Switched off by default since 18 Nov 2026 (owner: "remove the login otp verification"): the password signs in; `OTP_LOGIN=on` brings the code step back. The sign-up code is off the same way (`signupCodeOn`, `SIGNUP_CODE=on` brings it back; `send-code` then answers `codeNeeded: false` and the page creates the account at once).** Email itself is sent via `lib/email.ts` (platform mailbox from Super Admin → Platform Email,
   or `PLATFORM_SMTP_*` / `HOSTINGER_SMTP_*`; SendGrid fallback); the "email not sending" cause is almost
   always those not being set — Super Admin → Platform Email → Send test shows the real SMTP error.
 
