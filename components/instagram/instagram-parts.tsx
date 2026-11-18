@@ -14,6 +14,9 @@ import { cardClass, hintClass, inputClass, labelClass, primaryButton as commerce
 // The Commerce screens' main button is WhatsApp green; Instagram uses the product's one blue
 const primaryButton = commerceButton.replace('bg-[#008069] hover:bg-[#006d59]', 'bg-[#1D5BEA] hover:bg-[#174bc4]')
 
+// Disconnect needs attention: red words on white, the one place red is used here
+const disconnectButton = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl border border-[#f3caca] bg-white dark:bg-transparent text-[#b91c1c] text-xs font-bold hover:bg-[#fdf0f0] disabled:opacity-50'
+
 interface Account { igUserId: string; username: string | null; name: string | null; picture: string | null; subscribed: boolean; lastError: string | null; slowDownMinutes?: number }
 interface Comment { id: string; comment_id: string; parent_id: string | null; media_id: string | null; from_username: string | null; text: string; hidden: boolean; reply_text: string | null; replied_at: string | null; private_reply_at: string | null; created_at: string; media_type: string | null; auto_replied?: boolean; post: { image: string; link: string; caption: string } | null }
 interface Post { id: string; type: string; image: string; link: string; caption: string; at: string }
@@ -32,6 +35,17 @@ const initial = (name: string) => (name.replace('@', '').trim()[0] || 'I').toUpp
 const autoOn = (a: IgAutomation | null) => Boolean(a && (a.dmAi || a.commentAi || a.rules.length || a.everyComment.on || a.hideWords.length))
 
 const DM_STEPS = 'In the Instagram app: Profile → ☰ → Settings and activity → Messages and story replies → Message controls → Connected tools → turn on "Allow access to messages".'
+
+const DISCONNECT_ASK = 'Disconnect Instagram from WAMA CRM?\n\nNew DMs and comments stop coming in, and auto replies stop. Chats already here stay. You can connect again any time.'
+
+/** Disconnects the workspace's Instagram. Returns an error in plain words, or null when it worked. */
+async function disconnectInstagram(orgId: string): Promise<string | null> {
+  const res = await fetch(`/api/instagram?organizationId=${orgId}`, { method: 'DELETE' }).catch(() => null)
+  if (!res) return 'Could not reach WAMA CRM. Check the internet and try again.'
+  if (res.ok) return null
+  const d = await res.json().catch(() => ({}))
+  return d.error || 'Instagram could not be disconnected. Try again.'
+}
 
 /** Who is looking and which workspace (the same lookup every dashboard screen does). */
 function useViewer() {
@@ -102,11 +116,13 @@ export function InstagramSettings() {
   }
 
   async function disconnect() {
-    if (!orgId || !window.confirm('Disconnect Instagram? New DMs and comments stop arriving. Chats already here stay.')) return
+    if (!orgId || !window.confirm(DISCONNECT_ASK)) return
     setBusy('disconnect')
-    await fetch(`/api/instagram?organizationId=${orgId}`, { method: 'DELETE' }).catch(() => null)
-    setAccount(null)
+    const error = await disconnectInstagram(orgId)
     setBusy(null)
+    if (error) { say(false, error); return }
+    say(true, `@${account?.username || 'Instagram'} is disconnected. Chats already here stay.`)
+    setAccount(null)
   }
 
   async function resubscribe() {
@@ -161,7 +177,7 @@ export function InstagramSettings() {
               <div className="flex flex-wrap gap-2">
                 {(!account.subscribed || account.lastError) && <button type="button" onClick={resubscribe} disabled={busy !== null} className={secondaryButton}><RefreshCw size={13} /> Try again</button>}
                 {account.lastError?.includes('connecting again') && <button type="button" onClick={connect} disabled={busy !== null} className={secondaryButton}><Instagram size={13} /> Connect again</button>}
-                <button type="button" onClick={disconnect} disabled={busy !== null} className={secondaryButton}><Unlink size={13} /> Disconnect</button>
+                <button type="button" onClick={disconnect} disabled={busy !== null} className={disconnectButton}>{busy === 'disconnect' ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />} Disconnect</button>
               </div>
             )}
           </section>
@@ -179,6 +195,16 @@ export function InstagramSettings() {
               <h2 className="text-base font-bold flex items-center gap-2"><Zap size={17} className="text-[#1D5BEA]" /> Auto replies</h2>
               <AutoRepliesPanel orgId={orgId} initial={automation || DEFAULT_AUTOMATION} canEdit={can(viewer, 'automation.manage')} onSaved={setAutomation} />
             </div>
+          )}
+
+          {canManage && (
+            <section className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3`}>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-sm font-bold">Disconnect Instagram</h2>
+                <p className={hintClass}>New DMs and comments stop coming in, and auto replies stop. Chats already here stay. You can connect again any time.</p>
+              </div>
+              <button type="button" onClick={disconnect} disabled={busy !== null} className={`${disconnectButton} self-start sm:self-auto`}>{busy === 'disconnect' ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />} Disconnect @{account.username || 'instagram'}</button>
+            </section>
           )}
         </>
       )}
@@ -257,12 +283,7 @@ export function InstagramShell({ children }: { children: React.ReactNode }) {
               )
             })}
           </nav>
-          <span className="hidden sm:flex items-center gap-2 text-xs font-semibold text-[#4a5672] dark:text-slate-300 min-w-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {account.picture ? <img src={account.picture} alt="" className="h-6 w-6 rounded-full object-cover border border-[#e3e8f2]" /> : <Instagram size={14} />}
-            <span className="truncate max-w-[140px]">@{account.username}</span>
-          </span>
-          <Link href="/dashboard/settings?tab=instagram" className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-[#6B7894] hover:bg-[#f4f6fa] dark:hover:bg-slate-800" title="Instagram settings" aria-label="Instagram settings"><SettingsIcon size={16} /></Link>
+          <AccountMenu orgId={orgId} account={account} canManage={can(viewer, 'settings.manage')} onDisconnected={() => { setAccount(null); setState('none') }} />
         </div>
         {account.lastError && (
           <p className="shrink-0 px-4 py-2 text-xs bg-[#fdf0f0] text-[#b91c1c] flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" /> {account.lastError} <Link href="/dashboard/settings?tab=instagram" className="underline font-semibold">Fix in Settings</Link></p>
@@ -270,6 +291,55 @@ export function InstagramShell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 min-h-0">{children}</div>
       </div>
     </ShellContext.Provider>
+  )
+}
+
+/** The connected account in the tab bar: a tap opens Instagram settings and (admins) Disconnect. */
+function AccountMenu({ orgId, account, canManage, onDisconnected }: { orgId: string; account: Account; canManage: boolean; onDisconnected: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc) }
+  }, [open])
+
+  async function disconnect() {
+    if (!window.confirm(DISCONNECT_ASK)) return
+    setBusy(true)
+    setError(null)
+    const problem = await disconnectInstagram(orgId)
+    setBusy(false)
+    if (problem) { setError(problem); return }
+    setOpen(false)
+    onDisconnected()
+  }
+
+  const item = 'w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold rounded-lg'
+  return (
+    <div ref={box} className="relative shrink-0">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} title="Instagram account" className="h-8 flex items-center gap-2 pl-1 pr-2 rounded-full text-xs font-semibold text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {account.picture ? <img src={account.picture} alt="" className="h-6 w-6 rounded-full object-cover border border-[#e3e8f2]" /> : <span className="h-6 w-6 rounded-full bg-[#eef1f6] flex items-center justify-center"><Instagram size={13} /></span>}
+        <span className="hidden sm:block truncate max-w-[140px]">@{account.username}</span>
+        <SettingsIcon size={15} className="text-[#6B7894]" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-10 z-30 w-64 max-w-[calc(100vw-24px)] p-1.5 rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 shadow-lg">
+          <p className="px-3 pt-1.5 pb-2 text-xs text-[#6B7894] truncate">Connected as <span className="font-bold text-[#0E1B3D] dark:text-white">@{account.username}</span></p>
+          <Link role="menuitem" href="/dashboard/settings?tab=instagram" onClick={() => setOpen(false)} className={`${item} text-[#0E1B3D] dark:text-slate-100 hover:bg-[#f4f6fa] dark:hover:bg-slate-800`}><SettingsIcon size={15} className="text-[#6B7894]" /> Instagram settings</Link>
+          {canManage && (
+            <button role="menuitem" type="button" onClick={disconnect} disabled={busy} className={`${item} text-[#b91c1c] hover:bg-[#fdf0f0] disabled:opacity-50`}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Unlink size={15} />} Disconnect Instagram</button>
+          )}
+          {error && <p className="px-3 py-2 text-xs text-[#b91c1c]">{error}</p>}
+        </div>
+      )}
+    </div>
   )
 }
 
