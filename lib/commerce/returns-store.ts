@@ -10,6 +10,7 @@ import { sendShopMessage } from './shop-messages-send'
 import { refundStorePayment, storeRazorpayKeys } from './store-payments'
 import { changeVariantStock } from './variant-store'
 import { returnPointsFor } from './loyalty-store'
+import { issueCreditNote } from './invoice-store'
 
 /** supabase/migrations/20261201_shop_returns.sql word for word. */
 export const RETURNS_SQL = `-- Shop returns and refunds. Safe to run more than once. The app runs it on its own when first needed.
@@ -131,6 +132,8 @@ export async function refundOrder(db: any, org: any, order: any, input: { amount
   if (current && current.status !== 'declined') ship.return = { ...current, status: 'refunded', decided_at: current.decided_at || new Date().toISOString() }
   await db.from('commerce_orders').update({ shipping_address: ship, ...(after.left <= 0 ? { payment_status: 'refunded' } : {}), updated_at: new Date().toISOString() }).eq('id', order.id)
 
+  // An invoiced order gets a GST credit note for the refund (best effort)
+  await issueCreditNote(db, org.id, order.id, { id: saved.id, amount: input.amount, reason: input.reason }).catch((error: any) => console.error('[Credit note]', error?.message))
   // Refunded in full: points used come back, points earned go
   if (after.left <= 0) await returnPointsFor(db, org.id, order.id).catch(() => null)
   const amount = formatMoney(input.amount, order.currency || 'INR')

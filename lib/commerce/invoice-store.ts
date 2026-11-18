@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import { readStorefront } from './storefront'
 import {
-  GST_STATES, computeShopInvoice, financialYear, readInvoiceSettings, readRate, shopInvoiceNumber, stateCodeOf, stateOfGstin,
+  GST_STATES, computeShopInvoice, creditNoteLines, creditNoteNumber, financialYear, readInvoiceSettings, readRate, shopInvoiceNumber, stateCodeOf, stateOfGstin,
   type InvoiceSettings,
 } from './invoice'
 
@@ -216,4 +216,93 @@ export async function issueInvoiceQuietly(db: any, organizationId: string, order
 export async function cancelInvoiceFor(db: any, organizationId: string, orderId: string, now: Date = new Date()) {
   const { error } = await db.from('commerce_invoices').update({ status: 'cancelled', cancelled_at: now.toISOString() }).eq('organization_id', organizationId).eq('order_id', orderId).eq('status', 'issued')
   if (error && !isMissingSchemaError(error, INVOICE_SCHEMA)) throw new Error(error.message)
+}
+
+// ── Credit notes ─────────────────────────────────────────────────────────────
+
+/** supabase/migrations/20261203_shop_credit_notes.sql word for word. */
+export const CREDIT_NOTE_SQL = `-- Shop credit notes (refunds on invoiced orders). Safe to run more than once. The app runs it on its own when first needed.
+CREATE TABLE IF NOT EXISTS commerce_credit_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES commerce_invoices(id) ON DELETE CASCADE,
+  order_id UUID NOT NULL REFERENCES commerce_orders(id) ON DELETE CASCADE,
+  refund_id UUID UNIQUE,
+  number TEXT NOT NULL,
+  fy TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  public_token TEXT NOT NULL UNIQUE,
+  reason TEXT,
+  registered BOOLEAN NOT NULL DEFAULT FALSE,
+  inter_state BOOLEAN NOT NULL DEFAULT FALSE,
+  place_of_supply TEXT,
+  business JSONB NOT NULL DEFAULT '{}'::jsonb,
+  customer JSONB NOT NULL DEFAULT '{}'::jsonb,
+  lines JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tax_summary JSONB NOT NULL DEFAULT '[]'::jsonb,
+  order_number TEXT,
+  invoice_number TEXT,
+  items_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  delivery NUMERIC(12,2) NOT NULL DEFAULT 0,
+  taxable NUMERIC(12,2) NOT NULL DEFAULT 0,
+  cgst NUMERIC(12,2) NOT NULL DEFAULT 0,
+  sgst NUMERIC(12,2) NOT NULL DEFAULT 0,
+  igst NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, fy, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_commerce_credit_notes_order ON commerce_credit_notes(order_id, issued_at);
+ALTER TABLE commerce_credit_notes ENABLE ROW LEVEL SECURITY;
+NOTIFY pgrst, 'reload schema';
+`
+export const CREDIT_NOTE_LOCK = 724519030
+export const creditNoteSchemaSetup = createAutoSetup('Shop credit notes', (connectionString) => runMigrationSql(connectionString, CREDIT_NOTE_SQL, CREDIT_NOTE_LOCK))
+
+export async function withCreditNoteSchema(step: () => PromiseLike<any>, setup: { ensure: () => Promise<boolean> } = creditNoteSchemaSetup): Promise<any> {
+  const first = await step()
+  if (!isMissingSchemaError(first.error, /commerce_credit_notes/)) return first
+  if (!(await setup.ensure())) return first
+  return step()
+}
+
+export async function creditNotesFor(db: any, organizationId: string, orderId: string): Promise<any[]> {
+  const { data, error } = await db.from('commerce_credit_notes').select('*').eq('organization_id', organizationId).eq('order_id', orderId).order('issued_at', { ascending: true })
+  return error ? [] : data || []
+}
+
+export async function creditNoteByToken(db: any, token: string) {
+  if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return null
+  const { data, error } = await db.from('commerce_credit_notes').select('*').eq('public_token', token).maybeSingle()
+  return error ? null : data || null
+}
+
+/**
+ * A refund on an order that has an invoice: a credit note for that amount, taking back the GST in the
+ * same rates as the invoice. One per refund; none when the order has no invoice.
+ */
+export async function issueCreditNote(db: any, organizationId: string, orderId: string, refund: { id: string; amount: number; reason?: string | null }, now: Date = new Date()) {
+  const invoice = await invoiceForOrder(db, organizationId, orderId)
+  if (!invoice) return null
+  const totals = creditNoteLines(Array.isArray(invoice.lines) ? invoice.lines : [], refund.amount, Boolean(invoice.inter_state))
+  if (totals.total <= 0) return null
+  const fy = financialYear(now)
+  const token = randomBytes(18).toString('base64url')
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: last } = await withCreditNoteSchema(() => db.from('commerce_credit_notes').select('seq').eq('organization_id', organizationId).eq('fy', fy).order('seq', { ascending: false }).limit(1))
+    const seq = (Number(last?.[0]?.seq) || 0) + 1
+    const { data: saved, error } = await withCreditNoteSchema(() => db.from('commerce_credit_notes').insert({
+      organization_id: organizationId, invoice_id: invoice.id, order_id: orderId, refund_id: refund.id, number: creditNoteNumber(fy, seq), fy, seq,
+      public_token: token, reason: refund.reason || null, registered: invoice.registered, inter_state: invoice.inter_state, place_of_supply: invoice.place_of_supply,
+      business: invoice.business, customer: invoice.customer, lines: totals.lines, tax_summary: totals.taxSummary,
+      order_number: invoice.order_number, invoice_number: invoice.number, items_total: totals.itemsTotal, delivery: totals.delivery,
+      taxable: totals.taxable, cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, total: totals.total, issued_at: now.toISOString(),
+    }).select('*').single())
+    if (!error) return saved
+    if (String(error.code) !== '23505') throw new Error(error.message)
+    // Already made for this refund (unique refund_id): use it
+    const { data: same } = await db.from('commerce_credit_notes').select('*').eq('refund_id', refund.id).maybeSingle()
+    if (same) return same
+  }
+  throw new Error('Could not number the credit note. Please try again.')
 }

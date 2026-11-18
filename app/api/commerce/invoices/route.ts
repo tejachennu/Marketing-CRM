@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { parseInvoiceSettings } from '@/lib/commerce/invoice'
-import { canInvoice, invoiceForOrder, invoiceLink, issueInvoice, loadInvoiceSettings, saveInvoiceSettings } from '@/lib/commerce/invoice-store'
+import { canInvoice, creditNotesFor, invoiceForOrder, invoiceLink, issueInvoice, loadInvoiceSettings, saveInvoiceSettings } from '@/lib/commerce/invoice-store'
 
 export const runtime = 'nodejs'
 
@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
   if (!orderId) return NextResponse.json({ settings: await loadInvoiceSettings(db, organizationId!) })
   const invoice = await invoiceForOrder(db, organizationId!, orderId).catch(() => null)
   const { data: order } = invoice ? { data: null } : await db.from('commerce_orders').select('id, status').eq('id', orderId).eq('organization_id', organizationId).maybeSingle()
-  return NextResponse.json({ invoice: view(request, invoice), canIssue: Boolean(invoice) || canInvoice(order) })
+  const notes = invoice ? await creditNotesFor(db, organizationId!, orderId) : []
+  return NextResponse.json({ invoice: view(request, invoice), canIssue: Boolean(invoice) || canInvoice(order), creditNotes: notes.map((n) => ({ number: n.number, total: Number(n.total) || 0, url: invoiceLink(appUrl(request), n.public_token) })) })
 }
 
 /** POST { organizationId, orderId }: the order's invoice, issued now if it has none. */

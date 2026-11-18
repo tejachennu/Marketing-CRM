@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { amountInWords } from '@/lib/commerce/invoice'
-import { invoiceByToken } from '@/lib/commerce/invoice-store'
+import { creditNoteByToken, creditNotesFor, invoiceByToken } from '@/lib/commerce/invoice-store'
 import { formatRupees } from '@/lib/salon/invoice'
 import { PrintButton } from '../../i/[token]/print-button'
 
@@ -17,8 +17,13 @@ function formatDate(iso: string) {
 /** A shop order's GST invoice (or plain bill when the shop has no GSTIN): /invoice/<token>, printable on A4. */
 export default async function ShopInvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const invoice = await invoiceByToken(getSupabaseAdminClient(), token).catch(() => null)
+  const db = getSupabaseAdminClient()
+  // The same page shows a credit note (money given back on an invoiced order)
+  let invoice: any = await invoiceByToken(db, token).catch(() => null)
+  const credit = !invoice
+  if (!invoice) invoice = await creditNoteByToken(db, token).catch(() => null)
   if (!invoice) notFound()
+  const notes: any[] = credit ? [] : await creditNotesFor(db, invoice.organization_id, invoice.order_id).catch(() => [])
 
   const business = invoice.business || {}
   const customer = invoice.customer || {}
@@ -52,9 +57,10 @@ export default async function ShopInvoicePage({ params }: { params: Promise<{ to
             </div>
           </div>
           <div className="sm:text-right shrink-0">
-            <p className="text-[13px] font-bold tracking-[0.15em] text-[#1D5BEA]">{registered ? 'TAX INVOICE' : 'BILL'}</p>
+            <p className="text-[13px] font-bold tracking-[0.15em] text-[#1D5BEA]">{credit ? 'CREDIT NOTE' : registered ? 'TAX INVOICE' : 'BILL'}</p>
             <p className="text-[19px] font-extrabold mt-1">{invoice.number}</p>
             <p className="text-[13.5px] text-[#4a5672] mt-1">{formatDate(invoice.issued_at)}</p>
+            {credit && invoice.invoice_number && <p className="text-[13.5px] text-[#4a5672]">Against invoice {invoice.invoice_number}</p>}
             {invoice.order_number && <p className="text-[13.5px] text-[#4a5672]">Order #{invoice.order_number}</p>}
             {cancelled && <span className="inline-block mt-2 px-3 py-1 rounded-md border-2 border-[#b91c1c] text-[#b91c1c] text-[13px] font-extrabold tracking-[0.2em]">CANCELLED</span>}
           </div>
@@ -68,8 +74,8 @@ export default async function ShopInvoicePage({ params }: { params: Promise<{ to
             {customer.address && <p className="text-[#4a5672] break-words">{customer.address}</p>}
           </div>
           <div className="sm:text-right">
-            <p className="text-[12.5px] font-semibold text-[#6B7894]">Payment</p>
-            <p className="font-bold text-[15.5px] mt-0.5">{cancelled ? 'Cancelled' : invoice.payment || '—'}</p>
+            <p className="text-[12.5px] font-semibold text-[#6B7894]">{credit ? 'Refund' : 'Payment'}</p>
+            <p className="font-bold text-[15.5px] mt-0.5">{credit ? `Given back${invoice.reason ? ` · ${invoice.reason}` : ''}` : cancelled ? 'Cancelled' : invoice.payment || '—'}</p>
             {registered && invoice.place_of_supply && <p className="text-[#4a5672]">Place of supply: {invoice.place_of_supply}</p>}
           </div>
         </section>
@@ -137,6 +143,15 @@ export default async function ShopInvoicePage({ params }: { params: Promise<{ to
             <div className="flex justify-between border-t border-[#e3e8f2] pt-2 text-[16px] font-extrabold"><dt>Total</dt><dd>{money(invoice.total)}</dd></div>
           </dl>
         </section>
+
+        {notes.length > 0 && (
+          <section className="mt-6 text-[13.5px]">
+            <p className="font-semibold">Credit notes on this invoice</p>
+            <ul className="mt-1 space-y-0.5">
+              {notes.map((n) => <li key={n.id}><a href={`/invoice/${n.public_token}`} className="text-[#1D5BEA] font-semibold hover:underline">{n.number}</a> · {formatDate(n.issued_at)} · − {money(n.total)}</li>)}
+            </ul>
+          </section>
+        )}
 
         <footer className="mt-8 pt-4 border-t border-[#e3e8f2] text-[12px] text-[#6B7894]">
           {registered ? 'This is a computer-made invoice and needs no signature.' : 'This shop is not registered for GST, so no GST is charged on this bill.'}

@@ -167,7 +167,9 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `shipping_address`; `cancelInvoiceFor`). Issued on Shipped / Delivered (orders PATCH, courier webhook, shop cron) or
   `POST /api/commerce/invoices`; `GET/PUT` there for settings. Public page `/invoice/<token>` (A4 print). Screens: Store
   settings → **GST invoices** (`invoice-settings-card.tsx`), order details → Invoice (`order-invoice.tsx`), product form
-  GST rate, My orders → Invoice link.
+  GST rate, My orders → Invoice link. **Credit notes**: `creditNoteLines` / `creditNoteNumber` (CN/26-27/0001, own series)
+  in invoice.ts; `issueCreditNote` (lock 724519030, migration `20261203_shop_credit_notes.sql`: `commerce_credit_notes`, one
+  per refund) called from `refundOrder`; `/invoice/<token>` shows credit notes too; order Invoice box lists them.
 - **Shop: reviews with photos + "How was it?"** (3.3, 2.3): `lib/commerce/reviews.ts` (pure: `cleanReview` 1–5 stars,
   ≤1000 chars, ≤4 https photos; `publicName` "Asha R."; `ratingSummary`), `review-store.ts` (lock 724519025, migration
   `20261128_shop_reviews.sql`: `commerce_reviews` unique per order + product; `reviewToken` kept in

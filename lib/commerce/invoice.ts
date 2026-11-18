@@ -234,3 +234,45 @@ export function computeShopInvoice(input: {
     taxSummary: [...byRate.values()].sort((a, b) => a.rate - b.rate),
   }
 }
+
+// ── Credit notes (money given back on an invoiced order) ─────────────────────
+
+/** "CN/26-27/0001": credit notes have their own series per financial year. */
+export function creditNoteNumber(fy: string, seq: number): string {
+  return `CN/${fy}/${String(Math.max(1, Math.floor(seq))).padStart(4, '0')}`
+}
+
+/**
+ * The invoice's lines scaled down to the refunded amount (same rates and HSN), so the credit note takes
+ * back the right GST. The last line takes what rounding leaves, so the lines add up to the amount exactly.
+ */
+export function creditNoteLines(invoiceLines: ShopInvoiceLine[], amount: number, interState: boolean): ShopInvoiceTotals {
+  const lines = invoiceLines.filter((l) => Number(l.total) > 0)
+  const invoiceTotal = round2(lines.reduce((s, l) => s + Number(l.total), 0))
+  const refund = round2(Math.min(Math.max(0, Number(amount) || 0), invoiceTotal))
+  let left = refund
+  const out: ShopInvoiceLine[] = lines.map((l, index) => {
+    const total = index === lines.length - 1 ? left : round2(invoiceTotal > 0 ? refund * (Number(l.total) / invoiceTotal) : 0)
+    left = round2(left - total)
+    const rate = Number(l.rate) || 0
+    const taxable = round2(total / (1 + rate / 100))
+    const tax = round2(total - taxable)
+    const cgst = interState ? 0 : round2(tax / 2)
+    return { ...l, discount: 0, gross: total, total, taxable, tax, cgst, sgst: interState ? 0 : round2(tax - cgst), igst: interState ? tax : 0 }
+  })
+  const byRate = new Map<number, ShopInvoiceTaxRow>()
+  for (const line of out) {
+    const row = byRate.get(line.rate) || { rate: line.rate, taxable: 0, cgst: 0, sgst: 0, igst: 0 }
+    row.taxable = round2(row.taxable + line.taxable)
+    row.cgst = round2(row.cgst + line.cgst)
+    row.sgst = round2(row.sgst + line.sgst)
+    row.igst = round2(row.igst + line.igst)
+    byRate.set(line.rate, row)
+  }
+  const sum = (pick: (line: ShopInvoiceLine) => number) => round2(out.reduce((t, l) => t + pick(l), 0))
+  return {
+    lines: out, itemsTotal: sum((l) => (l.delivery ? 0 : l.total)), delivery: sum((l) => (l.delivery ? l.total : 0)), discount: 0,
+    taxable: sum((l) => l.taxable), cgst: sum((l) => l.cgst), sgst: sum((l) => l.sgst), igst: sum((l) => l.igst), tax: sum((l) => l.tax), total: sum((l) => l.total),
+    taxSummary: [...byRate.values()].sort((a, b) => a.rate - b.rate),
+  }
+}
