@@ -12,6 +12,7 @@
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import { normalizePhone } from '../public-api/keys'
 import { isUuid } from '../record-visibility'
+import { deliveredAt, readReturn } from './returns'
 
 /** supabase/migrations/20261121_store_accounts.sql word for word. */
 export const STORE_ACCOUNTS_SQL = `-- Customer accounts on the online store page (sign in with Google, order history, saved cart). Safe to run more than once.
@@ -195,6 +196,9 @@ export function shopperOrderView(order: any, items: any[]) {
     currency: String(order.currency || 'INR'),
     timeline: orderTimeline(order),
     unpaid: order.status === 'payment_pending' && ship.payment?.order_id ? { razorpayOrderId: String(ship.payment.order_id) } : null,
+    // Returns: when it was delivered (the store page knows the shop's return window) and any return asked
+    deliveredAt: deliveredAt(order),
+    returnStatus: readReturn(order)?.status || null,
     // The GST invoice, once the order has one (opens on the main app address, also from own domains)
     invoice: /^[A-Za-z0-9_-]{16,40}$/.test(String(ship.invoice_token || '')) ? `${String(process.env.NEXT_PUBLIC_APP_URL || 'https://wamacrm.magnetora.in').replace(/\/$/, '')}/invoice/${ship.invoice_token}` : null,
   }

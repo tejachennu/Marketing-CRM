@@ -7,7 +7,7 @@
  * Settings: organizations.shop_messages = { <purpose>: { on, template, language } }.
  */
 
-export const SHOP_PURPOSES = ['cart_reminder', 'cod_confirm', 'review_ask', 'back_in_stock'] as const
+export const SHOP_PURPOSES = ['cart_reminder', 'cod_confirm', 'review_ask', 'back_in_stock', 'refund_update'] as const
 export type ShopPurpose = (typeof SHOP_PURPOSES)[number]
 
 export const SHOP_MESSAGE_INFO: Record<ShopPurpose, { title: string; when: string; blanks: string[]; buttons?: string[]; defaultOn: boolean }> = {
@@ -15,6 +15,7 @@ export const SHOP_MESSAGE_INFO: Record<ShopPurpose, { title: string; when: strin
   cod_confirm: { title: 'Cash on Delivery check', when: 'Right after a Cash on Delivery order, before you ship it.', blanks: ['Customer name', 'Order number', 'Amount to pay', 'Shop name'], buttons: ['Yes, send it', 'Cancel order'], defaultOn: true },
   review_ask: { title: '"How was it?" review ask', when: 'When the order is delivered.', blanks: ['Customer name', 'Order number', 'Link to write a review'], defaultOn: true },
   back_in_stock: { title: 'Back in stock', when: 'When a product someone asked about is back in stock.', blanks: ['Product name', 'Shop name', 'Link to the product'], defaultOn: true },
+  refund_update: { title: 'Return and refund updates', when: 'When you accept or decline a return, and when you refund an order.', blanks: ['Customer name', 'Order number', 'What happened'], defaultOn: true },
 }
 
 export interface ShopMessageSetting {

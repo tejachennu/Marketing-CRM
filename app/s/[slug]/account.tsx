@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronRight, FileText, Loader2, LogOut, MapPin, Package, Search, Truck, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, FileText, RotateCcw, Loader2, LogOut, MapPin, Package, Search, Truck, X } from 'lucide-react'
+import { RETURN_LABELS, RETURN_REASONS, returnChance, type ReturnSettings, type ReturnStatus } from '@/lib/commerce/returns'
 import type { Session } from '@supabase/supabase-js'
 import { shopperAuth, unpackSession } from '@/lib/commerce/shopper-client'
 import { PhoneField } from '@/components/phone-field'
@@ -25,6 +26,8 @@ export interface ShopperOrder {
   currency: string
   timeline: { key: string; label: string; state: 'done' | 'now' | 'next' | 'stopped'; at: string | null }[]
   invoice?: string | null
+  deliveredAt?: string | null
+  returnStatus?: ReturnStatus | null
 }
 
 export interface Account {
@@ -176,7 +179,7 @@ export function Timeline({ order }: { order: ShopperOrder }) {
 }
 
 /** One order: where it is, what is in it, and how it is paid. */
-export function OrderDetail({ order, money, onReorder }: { order: ShopperOrder; money: (n: number) => string; onReorder?: (items: { key: string; quantity: number }[]) => void }) {
+export function OrderDetail({ order, money, onReorder, returnAsk }: { order: ShopperOrder; money: (n: number) => string; onReorder?: (items: { key: string; quantity: number }[]) => void; returnAsk?: ReturnAskProps }) {
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
@@ -222,6 +225,7 @@ export function OrderDetail({ order, money, onReorder }: { order: ShopperOrder; 
         <MapPin size={17} className="shrink-0 mt-0.5 text-[var(--c)]" />
         {order.handover === 'delivery' ? <span>Delivering to {order.address || 'your address'}</span> : <span>Pick up from the shop</span>}
       </p>
+      {returnAsk && <ReturnBox order={order} {...returnAsk} />}
       {onReorder && order.items.some((i: any) => i.key) && (
         <button type="button" onClick={() => onReorder(order.items.filter((i: any) => i.key).map((i: any) => ({ key: i.key, quantity: i.quantity })))} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer">
           Same as last time? Order again
@@ -231,8 +235,62 @@ export function OrderDetail({ order, money, onReorder }: { order: ShopperOrder; 
   )
 }
 
+interface ReturnAskProps { slug: string; returns: ReturnSettings; headers: () => Record<string, string>; phone: string; onAsked: () => void }
+
+/** "Return this order": within the shop's return window after delivery; then where the return stands. */
+function ReturnBox({ order, slug, returns, headers, phone, onAsked }: { order: ShopperOrder } & ReturnAskProps) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (order.returnStatus) {
+    return <p className="rounded-xl bg-[#f4f6fa] p-3 text-[14px] flex gap-2"><RotateCcw size={17} className="shrink-0 mt-px text-[var(--c)]" /> <span><b>{RETURN_LABELS[order.returnStatus]}.</b> {order.returnStatus === 'asked' ? 'The shop will reply on WhatsApp.' : ''}</span></p>
+  }
+  const chance = returnChance({ status: order.deliveredAt ? 'delivered' : 'other', shipping_address: { delivered_at: order.deliveredAt } }, returns)
+  if (!chance.ok) return null
+  async function send() {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/public/store/${slug}/return`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers() }, body: JSON.stringify({ order: order.number, phone, reason, note }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not send. Please try again.')
+      onAsked()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="w-full h-12 rounded-full border-2 border-[#d5ddeb] bg-white font-bold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer hover:border-[var(--c)]">
+        <RotateCcw size={17} /> Return this order
+      </button>
+    )
+  }
+  return (
+    <div className="rounded-2xl border border-[#e3e8f2] p-4 space-y-3">
+      <p className="font-bold text-[15.5px]">Why are you returning it?</p>
+      <div className="flex flex-wrap gap-2">
+        {RETURN_REASONS.map((r) => (
+          <button key={r} type="button" onClick={() => setReason(r)} aria-pressed={reason === r} className={`px-3 h-10 rounded-full border text-[14px] cursor-pointer ${reason === r ? 'border-[var(--c)] bg-[var(--c)]/10 font-semibold' : 'border-[#d5ddeb]'}`}>{r}</button>
+        ))}
+      </div>
+      <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={3} placeholder="A few words for the shop (optional)" className="w-full rounded-xl border border-[#d5ddeb] p-3 text-[15px] outline-none focus:border-[var(--c)]" />
+      <p className="text-[13px] text-[#6B7894]">Returns are taken within {returns.days} days of delivery. The shop replies on WhatsApp.</p>
+      {error && <p role="alert" className="text-[14px] text-[#b91c1c]">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setOpen(false)} className="flex-1 h-12 rounded-full border-2 border-[#d5ddeb] font-bold cursor-pointer">Not now</button>
+        <button type="button" onClick={send} disabled={!reason || busy} className="flex-1 h-12 rounded-full bg-[var(--c)] text-white font-bold cursor-pointer disabled:opacity-50 inline-flex items-center justify-center gap-2">{busy && <Loader2 size={16} className="animate-spin" />} Ask for return</button>
+      </div>
+    </div>
+  )
+}
+
 /** The account panel: sign in, My orders, one order, or Track an order (for guests too). */
-export function AccountPanel({ slug, shopper, money, storeName, initialView, onClose, onReorder }: { slug: string; shopper: ShopperState; money: (n: number) => string; storeName: string; initialView: 'orders' | 'track'; onClose: () => void; onReorder?: (items: { key: string; quantity: number }[]) => void }) {
+export function AccountPanel({ slug, shopper, money, storeName, initialView, onClose, onReorder, returns }: { slug: string; shopper: ShopperState; money: (n: number) => string; storeName: string; initialView: 'orders' | 'track'; onClose: () => void; onReorder?: (items: { key: string; quantity: number }[]) => void; returns?: ReturnSettings }) {
   const [view, setView] = useState<'orders' | 'track'>(initialView)
   const [openOrder, setOpenOrder] = useState<ShopperOrder | null>(null)
   const [trackNumber, setTrackNumber] = useState('')
@@ -261,7 +319,7 @@ export function AccountPanel({ slug, shopper, money, storeName, initialView, onC
 
         <div className="flex-1 overflow-y-auto p-4">
           {openOrder ? (
-            <OrderDetail order={openOrder} money={money} onReorder={onReorder} />
+            <OrderDetail order={openOrder} money={money} onReorder={onReorder} returnAsk={returns?.on ? { slug, returns, headers: shopper.headers, phone: trackPhone, onAsked: () => { setOpenOrder({ ...openOrder, returnStatus: 'asked' }); if (signedIn) shopper.refresh() } } : undefined} />
           ) : view === 'track' ? (
             <TrackForm
               slug={slug}

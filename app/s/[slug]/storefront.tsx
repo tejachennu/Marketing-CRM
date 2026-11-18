@@ -819,7 +819,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       )}
 
       {/* Sign in, My orders, Track an order */}
-      {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} initialView={accountView} onClose={() => setAccountView(null)} onReorder={(items) => {
+      {accountView && <AccountPanel slug={store.slug} shopper={shopper} money={money} storeName={store.name} returns={store.returns} initialView={accountView} onClose={() => setAccountView(null)} onReorder={(items) => {
         // "Same as last time?": the same products (and sizes / colours) that are still sold and in stock
         const next = { ...cart }
         let added = 0

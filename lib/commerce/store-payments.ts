@@ -87,6 +87,15 @@ export async function paidPayment(keys: StoreRazorpayKeys, razorpayOrderId: stri
   return paid ? { id: String(paid.id), amount: Number(paid.amount) || 0 } : null
 }
 
+/**
+ * Give money back for a captured payment (all or part, in paise), through the shop's own Razorpay.
+ * Razorpay sends it to the same card, UPI or bank account. Returns its refund id and status.
+ */
+export async function refundStorePayment(keys: StoreRazorpayKeys, paymentId: string, amountPaise: number, notes: Record<string, string>, fetcher: typeof fetch = fetch): Promise<{ id: string; status: string }> {
+  const data = await call(keys, `/payments/${encodeURIComponent(paymentId)}/refund`, { method: 'POST', body: { amount: Math.round(amountPaise), speed: 'normal', notes } }, fetcher)
+  return { id: String(data?.id || ''), status: String(data?.status || 'pending') }
+}
+
 /** The Razorpay order id our order waits on (kept with the order's delivery details). */
 export function razorpayOrderOf(order: { shipping_address?: any }): string {
   return String(order?.shipping_address?.payment?.order_id || '')

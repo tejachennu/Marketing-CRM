@@ -117,6 +117,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: returns and refunds** (3.5): `lib/commerce/returns.ts` (pure: `readReturnSettings` {on, days} in
+  `organizations.shop_returns`, `returnChance`, `cleanReturnRequest` with `RETURN_REASONS`, `refundable`, `parseRefund`;
+  the ask lives in `shipping_address.return` asked → accepted / declined → refunded), `returns-store.ts` (lock 724519028,
+  migration `20261201_shop_returns.sql`: `commerce_refunds`; `refundOrder` → `refundStorePayment` in store-payments.ts
+  when paid through the shop's Razorpay (`shipping_address.payment.payment_id`), else method manual; full refund sets
+  `payment_status` refunded; `decideReturn`; WhatsApp purpose `refund_update`). APIs: `GET/POST/PUT /api/commerce/returns`,
+  `POST /api/public/store/[slug]/return`. Screens: order details → Returns and refunds (`order-returns.tsx`, also
+  `ReturnsSettingsCard`), My orders → Return this order (`ReturnBox` in `app/s/[slug]/account.tsx`; store view `returns`).
 - **Shop: reports** (3.4): `lib/commerce/shop-reports.ts` (pure: `buildShopReport` from orders, items, checkouts and visits;
   cancelled and waiting-for-payment orders are not counted; IST days; `readPeriod` 7/30/90), `shop-reports-store.ts` (lock
   724519027, migration `20261130_shop_reports.sql`: `commerce_store_visits` per org per day; `countVisit` exact with the

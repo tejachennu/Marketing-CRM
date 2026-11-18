@@ -7,6 +7,7 @@
  * Settings live in organizations.storefront (JSON), set up on their own the first time they are saved.
  */
 
+import { readReturnSettings, type ReturnSettings } from './returns'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import { normalizePhone } from '../public-api/keys'
 import { isUuid } from '../record-visibility'
@@ -245,6 +246,8 @@ export interface StorePage {
   /** Offers that apply by themselves ("Buy 2 get 1 free"), and whether any code exists. */
   offers?: { title: string; kind: string; min_order: number }[]
   hasCodes?: boolean
+  /** Customers can ask for a return in My orders, within this many days of delivery */
+  returns?: ReturnSettings
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -296,6 +299,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     categories: storeCategories(settings, shownProducts),
     pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
     pinCheck: settings.delivery && readyPartners(org).length > 0,
+    returns: readReturnSettings(org.shop_returns),
     offers: publicOffers(discounts),
     hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {
@@ -317,6 +321,7 @@ export function storeView(page: StorePage) {
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
     offers: page.offers || [], hasCodes: page.hasCodes === true,
+    returns: page.returns || { on: false, days: 7 },
     // Which info pages have something to show (for the footer links)
     pages: STORE_PAGES.filter((key) => pageText(key, s.pages, { name: page.organization.name, about: s.about, phone: s.phone, whatsapp: s.whatsapp, address: s.address })),
   }

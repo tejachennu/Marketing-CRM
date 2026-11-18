@@ -6,6 +6,7 @@ import { AlertCircle, Bell, Check, Copy, Loader2, MapPin, MessageCircle, Package
 import { NewOrderModal } from './new-order'
 import { CourierPanel } from './courier-panel'
 import { OrderInvoice } from './order-invoice'
+import { OrderReturns } from './order-returns'
 import { codCheckLabel } from '@/lib/commerce/shop-messages'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
@@ -589,6 +590,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 )}
               </section>
 
+              <OrderReturns key={`returns:${selected.id}:${selected.status}:${selected.payment_status}`} orgId={orgId} orderId={selected.id} currency={selected.currency} canEdit={canEdit} onChanged={() => { void refresh() }} showToast={showToast} />
               <OrderInvoice key={`${selected.id}:${selected.status}`} orgId={orgId} orderId={selected.id} canEdit={canEdit} showToast={showToast} />
 
               {/* Delivery */}
