@@ -36,6 +36,8 @@ export interface Account {
   orders: ShopperOrder[]
   /** Loyalty points for the shopper's saved phone */
   points?: number
+  /** Front Desk membership discount in this shop */
+  member?: { percent: number; title: string } | null
 }
 
 /**

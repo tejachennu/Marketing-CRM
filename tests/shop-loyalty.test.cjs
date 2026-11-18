@@ -62,3 +62,14 @@ test('wiring: migration, delivered step, checkout uses points only for the shopp
   assert.match(read('app/api/commerce/orders/route.ts'), /returnPointsFor\(supabase, organizationId, orderId\)/)
   assert.match(read('components/commerce/offers.tsx'), /<LoyaltyCard /)
 })
+
+test('Front Desk members: best plan discount, only for signed-in shoppers with their own phone', () => {
+  assert.equal(L.readLoyaltySettings({}).members, false)
+  assert.equal(L.readLoyaltySettings({ members: true }).members, true)
+  assert.equal(L.memberDiscount([], 1000), null)
+  assert.deepEqual(L.memberDiscount([{ plan: { name: 'Silver', discount_percent: 5 } }, { plan: { name: 'Gold', discount_percent: 12 } }, { plan: { name: 'Credit only', discount_percent: 0 } }], 1999), { percent: 12, amount: 239.88, title: 'Gold member 12% off' })
+  const order = read('app/api/public/store/[slug]/order/route.ts')
+  assert.match(order, /loyalty\?\.members && ownPhone/)
+  assert.match(order, /member\.amount > offerSaving/)
+  assert.match(read('components/commerce/loyalty-card.tsx'), /Front Desk members get their plan/)
+})

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadLoyaltySettings, pointsBalance } from '@/lib/commerce/loyalty-store'
+import { memberDiscount } from '@/lib/commerce/loyalty'
+import { cardsForCustomer } from '@/lib/salon/membership-store'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore } from '@/lib/commerce/storefront'
 import { cleanAddress, cleanCart, loadShopper, saveShopper, shopperFrom, shopperOrders } from '@/lib/commerce/store-accounts'
@@ -29,11 +31,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Loyalty points for the shopper's saved phone (shown in My orders and at checkout)
     const loyalty = await loadLoyaltySettings(db, page.organization.id).catch(() => null)
     const points = loyalty?.on && row?.phone ? await pointsBalance(db, page.organization.id, row.phone).catch(() => 0) : 0
+    // Front Desk membership: the plan discount the shop gives members (percent only; the server works out the amount)
+    const cards = loyalty?.members && row?.phone ? await cardsForCustomer(db, page.organization.id, { phone: row.phone }).catch(() => []) : []
+    const best = memberDiscount(cards as any[], 100)
+    const member = best ? { percent: best.percent, title: best.title } : null
     return NextResponse.json({
       shopper: { name: row?.name || shopper.name, email: shopper.email, picture: shopper.picture, phone: row?.phone || '', address: cleanAddress(row?.address) },
       cart: cleanCart(row?.cart, productIds),
       orders,
       points,
+      member,
     })
   } catch (error: any) {
     console.error('[Store account]', error?.message)

@@ -301,9 +301,14 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const [usePointsOn, setUsePointsOn] = useState(true)
   const pointsBalanceNow = Number(shopper.account?.points) || 0
   const ownPhone = Boolean(shopper.account?.shopper.phone) && shopper.account!.shopper.phone.replace(/\D/g, '').slice(-10) === phone.replace(/\D/g, '').slice(-10)
-  const pointsCanUse = store.loyalty?.on && ownPhone ? pointsUsable(pointsBalanceNow, subtotal - discountOff, store.loyalty) : 0
+  // Front Desk members: their plan discount when it is better than the offer (the server decides again)
+  const memberInfo = ownPhone ? shopper.account?.member || null : null
+  const memberOff = memberInfo ? Math.round(subtotal * memberInfo.percent) / 100 : 0
+  const memberWins = memberOff > 0 && memberOff > discountOff + (offOk && offer!.freeDelivery ? delivery : 0)
+  const offerOff = memberWins ? memberOff : discountOff
+  const pointsCanUse = store.loyalty?.on && ownPhone ? pointsUsable(pointsBalanceNow, subtotal - offerOff, store.loyalty) : 0
   const pointsOff = usePointsOn ? pointsCanUse : 0
-  const toPay = Math.max(0, Math.round((subtotal - discountOff - pointsOff + deliveryToPay) * 100) / 100)
+  const toPay = Math.max(0, Math.round((subtotal - offerOff - pointsOff + (memberWins ? delivery : deliveryToPay)) * 100) / 100)
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
   const confirmPayment = async (orderNumber: string, razorpayOrderId: string, extra: Record<string, string>) => {
@@ -828,9 +833,10 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 )}
                 <div className="rounded-xl bg-[#f4f6fa] p-4 space-y-1.5 text-[14.5px]">
                   <div className="flex justify-between"><span>Items</span><span>{money(subtotal)}</span></div>
-                  {offOk && discountOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{offer!.title}</span><span>− {money(discountOff)}</span></div>}
+                  {memberWins && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{memberInfo!.title}</span><span>− {money(memberOff)}</span></div>}
+                  {!memberWins && offOk && discountOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{offer!.title}</span><span>− {money(discountOff)}</span></div>}
                   {pointsOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{pointsOff} points</span><span>− {money(pointsOff)}</span></div>}
-                  {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{deliveryToPay ? money(deliveryToPay) : offOk && offer!.freeDelivery && delivery ? <><s className="text-[#8a94a8] mr-1">{money(delivery)}</s>Free</> : 'Free'}</span></div>}
+                  {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{memberWins ? (delivery ? money(delivery) : 'Free') : deliveryToPay ? money(deliveryToPay) : offOk && offer!.freeDelivery && delivery ? <><s className="text-[#8a94a8] mr-1">{money(delivery)}</s>Free</> : 'Free'}</span></div>}
                   <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(toPay)}</span></div>
                   {pay === 'online' ? (
                     <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> Pay securely by UPI, card or net banking with Razorpay.</p>

@@ -13,7 +13,8 @@ import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
 import { loadShopper, samePhone, saveShopper, shopperFrom, withStoreAccountsSchema } from '@/lib/commerce/store-accounts'
 import { loadLoyaltySettings, pointsBalance, usePoints } from '@/lib/commerce/loyalty-store'
-import { pointsUsable } from '@/lib/commerce/loyalty'
+import { memberDiscount, pointsUsable } from '@/lib/commerce/loyalty'
+import { cardsForCustomer } from '@/lib/salon/membership-store'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -46,12 +47,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Loyalty points: only a signed-in shopper, for their own saved phone (decided here, never by the browser)
     const shopper = page.settings.accounts ? await shopperFrom(request, db) : null
     let pointsUsed = 0
+    const saved = shopper ? await loadShopper(db, page.organization.id, shopper.id).catch(() => null) : null
+    const ownPhone = Boolean(saved?.phone && samePhone(saved.phone, parsed.order.customer.phone))
+    const loyalty = ownPhone ? await loadLoyaltySettings(db, page.organization.id) : null
+    // Front Desk members: their plan's discount, when it is better than the offer (never both)
+    if (loyalty?.members && ownPhone) {
+      const cards = await cardsForCustomer(db, page.organization.id, { phone: saved!.phone }).catch(() => [])
+      const member = memberDiscount(cards as any[], parsed.subtotal)
+      const offerSaving = decided?.ok ? decided.amount + (decided.freeDelivery ? parsed.order.shippingFee || 0 : 0) : 0
+      if (member && member.amount > offerSaving) {
+        parsed.order.discount = { code: null, title: member.title, amount: member.amount, freeDelivery: false }
+        if (decided?.ok) { decided.amount = 0; decided.freeDelivery = false }
+      }
+    }
     if (body?.usePoints === true && shopper) {
-      const saved = await loadShopper(db, page.organization.id, shopper.id).catch(() => null)
-      if (saved?.phone && samePhone(saved.phone, parsed.order.customer.phone)) {
-        const loyalty = await loadLoyaltySettings(db, page.organization.id)
-        const afterOffer = parsed.subtotal - (decided?.ok ? decided.amount : 0)
-        pointsUsed = pointsUsable(await pointsBalance(db, page.organization.id, saved.phone), afterOffer, loyalty)
+      if (loyalty && ownPhone) {
+        const afterOffer = parsed.subtotal - (parsed.order.discount?.amount || 0)
+        pointsUsed = pointsUsable(await pointsBalance(db, page.organization.id, saved!.phone), afterOffer, loyalty)
       }
       if (pointsUsed > 0) {
         const offer = parsed.order.discount
@@ -72,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const { data: fullOrg } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
       if (fullOrg) await askCodCheck(db, fullOrg, order, parsed.order.customer.phone).catch(() => null)
     }
-    if (decided?.ok) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, decided.amount).catch(() => null)
+    if (decided?.ok && decided.amount > 0) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, decided.amount).catch(() => null)
     if (pointsUsed > 0) await usePoints(db, page.organization.id, parsed.order.customer.phone, pointsUsed, order.id).catch((error: any) => console.error('[Store points]', error?.message))
 
     // A signed-in shopper: the order goes in their history, and their details are kept for next time

@@ -138,6 +138,8 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   `afterDelivered` = review ask + invoice + points, used by orders PATCH, courier webhook, shop cron and the courier panel.
   Store order route: `usePoints` only for a signed-in shopper whose saved phone is the order phone; points join the
   order's discount (`discount_code` "CODE + 120 points"). Account API returns `points`. Offers tab → `LoyaltyCard`.
+  Front Desk members (`shop_loyalty.members`): `memberDiscount` (best `plan.discount_percent` of `cardsForCustomer`), same
+  signed-in + own-phone rule; replaces the offer only when it saves more; account API returns `member`.
 - **Shop: store layouts and Instagram** (4.1): `lib/commerce/store-look.ts` (browser-safe: `STORE_LAYOUTS` grid / big / list /
   compact with `STORE_LAYOUT_INFO`, `cleanInstagramHandle`, `instagramPost` → "p/<code>" or "reel/<code>", max 9). Kept in
   `storefront.layout` and `storefront.instagram` {handle, posts} (`readStorefront`, `storeView`). Store page: `gridClass`

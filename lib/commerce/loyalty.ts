@@ -16,6 +16,8 @@ export interface LoyaltySettings {
   minUse: number
   /** At most this percent of an order can be paid with points */
   maxPercent: number
+  /** Front Desk members get their plan's discount in the shop (signed-in shoppers, own phone) */
+  members: boolean
 }
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
@@ -32,7 +34,19 @@ export function readLoyaltySettings(raw: unknown): LoyaltySettings {
     percent: Number.isFinite(percent) && percent > 0 && percent <= 50 ? round2(percent) : 2,
     minUse: clampInt(s.minUse, 0, 100000, 50),
     maxPercent: clampInt(s.maxPercent, 1, 100, 50),
+    members: s.members === true,
   }
+}
+
+/** A Front Desk membership's shop discount: the best plan discount among the customer's usable cards. */
+export function memberDiscount(cards: { plan?: { name?: string; discount_percent?: number } | null }[], amount: number): { percent: number; amount: number; title: string } | null {
+  let best: { percent: number; name: string } | null = null
+  for (const card of cards) {
+    const percent = Math.min(100, Math.max(0, Number(card.plan?.discount_percent) || 0))
+    if (percent > 0 && (!best || percent > best.percent)) best = { percent, name: String(card.plan?.name || 'Member') }
+  }
+  if (!best || amount <= 0) return null
+  return { percent: best.percent, amount: round2((amount * best.percent) / 100), title: `${best.name} member ${best.percent}% off` }
 }
 
 export const phoneKey = (phone: unknown) => String(phone ?? '').replace(/\D/g, '').slice(-10)

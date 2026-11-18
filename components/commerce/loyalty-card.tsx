@@ -65,6 +65,10 @@ export function LoyaltyCard({ orgId, showToast }: { orgId: string; showToast: Sh
           <p className={`${hintClass} mt-0 min-[480px]:col-span-3`}>Your store says: “{loyaltyLine(settings)}”</p>
         </div>
       )}
+      <label className="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" checked={settings.members} onChange={(e) => setSettings({ ...settings, members: e.target.checked })} />
+        <span>Front Desk members get their plan&apos;s discount in the shop<span className={`block ${hintClass} mt-0`}>For customers signed in on your store with the phone on their membership card. Used instead of an offer when it saves more.</span></span>
+      </label>
       <button type="button" className={primaryButton} disabled={saving} onClick={save}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save points</button>
       {settings.on && (
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
