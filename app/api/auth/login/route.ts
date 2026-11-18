@@ -64,10 +64,10 @@ export async function POST(request: NextRequest) {
       return response
     }
 
-    // After the password, a 6-digit code emailed to the person proves the email is theirs.
-    // Set OTP_LOGIN=off to skip the code step entirely.
-    const otpOff = String(process.env.OTP_LOGIN || '').trim().toLowerCase() === 'off'
-    if (otpOff) return signInNow()
+    // The emailed 6-digit code after the password is switched off (owner, 18 Nov 2026): the password signs
+    // the person in. Set OTP_LOGIN=on to ask for the code again.
+    const otpOn = String(process.env.OTP_LOGIN || '').trim().toLowerCase() === 'on'
+    if (!otpOn) return signInNow()
 
     const issued = await issueLoginCode(adminSupabase, normalisedEmail).catch((e) => { console.error('[Login API] Could not make a code:', e?.message); return { error: 'make-failed' } as const })
     if ('error' in issued) {
