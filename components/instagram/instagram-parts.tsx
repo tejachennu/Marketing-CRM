@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, ArrowLeft, Check, Clock, EyeOff, Eye, ImagePlus, Camera as Instagram, Loader2, MessageCircle, MessageSquare, Plus, RefreshCw, Reply, Send, Settings as SettingsIcon, Sparkles, Trash2, Unlink, Zap } from 'lucide-react'
 import { supabase, restoreSupabaseSession } from '@/lib/supabase'
@@ -8,10 +8,13 @@ import { authSessionManager } from '@/lib/auth-context'
 import { can, type RoleSubject } from '@/lib/rbac'
 import { loadMetaSdk } from '@/lib/meta-sdk'
 import { DEFAULT_AUTOMATION, checkCaption, type IgAutomation } from '@/lib/instagram/rules'
-import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass } from '@/components/commerce/ui'
+import { cardClass, hintClass, inputClass, labelClass, primaryButton as commerceButton, secondaryButton, textareaClass } from '@/components/commerce/ui'
+
+// The Commerce screens' main button is WhatsApp green; Instagram uses the product's one blue
+const primaryButton = commerceButton.replace('bg-[#008069] hover:bg-[#006d59]', 'bg-[#1D5BEA] hover:bg-[#174bc4]')
 
 interface Account { igUserId: string; username: string | null; name: string | null; picture: string | null; subscribed: boolean; lastError: string | null; slowDownMinutes?: number }
-interface Comment { id: string; comment_id: string; parent_id: string | null; from_username: string | null; text: string; hidden: boolean; reply_text: string | null; replied_at: string | null; private_reply_at: string | null; created_at: string; media_type: string | null; auto_replied?: boolean; post: { image: string; link: string; caption: string } | null }
+interface Comment { id: string; comment_id: string; parent_id: string | null; media_id: string | null; from_username: string | null; text: string; hidden: boolean; reply_text: string | null; replied_at: string | null; private_reply_at: string | null; created_at: string; media_type: string | null; auto_replied?: boolean; post: { image: string; link: string; caption: string } | null }
 interface Post { id: string; type: string; image: string; link: string; caption: string; at: string }
 interface Checks { webhook: boolean | null; messages: boolean | null }
 interface Summary { unreadChats: number; openComments: number }
@@ -187,9 +190,10 @@ export function InstagramCommentsPage() {
   const { orgId, viewer } = useViewer()
   const [tab, setTab] = useState<'comments' | 'posts'>('comments')
   const [open, setOpen] = useState<number | null>(null)
+  const [me, setMe] = useState<Account | null>(null)
   const refresh = useCallback(() => {
     if (!orgId) return
-    void fetch(`/api/instagram?organizationId=${orgId}`).then((r) => r.json()).then((d) => setOpen(d.summary?.openComments ?? null)).catch(() => null)
+    void fetch(`/api/instagram?organizationId=${orgId}`).then((r) => r.json()).then((d) => { setOpen(d.summary?.openComments ?? null); setMe(d.account || null) }).catch(() => null)
   }, [orgId])
   useEffect(() => { refresh() }, [refresh])
 
@@ -214,7 +218,7 @@ export function InstagramCommentsPage() {
           ))}
         </div>
 
-        {orgId && tab === 'comments' && <CommentsPanel orgId={orgId} canReply={can(viewer, 'records.write')} onChange={refresh} />}
+        {orgId && tab === 'comments' && <CommentsPanel orgId={orgId} canReply={can(viewer, 'records.write')} me={me} onChange={refresh} />}
         {orgId && tab === 'posts' && <PostsPanel orgId={orgId} canPost={can(viewer, 'automation.manage')} />}
       </div>
     </div>
@@ -305,11 +309,39 @@ function Empty({ icon: Icon, title, text }: { icon: typeof Zap; title: string; t
   )
 }
 
-function CommentsPanel({ orgId, canReply, onChange }: { orgId: string; canReply: boolean; onChange: () => void }) {
+const ago = (iso: string) => {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000)
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`
+  return when(iso)
+}
+const waitingOn = (c: Comment) => !c.replied_at && !c.private_reply_at && !c.hidden && !c.parent_id
+
+function Avatar({ name, picture, size = 'md' }: { name: string; picture?: string | null; size?: 'sm' | 'md' }) {
+  const box = size === 'sm' ? 'h-7 w-7 text-[11px]' : 'h-9 w-9 text-sm'
+  // eslint-disable-next-line @next/next/no-img-element
+  if (picture) return <img src={picture} alt="" className={`${box} shrink-0 rounded-full object-cover border border-[#e3e8f2]`} />
+  return <span className={`${box} shrink-0 rounded-full flex items-center justify-center font-bold ${tone(name)}`}>{initial(name)}</span>
+}
+
+function PostThumb({ post, size }: { post: Comment['post']; size: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  if (post?.image) return <img src={post.image} alt="" className={`${size} shrink-0 rounded-lg object-cover border border-[#e3e8f2] dark:border-slate-700`} />
+  return <span className={`${size} shrink-0 rounded-lg bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#8a94a8]`}><ImagePlus size={16} /></span>
+}
+
+interface PostThread { key: string; post: Comment['post']; mediaType: string | null; top: Comment[]; replies: Map<string, Comment[]>; total: number; waiting: number; latest: string }
+
+/** Comments by post, like Instagram: posts on the left (waiting first), the post's thread on the right. */
+function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canReply: boolean; me: Account | null; onChange: () => void }) {
   const [filter, setFilter] = useState<'open' | 'all'>('open')
   const [list, setList] = useState<Comment[] | null>(null)
-  const [open, setOpen] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [replyTo, setReplyTo] = useState<Comment | null>(null)
   const [draft, setDraft] = useState('')
+  const [asDm, setAsDm] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [wait, setWait] = useState(0)
@@ -320,7 +352,7 @@ function CommentsPanel({ orgId, canReply, onChange }: { orgId: string; canReply:
   const load = useCallback(async (sync = false) => {
     if (!sync && checking.current) return
     if (sync) { setSyncing(true); checking.current = true }
-    const res = await fetch(`/api/instagram/comments?organizationId=${orgId}&filter=${filter}${sync ? '&sync=1' : ''}`).catch(() => null)
+    const res = await fetch(`/api/instagram/comments?organizationId=${orgId}&filter=all${sync ? '&sync=1' : ''}`).catch(() => null)
     const d = res ? await res.json().catch(() => ({})) : {}
     setList(d.comments || [])
     if (sync) {
@@ -330,73 +362,177 @@ function CommentsPanel({ orgId, canReply, onChange }: { orgId: string; canReply:
       if (d.syncError) setError(`Could not read new comments from Instagram: ${d.syncError}`)
       onChange()
     }
-  }, [orgId, filter, onChange])
+  }, [orgId, onChange])
   const first = useRef(true)
   useEffect(() => { void load(first.current); first.current = false }, [load])
 
-  async function act(c: Comment, action: string) {
+  const threads = useMemo(() => {
+    const byPost = new Map<string, PostThread>()
+    const ids = new Set((list || []).map((c) => c.comment_id))
+    for (const c of list || []) {
+      const key = c.media_id || 'other'
+      const t: PostThread = byPost.get(key) || { key, post: c.post, mediaType: c.media_type, top: [], replies: new Map(), total: 0, waiting: 0, latest: c.created_at }
+      if (c.parent_id && ids.has(c.parent_id)) t.replies.set(c.parent_id, [...(t.replies.get(c.parent_id) || []), c])
+      else t.top.push(c)
+      t.total++
+      if (waitingOn(c)) t.waiting++
+      if (c.created_at > t.latest) t.latest = c.created_at
+      t.post = t.post || c.post
+      byPost.set(key, t)
+    }
+    for (const t of byPost.values()) {
+      t.top.sort((a, b) => a.created_at.localeCompare(b.created_at))
+      for (const r of t.replies.values()) r.sort((a, b) => a.created_at.localeCompare(b.created_at))
+    }
+    return [...byPost.values()].sort((a, b) => (b.waiting > 0 ? 1 : 0) - (a.waiting > 0 ? 1 : 0) || b.latest.localeCompare(a.latest))
+  }, [list])
+  const shownThreads = filter === 'open' ? threads.filter((t) => t.waiting > 0) : threads
+  const current = shownThreads.find((t) => t.key === selected) || null
+  const thread = current || shownThreads[0] || null
+
+  function startReply(c: Comment) {
+    setReplyTo(c)
+    setAsDm(false)
+    setError('')
+    // Instagram answers only top comments: a reply to a reply goes under its comment, naming the person
+    setDraft(c.parent_id && c.from_username ? `@${c.from_username} ` : '')
+  }
+
+  async function act(c: Comment, action: string, text = '') {
     setBusy(`${c.comment_id}:${action}`)
     setError('')
-    const res = await fetch('/api/instagram/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, commentId: c.comment_id, action, text: draft }) })
+    const res = await fetch('/api/instagram/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, commentId: c.comment_id, action, text }) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) setError(d.error || 'That did not work.')
-    else { setDraft(''); setOpen(null); await load(); onChange() }
+    else { setReplyTo(null); setDraft(''); await load(); onChange() }
     setBusy(null)
+  }
+
+  function sendReply() {
+    if (!replyTo || !draft.trim()) return
+    const target = replyTo.parent_id ? (list || []).find((x) => x.comment_id === replyTo.parent_id) || replyTo : replyTo
+    void act(target, asDm ? 'private' : 'reply', draft.trim())
+  }
+
+  const dmAllowed = (c: Comment) => !c.private_reply_at && Date.now() - Date.parse(c.created_at) < 7 * 86_400_000
+
+  // A plain render function, not a component: a component made inside this one would be new on every
+  // keystroke, and the reply box would lose what is being typed
+  const renderComment = (c: Comment, nested = false) => {
+    const who = c.from_username || 'someone'
+    const replies = thread?.replies.get(c.comment_id) || []
+    return (
+      <div key={c.id} className={`flex gap-3 ${nested ? 'mt-3' : ''}`}>
+        <Avatar name={who} size={nested ? 'sm' : 'md'} />
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm leading-snug break-words ${c.hidden ? 'text-[#8a94a8]' : ''}`}><b className="font-semibold text-[#0E1B3D] dark:text-white mr-1.5">{who}</b>{c.text}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-[#8a94a8]">
+            <span className="font-normal">{ago(c.created_at)}</span>
+            {waitingOn(c) && <span className="inline-flex items-center gap-1 text-[#1D5BEA]"><span className="h-1.5 w-1.5 rounded-full bg-[#1D5BEA]" /> Waiting</span>}
+            {c.hidden && <span className="inline-flex items-center gap-1"><EyeOff size={11} /> Hidden</span>}
+            {canReply && <button type="button" onClick={() => startReply(c)} className="hover:text-[#0E1B3D] dark:hover:text-white cursor-pointer">Reply</button>}
+            {canReply && <button type="button" disabled={busy !== null} onClick={() => act(c, c.hidden ? 'unhide' : 'hide')} className="hover:text-[#0E1B3D] dark:hover:text-white cursor-pointer">{busy === `${c.comment_id}:hide` || busy === `${c.comment_id}:unhide` ? 'Saving…' : c.hidden ? 'Show' : 'Hide'}</button>}
+            {canReply && <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm(`Delete @${who}'s comment from Instagram?`)) void act(c, 'delete') }} className="hover:text-[#b91c1c] cursor-pointer">Delete</button>}
+          </div>
+
+          {c.reply_text && (
+            <div className="mt-3 flex gap-2.5">
+              <Avatar name={me?.username || 'You'} picture={me?.picture} size="sm" />
+              <div className="min-w-0">
+                <p className="text-sm leading-snug break-words"><b className="font-semibold text-[#0E1B3D] dark:text-white mr-1.5">{me?.username || 'You'}</b>{c.reply_text}</p>
+                <p className="mt-1 text-xs text-[#8a94a8] flex items-center gap-2">
+                  {c.private_reply_at && !c.replied_at ? <span className="inline-flex items-center gap-1"><MessageCircle size={11} /> Sent as a DM</span> : <span>{c.replied_at ? ago(c.replied_at) : ''}</span>}
+                  {c.auto_replied && <span className="inline-flex items-center gap-0.5 font-semibold text-[#1D5BEA]"><Zap size={11} /> Auto reply</span>}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {replies.map((r) => renderComment(r, true))}
+
+          {replyTo?.comment_id === c.comment_id && (
+            <div className="mt-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] focus-within:border-[#1D5BEA]">
+              <textarea autoFocus rows={2} maxLength={1000} value={draft} onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendReply() } }}
+                placeholder={`Reply to ${who}…`} className="w-full bg-transparent text-sm resize-none outline-none px-3 pt-2.5" />
+              <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
+                {dmAllowed(c.parent_id ? (list || []).find((x) => x.comment_id === c.parent_id) || c : c) && (
+                  <label className="flex items-center gap-1.5 text-xs text-[#4a5672] dark:text-slate-300 cursor-pointer pl-1" title="Instagram allows one DM per comment, within 7 days">
+                    <input type="checkbox" checked={asDm} onChange={(e) => setAsDm(e.target.checked)} className="accent-[#1D5BEA]" /> Send as a DM instead
+                  </label>
+                )}
+                <span className="flex-1" />
+                <button type="button" onClick={() => { setReplyTo(null); setDraft('') }} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">Cancel</button>
+                <button type="button" disabled={busy !== null || !draft.trim()} onClick={sendReply} className="h-8 px-4 rounded-lg text-xs font-bold bg-[#1D5BEA] hover:bg-[#174bc4] text-white disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5">
+                  {busy?.endsWith(':reply') || busy?.endsWith(':private') ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {asDm ? 'Send DM' : 'Post'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2 text-xs">
-        {(['open', 'all'] as const).map((f) => <button key={f} type="button" onClick={() => setFilter(f)} className={`h-8 px-3 rounded-full border cursor-pointer font-semibold ${filter === f ? 'border-[#1D5BEA] bg-[#e8effd] text-[#1D5BEA]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672]'}`}>{f === 'open' ? 'Not answered' : 'All'}</button>)}
+        {(['open', 'all'] as const).map((f) => (
+          <button key={f} type="button" onClick={() => { setFilter(f); setSelected(null) }} className={`h-8 px-3 rounded-full border cursor-pointer font-semibold ${filter === f ? 'border-[#1D5BEA] bg-[#e8effd] text-[#1D5BEA]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672]'}`}>
+            {f === 'open' ? `Waiting${threads.reduce((n, t) => n + t.waiting, 0) ? ` · ${threads.reduce((n, t) => n + t.waiting, 0)}` : ''}` : 'All comments'}
+          </button>
+        ))}
         <span className="ml-auto" />
         <RefreshButton busy={syncing} onClick={() => { setError(''); void load(true) }} label="Check Instagram for new comments" />
       </div>
       <SlowNote minutes={wait} />
       {error && <p role="alert" className="p-3 rounded-xl bg-[#fdf0f0] text-[#b91c1c] text-sm">{error}</p>}
+
       {list === null ? <div className={`${cardClass} py-10 flex justify-center`}><Loader2 className="animate-spin text-slate-400" /></div>
-        : list.length === 0 ? <Empty icon={MessageCircle} title={filter === 'open' ? 'All caught up' : 'No comments yet'} text={filter === 'open' ? 'No comments waiting for an answer.' : 'New comments on your posts and reels show here.'} />
-        : list.map((c) => {
-          const who = c.from_username || 'someone'
-          const replying = open === c.comment_id
-          return (
-            <article key={c.id} className={`${cardClass} p-3 sm:p-4`}>
-              <div className="flex items-start gap-3">
-                {c.post?.image
-                  ? <a href={c.post.link} target="_blank" rel="noopener noreferrer" className="shrink-0" title="Open the post on Instagram">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={c.post.image} alt="" className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg object-cover border border-[#e3e8f2]" /></a>
-                  : <span className={`h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-lg flex items-center justify-center text-base font-bold ${tone(who)}`}>{initial(who)}</span>}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm flex flex-wrap items-baseline gap-x-2 min-w-0"><b className="truncate max-w-full">@{who}</b> <span className="text-[11px] text-[#8a94a8]">{when(c.created_at)}{c.media_type ? ` · ${c.media_type === 'REELS' ? 'reel' : 'post'}` : ''}{c.parent_id ? ' · reply' : ''}</span></p>
-                  <p className={`text-sm mt-0.5 break-words ${c.hidden ? 'text-[#8a94a8] line-through' : ''}`}>{c.text}</p>
-                  {(c.reply_text || c.hidden || c.auto_replied) && (
-                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      {c.auto_replied && <span className="inline-flex items-center gap-1 h-5 px-2 rounded-full bg-[#e8effd] text-[#1D5BEA] text-[10px] font-bold"><Zap size={10} /> Auto</span>}
-                      {c.hidden && <span className="inline-flex items-center gap-1 h-5 px-2 rounded-full bg-[#eef1f6] text-[#4a5672] text-[10px] font-bold"><EyeOff size={10} /> Hidden</span>}
-                      {c.reply_text && <span className="text-xs text-[#4a5672] dark:text-slate-300 flex gap-1 min-w-0"><Reply size={12} className="shrink-0 mt-0.5" /> <span className="break-words">{c.private_reply_at && !c.replied_at ? 'In a DM: ' : ''}{c.reply_text}</span></span>}
-                    </div>
-                  )}
+        : shownThreads.length === 0 ? <Empty icon={MessageCircle} title={filter === 'open' ? 'All caught up' : 'No comments yet'} text={filter === 'open' ? 'Every comment has an answer. New ones show here.' : 'New comments on your posts and reels show here.'} />
+        : (
+          <div className={`${cardClass} overflow-hidden md:grid md:grid-cols-[300px_1fr] md:h-[calc(100dvh-250px)] md:min-h-[460px]`}>
+            {/* Posts with comments */}
+            <div className={`${current ? 'hidden md:block' : 'block'} md:border-r border-[#eef1f6] dark:border-slate-800 md:overflow-y-auto`}>
+              <p className="px-4 pt-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-[#8a94a8]">Posts and reels</p>
+              <ul>
+                {shownThreads.map((t) => {
+                  const on = thread?.key === t.key
+                  return (
+                    <li key={t.key}>
+                      <button type="button" onClick={() => { setSelected(t.key); setReplyTo(null) }} className={`w-full text-left flex items-center gap-3 px-4 py-3 cursor-pointer border-l-2 ${on ? 'md:bg-[#f4f6fa] md:dark:bg-slate-800/60 md:border-[#1D5BEA] border-transparent' : 'border-transparent hover:bg-[#f4f6fa] dark:hover:bg-slate-800/40'}`}>
+                        <PostThumb post={t.post} size="h-12 w-12" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-[#0E1B3D] dark:text-slate-100 truncate">{t.post?.caption?.split('\n')[0] || (t.mediaType === 'REELS' ? 'Reel' : 'Post')}</span>
+                          <span className="block text-xs text-[#8a94a8] mt-0.5">{t.total} {t.total === 1 ? 'comment' : 'comments'} · {ago(t.latest)}</span>
+                        </span>
+                        {t.waiting > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold flex items-center justify-center">{t.waiting}</span>}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+
+            {/* The post and its comments */}
+            {thread && (
+              <div className={`${current ? 'flex' : 'hidden md:flex'} flex-col min-w-0 md:overflow-hidden`}>
+                <div className="flex items-start gap-3 p-4 border-b border-[#eef1f6] dark:border-slate-800">
+                  <button type="button" onClick={() => { setSelected(null); setReplyTo(null) }} className="md:hidden h-9 w-9 -ml-1 shrink-0 rounded-full flex items-center justify-center text-[#4a5672] hover:bg-[#f4f6fa] cursor-pointer" aria-label="Back to posts"><ArrowLeft size={17} /></button>
+                  <PostThumb post={thread.post} size="h-14 w-14" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#0E1B3D] dark:text-slate-100 line-clamp-2 break-words">{thread.post?.caption || (thread.mediaType === 'REELS' ? 'Reel' : 'Post')}</p>
+                    <p className="text-xs text-[#8a94a8] mt-1">{thread.total} {thread.total === 1 ? 'comment' : 'comments'}{thread.waiting ? ` · ${thread.waiting} waiting` : ''}</p>
+                  </div>
+                  {thread.post?.link && <a href={thread.post.link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-[#1D5BEA] hover:underline whitespace-nowrap">Open on Instagram</a>}
+                </div>
+                <div className="flex-1 md:overflow-y-auto p-4 space-y-5">
+                  {thread.top.map((c) => renderComment(c))}
                 </div>
               </div>
-              {canReply && (
-                replying ? (
-                  <div className="mt-3 space-y-2">
-                    <textarea autoFocus rows={2} maxLength={1000} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Reply to @${who}`} className={textareaClass} />
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" disabled={busy !== null || !draft.trim()} onClick={() => act(c, 'reply')} className={primaryButton}>{busy === `${c.comment_id}:reply` ? <Loader2 size={13} className="animate-spin" /> : <Reply size={13} />} Reply in public</button>
-                      {!c.private_reply_at && <button type="button" disabled={busy !== null || !draft.trim()} onClick={() => act(c, 'private')} className={secondaryButton} title="Instagram allows one DM per comment, within 7 days"><MessageCircle size={13} /> Send as DM</button>}
-                      <button type="button" onClick={() => { setOpen(null); setDraft('') }} className="h-9 px-3 text-xs font-semibold text-[#6B7894] cursor-pointer">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 flex flex-wrap gap-2 sm:pl-[68px]">
-                    <button type="button" disabled={busy !== null} onClick={() => { setOpen(c.comment_id); setDraft('') }} className={secondaryButton}><Reply size={13} /> Reply</button>
-                    <button type="button" disabled={busy !== null} onClick={() => act(c, c.hidden ? 'unhide' : 'hide')} className={secondaryButton}>{c.hidden ? <Eye size={13} /> : <EyeOff size={13} />} {c.hidden ? 'Show' : 'Hide'}</button>
-                    <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm('Delete this comment from Instagram?')) void act(c, 'delete') }} className={secondaryButton}><Trash2 size={13} /> Delete</button>
-                  </div>
-                )
-              )}
-            </article>
-          )
-        })}
+            )}
+          </div>
+        )}
     </section>
   )
 }
@@ -514,15 +650,19 @@ function AutoRepliesPanel({ orgId, initial: start, canEdit, onSaved }: { orgId: 
 
 function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
   const [posts, setPosts] = useState<Post[] | null>(null)
+  const [composing, setComposing] = useState(false)
   const [images, setImages] = useState<string[]>([''])
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async (fresh = false) => {
-    const res = await fetch(`/api/instagram/posts?organizationId=${orgId}${fresh ? '&fresh=1' : ''}`)
-    const d = await res.json().catch(() => ({}))
+    if (fresh) setRefreshing(true)
+    const res = await fetch(`/api/instagram/posts?organizationId=${orgId}${fresh ? '&fresh=1' : ''}`).catch(() => null)
+    const d = res ? await res.json().catch(() => ({})) : {}
     setPosts(d.posts || [])
+    setRefreshing(false)
   }, [orgId])
   useEffect(() => { void load() }, [load])
 
@@ -534,15 +674,25 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
     const res = await fetch('/api/instagram/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, images: images.map((u) => u.trim()).filter(Boolean), caption }) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) setNote({ ok: false, text: d.error || 'Could not post.' })
-    else { setNote({ ok: true, text: 'Posted on Instagram.' }); setImages(['']); setCaption(''); await load(true) }
+    else { setNote({ ok: true, text: 'Posted on Instagram.' }); setImages(['']); setCaption(''); setComposing(false); await load(true) }
     setBusy(false)
   }
 
   return (
-    <section className="space-y-4">
-      {canPost && (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-[#6B7894] dark:text-slate-400 flex-1">Your latest posts and reels. Tap one to open it on Instagram.</p>
+        <RefreshButton busy={refreshing} onClick={() => void load(true)} label="Load the latest posts" />
+        {canPost && !composing && <button type="button" onClick={() => { setComposing(true); setNote(null) }} className={primaryButton}><ImagePlus size={14} /> New post</button>}
+      </div>
+      {note?.ok && <p role="status" className="p-3 rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 text-sm flex gap-2"><Check size={16} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> {note.text}</p>}
+
+      {canPost && composing && (
         <div className={`${cardClass} p-4 sm:p-5 space-y-3`}>
-          <h2 className="text-sm font-bold flex items-center gap-2"><ImagePlus size={16} className="text-[#1D5BEA]" /> New post</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold flex items-center gap-2 flex-1"><ImagePlus size={16} className="text-[#1D5BEA]" /> New post</h2>
+            <button type="button" onClick={() => setComposing(false)} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] cursor-pointer">Cancel</button>
+          </div>
           {images.map((url, i) => (
             <input key={i} aria-label={`Photo link ${i + 1}`} value={url} onChange={(e) => setImages((list) => list.map((x, j) => (j === i ? e.target.value : x)))} placeholder="Photo link (https://…, JPEG)" className={inputClass} />
           ))}
@@ -552,23 +702,21 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
             <textarea id="ig-caption" rows={4} maxLength={2200} value={caption} onChange={(e) => setCaption(e.target.value)} className={textareaClass} placeholder="New arrivals this week… #handloom" />
             <p className={hintClass}>{caption.length}/2200. Photos: JPEG, square to 4:5 portrait or 1.91:1 wide. Tip: Products → a product → Post on Instagram fills this in.</p>
           </div>
-          {note && <p className={`text-sm ${note.ok ? 'text-[#0E1B3D] dark:text-slate-200' : 'text-[#b91c1c]'}`}>{note.text}</p>}
+          {note && !note.ok && <p className="text-sm text-[#b91c1c]">{note.text}</p>}
           <button type="button" onClick={publish} disabled={busy || !images.some((u) => u.trim())} className={primaryButton}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} {busy ? 'Posting… (Instagram takes a few seconds)' : 'Post on Instagram'}</button>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold">Latest posts</h2>
-        <button type="button" onClick={() => void load(true)} className={secondaryButton}><RefreshCw size={13} /> Refresh</button>
-      </div>
+
       {posts === null ? <div className={`${cardClass} py-10 flex justify-center`}><Loader2 className="animate-spin text-slate-400" /></div>
         : posts.length === 0 ? <Empty icon={ImagePlus} title="No posts yet" text="Your latest Instagram posts show here." />
         : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-1 sm:gap-2">
             {posts.map((p) => (
-              <a key={p.id} href={p.link} target="_blank" rel="noopener noreferrer" className={`${cardClass} overflow-hidden block hover:border-[#d5ddeb]`}>
+              <a key={p.id} href={p.link} target="_blank" rel="noopener noreferrer" className="group relative block aspect-square overflow-hidden rounded-md sm:rounded-lg bg-[#eef1f6] dark:bg-slate-800">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {p.image ? <img src={p.image} alt="" loading="lazy" className="aspect-square w-full object-cover" /> : <span className="aspect-square w-full flex items-center justify-center bg-[#eef1f6] text-xs text-[#6B7894]">{p.type === 'VIDEO' ? 'Video' : 'Post'}</span>}
-                <p className="p-2 text-xs text-[#4a5672] dark:text-slate-300 line-clamp-2">{p.caption || ' '}</p>
+                {p.image ? <img src={p.image} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" /> : <span className="h-full w-full flex items-center justify-center text-xs text-[#6B7894]">{p.type === 'VIDEO' ? 'Video' : 'Post'}</span>}
+                {(p.type === 'VIDEO' || p.type === 'CAROUSEL_ALBUM') && <span className="absolute top-1.5 right-1.5 h-6 px-1.5 rounded-md bg-black/55 text-white text-[10px] font-bold flex items-center">{p.type === 'VIDEO' ? 'Reel' : 'Album'}</span>}
+                {p.caption && <span className="absolute inset-0 hidden sm:flex items-end p-2.5 bg-black/55 text-white text-xs leading-snug opacity-0 group-hover:opacity-100 transition-opacity"><span className="line-clamp-4">{p.caption}</span></span>}
               </a>
             ))}
           </div>
