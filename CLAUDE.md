@@ -117,6 +117,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Shop: store layouts and Instagram** (4.1): `lib/commerce/store-look.ts` (browser-safe: `STORE_LAYOUTS` grid / big / list /
+  compact with `STORE_LAYOUT_INFO`, `cleanInstagramHandle`, `instagramPost` → "p/<code>" or "reel/<code>", max 9). Kept in
+  `storefront.layout` and `storefront.instagram` {handle, posts} (`readStorefront`, `storeView`). Store page: `gridClass`
+  and `listCard` in `app/s/[slug]/storefront.tsx`; Instagram section uses `https://www.instagram.com/<post>/embed` iframes
+  (no API, no token). Website tab → Look (layout picker) and `InstagramCard`.
 - **Shop: returns and refunds** (3.5): `lib/commerce/returns.ts` (pure: `readReturnSettings` {on, days} in
   `organizations.shop_returns`, `returnChance`, `cleanReturnRequest` with `RETURN_REASONS`, `refundable`, `parseRefund`;
   the ask lives in `shipping_address.return` asked → accepted / declined → refunded), `returns-store.ts` (lock 724519028,

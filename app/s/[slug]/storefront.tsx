@@ -390,29 +390,47 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const cartText = () => [`Hi ${store.name}, I would like to order:`, ...lines.map((l) => `• ${l.qty} × ${l.title} (${money(l.price * l.qty)})`), `Total: ${money(subtotal)}`].join('\n')
 
   /** One product in a grid: picture and name open its page; Add / amount right on the card. */
-  const card = (p: Product) => (
+  // The shop's chosen layout: tiles, big photos, a list, or small tiles
+  const layout = store.layout || 'grid'
+  const gridClass = layout === 'big' ? 'grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6'
+    : layout === 'list' ? 'grid grid-cols-1 lg:grid-cols-2 gap-3'
+    : layout === 'compact' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3'
+    : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5'
+  const priceText = (p: Product) => p.variants?.length && p.priceFrom !== undefined && p.variants.some((v) => v.price !== p.priceFrom) ? <><span className="text-[12.5px] font-semibold text-[#6B7894]">from </span>{money(p.priceFrom)}</> : money(p.variants?.length ? p.priceFrom ?? p.price : p.price)
+  const buyButton = (p: Product, small = false) => !p.inStock ? (
+    <span className={`block text-center text-[#8a94a8] font-semibold ${small ? 'text-[12.5px]' : 'h-10 leading-10 text-[13.5px]'}`}>Not available now</span>
+  ) : p.variants?.length ? (
+    <a href={productHref(p.id)} className={`block text-center rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold hover:bg-[var(--c)] hover:text-white transition-colors ${small ? 'h-9 leading-[32px] px-4 text-[13.5px]' : 'w-full h-10 leading-[36px] text-[14px]'}`}>Choose</a>
+  ) : cart[p.id] ? (
+    <div className="flex justify-center"><Stepper small value={cart[p.id]} onChange={(n) => setQty(p.id, n)} /></div>
+  ) : (
+    <button type="button" onClick={() => setQty(p.id, 1)} className={`rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold cursor-pointer hover:bg-[var(--c)] hover:text-white transition-colors ${small ? 'h-9 px-5 text-[13.5px]' : 'w-full h-10 text-[14px]'}`}>Add</button>
+  )
+  const listCard = (p: Product) => (
+    <article key={p.id} className="bg-white rounded-2xl border border-[#e3e8f2] p-2.5 flex items-center gap-3 min-w-0">
+      <a href={productHref(p.id)} className="relative shrink-0 h-20 w-20 rounded-xl overflow-hidden">
+        <Picture src={p.image} alt={p.title} className={`h-full w-full ${p.inStock ? '' : 'opacity-50 grayscale'}`} />
+      </a>
+      <a href={productHref(p.id)} className="flex-1 min-w-0">
+        <h3 className="text-[14.5px] font-semibold leading-snug line-clamp-2">{p.title}</h3>
+        <p className="mt-0.5 text-[15.5px] font-extrabold">{priceText(p)}</p>
+      </a>
+      <div className="shrink-0">{buyButton(p, true)}</div>
+    </article>
+  )
+  const card = (p: Product) => layout === 'list' ? listCard(p) : (
     <article key={p.id} className="bg-white rounded-2xl border border-[#e3e8f2] overflow-hidden flex flex-col">
       <a href={productHref(p.id)} className="block text-left">
-        <div className="relative aspect-square">
+        <div className={`relative ${layout === 'big' ? 'aspect-[4/5]' : 'aspect-square'}`}>
           <Picture src={p.image} alt={p.title} className={`h-full w-full ${p.inStock ? '' : 'opacity-50 grayscale'}`} />
           {!p.inStock && <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#0E1B3D]/85 text-white text-[11.5px] font-bold">Out of stock</span>}
         </div>
-        <div className="px-3 pt-2.5">
-          <h3 className="text-[14.5px] font-semibold leading-snug line-clamp-2 min-h-[2.6em]">{p.title}</h3>
-          <p className="mt-1 text-[16px] font-extrabold">{p.variants?.length && p.priceFrom !== undefined && p.variants.some((v) => v.price !== p.priceFrom) ? <><span className="text-[12.5px] font-semibold text-[#6B7894]">from </span>{money(p.priceFrom)}</> : money(p.variants?.length ? p.priceFrom ?? p.price : p.price)}</p>
+        <div className={layout === 'compact' ? 'px-2 pt-2' : 'px-3 pt-2.5'}>
+          <h3 className={`font-semibold leading-snug line-clamp-2 min-h-[2.6em] ${layout === 'compact' ? 'text-[13px]' : layout === 'big' ? 'text-[16px]' : 'text-[14.5px]'}`}>{p.title}</h3>
+          <p className={`mt-1 font-extrabold ${layout === 'compact' ? 'text-[14px]' : 'text-[16px]'}`}>{priceText(p)}</p>
         </div>
       </a>
-      <div className="p-3 mt-auto">
-        {!p.inStock ? (
-          <span className="block h-10 leading-10 text-center text-[13.5px] text-[#8a94a8] font-semibold">Not available now</span>
-        ) : p.variants?.length ? (
-          <a href={productHref(p.id)} className="block w-full h-10 leading-[36px] text-center rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[14px] font-bold hover:bg-[var(--c)] hover:text-white transition-colors">Choose</a>
-        ) : cart[p.id] ? (
-          <div className="flex justify-center"><Stepper small value={cart[p.id]} onChange={(n) => setQty(p.id, n)} /></div>
-        ) : (
-          <button type="button" onClick={() => setQty(p.id, 1)} className="w-full h-10 rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[14px] font-bold cursor-pointer hover:bg-[var(--c)] hover:text-white transition-colors">Add</button>
-        )}
-      </div>
+      <div className={`mt-auto ${layout === 'compact' ? 'p-2' : 'p-3'}`}>{buyButton(p)}</div>
     </article>
   )
 
@@ -523,7 +541,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           {shown.length === 0 ? (
             <p className="py-16 text-center text-[#6B7894]">{store.products.length ? 'Nothing matches. Try another word.' : 'Products are coming soon.'}</p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+            <div className={gridClass}>
               {shown.map(card)}
             </div>
           )}
@@ -637,11 +655,28 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 <h2 className="text-[19px] font-extrabold mr-auto">More in {viewing.category}</h2>
                 <a href={categoryHref(viewing.category)} className="text-[14px] font-bold text-[var(--c)]">See all</a>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">{related.map(card)}</div>
+              <div className={gridClass}>{related.map(card)}</div>
             </div>
           )}
         </section>
       )}
+
+      {/* The shop's Instagram: posts it picked (Instagram's own embeds), and a follow link */}
+      {!viewing && !query && (store.instagram?.posts.length || store.instagram?.handle) ? (
+        <section className="max-w-6xl mx-auto px-4 pb-24" aria-label="Instagram">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <h2 className="text-[19px] font-extrabold mr-auto">On Instagram</h2>
+            {store.instagram.handle && <a href={`https://www.instagram.com/${store.instagram.handle}/`} target="_blank" rel="noreferrer" className="h-9 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center">Follow @{store.instagram.handle}</a>}
+          </div>
+          {store.instagram.posts.length > 0 && (
+            <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 gap-4">
+              {store.instagram.posts.slice(0, 6).map((post) => (
+                <iframe key={post} src={`https://www.instagram.com/${post}/embed`} title="Instagram post" loading="lazy" className="w-full h-[520px] rounded-2xl border border-[#e3e8f2] bg-white" allowTransparency scrolling="no" />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <footer className="bg-white border-t border-[#e3e8f2]">
         <div className="max-w-6xl mx-auto px-4 py-8 grid gap-6 sm:grid-cols-2 text-[14.5px]">

@@ -8,6 +8,8 @@
  */
 
 import { readReturnSettings, type ReturnSettings } from './returns'
+import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, cleanInstagramHandle, instagramPost, type StoreLayout } from './store-look'
+export { STORE_LAYOUTS, STORE_LAYOUT_INFO, type StoreLayout } from './store-look'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import { normalizePhone } from '../public-api/keys'
 import { isUuid } from '../record-visibility'
@@ -95,7 +97,13 @@ export interface StorefrontSettings {
   accounts: boolean
   /** Info and policy pages (About, Shipping, Returns, Terms, Privacy, Contact): the business's own words. */
   pages: Partial<Record<StorePageKey, string>>
+  /** How products are laid out: tiles, big photos, a list, or small tiles */
+  layout: StoreLayout
+  /** Instagram: the shop's handle and up to 9 post / reel links shown on the store */
+  instagram: { handle: string; posts: string[] }
 }
+
+
 
 export const MAX_BANNERS = 8
 export const MAX_CATEGORIES = 40
@@ -105,6 +113,7 @@ export function defaultStorefront(): StorefrontSettings {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
     min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true, pages: {},
+    layout: 'grid', instagram: { handle: '', posts: [] },
   }
 }
 
@@ -183,6 +192,11 @@ export function readStorefront(raw: any): StorefrontSettings {
     pages: cleanPages(raw.pages),
     payment: raw.payment === 'online' || raw.payment === 'both' ? raw.payment : 'later',
     accounts: raw.accounts !== false,
+    layout: (STORE_LAYOUTS as readonly string[]).includes(raw.layout) ? raw.layout : 'grid',
+    instagram: {
+      handle: cleanInstagramHandle(raw.instagram?.handle),
+      posts: [...new Set((Array.isArray(raw.instagram?.posts) ? raw.instagram.posts : []).map((p: unknown) => instagramPost(/^(p|reel)\//.test(String(p)) ? `https://www.instagram.com/${p}` : p)).filter(Boolean))].slice(0, MAX_INSTAGRAM_POSTS) as string[],
+    },
   }
 }
 
@@ -320,6 +334,7 @@ export function storeView(page: StorePage) {
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
+    layout: s.layout, instagram: s.instagram,
     offers: page.offers || [], hasCodes: page.hasCodes === true,
     returns: page.returns || { on: false, days: 7 },
     // Which info pages have something to show (for the footer links)

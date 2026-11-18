@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, Globe, ImagePlus, Loader2, Plus, RefreshCw, Sparkles, Trash2, Clock } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
+import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, STORE_LAYOUT_INFO, cleanInstagramHandle, instagramPost } from '@/lib/commerce/store-look'
 import { MAX_PAGE_TEXT, STORE_PAGES, STORE_PAGE_TITLES, starterPage, type StorePageKey } from '@/lib/commerce/store-pages'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
@@ -531,7 +532,20 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
             ))}
           </div>
         </div>
+        <div>
+          <span className={labelClass}>How products are shown</span>
+          <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">
+            {STORE_LAYOUTS.map((l) => (
+              <button key={l} type="button" disabled={disabled} onClick={() => set({ layout: l })} aria-pressed={(settings.layout || 'grid') === l} className={`text-left rounded-xl border p-3 cursor-pointer ${(settings.layout || 'grid') === l ? 'border-[#1D5BEA] bg-[#1D5BEA]/5' : 'border-slate-200 dark:border-slate-700'}`}>
+                <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-slate-900 dark:text-white">{(settings.layout || 'grid') === l && <Check size={14} className="text-[#1D5BEA]" />}{STORE_LAYOUT_INFO[l].title}</span>
+                <span className="block text-xs text-slate-500 mt-0.5">{STORE_LAYOUT_INFO[l].hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
+
+      <InstagramCard value={settings.instagram || { handle: '', posts: [] }} disabled={disabled} onChange={(instagram) => set({ instagram })} />
 
       <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
         <div className="flex items-start justify-between gap-3">
@@ -706,6 +720,46 @@ function PagesEditor({ settings, set, disabled, heading, sub }: { settings: any;
         </button>
         <span className="text-[11px] text-slate-500">The sample uses your delivery charges and contact. Read it and change what is not right for your shop. Press Save website to publish.</span>
       </div>
+    </section>
+  )
+}
+
+/** Website → Instagram: the shop's handle and the posts / reels to show on the store (Instagram's own embeds). */
+function InstagramCard({ value, disabled, onChange }: { value: { handle: string; posts: string[] }; disabled: boolean; onChange: (v: { handle: string; posts: string[] }) => void }) {
+  const [link, setLink] = useState('')
+  const [error, setError] = useState('')
+  const add = () => {
+    const post = instagramPost(link)
+    if (!post) { setError('Paste the link of an Instagram post or reel, like https://www.instagram.com/p/Cx1aB2cd/'); return }
+    if (value.posts.includes(post)) { setLink(''); return }
+    onChange({ ...value, posts: [...value.posts, post].slice(0, MAX_INSTAGRAM_POSTS) })
+    setLink('')
+    setError('')
+  }
+  return (
+    <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
+      <h2 className="text-sm font-bold text-slate-900 dark:text-white">Instagram on your store</h2>
+      <p className={`${hintClass} mt-0`}>Shown above the footer. On Instagram, open a post, tap ⋯ → Copy link, and paste it here. Up to {MAX_INSTAGRAM_POSTS} posts (6 show at a time).</p>
+      <div>
+        <label className={labelClass} htmlFor="ig-handle">Your Instagram name (optional)</label>
+        <input id="ig-handle" className={inputClass} placeholder="@yourshop" disabled={disabled} value={value.handle ? `@${value.handle}` : ''} onChange={(e) => onChange({ ...value, handle: cleanInstagramHandle(e.target.value) || e.target.value.replace(/[^A-Za-z0-9._]/g, '').slice(0, 30) })} />
+      </div>
+      <div className="flex gap-2">
+        <input aria-label="Instagram post link" className={inputClass} placeholder="https://www.instagram.com/p/…" disabled={disabled || value.posts.length >= MAX_INSTAGRAM_POSTS} value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
+        <button type="button" onClick={add} disabled={disabled || !link || value.posts.length >= MAX_INSTAGRAM_POSTS} className={`${secondaryButton} shrink-0`}><Plus size={13} /> Add</button>
+      </div>
+      {error && <p className="text-xs text-[#b91c1c]">{error}</p>}
+      {value.posts.length > 0 && (
+        <ul className="space-y-1.5">
+          {value.posts.map((post, i) => (
+            <li key={post} className="flex items-center gap-2 text-xs">
+              <a href={`https://www.instagram.com/${post}/`} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[#1D5BEA] hover:underline">instagram.com/{post}</a>
+              <button type="button" aria-label="Move up" disabled={disabled || i === 0} onClick={() => { const next = [...value.posts]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; onChange({ ...value, posts: next }) }} className="h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center disabled:opacity-40 cursor-pointer"><ArrowUp size={12} /></button>
+              <button type="button" aria-label="Remove" disabled={disabled} onClick={() => onChange({ ...value, posts: value.posts.filter((p) => p !== post) })} className="h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#b91c1c] cursor-pointer"><Trash2 size={12} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
