@@ -11,7 +11,9 @@ import { askCodCheck } from '@/lib/commerce/cod-check'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
-import { saveShopper, shopperFrom, withStoreAccountsSchema } from '@/lib/commerce/store-accounts'
+import { loadShopper, samePhone, saveShopper, shopperFrom, withStoreAccountsSchema } from '@/lib/commerce/store-accounts'
+import { loadLoyaltySettings, pointsBalance, usePoints } from '@/lib/commerce/loyalty-store'
+import { pointsUsable } from '@/lib/commerce/loyalty'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -41,6 +43,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const decided = await decideDiscount(db, page.organization.id, body?.code, cartForDiscount(page, parsed.order.items, parsed.order.shippingFee || 0), parsed.order.customer.phone)
     if (decided && !decided.ok) return NextResponse.json({ error: decided.reason, field: 'code' }, { status: 400 })
     if (decided?.ok) parsed.order.discount = { code: decided.code, title: decided.title, amount: decided.amount, freeDelivery: decided.freeDelivery }
+    // Loyalty points: only a signed-in shopper, for their own saved phone (decided here, never by the browser)
+    const shopper = page.settings.accounts ? await shopperFrom(request, db) : null
+    let pointsUsed = 0
+    if (body?.usePoints === true && shopper) {
+      const saved = await loadShopper(db, page.organization.id, shopper.id).catch(() => null)
+      if (saved?.phone && samePhone(saved.phone, parsed.order.customer.phone)) {
+        const loyalty = await loadLoyaltySettings(db, page.organization.id)
+        const afterOffer = parsed.subtotal - (decided?.ok ? decided.amount : 0)
+        pointsUsed = pointsUsable(await pointsBalance(db, page.organization.id, saved.phone), afterOffer, loyalty)
+      }
+      if (pointsUsed > 0) {
+        const offer = parsed.order.discount
+        parsed.order.discount = offer
+          ? { ...offer, code: `${offer.code || offer.title} + ${pointsUsed} points`, amount: offer.amount + pointsUsed }
+          : { code: null, title: `${pointsUsed} points`, amount: pointsUsed, freeDelivery: false }
+      }
+    }
     const made = await createManualOrder(db, org || page.organization, parsed.order, createOrderNumber)
     if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
     const order = made.order
@@ -53,10 +72,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const { data: fullOrg } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
       if (fullOrg) await askCodCheck(db, fullOrg, order, parsed.order.customer.phone).catch(() => null)
     }
-    if (decided?.ok) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, Number(order.discount_amount) || decided.amount).catch(() => null)
+    if (decided?.ok) await recordDiscountUse(db, page.organization.id, decided.discount, order.id, parsed.order.customer.phone, decided.amount).catch(() => null)
+    if (pointsUsed > 0) await usePoints(db, page.organization.id, parsed.order.customer.phone, pointsUsed, order.id).catch((error: any) => console.error('[Store points]', error?.message))
 
     // A signed-in shopper: the order goes in their history, and their details are kept for next time
-    const shopper = page.settings.accounts ? await shopperFrom(request, db) : null
     if (shopper) {
       await withStoreAccountsSchema(() => db.from('commerce_orders').update({ shopper_id: shopper.id }).eq('id', order.id)).catch(() => null)
       await saveShopper(db, page.organization.id, shopper, {
@@ -80,6 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } catch (error: any) {
         console.error('[Store page payment]', error?.message)
         await db.from('commerce_order_items').delete().eq('order_id', order.id)
+        if (pointsUsed > 0) await db.from('commerce_points').delete().eq('order_id', order.id)
         await db.from('commerce_orders').delete().eq('id', order.id)
         return NextResponse.json({ error: page.pay.later ? 'Online payment is not working right now. Please choose to pay on delivery or pick up, or try again in a minute.' : 'Online payment is not working right now. Please try again in a minute or call the shop.' }, { status: 502 })
       }

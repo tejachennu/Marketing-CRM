@@ -77,6 +77,7 @@ export function rowToDiscount(row: any): Discount {
     max_uses: row.max_uses === null || row.max_uses === undefined ? null : Number(row.max_uses), uses: Number(row.uses) || 0,
     once_per_phone: row.once_per_phone === true, first_order_only: row.first_order_only === true,
     starts_at: row.starts_at || null, ends_at: row.ends_at || null, active: row.active !== false,
+    for_phone: row.for_phone || null,
   }
 }
 
@@ -88,9 +89,9 @@ export async function listDiscounts(db: any, organizationId: string): Promise<Di
 }
 
 /** For a phone: has it used this offer, and has it ordered here before (not counting cancelled orders)? */
-export async function phoneContext(db: any, organizationId: string, discountId: string | undefined, phone: string | null): Promise<{ usedByPhone: boolean; orderedBefore: boolean }> {
+export async function phoneContext(db: any, organizationId: string, discountId: string | undefined, phone: string | null): Promise<{ usedByPhone: boolean; orderedBefore: boolean; phoneKey: string }> {
   const key = phoneKey(phone)
-  if (key.length < 10) return { usedByPhone: false, orderedBefore: false }
+  if (key.length < 10) return { usedByPhone: false, orderedBefore: false, phoneKey: '' }
   let usedByPhone = false
   if (discountId) {
     const { data } = await db.from('commerce_discount_uses').select('id').eq('discount_id', discountId).eq('phone_key', key).limit(1)
@@ -103,7 +104,7 @@ export async function phoneContext(db: any, organizationId: string, discountId: 
     const { data: orders } = await db.from('commerce_orders').select('id, status').eq('organization_id', organizationId).in('contact_id', ids).limit(20)
     orderedBefore = (orders || []).some((o: any) => o.status !== 'canceled')
   }
-  return { usedByPhone, orderedBefore }
+  return { usedByPhone, orderedBefore, phoneKey: key }
 }
 
 export type Decided = (DiscountResult & { ok: true; discount: Discount }) | { ok: false; reason: string } | null
@@ -151,5 +152,5 @@ export async function recordDiscountUse(db: any, organizationId: string, discoun
 
 /** Offers that apply by themselves, for the store page to show ("Buy 2 get 1 free"). */
 export function publicOffers(discounts: Discount[], now = Date.now()) {
-  return discounts.filter((d) => d.code === null && isOpen(d, now)).map((d) => ({ title: d.title, kind: d.kind, min_order: d.min_order }))
+  return discounts.filter((d) => d.code === null && !d.for_phone && isOpen(d, now)).map((d) => ({ title: d.title, kind: d.kind, min_order: d.min_order }))
 }

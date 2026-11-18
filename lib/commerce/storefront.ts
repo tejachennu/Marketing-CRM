@@ -8,6 +8,7 @@
  */
 
 import { readReturnSettings, type ReturnSettings } from './returns'
+import { readLoyaltySettings, type LoyaltySettings } from './loyalty'
 import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, cleanInstagramHandle, instagramPost, type StoreLayout } from './store-look'
 export { STORE_LAYOUTS, STORE_LAYOUT_INFO, type StoreLayout } from './store-look'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
@@ -262,6 +263,8 @@ export interface StorePage {
   hasCodes?: boolean
   /** Customers can ask for a return in My orders, within this many days of delivery */
   returns?: ReturnSettings
+  /** Loyalty points: points back on every order, used at checkout by signed-in shoppers */
+  loyalty?: LoyaltySettings
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -314,6 +317,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
     pinCheck: settings.delivery && readyPartners(org).length > 0,
     returns: readReturnSettings(org.shop_returns),
+    loyalty: readLoyaltySettings(org.shop_loyalty),
     offers: publicOffers(discounts),
     hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {
@@ -337,6 +341,7 @@ export function storeView(page: StorePage) {
     layout: s.layout, instagram: s.instagram,
     offers: page.offers || [], hasCodes: page.hasCodes === true,
     returns: page.returns || { on: false, days: 7 },
+    loyalty: page.loyalty || readLoyaltySettings(null),
     // Which info pages have something to show (for the footer links)
     pages: STORE_PAGES.filter((key) => pageText(key, s.pages, { name: page.organization.name, about: s.about, phone: s.phone, whatsapp: s.whatsapp, address: s.address })),
   }

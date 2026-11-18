@@ -7,8 +7,9 @@ import { getCommerceSummary } from '@/lib/commerce/commerce-stats'
 import { createOrderNumber, notifyOrderStatus, resendCheckoutStep, voidPaymentRequest } from '@/lib/commerce/commerce-webhook-handler'
 import { createManualOrder, parseManualOrder } from '@/lib/commerce/manual-order'
 import { changeVariantStock } from '@/lib/commerce/variant-store'
-import { askForReviewOf } from '@/lib/commerce/review-store'
 import { cancelInvoiceFor, issueInvoiceQuietly } from '@/lib/commerce/invoice-store'
+import { afterDelivered } from '@/lib/commerce/order-delivered'
+import { returnPointsFor } from '@/lib/commerce/loyalty-store'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -225,17 +226,17 @@ export async function PATCH(request: NextRequest) {
         paymentRequestCanceled = status === 'canceled' && result.viaCard
       }
 
-      // Delivered: "How was it?" on WhatsApp with the review link (once per order)
-      if (status === 'delivered') {
-        await askForReviewOf(supabase, organizationId, orderId, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)).catch(() => null)
-      }
-      // Shipped or delivered: the order's GST invoice (once; the customer sees it in My orders)
-      if (status === 'shipped' || status === 'delivered') await issueInvoiceQuietly(supabase, organizationId, orderId)
+      // Shipped: the order's GST invoice (once; the customer sees it in My orders)
+      if (status === 'shipped') await issueInvoiceQuietly(supabase, organizationId, orderId)
+      // Delivered: "How was it?" on WhatsApp, the invoice, and loyalty points (each once per order)
+      if (status === 'delivered') await afterDelivered(supabase, organizationId, orderId, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin))
 
       // A cancelled order gives the stock of its sizes / colours back
       if (status === 'canceled') {
         // and its invoice, if one was issued, says Cancelled
         await cancelInvoiceFor(supabase, organizationId, orderId).catch(() => null)
+        // and points used on it go back to the customer
+        await returnPointsFor(supabase, organizationId, orderId).catch(() => null)
         for (const item of (updatedOrder.items || []) as any[]) {
           if (item.variant_id) await changeVariantStock(supabase, organizationId, item.variant_id, Number(item.quantity) || 0).catch(() => null)
         }

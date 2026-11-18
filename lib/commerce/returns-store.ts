@@ -9,6 +9,7 @@ import { readReturn, readReturnSettings, refundable, type ReturnRequest, type Re
 import { sendShopMessage } from './shop-messages-send'
 import { refundStorePayment, storeRazorpayKeys } from './store-payments'
 import { changeVariantStock } from './variant-store'
+import { returnPointsFor } from './loyalty-store'
 
 /** supabase/migrations/20261201_shop_returns.sql word for word. */
 export const RETURNS_SQL = `-- Shop returns and refunds. Safe to run more than once. The app runs it on its own when first needed.
@@ -130,6 +131,8 @@ export async function refundOrder(db: any, org: any, order: any, input: { amount
   if (current && current.status !== 'declined') ship.return = { ...current, status: 'refunded', decided_at: current.decided_at || new Date().toISOString() }
   await db.from('commerce_orders').update({ shipping_address: ship, ...(after.left <= 0 ? { payment_status: 'refunded' } : {}), updated_at: new Date().toISOString() }).eq('id', order.id)
 
+  // Refunded in full: points used come back, points earned go
+  if (after.left <= 0) await returnPointsFor(db, org.id, order.id).catch(() => null)
   const amount = formatMoney(input.amount, order.currency || 'INR')
   await tellCustomer(db, org.id, order, method === 'razorpay'
     ? `we have refunded ${amount}. It goes back to the same card, UPI or bank account in 5–7 working days.`

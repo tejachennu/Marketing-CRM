@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { applyTracking, sameKey, withShippingSchema } from '@/lib/commerce/shipping'
 import { notifyParcel } from '@/lib/commerce/shipping-notify'
-import { askForReviewOf } from '@/lib/commerce/review-store'
-import { issueInvoiceQuietly } from '@/lib/commerce/invoice-store'
+import { afterDelivered } from '@/lib/commerce/order-delivered'
 import { shiprocketWebhook } from '@/lib/commerce/shiprocket'
 import { delhiveryWebhook } from '@/lib/commerce/delhivery'
 
@@ -26,6 +25,6 @@ export async function POST(request: NextRequest) {
   if (!shipment) return NextResponse.json({ ok: true, note: 'unknown parcel' })
   const { data: org } = await db.from('organizations').select('id, shipping_webhook_token').eq('id', shipment.organization_id).maybeSingle()
   if (!sameKey(key, org?.shipping_webhook_token)) return NextResponse.json({ ok: false, error: 'Wrong key' }, { status: 401 })
-  await applyTracking(db, shipment, update, { notify: (args) => notifyParcel(db, args), onDelivered: async (id) => { await askForReviewOf(db, shipment.organization_id, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)).catch(() => null); await issueInvoiceQuietly(db, shipment.organization_id, id) } })
+  await applyTracking(db, shipment, update, { notify: (args) => notifyParcel(db, args), onDelivered: (id) => afterDelivered(db, shipment.organization_id, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin)) })
   return NextResponse.json({ ok: true })
 }

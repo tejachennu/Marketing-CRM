@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, BadgePercent, Copy, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { KIND_LABELS, isOpen, type Discount, type DiscountKind } from '@/lib/commerce/discounts'
+import { LoyaltyCard } from './loyalty-card'
 import { Modal, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
 
-type Form = { id?: string; title: string; automatic: boolean; code: string; kind: DiscountKind; value: string; buy_qty: string; get_qty: string; min_order: string; max_uses: string; once_per_phone: boolean; first_order_only: boolean; starts_at: string; ends_at: string; active: boolean }
-const EMPTY: Form = { title: '', automatic: false, code: '', kind: 'percent', value: '10', buy_qty: '2', get_qty: '1', min_order: '', max_uses: '', once_per_phone: true, first_order_only: false, starts_at: '', ends_at: '', active: true }
+type Form = { id?: string; title: string; automatic: boolean; code: string; kind: DiscountKind; value: string; buy_qty: string; get_qty: string; min_order: string; max_uses: string; once_per_phone: boolean; first_order_only: boolean; starts_at: string; ends_at: string; active: boolean; for_phone: string }
+const EMPTY: Form = { title: '', automatic: false, code: '', kind: 'percent', value: '10', buy_qty: '2', get_qty: '1', min_order: '', max_uses: '', once_per_phone: true, first_order_only: false, starts_at: '', ends_at: '', active: true, for_phone: '' }
 const local = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() + 330 * 60_000).toISOString().slice(0, 16) : '')
 const fromLocal = (v: string) => (v ? new Date(`${v}:00+05:30`).toISOString() : null)
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
@@ -32,7 +33,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
 
   const edit = (d: Discount) => setForm({
     id: d.id, title: d.title, automatic: d.code === null, code: d.code || '', kind: d.kind, value: String(d.value || ''), buy_qty: String(d.buy_qty || 2), get_qty: String(d.get_qty || 1),
-    min_order: d.min_order ? String(d.min_order) : '', max_uses: d.max_uses ? String(d.max_uses) : '', once_per_phone: d.once_per_phone, first_order_only: d.first_order_only,
+    min_order: d.min_order ? String(d.min_order) : '', max_uses: d.max_uses ? String(d.max_uses) : '', once_per_phone: d.once_per_phone, first_order_only: d.first_order_only, for_phone: d.for_phone || '',
     starts_at: local(d.starts_at), ends_at: local(d.ends_at), active: d.active,
   })
 
@@ -41,7 +42,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
     if (!form) return
     setBusy(true)
     try {
-      const discount = { ...form, code: form.automatic ? null : form.code, starts_at: fromLocal(form.starts_at), ends_at: fromLocal(form.ends_at) }
+      const discount = { ...form, code: form.automatic ? null : form.code, for_phone: form.automatic ? '' : form.for_phone, starts_at: fromLocal(form.starts_at), ends_at: fromLocal(form.ends_at) }
       const res = await fetch('/api/commerce/discounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, discount }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Could not save.')
@@ -75,6 +76,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
 
   return (
     <div className="max-w-3xl space-y-4">
+      {canManage && <LoyaltyCard orgId={orgId} showToast={showToast} />}
       <section className={`${cardClass} p-4 sm:p-5`}>
         <div className="flex flex-wrap items-start gap-3">
           <BadgePercent size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
@@ -102,7 +104,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
                   <p className="mt-1 text-[13.5px] font-semibold text-slate-900 dark:text-white">{d.title}</p>
                   <p className="text-xs text-slate-500">
                     Used {d.uses || 0}{d.max_uses ? ` of ${d.max_uses}` : ''} time{(d.uses || 0) === 1 ? '' : 's'}
-                    {d.first_order_only ? ' · first order only' : ''}{d.once_per_phone ? ' · once per customer' : ''}
+                    {d.for_phone ? ` · only for ${d.for_phone}` : ''}{d.first_order_only ? ' · first order only' : ''}{d.once_per_phone ? ' · once per customer' : ''}
                     {d.ends_at ? ` · till ${day(d.ends_at)}` : ''}
                   </p>
                 </div>
@@ -154,6 +156,13 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
               <div><label className={labelClass} htmlFor="offer-start">Starts (optional)</label><input id="offer-start" type="datetime-local" className={inputClass} value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></div>
               <div><label className={labelClass} htmlFor="offer-end">Ends (optional)</label><input id="offer-end" type="datetime-local" className={inputClass} value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} /></div>
             </div>
+            {!form.automatic && (
+              <div>
+                <label className={labelClass} htmlFor="offer-for-phone">Only for one customer (optional)</label>
+                <input id="offer-for-phone" inputMode="tel" className={inputClass} placeholder="Their phone number, like 98765 43210" value={form.for_phone} onChange={(e) => setForm({ ...form, for_phone: e.target.value })} />
+                <p className={hintClass}>Only orders with this phone can use the code. Send them the code on WhatsApp.</p>
+              </div>
+            )}
             <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} /> First order only (new customers)</label>
             <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.once_per_phone} onChange={(e) => setForm({ ...form, once_per_phone: e.target.checked })} /> Once per customer (by phone number)</label>
             <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> On</label>

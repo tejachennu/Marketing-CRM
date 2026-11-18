@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { isUuid } from '@/lib/record-visibility'
 import { listDiscounts, rowToDiscount, withDiscountSchema } from '@/lib/commerce/discount-store'
+import { withLoyaltySchema } from '@/lib/commerce/loyalty-store'
 import { parseDiscount } from '@/lib/commerce/discounts'
 
 export const runtime = 'nodejs'
@@ -24,9 +25,11 @@ export async function POST(request: NextRequest) {
   const { id, uses: _uses, ...values } = parsed.discount as any
   const db = getSupabaseAdminClient()
   const row = { ...values, organization_id: body.organizationId, updated_at: new Date().toISOString() }
-  const result = id && isUuid(id)
-    ? await withDiscountSchema(() => db.from('commerce_discounts').update(row).eq('id', id).eq('organization_id', body.organizationId).select('*').maybeSingle())
-    : await withDiscountSchema(() => db.from('commerce_discounts').insert(row).select('*').single())
+  // Codes for one customer need the for_phone column (added with loyalty points)
+  const save = () => id && isUuid(id)
+    ? db.from('commerce_discounts').update(row).eq('id', id).eq('organization_id', body.organizationId).select('*').maybeSingle()
+    : db.from('commerce_discounts').insert(row).select('*').single()
+  const result = await withDiscountSchema(() => withLoyaltySchema(save))
   if (result.error) {
     if (String(result.error.code) === '23505') return NextResponse.json({ error: `The code ${values.code} is already used by another offer.` }, { status: 409 })
     return NextResponse.json({ error: result.error.message || 'Could not save the offer.' }, { status: 500 })

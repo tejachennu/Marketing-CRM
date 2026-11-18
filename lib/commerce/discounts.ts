@@ -25,6 +25,8 @@ export interface Discount {
   starts_at: string | null
   ends_at: string | null
   active: boolean
+  /** Only this customer can use it (last 10 digits of their phone); null = anyone */
+  for_phone?: string | null
 }
 
 export const KIND_LABELS: Record<DiscountKind, string> = {
@@ -70,6 +72,9 @@ export function parseDiscount(raw: any): { discount: Discount } | { error: strin
   const ends = raw?.ends_at ? new Date(raw.ends_at) : null
   if ((starts && isNaN(starts.getTime())) || (ends && isNaN(ends.getTime()))) return { error: 'Check the start and end dates.' }
   if (starts && ends && ends <= starts) return { error: 'The end must be after the start.' }
+  const forPhone = String(raw?.for_phone ?? '').replace(/\D/g, '').slice(-10)
+  if (raw?.for_phone && forPhone.length !== 10) return { error: 'Type the customer\'s 10-digit phone number, or leave it empty for everyone.' }
+  if (forPhone && automatic) return { error: 'An offer for one customer needs a code. Give it a code like ASHA15.' }
   const title = clean(raw?.title, 80) || defaultTitle({ kind, value, buy_qty: buy, get_qty: get, min_order: minOrder > 0 ? minOrder : 0 })
   return {
     discount: {
@@ -82,6 +87,7 @@ export function parseDiscount(raw: any): { discount: Discount } | { error: strin
       starts_at: starts ? starts.toISOString() : null,
       ends_at: ends ? ends.toISOString() : null,
       active: raw?.active !== false,
+      for_phone: forPhone || null,
     },
   }
 }
@@ -110,6 +116,8 @@ export interface DiscountContext {
   usedByPhone?: boolean
   /** This phone has ordered here before. */
   orderedBefore?: boolean
+  /** The shopper's phone (last 10 digits), for codes made for one customer */
+  phoneKey?: string
 }
 
 export type DiscountResult =
@@ -132,6 +140,7 @@ export function applyDiscount(d: Discount, cart: CartForDiscount, ctx: DiscountC
   if (d.starts_at && Date.parse(d.starts_at) > now) return { ok: false, reason: 'This offer has not started yet.' }
   if (d.ends_at && Date.parse(d.ends_at) <= now) return { ok: false, reason: 'This offer has ended.' }
   if (d.max_uses !== null && (d.uses ?? 0) >= d.max_uses) return { ok: false, reason: 'This offer has been used up.' }
+  if (d.for_phone && ctx.phoneKey !== d.for_phone) return { ok: false, reason: ctx.phoneKey ? 'This code is for another customer.' : 'Type your phone number first: this code is for one customer.' }
   if (d.first_order_only && ctx.orderedBefore) return { ok: false, reason: 'This offer is for your first order only.' }
   if (d.once_per_phone && ctx.usedByPhone) return { ok: false, reason: 'You have already used this offer.' }
   if (d.min_order > 0 && cart.subtotal < d.min_order) return { ok: false, reason: `Add ${rupees(d.min_order - cart.subtotal)} more to use this offer (orders of ${rupees(d.min_order)} or more).` }

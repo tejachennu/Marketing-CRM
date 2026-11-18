@@ -6,7 +6,7 @@ import {
   shiprocketFor, shipmentsForOrder, withShippingSchema,
 } from '@/lib/commerce/shipping'
 import { notifyParcel } from '@/lib/commerce/shipping-notify'
-import { askForReviewOf } from '@/lib/commerce/review-store'
+import { afterDelivered } from '@/lib/commerce/order-delivered'
 import { shipBlocker, type ShippingProvider } from '@/lib/commerce/shipping-rules'
 
 export const runtime = 'nodejs'
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   const [org, loaded] = await Promise.all([loadOrg(db, organizationId), loadOrderForShipping(db, organizationId, orderId)])
   if (!org || !loaded) return NextResponse.json({ error: 'Order not found.' }, { status: 404 })
   const notify = (args: any) => notifyParcel(db, args)
-  const onDelivered = (id: string) => askForReviewOf(db, organizationId, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin))
+  const onDelivered = (id: string) => afterDelivered(db, organizationId, id, String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin))
 
   try {
     if (action === 'rates') return NextResponse.json(await ratesForOrder(db, org, loaded))

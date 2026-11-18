@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { loadLoyaltySettings, pointsBalance } from '@/lib/commerce/loyalty-store'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore } from '@/lib/commerce/storefront'
 import { cleanAddress, cleanCart, loadShopper, saveShopper, shopperFrom, shopperOrders } from '@/lib/commerce/store-accounts'
@@ -25,10 +26,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const [row, orders] = await Promise.all([loadShopper(db, page.organization.id, shopper.id), shopperOrders(db, page.organization.id, shopper.id)])
     const productIds = new Set(page.products.filter((p) => p.inStock).map((p) => p.id))
+    // Loyalty points for the shopper's saved phone (shown in My orders and at checkout)
+    const loyalty = await loadLoyaltySettings(db, page.organization.id).catch(() => null)
+    const points = loyalty?.on && row?.phone ? await pointsBalance(db, page.organization.id, row.phone).catch(() => 0) : 0
     return NextResponse.json({
       shopper: { name: row?.name || shopper.name, email: shopper.email, picture: shopper.picture, phone: row?.phone || '', address: cleanAddress(row?.address) },
       cart: cleanCart(row?.cart, productIds),
       orders,
+      points,
     })
   } catch (error: any) {
     console.error('[Store account]', error?.message)

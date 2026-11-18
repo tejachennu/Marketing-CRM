@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
 import { AccountPanel, useShopper } from './account'
 import type { StoreView } from '@/lib/commerce/storefront'
+import { loyaltyLine, pointsUsable } from '@/lib/commerce/loyalty'
 import { findVariant, valueAvailable } from '@/lib/commerce/variants'
 import { STORE_PAGE_TITLES } from '@/lib/commerce/store-pages'
 import { ratingSummary, type PublicReview } from '@/lib/commerce/reviews'
@@ -296,7 +297,13 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const offOk = offer?.ok === true
   const discountOff = offOk ? Number(offer!.amount) || 0 : 0
   const deliveryToPay = offOk && offer!.freeDelivery ? 0 : delivery
-  const toPay = Math.max(0, Math.round((subtotal - discountOff + deliveryToPay) * 100) / 100)
+  // Loyalty points: a signed-in shopper ordering with their own saved phone (the server checks again)
+  const [usePointsOn, setUsePointsOn] = useState(true)
+  const pointsBalanceNow = Number(shopper.account?.points) || 0
+  const ownPhone = Boolean(shopper.account?.shopper.phone) && shopper.account!.shopper.phone.replace(/\D/g, '').slice(-10) === phone.replace(/\D/g, '').slice(-10)
+  const pointsCanUse = store.loyalty?.on && ownPhone ? pointsUsable(pointsBalanceNow, subtotal - discountOff, store.loyalty) : 0
+  const pointsOff = usePointsOn ? pointsCanUse : 0
+  const toPay = Math.max(0, Math.round((subtotal - discountOff - pointsOff + deliveryToPay) * 100) / 100)
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
   const confirmPayment = async (orderNumber: string, razorpayOrderId: string, extra: Record<string, string>) => {
@@ -350,7 +357,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       const res = await fetch(`/api/public/store/${store.slug}/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...shopper.headers() },
-        body: JSON.stringify({ name, phone, handover, pay, code, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }),
+        body: JSON.stringify({ name, phone, handover, pay, code, usePoints: pointsOff > 0, address: handover === 'delivery' ? address : null, note, items: lines.map((l) => ({ productId: l.product.id, ...(l.variant ? { variantId: l.variant.id } : {}), quantity: l.qty })) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
@@ -812,9 +819,17 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                     {code && offer && !offer.ok && offer.reason && <p role="status" className="mt-1.5 text-[13.5px] text-[#b91c1c]">{offer.reason}</p>}
                   </div>
                 )}
+                {store.loyalty?.on && pointsCanUse === 0 && <p className="text-[13px] text-[#6B7894]">{loyaltyLine(store.loyalty)}{!shopper.session && store.accounts ? ' Sign in to use your points.' : ''}</p>}
+                {pointsCanUse > 0 && (
+                  <label className="flex items-center gap-3 rounded-xl border-2 border-[#d5ddeb] p-3 cursor-pointer">
+                    <input type="checkbox" checked={usePointsOn} onChange={(e) => setUsePointsOn(e.target.checked)} className="h-5 w-5 accent-[var(--c)]" />
+                    <span className="text-[14.5px]"><b>Use {pointsCanUse} points</b> ({money(pointsCanUse)} off). You have {pointsBalanceNow}.</span>
+                  </label>
+                )}
                 <div className="rounded-xl bg-[#f4f6fa] p-4 space-y-1.5 text-[14.5px]">
                   <div className="flex justify-between"><span>Items</span><span>{money(subtotal)}</span></div>
                   {offOk && discountOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{offer!.title}</span><span>− {money(discountOff)}</span></div>}
+                  {pointsOff > 0 && <div className="flex justify-between text-[var(--c)] font-semibold"><span>{pointsOff} points</span><span>− {money(pointsOff)}</span></div>}
                   {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{deliveryToPay ? money(deliveryToPay) : offOk && offer!.freeDelivery && delivery ? <><s className="text-[#8a94a8] mr-1">{money(delivery)}</s>Free</> : 'Free'}</span></div>}
                   <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(toPay)}</span></div>
                   {pay === 'online' ? (
