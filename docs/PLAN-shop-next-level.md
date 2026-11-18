@@ -185,6 +185,7 @@ Store tab → Shop reports, Customer reviews (hide / show), Offers and points (c
 GST invoices, WhatsApp messages, Delivery partners (status; connecting stays on the web); product form → weight, HSN,
 GST rate, Write with AI; Website → product layout and Instagram posts.
 Still web only: product options editor, extra photos / video, booking a courier and tracking from the order page,
-info pages editor, spreadsheet upload. Not compiled here: this computer's Flutter (Dart 3.12.2) is older than the app
-needs (Dart 3.13.7).
+info pages editor, spreadsheet upload. Checked on 19 Nov 2026 with Flutter 3.50.0 (in ~/Documents/flutter_versions/
+flutter3.50.0): analyzer clean apart from the framework-wide material.dart notice, all 345 app tests pass (new screens
+fit at 320px and with large text).
 

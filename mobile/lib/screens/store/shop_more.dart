@@ -638,7 +638,7 @@ class _OfferFormState extends State<_OfferForm> {
           SwitchListTile(contentPadding: EdgeInsets.zero, value: _automatic, onChanged: (v) => setState(() => _automatic = v), title: const Text('Applies by itself (no code)')),
           if (!_automatic) TextField(controller: _code, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Code', hintText: 'DIWALI10')),
           gap,
-          DropdownButtonFormField<String>(initialValue: _kind, decoration: const InputDecoration(labelText: 'What it gives'), items: [for (final e in _offerKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) => setState(() => _kind = v ?? 'percent')),
+          DropdownButtonFormField<String>(initialValue: _kind, isExpanded: true, decoration: const InputDecoration(labelText: 'What it gives'), items: [for (final e in _offerKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) => setState(() => _kind = v ?? 'percent')),
           gap,
           if (_kind == 'percent' || _kind == 'flat') TextField(controller: _value, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: _kind == 'percent' ? 'Percent off' : 'Rupees off')),
           if (_kind == 'buy_get') Row(children: [
@@ -832,27 +832,30 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
   }
 }
 
-/// The Store tab's links to these screens.
+/// The Store tab's links to these screens: one card, a row each.
 List<Widget> shopMoreTiles(BuildContext context, {required String currency, required bool manage}) {
-  Widget tile(IconData icon, String title, String subtitle, Widget Function() screen) => Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    child: ListTile(
-      leading: Icon(icon, color: Brand.blue),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen())),
-    ),
+  Widget row(IconData icon, String title, Widget Function() screen) => ListTile(
+    dense: true,
+    visualDensity: VisualDensity.compact,
+    leading: Icon(icon, color: Brand.blue, size: 22),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+    trailing: const Icon(Icons.chevron_right, size: 20),
+    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen())),
   );
   return [
-    tile(Icons.bar_chart, 'Shop reports', 'Visits, sales, what sells, carts left, best customers', () => ShopReportsScreen(currency: currency)),
-    tile(Icons.star_outline, 'Customer reviews', 'Stars, words and photos from your customers', () => const ShopReviewsScreen()),
-    if (manage) ...[
-      tile(Icons.local_offer_outlined, 'Offers and points', 'Codes, offers, codes for one customer, loyalty points', () => const ShopOffersScreen()),
-      tile(Icons.undo, 'Returns', 'Let customers ask for a return in My orders', returnsSettingsScreen),
-      tile(Icons.receipt_long_outlined, 'GST invoices', 'GSTIN, usual rate, invoice numbers', invoiceSettingsScreen),
-      tile(Icons.chat_outlined, 'WhatsApp messages', 'Cart reminder, COD check, review ask, back in stock, refunds', shopMessagesScreen),
-      tile(Icons.local_shipping_outlined, 'Delivery partners', 'Shiprocket and Delhivery', () => const DeliveryPartnersScreen()),
-    ],
+    Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(children: [
+        row(Icons.bar_chart, 'Shop reports', () => ShopReportsScreen(currency: currency)),
+        row(Icons.star_outline, 'Customer reviews', () => const ShopReviewsScreen()),
+        if (manage) ...[
+          row(Icons.local_offer_outlined, 'Offers and points', () => const ShopOffersScreen()),
+          row(Icons.undo, 'Returns', returnsSettingsScreen),
+          row(Icons.receipt_long_outlined, 'GST invoices', invoiceSettingsScreen),
+          row(Icons.chat_outlined, 'WhatsApp messages', shopMessagesScreen),
+          row(Icons.local_shipping_outlined, 'Delivery partners', () => const DeliveryPartnersScreen()),
+        ],
+      ]),
+    ),
   ];
 }

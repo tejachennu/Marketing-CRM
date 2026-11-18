@@ -25,6 +25,15 @@ void main() {
       ('store_products', ['Send catalog']),
       // Store address: going back to our address asks first
       ('store_website', ['Our address (free)']),
+      // The newer shop screens behind the Store tab
+      ('store_settings', ['Shop reports']),
+      ('store_settings', ['Customer reviews']),
+      ('store_settings', ['Offers and points']),
+      ('store_settings', ['Offers and points', 'New offer']),
+      ('store_settings', ['Returns']),
+      ('store_settings', ['GST invoices']),
+      ('store_settings', ['WhatsApp messages']),
+      ('store_settings', ['Delivery partners']),
     ],
   );
 
@@ -42,6 +51,16 @@ void main() {
     expect(madePicture('https://wamacrm.magnetora.in/api/public/store-art?kind=banner&c=0E1B3D&name=X'), const Color(0xFF0E1B3D));
     expect(madePicture('https://wamacrm.magnetora.in/api/public/store-art?kind=logo&name=X'), const Color(0xFF1D5BEA));
     expect(madePicture('https://cdn.example.com/photo.jpg'), isNull);
+  });
+
+  test('Shop extras mirror the web rules', () {
+    expect(codCheckLabel({'shipping_address': {'cod_check': {'answer': 'yes'}}})!.$1, 'The customer said yes on WhatsApp');
+    expect(codCheckLabel({'shipping_address': {'cod_check': {'answer': 'cancel'}}})!.$2, isTrue);
+    expect(codCheckLabel({'shipping_address': {}}), isNull);
+    expect(instagramPost('https://www.instagram.com/p/Cx1aB2cd/?igsh=abc'), 'p/Cx1aB2cd');
+    expect(instagramPost('https://instagram.com/asha/reel/AbCdE12/'), 'reel/AbCdE12');
+    expect(instagramPost('https://evil.com/p/Cx1aB2cd'), isNull);
+    expect(storeLayouts.keys, ['grid', 'big', 'list', 'compact']);
   });
 
   test('Money is shown in the order currency', () {

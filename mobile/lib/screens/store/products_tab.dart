@@ -714,7 +714,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           gap(),
           DropdownButtonFormField<String>(
             initialValue: _gst,
-            decoration: const InputDecoration(labelText: 'GST rate', helperText: 'For the GST invoice. The price on the store includes it.'),
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'GST rate', helperText: 'For the GST invoice. The price on the store includes it.', helperMaxLines: 2),
             items: [
               const DropdownMenuItem(value: '', child: Text("Shop's usual rate")),
               for (final r in {...gstRates, if (_gst.isNotEmpty) _gst}) DropdownMenuItem(value: r, child: Text('$r%')),
@@ -729,7 +730,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             maxLines: 5,
             decoration: const InputDecoration(labelText: 'Description (optional)', counterText: ''),
           ),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               DropdownButton<String>(
                 value: _writeLanguage,
@@ -738,13 +741,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 items: [for (final l in describeLanguages) DropdownMenuItem(value: l, child: Text(l))],
                 onChanged: (v) => setState(() => _writeLanguage = v ?? 'English'),
               ),
-              const Spacer(),
               ListenableBuilder(
                 listenable: _image,
                 builder: (context, _) => TextButton.icon(
                   onPressed: _writing || !_image.text.trim().startsWith('https://') ? null : _writeWithAi,
                   icon: _writing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome, size: 18),
-                  label: Text(_image.text.trim().startsWith('https://') ? 'Write with AI' : 'Add a photo link to write with AI'),
+                  label: Text(_image.text.trim().startsWith('https://') ? 'Write with AI' : 'Add a photo to write with AI', softWrap: true),
                 ),
               ),
             ],
