@@ -597,6 +597,9 @@ export async function syncDms(db: any, organizationId: string, fetcher: Fetcher 
         const echo = isOwn(account, x.from?.id)
         const senderId = String(echo ? x.to?.data?.[0]?.id || '' : x.from?.id || '')
         if (!senderId || !x.id) continue
+        // A chat that was cleared or deleted here: what came before stays gone
+        const forgetBefore = Date.parse(state.forget?.[senderId] || '')
+        if (Number.isFinite(forgetBefore) && at <= forgetBefore) continue
         const text = String(x.message || '').slice(0, 4000)
         const saved = await saveIncomingDm(db, account, {
           kind: 'message', accountId: account.ig_user_id, senderId, mid: String(x.id), text,
@@ -642,6 +645,14 @@ async function fillUsernames(db: any, account: any, threads: any[]) {
     if (c.instagram_username === username && !unnamed) continue
     await db.from('contacts').update({ instagram_username: username, ...(unnamed ? { first_name: name, last_name: null } : {}) }).eq('id', c.id)
   }
+}
+
+/** Never read in again the messages with these Instagram people from before `at` (after a chat is cleared or deleted). */
+export async function forgetIgPeople(db: any, account: any, igIds: string[], at: string = new Date().toISOString()) {
+  const state = readSyncState(account.sync_state)
+  const forget = { ...(state.forget || {}) }
+  for (const id of igIds) if (id) forget[id] = at
+  return saveSyncState(db, account, { forget })
 }
 
 /** Automatic-reply settings for the screen and the webhook. */

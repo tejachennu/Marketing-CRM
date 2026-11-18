@@ -80,7 +80,23 @@ export default function PrivacyPolicyPage() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900">C. Customer Messaging & Interaction Content</h3>
+              <h3 className="font-semibold text-slate-900">C. Instagram Integration Data</h3>
+              <p className="mt-1">
+                When a business connects its Instagram professional account (through Facebook Login for Business), we collect and store, only for that business&apos;s workspace:
+              </p>
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Instagram account ID, username, name and profile picture, and the access token Meta issues for the connection (kept on our servers, never shown in the browser)</li>
+                <li>Direct messages people send to the business, and the business&apos;s replies: text, photos, videos, voice notes and files, with their Instagram-scoped user IDs, usernames and names</li>
+                <li>Comments on the business&apos;s own posts and reels, and the business&apos;s replies, hides and deletions</li>
+                <li>The business&apos;s latest posts (picture links, captions and links), to show them on its online store and to publish new posts it creates in WAMA CRM</li>
+              </ul>
+              <p className="mt-2">
+                This data is used only to let the business read and answer its Instagram messages and comments in one inbox (including automatic replies it switches on), and to post on its behalf. It is never sold, never used for advertising, and never shared with other businesses on the platform.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-slate-900">D. Customer Messaging & Interaction Content</h3>
               <p className="mt-1">
                 To enable CRM inbox synchronization and automated campaign workflows, our platform processes:
               </p>
@@ -93,7 +109,7 @@ export default function PrivacyPolicyPage() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900">D. Technical & Diagnostic Telemetry</h3>
+              <h3 className="font-semibold text-slate-900">E. Technical & Diagnostic Telemetry</h3>
               <p className="mt-1">
                 IP addresses, browser type, operating system version, webhook latency, API error logs, and session activity to prevent fraud and maintain platform availability.
               </p>
@@ -123,6 +139,10 @@ export default function PrivacyPolicyPage() {
                   <td className="p-3">Contractual Necessity (Service Delivery)</td>
                 </tr>
                 <tr>
+                  <td className="p-3 font-medium text-slate-800">Showing and answering a business&apos;s Instagram direct messages and comments, and posting to its Instagram account when it asks</td>
+                  <td className="p-3">Contractual Necessity & User Consent (the business connects its account and can disconnect it at any time)</td>
+                </tr>
+                <tr>
                   <td className="p-3 font-medium text-slate-800">Processing Embedded Signup and authenticating WABA access tokens</td>
                   <td className="p-3">Legitimate Business Interest & User Consent</td>
                 </tr>
@@ -149,7 +169,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="list-disc pl-6 space-y-2 text-slate-700">
             <li>
-              <strong>Meta Platforms, Inc. (USA / Ireland):</strong> Provider of the WhatsApp Business Platform & Cloud API. Outbound and inbound messages, template syncs, and phone registrations are routed directly via Meta&apos;s infrastructure.
+              <strong>Meta Platforms, Inc. (USA / Ireland):</strong> Provider of the WhatsApp Business Platform & Cloud API and the Instagram API. Outbound and inbound messages, comments, posts, template syncs, and phone registrations are routed directly via Meta&apos;s infrastructure.
             </li>
             <li>
               <strong>Cloud Hosting & Database Providers:</strong> Enterprise cloud infrastructure providers (e.g., AWS / Google Cloud / Vercel) utilizing encrypted data centers.

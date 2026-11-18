@@ -259,6 +259,8 @@ export interface IgSyncState {
   waitUntil?: string
   threads?: Record<string, string>
   media?: Record<string, number>
+  /** Chats cleared or deleted: messages with this person from before the time are never read in again. */
+  forget?: Record<string, string>
 }
 export const SYNC_GAP_MS = 60_000
 export const SLOW_DOWN_MS = 15 * 60_000
@@ -268,7 +270,7 @@ export const PER_SYNC = 5
 export function readSyncState(raw: unknown): IgSyncState {
   const s = raw && typeof raw === 'object' ? (raw as any) : {}
   const map = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as any) : {})
-  return { dmsAt: s.dmsAt || undefined, commentsAt: s.commentsAt || undefined, waitUntil: s.waitUntil || undefined, threads: map(s.threads), media: map(s.media) }
+  return { dmsAt: s.dmsAt || undefined, commentsAt: s.commentsAt || undefined, waitUntil: s.waitUntil || undefined, threads: map(s.threads), media: map(s.media), forget: map(s.forget) }
 }
 
 /** Whether to ask Instagram now: never inside a slow-down, and at most once a minute per kind. */

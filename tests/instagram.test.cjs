@@ -421,3 +421,22 @@ test('sendDm: a PDF goes as a file then the words; a WebP photo goes as a JPEG c
   assert.match((await S.sendDm(db, ORG, conv, { mediaUrl: 'https://x/uploads/a.docx', byPerson: true }, fetcher)).error, /can't take \.docx/)
   assert.equal(posts.length, before)
 })
+
+
+test('cleared or deleted chats stay gone: messages from before the clear are not read in again', async () => {
+  const account = { id: 'a1', organization_id: ORG, ig_user_id: IG, access_token: 'BISU', sync_state: {} }
+  const db = salonDb({ instagram_accounts: [account], contacts: [{ id: 'k1', organization_id: ORG, instagram_id: '901', first_name: 'Teja' }], conversations: [], messages: [] })
+  const now = Date.parse('2026-11-18T15:00:00Z')
+  await S.forgetIgPeople(db, account, ['901'], '2026-11-18T14:30:00Z')
+  const { fetcher } = graph([
+    [`/${IG}/conversations`, { data: [{ id: 't1', updated_time: '2026-11-18T14:50:00+0000' }] }],
+    ['/t1?', { messages: { data: [
+      { id: 'new1', created_time: '2026-11-18T14:50:00+0000', from: { id: '901' }, to: { data: [{ id: IG }] }, message: 'Hello again' },
+      { id: 'old1', created_time: '2026-11-18T14:00:00+0000', from: { id: '901' }, to: { data: [{ id: IG }] }, message: 'cleared' },
+    ] } }],
+  ])
+  const res = await S.syncDms(db, ORG, fetcher, now)
+  assert.equal(res.added, 1)
+  assert.deepEqual(db.tables.messages.map((m) => m.body), ['Hello again'])
+  assert.equal(R.readSyncState(db.tables.instagram_accounts[0].sync_state).forget['901'], '2026-11-18T14:30:00Z')
+})

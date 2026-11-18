@@ -20,7 +20,7 @@ export default function DataDeletionPage() {
             User Data Deletion Instructions
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Instructions to remove your data, WhatsApp tokens, and account information.
+            Instructions to remove your data, WhatsApp and Instagram tokens, and account information.
           </p>
         </header>
 
@@ -79,6 +79,21 @@ export default function DataDeletionPage() {
           </ol>
         </section>
 
+        {/* Instagram */}
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold text-slate-900">
+            Instagram: disconnect and delete
+          </h2>
+          <p className="text-slate-700">
+            If your business connected an Instagram professional account to WAMA CRM:
+          </p>
+          <ol className="list-decimal pl-6 space-y-2 text-slate-700">
+            <li>In WAMA CRM, go to <strong>Settings</strong> &gt; <strong>Instagram</strong> and click <strong>Disconnect</strong>. We stop receiving your messages and comments and delete the stored Instagram access token at once.</li>
+            <li>Or, in Instagram: <strong>Settings and activity</strong> &gt; <strong>Website permissions</strong> &gt; <strong>Apps and websites</strong>, and remove <strong>Magnetora AI</strong>. On Facebook: <strong>Settings &amp; privacy</strong> &gt; <strong>Settings</strong> &gt; <strong>Business integrations</strong>, and remove <strong>Magnetora AI</strong>.</li>
+            <li>To have your Instagram messages, comments, contacts and posts deleted from our servers as well, email us as described below with your Instagram username. A person who messaged a business can ask that business, or us, for the same.</li>
+          </ol>
+        </section>
+
         {/* Step 3 */}
         <section className="space-y-4">
           <h2 className="text-2xl font-bold text-slate-900">
@@ -100,7 +115,7 @@ export default function DataDeletionPage() {
             <ul className="list-disc pl-6 text-sm text-slate-600 space-y-1">
               <li>Your Organization / Business Name</li>
               <li>Registered Admin Email Address</li>
-              <li>Connected WhatsApp Business Account ID (WABA ID) or Phone Number</li>
+              <li>Connected WhatsApp Business Account ID (WABA ID) or Phone Number, and/or the connected Instagram username</li>
               <li>Subject line: <strong>&quot;Data Erasure Request - GDPR / Meta Platform Policy&quot;</strong></li>
             </ul>
           </div>
