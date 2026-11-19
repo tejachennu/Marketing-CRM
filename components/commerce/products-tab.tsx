@@ -20,7 +20,7 @@ const PAGE_SIZE = 24
 const MAX_COLLECTION = 30
 
 const EMPTY_FORM = {
-  id: '', title: '', retailer_id: '', price: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true,
+  id: '', title: '', retailer_id: '', price: '', mrp: '', currency: 'INR', description: '', image_url: '', website_url: '', category: '', inventory_count: '', is_available: true,
   // Details the WhatsApp catalog asks for
   brand: '', condition: 'new', origin_country: '', is_service: false, importer_name: '', importer_street: '', importer_city: '', importer_postal_code: '',
   // For couriers (Shiprocket / Delhivery)
@@ -288,6 +288,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
       title: product.title,
       retailer_id: product.retailer_id,
       price: String(product.price ?? ''),
+      mrp: Number(attributes.list_price) > Number(product.price) ? String(attributes.list_price) : '',
       currency: String(product.currency || currency).toUpperCase(),
       description: product.description || '',
       image_url: product.image_url || '',
@@ -661,13 +662,17 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <input id="product-title" type="text" required maxLength={150} autoFocus placeholder="Classic white linen shirt" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className={inputClass} />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="col-span-2">
+              <div className="col-span-2 sm:col-span-4">
                 <label htmlFor="product-sku" className={labelClass}>SKU</label>
                 <input id="product-sku" type="text" required maxLength={100} placeholder="SHIRT-001" value={form.retailer_id} onChange={(event) => setForm({ ...form, retailer_id: event.target.value })} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="product-price" className={labelClass}>Price</label>
                 <input id="product-price" type="number" required min={0} step="0.01" placeholder="1499" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} className={inputClass} />
+              </div>
+              <div>
+                <label htmlFor="product-mrp" className={labelClass}>MRP (optional)</label>
+                <input id="product-mrp" type="number" min={0} step="0.01" placeholder="1999" value={form.mrp} onChange={(event) => setForm({ ...form, mrp: event.target.value })} className={inputClass} aria-describedby="product-mrp-help" />
               </div>
               <div>
                 <label htmlFor="product-currency" className={labelClass}>Currency</label>
@@ -677,6 +682,11 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                   ))}
                 </select>
               </div>
+              <p id="product-mrp-help" className="col-span-2 sm:col-span-4 -mt-1 text-[12px] text-slate-500">
+                {Number(form.mrp) > Number(form.price) && Number(form.price) > 0
+                  ? `Shows as ${Math.round((1 - Number(form.price) / Number(form.mrp)) * 100)}% off on your website and in the WhatsApp catalog.`
+                  : 'MRP: the price before your discount. When it is above the price, your website shows the saving.'}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

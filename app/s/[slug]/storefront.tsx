@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Loader2, MapPin, Minus, Phone, Play, Plus, MessageCircle, Search, Share2, ShieldCheck, ShoppingBag, Star, Store, Truck, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown, Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Heart, Home, LayoutGrid, Loader2, MapPin, Phone, Play, MessageCircle, RotateCcw, Share2, ShieldCheck, ShoppingBag, ShoppingCart, SlidersHorizontal, Star, Store, Truck, UserRound, X, Zap } from 'lucide-react'
+import { categoryRails, dealProducts, discountPercent, filterCount, filterProducts, searchProducts, sortProducts, SORT_LABELS, topRated, type Filters, type SortKey } from '@/lib/commerce/store-browse'
+import { FilterPanel, OffersList, Picture, PriceLine, ProductCard, Rail, RatingChip, SearchBox, Sheet, SortTabs, Stepper, TrustStrip } from './store-parts'
 import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
@@ -30,20 +32,6 @@ type Cart = Record<string, number>
 
 const input = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] bg-white text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[var(--c)] focus:ring-4 focus:ring-[var(--c)]/10'
 
-function Picture({ src, alt, className }: { src: string; alt: string; className: string }) {
-  const [failed, setFailed] = useState(false)
-  if (!src || failed) {
-    return (
-      <div className={`${className} bg-[#eef1f6] flex items-center justify-center text-[#8a94a8]`}>
-        <ShoppingBag size={28} />
-      </div>
-    )
-  }
-  // Product photos come from any address the business uses (Meta's catalog, its own site), so a plain img
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} object-cover`} />
-}
-
 /** The banners at the top: slide by themselves, swipe on phones, arrows on wide screens. */
 function Banners({ store, onCategory }: { store: StoreView; onCategory: (name: string) => void }) {
   const [index, setIndex] = useState(0)
@@ -65,17 +53,18 @@ function Banners({ store, onCategory }: { store: StoreView; onCategory: (name: s
 
   if (!count) {
     return (
-      <section className="bg-[var(--c)] text-white">
-        <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14">
-          <h1 className="text-[28px] sm:text-[40px] font-extrabold tracking-tight leading-tight">{store.name}</h1>
-          {store.tagline && <p className="mt-2 text-[16px] sm:text-[18px] text-white/85 max-w-xl">{store.tagline}</p>}
+      <section className="bg-[#0E1B3D] text-white sm:rounded-lg overflow-hidden">
+        <div className="px-5 sm:px-10 py-9 sm:py-14 border-l-8 border-[var(--c)]">
+          <p className="text-[12px] sm:text-[13px] font-bold uppercase tracking-widest text-white/60">Welcome to</p>
+          <h1 className="mt-1 text-[28px] sm:text-[42px] font-extrabold tracking-tight leading-tight">{store.name}</h1>
+          {store.tagline && <p className="mt-2 text-[15px] sm:text-[18px] text-white/80 max-w-xl">{store.tagline}</p>}
         </div>
       </section>
     )
   }
   return (
-    <section className="max-w-6xl mx-auto px-0 sm:px-4 sm:pt-4">
-      <div className="relative sm:rounded-2xl overflow-hidden">
+    <section aria-label="Offers">
+      <div className="relative sm:rounded-lg overflow-hidden bg-white">
         <div
           ref={strip}
           onScroll={(e) => setIndex(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
@@ -84,7 +73,7 @@ function Banners({ store, onCategory }: { store: StoreView; onCategory: (name: s
           {store.banners.map((banner, i) => {
             const open = () => (banner.category ? onCategory(banner.category) : banner.link ? window.open(banner.link, '_blank', 'noopener') : null)
             return (
-              <button key={i} type="button" onClick={open} className="relative shrink-0 w-full snap-start aspect-[16/9] sm:aspect-[21/8] text-left cursor-pointer">
+              <button key={i} type="button" onClick={open} className="relative shrink-0 w-full snap-start aspect-[2/1] sm:aspect-[16/5] text-left cursor-pointer">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={banner.image} alt={banner.title || store.name} className="absolute inset-0 h-full w-full object-cover" loading={i === 0 ? 'eager' : 'lazy'} />
                 {(banner.title || banner.text || banner.button) && (
@@ -111,17 +100,6 @@ function Banners({ store, onCategory }: { store: StoreView; onCategory: (name: s
         )}
       </div>
     </section>
-  )
-}
-
-function Stepper({ value, onChange, small }: { value: number; onChange: (n: number) => void; small?: boolean }) {
-  const size = small ? 'h-8 w-8' : 'h-11 w-11'
-  return (
-    <div className="inline-flex items-center rounded-full border border-[#d5ddeb] bg-white">
-      <button type="button" aria-label="One less" onClick={() => onChange(value - 1)} className={`${size} flex items-center justify-center text-[#0E1B3D] cursor-pointer`}><Minus size={small ? 14 : 16} /></button>
-      <span className={`${small ? 'w-6 text-[14px]' : 'w-8 text-[16px]'} text-center font-bold tabular-nums`}>{value}</span>
-      <button type="button" aria-label="One more" onClick={() => onChange(value + 1)} className={`${size} flex items-center justify-center text-[#0E1B3D] cursor-pointer`}><Plus size={small ? 14 : 16} /></button>
-    </div>
   )
 }
 
@@ -185,10 +163,6 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     setAccountView('orders')
   }, [])
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return store.products.filter((p) => (!category || p.category === category) && (!q || `${p.title} ${p.description} ${p.category}`.toLowerCase().includes(q)))
-  }, [store.products, category, query])
 
   // A cart key is the product id, or "product id:option id" for a size / colour
   const lines = Object.entries(cart).map(([key, qty]) => ({ key, qty, ...lineFor(store.products, key)! })).filter((l) => l.product)
@@ -401,51 +375,6 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const waLink = (text: string) => `https://wa.me/${store.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
   const cartText = () => [`Hi ${store.name}, I would like to order:`, ...lines.map((l) => `• ${l.qty} × ${l.title} (${money(l.price * l.qty)})`), `Total: ${money(subtotal)}`].join('\n')
 
-  /** One product in a grid: picture and name open its page; Add / amount right on the card. */
-  // The shop's chosen layout: tiles, big photos, a list, or small tiles
-  const layout = store.layout || 'grid'
-  const gridClass = layout === 'big' ? 'grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6'
-    : layout === 'list' ? 'grid grid-cols-1 lg:grid-cols-2 gap-3'
-    : layout === 'compact' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3'
-    : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5'
-  const priceText = (p: Product) => p.variants?.length && p.priceFrom !== undefined && p.variants.some((v) => v.price !== p.priceFrom) ? <><span className="text-[12.5px] font-semibold text-[#6B7894]">from </span>{money(p.priceFrom)}</> : money(p.variants?.length ? p.priceFrom ?? p.price : p.price)
-  const buyButton = (p: Product, small = false) => !p.inStock ? (
-    <span className={`block text-center text-[#8a94a8] font-semibold ${small ? 'text-[12.5px]' : 'h-10 leading-10 text-[13.5px]'}`}>Not available now</span>
-  ) : p.variants?.length ? (
-    <a href={productHref(p.id)} className={`block text-center rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold hover:bg-[var(--c)] hover:text-white transition-colors ${small ? 'h-9 leading-[32px] px-4 text-[13.5px]' : 'w-full h-10 leading-[36px] text-[14px]'}`}>Choose</a>
-  ) : cart[p.id] ? (
-    <div className="flex justify-center"><Stepper small value={cart[p.id]} onChange={(n) => setQty(p.id, n)} /></div>
-  ) : (
-    <button type="button" onClick={() => setQty(p.id, 1)} className={`rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold cursor-pointer hover:bg-[var(--c)] hover:text-white transition-colors ${small ? 'h-9 px-5 text-[13.5px]' : 'w-full h-10 text-[14px]'}`}>Add</button>
-  )
-  const listCard = (p: Product) => (
-    <article key={p.id} className="bg-white rounded-2xl border border-[#e3e8f2] p-2.5 flex items-center gap-3 min-w-0">
-      <a href={productHref(p.id)} className="relative shrink-0 h-20 w-20 rounded-xl overflow-hidden">
-        <Picture src={p.image} alt={p.title} className={`h-full w-full ${p.inStock ? '' : 'opacity-50 grayscale'}`} />
-      </a>
-      <a href={productHref(p.id)} className="flex-1 min-w-0">
-        <h3 className="text-[14.5px] font-semibold leading-snug line-clamp-2">{p.title}</h3>
-        <p className="mt-0.5 text-[15.5px] font-extrabold">{priceText(p)}</p>
-      </a>
-      <div className="shrink-0">{buyButton(p, true)}</div>
-    </article>
-  )
-  const card = (p: Product) => layout === 'list' ? listCard(p) : (
-    <article key={p.id} className="bg-white rounded-2xl border border-[#e3e8f2] overflow-hidden flex flex-col">
-      <a href={productHref(p.id)} className="block text-left">
-        <div className={`relative ${layout === 'big' ? 'aspect-[4/5]' : 'aspect-square'}`}>
-          <Picture src={p.image} alt={p.title} className={`h-full w-full ${p.inStock ? '' : 'opacity-50 grayscale'}`} />
-          {!p.inStock && <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#0E1B3D]/85 text-white text-[11.5px] font-bold">Out of stock</span>}
-        </div>
-        <div className={layout === 'compact' ? 'px-2 pt-2' : 'px-3 pt-2.5'}>
-          <h3 className={`font-semibold leading-snug line-clamp-2 min-h-[2.6em] ${layout === 'compact' ? 'text-[13px]' : layout === 'big' ? 'text-[16px]' : 'text-[14.5px]'}`}>{p.title}</h3>
-          <p className={`mt-1 font-extrabold ${layout === 'compact' ? 'text-[14px]' : 'text-[16px]'}`}>{priceText(p)}</p>
-        </div>
-      </a>
-      <div className={`mt-auto ${layout === 'compact' ? 'p-2' : 'p-3'}`}>{buyButton(p)}</div>
-    </article>
-  )
-
   const related = viewing ? store.products.filter((p) => p.category === viewing.category && p.id !== viewing.id).slice(0, 8) : []
   // A product page starts with the amount already in the cart
   // Size / colour picked on the product page
@@ -480,255 +409,458 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     } catch {}
   }
 
-  return (
-    <div style={{ ['--c' as any]: store.colour }} className="min-h-screen bg-[#f4f6fa] text-[#0E1B3D]">
-      {store.announcement && <div className="bg-[var(--c)] text-white text-center text-[13.5px] font-semibold px-4 py-2">{store.announcement}</div>}
 
-      <header className="sticky top-0 z-30 bg-white border-b border-[#e3e8f2]">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center gap-3">
-          {store.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={store.logo} alt="" className="h-10 w-10 rounded-full object-cover shrink-0" />
-          ) : (
-            <span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)] text-white flex items-center justify-center font-bold">{store.name.slice(0, 1).toUpperCase()}</span>
-          )}
-          <p className="font-extrabold text-[17px] truncate min-w-0 flex-1 sm:flex-none">{store.name}</p>
-          <div className="relative hidden sm:block flex-1 max-w-md mx-auto">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products" aria-label="Search products" className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f4f6fa] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-[var(--c)]/30" />
-          </div>
-          {store.accounts && (
-            <button type="button" onClick={() => setAccountView('orders')} aria-label={shopper.session ? 'My orders' : 'Sign in'} className="h-11 shrink-0 rounded-full border border-[#d5ddeb] bg-white px-3 sm:px-4 inline-flex items-center gap-2 font-bold text-[14px] text-[#0E1B3D] cursor-pointer hover:border-[var(--c)]">
-              {shopper.account?.shopper.picture ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={shopper.account.shopper.picture} alt="" className="h-7 w-7 -ml-1 rounded-full object-cover" referrerPolicy="no-referrer" />
-              ) : (
-                <UserRound size={18} />
-              )}
-              <span className="hidden sm:inline">{shopper.session ? 'My orders' : 'Sign in'}</span>
-            </button>
-          )}
-          <button type="button" onClick={() => setPanel('cart')} aria-label={`Cart, ${count} items`} className="relative h-11 px-4 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2 shrink-0 cursor-pointer">
-            <ShoppingBag size={18} />
-            <span className="hidden sm:inline">Cart</span>
-            {count > 0 && <span className="min-w-5 h-5 px-1 rounded-full bg-white text-[var(--c)] text-[12px] font-extrabold flex items-center justify-center">{count}</span>}
-          </button>
+  // ── Browsing: sort, filters, saved, recently viewed ──────────────────────
+  const [sort, setSort] = useState<SortKey>('popular')
+  const [filters, setFilters] = useState<Filters>({})
+  const [sheet, setSheet] = useState<null | 'sort' | 'filter' | 'categories'>(null)
+  const [wish, setWish] = useState<string[]>([])
+  const [recent, setRecent] = useState<string[]>([])
+  const wishKey = `store-wish:${store.slug}`
+  const recentKey = `store-recent:${store.slug}`
+  useEffect(() => {
+    try {
+      setWish(JSON.parse(localStorage.getItem(wishKey) || '[]').filter((x: unknown) => typeof x === 'string').slice(0, 50))
+      const seen: string[] = JSON.parse(localStorage.getItem(recentKey) || '[]').filter((x: unknown) => typeof x === 'string')
+      // The product open now goes first in "Recently viewed"
+      const next = productId ? [productId, ...seen.filter((x) => x !== productId)].slice(0, 12) : seen
+      setRecent(next)
+      localStorage.setItem(recentKey, JSON.stringify(next))
+    } catch {}
+    // A search sent from a product page (?q=…)
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q && !productId) setQuery(q.slice(0, 80))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wishKey, recentKey, productId])
+  const toggleWish = (id: string) => setWish((list) => {
+    const next = list.includes(id) ? list.filter((x) => x !== id) : [id, ...list].slice(0, 50)
+    try { localStorage.setItem(wishKey, JSON.stringify(next)) } catch {}
+    return next
+  })
+  const byId = useMemo(() => new Map(store.products.map((p) => [p.id, p])), [store.products])
+  const q = query.trim()
+  const browsing = Boolean(category || q || sort !== 'popular' || filterCount(filters))
+  const listed = useMemo(() => {
+    const base = q ? searchProducts(store.products, q) : store.products
+    const filtered = filterProducts(base, { ...filters, category })
+    // A search keeps its best-match order unless another sort is picked
+    return q && sort === 'popular' ? filtered : sortProducts(filtered, sort)
+  }, [store.products, q, filters, category, sort])
+  const deals = useMemo(() => dealProducts(store.products), [store.products])
+  const best = useMemo(() => topRated(store.products), [store.products])
+  const rails = useMemo(() => categoryRails(store.products, 3), [store.products])
+  const recentProducts = recent.filter((id) => id !== productId).map((id) => byId.get(id)).filter(Boolean) as Product[]
+  const savedProducts = wish.map((id) => byId.get(id)).filter(Boolean) as Product[]
+  const showList = (next: { sort?: SortKey; category?: string | null } = {}) => {
+    if (next.sort) setSort(next.sort)
+    if (next.category !== undefined) setCategory(next.category)
+    setTimeout(() => productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
+  }
+  const searchFromHere = () => {
+    if (viewing) { if (q) window.location.href = `${homeHref}?q=${encodeURIComponent(q)}`; return }
+    showList()
+  }
+  // The page's own address for "Ask on WhatsApp", read after loading (the server does not know it)
+  const [pageUrl, setPageUrl] = useState('')
+  useEffect(() => { setPageUrl(window.location.href) }, [productId])
+  const clearAll = () => { setCategory(null); setQuery(''); setSort('popular'); setFilters({}) }
+
+  const layout = store.layout || 'grid'
+  const cardFor = (p: Product, compact = false) => (
+    <ProductCard key={p.id} p={p} href={productHref(p.id)} money={money} inCart={cart[p.id] || 0} onAdd={() => setQty(p.id, 1)} onQty={(n) => setQty(p.id, n)}
+      wished={wish.includes(p.id)} onWish={() => toggleWish(p.id)} freeFrom={store.delivery ? (store.deliveryFee ? store.freeFrom : 1) : 0} compact={compact} wide={layout === 'big'} />
+  )
+  const railCards = (list: Product[]) => list.map((p) => <div key={p.id} className="w-[44vw] max-w-[200px] min-[480px]:w-[180px] shrink-0 snap-start">{cardFor(p, true)}</div>)
+  const listRow = (p: Product) => (
+    <article key={p.id} className="bg-white p-3 flex gap-3 min-w-0">
+      <a href={productHref(p.id)} className="shrink-0 h-28 w-28 sm:h-36 sm:w-36"><Picture src={p.image} alt={p.title} contain className={`h-full w-full ${p.inStock ? '' : 'opacity-40 grayscale'}`} /></a>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <a href={productHref(p.id)} className="min-w-0">
+          {p.brand && <p className="text-[12px] font-semibold text-[#8a94a8]">{p.brand}</p>}
+          <h3 className="text-[15px] text-[#0E1B3D] leading-snug line-clamp-2 hover:text-[var(--c)]">{p.title}</h3>
+          {p.rating ? <div className="mt-1"><RatingChip rating={p.rating} count={p.ratingCount} /></div> : null}
+          <div className="mt-1"><PriceLine p={p} money={money} /></div>
+        </a>
+        <div className="mt-auto pt-2 flex justify-end">
+          {!p.inStock ? <span className="text-[12.5px] font-semibold text-[#8a94a8]">Not available now</span>
+            : p.variants?.length ? <a href={productHref(p.id)} className="h-9 px-4 leading-[34px] rounded-md border border-[var(--c)] text-[var(--c)] text-[13.5px] font-bold">Choose options</a>
+            : cart[p.id] ? <Stepper small value={cart[p.id]} onChange={(n) => setQty(p.id, n)} />
+            : <button type="button" onClick={() => setQty(p.id, 1)} className="h-9 px-4 rounded-md bg-[var(--c)] text-white text-[13.5px] font-bold cursor-pointer">Add to cart</button>}
         </div>
-        <div className="sm:hidden px-4 pb-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products" aria-label="Search products" className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f4f6fa] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-[var(--c)]/30" />
+      </div>
+    </article>
+  )
+  const gridClass = layout === 'list' ? 'grid grid-cols-1 xl:grid-cols-2 gap-px bg-[#eef1f6]'
+    : layout === 'big' ? 'grid grid-cols-1 min-[480px]:grid-cols-2 xl:grid-cols-3 gap-px bg-[#eef1f6]'
+    : layout === 'compact' ? 'grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-px bg-[#eef1f6]'
+    : 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-px bg-[#eef1f6]'
+  const listTitle = q ? `Results for “${q}”` : category || (sort === 'discount' ? 'Best deals' : sort === 'newest' ? 'New arrivals' : 'All products')
+  const nFilters = filterCount(filters)
+  const filterPanel = <FilterPanel products={store.products} categories={store.categories.map((c) => c.name)} category={category} onCategory={(c) => { setCategory(c); setSheet(null) }} filters={filters} onFilters={setFilters} money={money} />
+
+  return (
+    <div style={{ ['--c' as any]: store.colour }} className="min-h-screen bg-[#f1f3f6] text-[#0E1B3D]">
+      {store.announcement && <div className="bg-[#0E1B3D] text-white text-center text-[12.5px] sm:text-[13px] font-semibold px-4 py-1.5">{store.announcement}</div>}
+
+      {/* Header: the shop, a wide search, account and cart */}
+      <header className="sticky top-0 z-30 bg-[var(--c)] text-white shadow-[0_1px_4px_rgba(0,0,0,0.15)]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center gap-3 sm:gap-6">
+          <a href={homeHref} className="flex items-center gap-2 min-w-0 shrink">
+            {store.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={store.logo} alt="" className="h-9 w-9 sm:h-10 sm:w-10 rounded-md bg-white object-contain shrink-0" />
+            ) : (
+              <span className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-md bg-white text-[var(--c)] flex items-center justify-center font-extrabold text-[18px]">{store.name.slice(0, 1).toUpperCase()}</span>
+            )}
+            <span className="min-w-0">
+              <span className="block font-extrabold text-[16px] sm:text-[18px] leading-tight truncate">{store.name}</span>
+              {store.tagline && <span className="hidden lg:block text-[11.5px] text-white/80 truncate max-w-[220px]">{store.tagline}</span>}
+            </span>
+          </a>
+          <div className="hidden md:block flex-1 max-w-2xl">
+            <SearchBox products={store.products} value={query} onChange={setQuery} onSubmit={searchFromHere} onCategory={(c) => { setQuery(''); viewing ? (window.location.href = categoryHref(c)) : showList({ category: c }) }} productHref={productHref} money={money} />
           </div>
+          <div className="ml-auto flex items-center gap-1 sm:gap-3 shrink-0">
+            {store.accounts && (
+              <button type="button" onClick={() => setAccountView('orders')} aria-label={shopper.session ? 'My orders' : 'Sign in'} className="h-10 px-2 sm:px-3 rounded-md inline-flex items-center gap-2 font-bold text-[14px] hover:bg-white/10 cursor-pointer">
+                {shopper.account?.shopper.picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={shopper.account.shopper.picture} alt="" className="h-7 w-7 rounded-full object-cover" referrerPolicy="no-referrer" />
+                ) : <UserRound size={20} />}
+                <span className="hidden sm:inline">{shopper.session ? 'My orders' : 'Sign in'}</span>
+              </button>
+            )}
+            <button type="button" onClick={() => setPanel('cart')} aria-label={`Cart, ${count} items`} className="relative h-10 px-2 sm:px-3 rounded-md inline-flex items-center gap-2 font-bold text-[14px] hover:bg-white/10 cursor-pointer">
+              <span className="relative">
+                <ShoppingCart size={22} />
+                {count > 0 && <span className="absolute -top-2 -right-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[var(--c)] text-[11px] font-extrabold flex items-center justify-center border border-[var(--c)]">{count}</span>}
+              </span>
+              <span className="hidden sm:inline">Cart</span>
+            </button>
+          </div>
+        </div>
+        <div className="md:hidden px-3 pb-2.5">
+          <SearchBox products={store.products} value={query} onChange={setQuery} onSubmit={searchFromHere} onCategory={(c) => { setQuery(''); viewing ? (window.location.href = categoryHref(c)) : showList({ category: c }) }} productHref={productHref} money={money} />
         </div>
       </header>
 
-      {!viewing && <Banners store={store} onCategory={pickCategory} />}
-
+      {/* Categories as a bar of round pictures */}
       {!viewing && store.categories.length > 1 && (
-        <section className="max-w-6xl mx-auto px-4 pt-6">
-          <h2 className="text-[19px] font-extrabold mb-3">Shop by category</h2>
-          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-1">
+        <nav aria-label="Categories" className="bg-white border-b border-[#e3e8f2] shadow-sm">
+          <div className="max-w-7xl mx-auto px-2 flex gap-1 sm:gap-3 overflow-x-auto no-scrollbar lg:justify-center py-2.5">
+            <button type="button" onClick={() => { clearAll() }} className="shrink-0 w-[72px] sm:w-[88px] flex flex-col items-center gap-1 cursor-pointer">
+              <span className={`h-14 w-14 sm:h-16 sm:w-16 rounded-full flex items-center justify-center ${!category ? 'bg-[var(--c)] text-white' : 'bg-[#f1f3f6] text-[var(--c)]'}`}><LayoutGrid size={24} /></span>
+              <span className={`text-[12px] sm:text-[13px] leading-tight ${!category ? 'font-bold text-[var(--c)]' : 'font-semibold'}`}>All</span>
+            </button>
             {store.categories.map((c) => (
-              <button key={c.name} type="button" onClick={() => pickCategory(category === c.name ? null : c.name)} className="shrink-0 w-[84px] sm:w-[104px] text-center cursor-pointer">
-                <span className={`block mx-auto h-[72px] w-[72px] sm:h-[92px] sm:w-[92px] rounded-full overflow-hidden ring-2 ${category === c.name ? 'ring-[var(--c)]' : 'ring-transparent'}`}>
-                  <Picture src={c.image} alt="" className="h-full w-full" />
-                </span>
-                <span className={`block mt-1.5 text-[13px] leading-tight line-clamp-2 ${category === c.name ? 'font-bold text-[var(--c)]' : 'font-semibold'}`}>{c.name}</span>
+              <button key={c.name} type="button" onClick={() => (category === c.name ? setCategory(null) : showList({ category: c.name }))} className="shrink-0 w-[72px] sm:w-[88px] flex flex-col items-center gap-1 cursor-pointer">
+                <span className={`h-14 w-14 sm:h-16 sm:w-16 rounded-full overflow-hidden bg-[#f1f3f6] ring-2 ${category === c.name ? 'ring-[var(--c)]' : 'ring-transparent'}`}><Picture src={c.image} alt="" className="h-full w-full" /></span>
+                <span className={`w-full text-center text-[12px] sm:text-[13px] leading-tight line-clamp-2 ${category === c.name ? 'font-bold text-[var(--c)]' : 'font-semibold'}`}>{c.name}</span>
               </button>
             ))}
           </div>
-        </section>
+        </nav>
       )}
 
-      {(!viewing || query) && (
-        <section ref={productsRef} className="max-w-6xl mx-auto px-4 pt-6 pb-28 scroll-mt-28">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <h2 className="text-[19px] font-extrabold mr-auto">{category || (query ? 'Search results' : 'All products')}</h2>
-            {(category || query) && (
-              <button type="button" onClick={() => pickCategory(null)} className="h-9 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-semibold inline-flex items-center gap-1.5 cursor-pointer">
-                <X size={14} /> Show all
-              </button>
-            )}
-          </div>
-          {shown.length === 0 ? (
-            <p className="py-16 text-center text-[#6B7894]">{store.products.length ? 'Nothing matches. Try another word.' : 'Products are coming soon.'}</p>
-          ) : (
-            <div className={gridClass}>
-              {shown.map(card)}
-            </div>
-          )}
-        </section>
-      )}
+      <main className="max-w-7xl mx-auto sm:px-4 pt-2 sm:pt-4 pb-24 sm:pb-10 space-y-2 sm:space-y-4">
+        {/* Home: banners, promises, rails */}
+        {!viewing && !browsing && (
+          <>
+            <Banners store={store} onCategory={(c) => showList({ category: c })} />
+            <TrustStrip store={store} money={money} />
+            {deals.length >= 2 && <Rail title="Deals for you" note="Biggest savings right now" onViewAll={() => showList({ sort: 'discount' })}>{railCards(deals)}</Rail>}
+            {recentProducts.length > 0 && <Rail title="Recently viewed">{railCards(recentProducts)}</Rail>}
+            {best.length >= 2 && <Rail title="Top rated" note="Loved by customers">{railCards(best)}</Rail>}
+            {rails.map((r) => <Rail key={r.category} title={`Best of ${r.category}`} onViewAll={() => showList({ category: r.category })}>{railCards(r.products)}</Rail>)}
+            {savedProducts.length > 0 && <Rail title="Saved for later">{railCards(savedProducts)}</Rail>}
+          </>
+        )}
 
-      {/* One product's own page */}
-      {viewing && !query && (
-        <section className="max-w-6xl mx-auto px-4 pt-4 pb-28">
-          <nav aria-label="Where you are" className="flex flex-wrap items-center gap-1.5 text-[13.5px] text-[#6B7894] mb-3">
-            <a href={homeHref} className="inline-flex items-center gap-1 font-semibold hover:text-[var(--c)]"><ArrowLeft size={15} /> All products</a>
-            <span aria-hidden="true">/</span>
-            <a href={categoryHref(viewing.category)} className="font-semibold hover:text-[var(--c)]">{viewing.category}</a>
-          </nav>
-          <div className="bg-white rounded-2xl border border-[#e3e8f2] p-3 sm:p-6 grid md:grid-cols-2 gap-5 md:gap-10">
-            <div className="relative">
-              <Gallery key={viewing.id + (chosen?.id || '')} main={viewImage} images={viewing.images || []} video={viewing.video || null} title={viewing.title} dim={!viewInStock} />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <a href={categoryHref(viewing.category)} className="text-[12.5px] font-bold text-[#6B7894] uppercase tracking-wide hover:text-[var(--c)]">{viewing.category}</a>
-              <h1 className="mt-1 text-[24px] sm:text-[30px] font-extrabold leading-tight break-words">{viewing.title}</h1>
-              <p className="mt-2 text-[26px] font-extrabold text-[var(--c)]">{needsChoice && viewing.variants!.some((v) => v.price !== viewPrice) ? <span className="text-[15px] font-semibold text-[#6B7894]">from </span> : null}{money(viewPrice)}</p>
-              <p className={`mt-2 inline-flex w-fit items-center gap-1.5 h-7 px-3 rounded-full text-[13px] font-bold ${viewInStock ? 'bg-[#eef1f6] text-[#0E1B3D]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
-                {viewInStock ? <><Check size={14} /> In stock</> : chosen ? `${chosen.name} is out of stock` : 'Out of stock right now'}
-              </p>
-
-              {!viewInStock && (!needsChoice || !viewing.variants?.length) && <BackInStock slug={store.slug} productId={viewing.id} variantId={chosen?.id || null} label={chosen ? chosen.name : null} />}
-
-              {(viewing.options || []).length > 0 && viewing.variants?.length ? (
-                <div className="mt-5 space-y-4">
-                  {viewing.options!.map((o) => (
-                    <fieldset key={o.name}>
-                      <legend className="text-[14px] font-semibold text-[#4a5672] mb-2">{o.name}{picked[o.name] ? <span className="text-[#0E1B3D]">: {picked[o.name]}</span> : null}</legend>
-                      <div className="flex flex-wrap gap-2">
-                        {o.values.map((value) => {
-                          const on = picked[o.name] === value
-                          const can = valueAvailable(viewing.variants!, viewing.options!, picked, o.name, value)
-                          return (
-                            <button key={value} type="button" aria-pressed={on} onClick={() => setPicked({ ...picked, [o.name]: value })}
-                              className={`min-w-11 h-10 px-3.5 rounded-full border-2 text-[14px] font-semibold cursor-pointer ${on ? 'border-[var(--c)] bg-[var(--c)] text-white' : can ? 'border-[#d5ddeb] bg-white text-[#0E1B3D] hover:border-[var(--c)]' : 'border-[#e3e8f2] bg-[#f4f6fa] text-[#8a94a8] line-through'}`}>
-                              {value}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </fieldset>
-                  ))}
+        {/* The list: side filters on wide screens, sort and filter sheets on phones */}
+        {!viewing && (
+          <section ref={productsRef} className="scroll-mt-32 lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-4 lg:items-start">
+            <aside className="hidden lg:block bg-white rounded-lg border border-[#e3e8f2] sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto">
+              <div className="px-4 py-3 border-b border-[#eef1f6] flex items-center">
+                <p className="flex-1 text-[16px] font-extrabold">Filters</p>
+                {(nFilters > 0 || category) && <button type="button" onClick={() => { setFilters({}); setCategory(null) }} className="text-[13px] font-bold text-[var(--c)] cursor-pointer">Clear all</button>}
+              </div>
+              {filterPanel}
+            </aside>
+            <div className="bg-white sm:rounded-lg border-y sm:border border-[#e3e8f2] min-w-0">
+              <div className="px-4 pt-3 sm:pt-4">
+                {browsing && <button type="button" onClick={clearAll} className="mb-1 text-[13px] font-semibold text-[#6B7894] hover:text-[var(--c)] cursor-pointer">Home <span aria-hidden>›</span> {listTitle}</button>}
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <h1 className="text-[18px] sm:text-[20px] font-extrabold">{listTitle}</h1>
+                  <span className="text-[13px] text-[#6B7894]">({listed.length} {listed.length === 1 ? 'product' : 'products'})</span>
                 </div>
-              ) : null}
+                <div className="mt-1 border-b border-[#eef1f6]"><SortTabs sort={sort} onSort={setSort} /></div>
+              </div>
+              {/* Phones: Sort | Filter */}
+              <div className="sm:hidden grid grid-cols-2 border-b border-[#eef1f6]">
+                <button type="button" onClick={() => setSheet('sort')} className="h-11 inline-flex items-center justify-center gap-2 text-[14px] font-bold border-r border-[#eef1f6] cursor-pointer"><ArrowUpDown size={16} /> Sort</button>
+                <button type="button" onClick={() => setSheet('filter')} className="h-11 inline-flex items-center justify-center gap-2 text-[14px] font-bold cursor-pointer"><SlidersHorizontal size={16} /> Filter{nFilters ? ` (${nFilters})` : ''}</button>
+              </div>
+              <div className="hidden sm:flex lg:hidden px-4 py-2 gap-2 border-b border-[#eef1f6]">
+                <button type="button" onClick={() => setSheet('filter')} className="h-9 px-3 rounded-md border border-[#d5ddeb] text-[13.5px] font-bold inline-flex items-center gap-2 cursor-pointer"><SlidersHorizontal size={15} /> Filters{nFilters ? ` (${nFilters})` : ''}</button>
+              </div>
+              {listed.length === 0 ? (
+                <div className="py-16 px-4 text-center">
+                  <p className="text-[17px] font-bold">{store.products.length ? 'Sorry, nothing matches' : 'Products are coming soon'}</p>
+                  {store.products.length > 0 && <p className="mt-1 text-[14px] text-[#6B7894]">Check the spelling, or try fewer filters.</p>}
+                  {browsing && <button type="button" onClick={clearAll} className="mt-4 h-10 px-5 rounded-md bg-[var(--c)] text-white font-bold text-[14px] cursor-pointer">See all products</button>}
+                </div>
+              ) : (
+                <div className={gridClass}>{listed.map((p) => (layout === 'list' ? listRow(p) : cardFor(p)))}</div>
+              )}
+            </div>
+          </section>
+        )}
 
-              {viewInStock && (
-                <div className="mt-5 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[14px] font-semibold text-[#4a5672]">Quantity</span>
-                    <Stepper value={openQty} onChange={(n) => setOpenQty(Math.max(1, Math.min(99, n)))} />
-                  </div>
-                  <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-2">
-                    <button type="button" disabled={needsChoice} onClick={() => setQty(viewKey, openQty)} className="h-12 rounded-full border-2 border-[var(--c)] text-[var(--c)] font-bold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer hover:bg-[var(--c)]/5 disabled:opacity-50 disabled:cursor-not-allowed">
-                      <ShoppingBag size={17} /> {cart[viewKey] ? 'Update cart' : 'Add to cart'}
+        {/* One product's own page */}
+        {viewing && (
+          <section className="sm:pb-4">
+            <nav aria-label="Where you are" className="px-4 sm:px-0 py-2 flex flex-wrap items-center gap-1.5 text-[13px] text-[#6B7894]">
+              <a href={homeHref} className="font-semibold hover:text-[var(--c)]">Home</a><span aria-hidden>›</span>
+              <a href={categoryHref(viewing.category)} className="font-semibold hover:text-[var(--c)]">{viewing.category}</a><span aria-hidden>›</span>
+              <span className="truncate max-w-[60vw]">{viewing.title}</span>
+            </nav>
+            <div className="bg-white sm:rounded-lg border-y sm:border border-[#e3e8f2] grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+              {/* Photos, with Add to cart / Buy now under them on wide screens */}
+              <div className="p-3 sm:p-5 md:border-r border-[#eef1f6]">
+                <div className="md:sticky md:top-24">
+                  <div className="relative">
+                    <Gallery key={viewing.id + (chosen?.id || '')} main={viewImage} images={viewing.images || []} video={viewing.video || null} title={viewing.title} dim={!viewInStock} />
+                    <button type="button" aria-label={wish.includes(viewing.id) ? 'Remove from saved' : 'Save for later'} aria-pressed={wish.includes(viewing.id)} onClick={() => toggleWish(viewing.id)} className="absolute top-3 right-3 h-10 w-10 rounded-full bg-white shadow flex items-center justify-center cursor-pointer">
+                      <Heart size={19} className={wish.includes(viewing.id) ? 'fill-[#b91c1c] text-[#b91c1c]' : 'text-[#8a94a8]'} />
                     </button>
-                    <button type="button" disabled={needsChoice} onClick={() => { setQty(viewKey, openQty); setPanel('cart') }} className="h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                      Buy now · {money(viewPrice * openQty)}
-                    </button>
                   </div>
-                  {needsChoice && <p className="text-[13.5px] text-[#4a5672]">Choose {viewing.options!.filter((o) => !picked[o.name]).map((o) => o.name.toLowerCase()).join(' and ')} first.</p>}
-                  {cart[viewKey] > 0 && (
-                    <p className="text-[13.5px] text-[#4a5672]">
-                      {cart[viewKey]} in your cart · <button type="button" onClick={() => setPanel('cart')} className="font-bold text-[var(--c)] underline cursor-pointer">View cart</button>
-                    </p>
+                  {viewInStock && (
+                    <div className="hidden md:grid grid-cols-2 gap-3 mt-4">
+                      <button type="button" disabled={needsChoice} onClick={() => setQty(viewKey, openQty)} className="h-12 rounded-md border-2 border-[var(--c)] text-[var(--c)] font-extrabold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <ShoppingCart size={18} /> {cart[viewKey] ? 'Update cart' : 'Add to cart'}
+                      </button>
+                      <button type="button" disabled={needsChoice} onClick={() => { setQty(viewKey, openQty); setPanel('cart') }} className="h-12 rounded-md bg-[var(--c)] text-white font-extrabold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <Zap size={18} /> Buy now
+                      </button>
+                    </div>
                   )}
                 </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {store.whatsapp && (
-                  <a href={waLink(`Hi ${store.name}, I have a question about ${viewing.title}${chosen ? ` (${chosen.name})` : ''} (${money(viewPrice)}): ${typeof window !== 'undefined' ? window.location.href : ''}`)} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-semibold inline-flex items-center gap-2">
-                    <MessageCircle size={16} className="text-[#25D366]" /> Ask on WhatsApp
-                  </a>
-                )}
-                <button type="button" onClick={share} className="h-10 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-semibold inline-flex items-center gap-2 cursor-pointer">
-                  {shared ? <Check size={16} className="text-[var(--c)]" /> : <Share2 size={16} />} {shared ? 'Link copied' : 'Share'}
-                </button>
               </div>
 
-              <ul className="mt-5 rounded-xl bg-[#f4f6fa] p-4 space-y-2 text-[14px] text-[#4a5672]">
-                {store.delivery && (
-                  <li className="flex gap-2"><Truck size={17} className="shrink-0 mt-px text-[var(--c)]" />
-                    <span>Home delivery{store.deliveryFee ? ` · ${money(store.deliveryFee)}` : ' · free'}{store.deliveryFee && store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}</span>
-                  </li>
-                )}
-                {store.pinCheck && <li><PinCheck slug={store.slug} charge={store.deliveryFee ? `Delivery ${money(store.deliveryFee)}${store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}.` : 'Free delivery.'} /></li>}
-                {store.pickup && <li className="flex gap-2"><Store size={17} className="shrink-0 mt-px text-[var(--c)]" /><span>Pick up from the shop{store.address ? ` · ${store.address.split('\n')[0]}` : ''}</span></li>}
-                <li className="flex gap-2"><ShieldCheck size={17} className="shrink-0 mt-px text-[var(--c)]" />
-                  <span>{store.payOnline && store.payLater ? 'Pay online, or cash when you get it' : store.payOnline ? 'Pay online by UPI, card or net banking' : 'Pay cash when you get it'}</span>
-                </li>
-              </ul>
-
-              {viewing.description && (
-                <div className="mt-5">
-                  <h2 className="text-[16px] font-extrabold">About this product</h2>
-                  <p className="mt-1.5 text-[15px] leading-relaxed text-[#4a5672] whitespace-pre-line break-words">{viewing.description}</p>
+              <div className="p-4 sm:p-6 min-w-0">
+                {viewing.brand && <p className="text-[14px] font-bold text-[#8a94a8]">{viewing.brand}</p>}
+                <h1 className="text-[19px] sm:text-[22px] font-semibold leading-snug break-words">{viewing.title}</h1>
+                {viewing.rating ? <div className="mt-2"><RatingChip rating={viewing.rating} count={viewing.ratingCount} size="md" /> <span className="text-[13px] text-[#6B7894]">ratings</span></div> : null}
+                {discountPercent({ ...viewing, price: viewPrice, variants: undefined }) > 0 && <p className="mt-3 text-[13px] font-bold text-[var(--c)]">Special price</p>}
+                <div className={discountPercent({ ...viewing, price: viewPrice, variants: undefined }) > 0 ? 'mt-0.5' : 'mt-3'}>
+                  <PriceLine p={{ ...viewing, price: viewPrice, variants: undefined }} money={money} size="lg" from={needsChoice && Boolean(viewing.variants?.some((v) => v.price !== viewPrice))} />
                 </div>
-              )}
-              {reviews.length > 0 && <Reviews reviews={reviews} />}
-            </div>
-          </div>
+                <p className="text-[12.5px] text-[#6B7894]">Inclusive of all taxes</p>
+                <p className={`mt-2 inline-flex w-fit items-center gap-1.5 h-7 px-2.5 rounded text-[13px] font-bold ${viewInStock ? 'bg-[#eef1f6] text-[#0E1B3D]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+                  {viewInStock ? <><Check size={14} /> In stock</> : chosen ? `${chosen.name} is out of stock` : 'Out of stock right now'}
+                </p>
+                {!viewInStock && (!needsChoice || !viewing.variants?.length) && <BackInStock slug={store.slug} productId={viewing.id} variantId={chosen?.id || null} label={chosen ? chosen.name : null} />}
 
-          {related.length > 0 && (
-            <div className="mt-8">
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-[19px] font-extrabold mr-auto">More in {viewing.category}</h2>
-                <a href={categoryHref(viewing.category)} className="text-[14px] font-bold text-[var(--c)]">See all</a>
+                <OffersList store={store} money={money} />
+
+                {(viewing.options || []).length > 0 && viewing.variants?.length ? (
+                  <div className="mt-5 space-y-4">
+                    {viewing.options!.map((o) => (
+                      <fieldset key={o.name}>
+                        <legend className="text-[14px] font-bold text-[#4a5672] mb-2">{o.name}{picked[o.name] ? <span className="text-[#0E1B3D] font-semibold">: {picked[o.name]}</span> : null}</legend>
+                        <div className="flex flex-wrap gap-2">
+                          {o.values.map((value) => {
+                            const on = picked[o.name] === value
+                            const can = valueAvailable(viewing.variants!, viewing.options!, picked, o.name, value)
+                            return (
+                              <button key={value} type="button" aria-pressed={on} onClick={() => setPicked({ ...picked, [o.name]: value })}
+                                className={`min-w-12 h-10 px-3.5 rounded-md border-2 text-[14px] font-bold cursor-pointer ${on ? 'border-[var(--c)] text-[var(--c)] bg-[var(--c)]/5' : can ? 'border-[#d5ddeb] bg-white text-[#0E1B3D] hover:border-[var(--c)]' : 'border-[#e3e8f2] bg-[#f4f6fa] text-[#8a94a8] line-through'}`}>
+                                {value}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </fieldset>
+                    ))}
+                  </div>
+                ) : null}
+
+                {viewInStock && (
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    <span className="text-[14px] font-bold text-[#4a5672]">Quantity</span>
+                    <Stepper value={openQty} onChange={(n) => setOpenQty(Math.max(1, Math.min(99, n)))} />
+                    {needsChoice && <span className="text-[13.5px] text-[#4a5672]">Choose {viewing.options!.filter((o) => !picked[o.name]).map((o) => o.name.toLowerCase()).join(' and ')} first.</span>}
+                    {cart[viewKey] > 0 && <span className="text-[13.5px] text-[#4a5672]">{cart[viewKey]} in your cart · <button type="button" onClick={() => setPanel('cart')} className="font-bold text-[var(--c)] underline cursor-pointer">View cart</button></span>}
+                  </div>
+                )}
+
+                {/* Delivery and services */}
+                <div className="mt-5 rounded-lg border border-[#e3e8f2] divide-y divide-[#eef1f6]">
+                  {store.delivery && (
+                    <div className="p-3 sm:p-4 flex gap-3 text-[14px]">
+                      <Truck size={19} className="shrink-0 mt-0.5 text-[var(--c)]" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold">Delivery</p>
+                        <p className="text-[#4a5672]">{store.deliveryFee ? `${money(store.deliveryFee)}${store.freeFrom ? `, free on orders above ${money(store.freeFrom)}` : ''}` : 'Free home delivery'}</p>
+                        {store.pinCheck && <div className="mt-2"><PinCheck slug={store.slug} charge={store.deliveryFee ? `Delivery ${money(store.deliveryFee)}${store.freeFrom ? `, free above ${money(store.freeFrom)}` : ''}.` : 'Free delivery.'} /></div>}
+                      </div>
+                    </div>
+                  )}
+                  {store.pickup && <div className="p-3 sm:p-4 flex gap-3 text-[14px]"><Store size={19} className="shrink-0 mt-0.5 text-[var(--c)]" /><div><p className="font-bold">Pick up from the shop</p>{store.address && <p className="text-[#4a5672]">{store.address.split('\n')[0]}</p>}</div></div>}
+                  <div className="p-3 sm:p-4 grid grid-cols-1 min-[420px]:grid-cols-2 gap-2 text-[13.5px] text-[#0E1B3D]">
+                    {store.payLater && <span className="flex gap-2"><Banknote size={17} className="shrink-0 text-[var(--c)]" /> {store.delivery ? 'Cash on delivery available' : 'Pay at pick up'}</span>}
+                    {store.payOnline && <span className="flex gap-2"><ShieldCheck size={17} className="shrink-0 text-[var(--c)]" /> Secure online payment</span>}
+                    {store.returns?.on && <span className="flex gap-2"><RotateCcw size={17} className="shrink-0 text-[var(--c)]" /> {store.returns.days}-day return policy</span>}
+                    <span className="flex gap-2"><Store size={17} className="shrink-0 text-[var(--c)]" /> Sold by {store.name}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {store.whatsapp && (
+                    <a href={waLink(`Hi ${store.name}, I have a question about ${viewing.title}${chosen ? ` (${chosen.name})` : ''} (${money(viewPrice)}): ${pageUrl}`)} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-md border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center gap-2">
+                      <MessageCircle size={16} className="text-[#25D366]" /> Ask on WhatsApp
+                    </a>
+                  )}
+                  <button type="button" onClick={share} className="h-10 px-4 rounded-md border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center gap-2 cursor-pointer">
+                    {shared ? <Check size={16} className="text-[var(--c)]" /> : <Share2 size={16} />} {shared ? 'Link copied' : 'Share'}
+                  </button>
+                </div>
+
+                {viewing.description && (
+                  <div className="mt-6 border-t border-[#eef1f6] pt-5">
+                    <h2 className="text-[17px] font-extrabold">Product details</h2>
+                    <p className="mt-2 text-[14.5px] leading-relaxed text-[#4a5672] whitespace-pre-line break-words">{viewing.description}</p>
+                  </div>
+                )}
+                {reviews.length > 0 && <div className="mt-6 border-t border-[#eef1f6] pt-1"><Reviews reviews={reviews} /></div>}
               </div>
-              <div className={gridClass}>{related.map(card)}</div>
             </div>
-          )}
-        </section>
-      )}
 
-      {/* The shop's Instagram: posts it picked (Instagram's own embeds), and a follow link */}
-      {!viewing && !query && (store.instagram?.posts.length || store.instagram?.handle || store.instagramFeed?.length) ? (
-        <section className="max-w-6xl mx-auto px-4 pb-24" aria-label="Instagram">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <h2 className="text-[19px] font-extrabold mr-auto">On Instagram</h2>
-            {store.instagram.handle && <a href={`https://www.instagram.com/${store.instagram.handle}/`} target="_blank" rel="noreferrer" className="h-9 px-4 rounded-full border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center">Follow @{store.instagram.handle}</a>}
-          </div>
-          {(store.instagramFeed?.length || 0) > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
-              {store.instagramFeed!.map((p) => (
-                <a key={p.id} href={p.link} target="_blank" rel="noreferrer" className="block rounded-2xl overflow-hidden border border-[#e3e8f2] bg-white">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.image} alt={p.caption ? p.caption.slice(0, 100) : 'Instagram post'} loading="lazy" className="aspect-square w-full object-cover" />
-                </a>
-              ))}
-            </div>
-          )}
-          {store.instagram.posts.length > 0 && !(store.instagramFeed?.length) && (
-            <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 gap-4">
-              {store.instagram.posts.slice(0, 6).map((post) => (
-                <iframe key={post} src={`https://www.instagram.com/${post}/embed`} title="Instagram post" loading="lazy" className="w-full h-[520px] rounded-2xl border border-[#e3e8f2] bg-white" allowTransparency scrolling="no" />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+            {related.length > 0 && <div className="mt-2 sm:mt-4"><Rail title="Similar products" onViewAll={() => (window.location.href = categoryHref(viewing.category))}>{railCards(related)}</Rail></div>}
+            {recentProducts.length > 0 && <div className="mt-2 sm:mt-4"><Rail title="Recently viewed">{railCards(recentProducts)}</Rail></div>}
+          </section>
+        )}
 
-      <footer className="bg-white border-t border-[#e3e8f2]">
-        <div className="max-w-6xl mx-auto px-4 py-8 grid gap-6 sm:grid-cols-2 text-[14.5px]">
+        {/* The shop's Instagram */}
+        {!viewing && !browsing && (store.instagram?.posts.length || store.instagram?.handle || store.instagramFeed?.length) ? (
+          <section className="bg-white sm:rounded-lg border-y sm:border border-[#e3e8f2] p-4" aria-label="Instagram">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <h2 className="text-[18px] sm:text-[20px] font-extrabold mr-auto">On Instagram</h2>
+              {store.instagram.handle && <a href={`https://www.instagram.com/${store.instagram.handle}/`} target="_blank" rel="noreferrer" className="h-9 px-4 rounded-md border border-[#d5ddeb] bg-white text-[13.5px] font-bold inline-flex items-center">Follow @{store.instagram.handle}</a>}
+            </div>
+            {(store.instagramFeed?.length || 0) > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {store.instagramFeed!.map((p) => (
+                  <a key={p.id} href={p.link} target="_blank" rel="noreferrer" className="block rounded-lg overflow-hidden border border-[#e3e8f2] bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.image} alt={p.caption ? p.caption.slice(0, 100) : 'Instagram post'} loading="lazy" className="aspect-square w-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            )}
+            {store.instagram.posts.length > 0 && !(store.instagramFeed?.length) && (
+              <div className="grid grid-cols-1 min-[560px]:grid-cols-2 lg:grid-cols-3 gap-4">
+                {store.instagram.posts.slice(0, 6).map((post) => (
+                  <iframe key={post} src={`https://www.instagram.com/${post}/embed`} title="Instagram post" loading="lazy" className="w-full h-[520px] rounded-lg border border-[#e3e8f2] bg-white" allowTransparency scrolling="no" />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
+      </main>
+
+      {/* Footer: about, help, contact, payments */}
+      <footer className="bg-[#0E1B3D] text-white/90 pb-16 sm:pb-0">
+        <div className="max-w-7xl mx-auto px-4 py-10 grid gap-8 grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 text-[14px]">
           <div>
-            <p className="font-extrabold text-[17px]">{store.name}</p>
-            {store.about && <p className="mt-2 text-[#4a5672] whitespace-pre-line">{store.about}</p>}
+            <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">About</p>
+            <p className="mt-3 font-extrabold text-[17px] text-white">{store.name}</p>
+            {store.about && <p className="mt-2 text-white/75 whitespace-pre-line leading-relaxed">{store.about}</p>}
           </div>
-          <div className="space-y-2 text-[#4a5672]">
-            {store.address && <p className="flex gap-2"><MapPin size={17} className="shrink-0 mt-0.5 text-[var(--c)]" /> <span className="whitespace-pre-line">{store.address}</span></p>}
-            {store.phone && <a href={`tel:${store.phone}`} className="flex gap-2 font-semibold text-[#0E1B3D]"><Phone size={17} className="text-[var(--c)]" /> {showPhone(store.phone)}</a>}
-            {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-full bg-[#25D366] text-white font-bold items-center gap-2">Chat on WhatsApp</a>}
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Help</p>
+            <ul className="mt-3 space-y-2">
+              <li><button type="button" onClick={() => setAccountView(shopper.session ? 'orders' : 'track')} className="hover:underline cursor-pointer">{shopper.session ? 'My orders' : 'Track your order'}</button></li>
+              {store.pages.map((key) => <li key={key}><a href={`${basePath}/info/${key}`} className="hover:underline">{STORE_PAGE_TITLES[key]}</a></li>)}
+            </ul>
+          </div>
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Contact us</p>
+            <div className="mt-3 space-y-2.5 text-white/80">
+              {store.address && <p className="flex gap-2"><MapPin size={17} className="shrink-0 mt-0.5" /> <span className="whitespace-pre-line">{store.address}</span></p>}
+              {store.phone && <a href={`tel:${store.phone}`} className="flex gap-2 font-semibold text-white"><Phone size={17} /> {showPhone(store.phone)}</a>}
+              {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-md bg-[#25D366] text-white font-bold items-center gap-2"><MessageCircle size={17} /> Chat on WhatsApp</a>}
+            </div>
+          </div>
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Ways to pay</p>
+            <ul className="mt-3 space-y-2 text-white/80">
+              {store.payOnline && <li className="flex gap-2"><CreditCard size={17} /> UPI, cards and net banking</li>}
+              {store.payLater && <li className="flex gap-2"><Banknote size={17} /> {store.delivery ? 'Cash on delivery' : 'Pay at pick up'}</li>}
+              <li className="flex gap-2"><ShieldCheck size={17} /> Safe and secure shopping</li>
+            </ul>
           </div>
         </div>
-        {store.pages.length > 0 && (
-          <nav aria-label="Store pages" className="max-w-6xl mx-auto px-4 pb-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[13.5px]">
-            {store.pages.map((key) => <a key={key} href={`${basePath}/info/${key}`} className="font-semibold text-[#4a5672] hover:text-[var(--c)]">{STORE_PAGE_TITLES[key]}</a>)}
-          </nav>
-        )}
-        <p className="pb-2 text-center">
-          <button type="button" onClick={() => setAccountView(shopper.session ? 'orders' : 'track')} className="text-[14px] font-semibold text-[#4a5672] underline cursor-pointer">{shopper.session ? 'My orders' : 'Track your order'}</button>
-        </p>
-        <p className="pb-6 text-center text-[12.5px] text-[#8a94a8]">Online store by WAMA CRM</p>
+        <div className="border-t border-white/10">
+          <p className="max-w-7xl mx-auto px-4 py-4 text-[12.5px] text-white/55 flex flex-wrap gap-x-4 gap-y-1 justify-between">
+            <span>© {new Date().getFullYear()} {store.name}. All rights reserved.</span>
+            <span>Online store by WAMA CRM</span>
+          </p>
+        </div>
       </footer>
 
-      {/* Cart button on phones while shopping */}
-      {count > 0 && !panel && !accountView && (
-        <button type="button" onClick={() => setPanel('cart')} className="sm:hidden fixed bottom-4 left-4 right-4 z-30 h-14 rounded-2xl bg-[var(--c)] text-white shadow-xl px-5 flex items-center justify-between font-bold cursor-pointer">
-          <span>{count} item{count === 1 ? '' : 's'} · {money(subtotal)}</span>
-          <span className="inline-flex items-center gap-1">View cart <ChevronRight size={18} /></span>
-        </button>
+      {/* Phones: Add to cart / Buy now on a product; else Home, Categories, Account, Cart */}
+      {viewing && viewInStock && !panel && !accountView ? (
+        <div className="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-2 bg-white border-t border-[#e3e8f2] shadow-[0_-2px_10px_rgba(14,27,61,0.08)]">
+          <button type="button" disabled={needsChoice} onClick={() => setQty(viewKey, openQty)} className="h-14 font-extrabold text-[15px] text-[#0E1B3D] inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+            <ShoppingCart size={18} /> {cart[viewKey] ? 'Update cart' : 'Add to cart'}
+          </button>
+          <button type="button" disabled={needsChoice} onClick={() => { setQty(viewKey, openQty); setPanel('cart') }} className="h-14 bg-[var(--c)] text-white font-extrabold text-[15px] inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60">
+            <Zap size={18} /> Buy now
+          </button>
+        </div>
+      ) : !panel && !accountView ? (
+        <nav aria-label="Store menu" className="sm:hidden fixed bottom-0 inset-x-0 z-30 h-14 grid grid-cols-4 bg-white border-t border-[#e3e8f2] shadow-[0_-2px_10px_rgba(14,27,61,0.06)]">
+          <a href={homeHref} className="flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold text-[#0E1B3D]"><Home size={20} /> Home</a>
+          <button type="button" onClick={() => setSheet('categories')} className="flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold text-[#0E1B3D] cursor-pointer"><LayoutGrid size={20} /> Categories</button>
+          <button type="button" onClick={() => setAccountView(shopper.session || !store.accounts ? (store.accounts ? 'orders' : 'track') : 'orders')} className="flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold text-[#0E1B3D] cursor-pointer"><UserRound size={20} /> {store.accounts ? 'Account' : 'Track'}</button>
+          <button type="button" onClick={() => setPanel('cart')} className="relative flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold text-[#0E1B3D] cursor-pointer">
+            <span className="relative"><ShoppingCart size={20} />{count > 0 && <span className="absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] px-1 rounded-full bg-[var(--c)] text-white text-[10.5px] font-extrabold flex items-center justify-center">{count}</span>}</span>
+            Cart
+          </button>
+        </nav>
+      ) : null}
+
+      {sheet === 'sort' && (
+        <Sheet title="Sort by" onClose={() => setSheet(null)}>
+          <div className="p-2">
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+              <label key={key} className="flex items-center gap-3 h-12 px-3 text-[15px] cursor-pointer">
+                <input type="radio" name="sort" checked={sort === key} onChange={() => { setSort(key); setSheet(null) }} className="h-4 w-4 accent-[var(--c)]" /> {SORT_LABELS[key]}
+              </label>
+            ))}
+          </div>
+        </Sheet>
+      )}
+      {sheet === 'filter' && (
+        <Sheet title="Filters" onClose={() => setSheet(null)} footer={
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => { setFilters({}); setCategory(null) }} className="h-11 rounded-md border border-[#d5ddeb] font-bold text-[14px] cursor-pointer">Clear all</button>
+            <button type="button" onClick={() => { setSheet(null); showList() }} className="h-11 rounded-md bg-[var(--c)] text-white font-bold text-[14px] cursor-pointer">Show {listed.length} {listed.length === 1 ? 'product' : 'products'}</button>
+          </div>
+        }>{filterPanel}</Sheet>
+      )}
+      {sheet === 'categories' && (
+        <Sheet title="Categories" onClose={() => setSheet(null)}>
+          <div className="grid grid-cols-3 gap-3 p-4">
+            {store.categories.map((c) => (
+              <button key={c.name} type="button" onClick={() => { setSheet(null); viewing ? (window.location.href = categoryHref(c.name)) : showList({ category: c.name }) }} className="flex flex-col items-center gap-1.5 cursor-pointer">
+                <span className="h-16 w-16 rounded-full overflow-hidden bg-[#f1f3f6]"><Picture src={c.image} alt="" className="h-full w-full" /></span>
+                <span className="text-[12.5px] font-semibold text-center leading-tight line-clamp-2">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </Sheet>
       )}
 
       {/* Cart, checkout, done */}
@@ -737,7 +869,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-md h-full flex flex-col">
             <div className="h-16 px-4 flex items-center gap-2 border-b border-[#e3e8f2] shrink-0">
               {panel === 'checkout' && <button type="button" aria-label="Back to cart" onClick={() => setPanel('cart')} className="h-10 w-10 rounded-full hover:bg-[#f4f6fa] flex items-center justify-center cursor-pointer"><ArrowLeft size={19} /></button>}
-              <p className="font-extrabold text-[18px] flex-1">{panel === 'cart' ? 'Your cart' : panel === 'checkout' ? 'Your details' : 'Order placed'}</p>
+              <p className="font-extrabold text-[18px] flex-1">{panel === 'cart' ? `My cart${count ? ` (${count})` : ''}` : panel === 'checkout' ? 'Delivery details' : 'Order placed'}</p>
               <button type="button" aria-label="Close" onClick={() => setPanel(null)} className="h-10 w-10 rounded-full hover:bg-[#f4f6fa] flex items-center justify-center cursor-pointer"><X size={19} /></button>
             </div>
 
@@ -745,25 +877,50 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
               <>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {lines.length === 0 && <p className="py-16 text-center text-[#6B7894]">Your cart is empty.</p>}
-                  {lines.map(({ key, product, variant, image, price, qty }) => (
-                    <div key={key} className="flex gap-3 items-center">
-                      <Picture src={image} alt="" className="h-16 w-16 rounded-xl shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14.5px] font-semibold leading-snug line-clamp-2">{product.title}</p>
-                        {variant && <p className="text-[13px] text-[#6B7894]">{variant.name}</p>}
-                        <p className="text-[14px] font-bold mt-0.5">{money(price * qty)}</p>
+                  {lines.map(({ key, product, variant, image, price, qty }) => {
+                    const mrp = product.mrp && (!variant || variant.price === product.price) && product.mrp > price ? product.mrp : 0
+                    return (
+                      <div key={key} className="flex gap-3 pb-3 border-b border-[#eef1f6] last:border-b-0">
+                        <Picture src={image} alt="" contain className="h-20 w-20 rounded-md shrink-0 bg-white border border-[#eef1f6]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[14.5px] leading-snug line-clamp-2">{product.title}</p>
+                          {variant && <p className="text-[13px] text-[#6B7894]">{variant.name}</p>}
+                          <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                            <span className="text-[15px] font-extrabold">{money(price * qty)}</span>
+                            {mrp > 0 && <s className="text-[12.5px] text-[#8a94a8]">{money(mrp * qty)}</s>}
+                            {mrp > 0 && <span className="text-[12.5px] font-bold text-[var(--c)]">{Math.floor((1 - price / mrp) * 100)}% off</span>}
+                          </p>
+                          <div className="mt-2 flex items-center gap-4">
+                            <Stepper small value={qty} onChange={(n) => setQty(key, n)} />
+                            <button type="button" onClick={() => setQty(key, 0)} className="text-[13px] font-bold text-[#4a5672] hover:text-[#b91c1c] cursor-pointer">Remove</button>
+                          </div>
+                        </div>
                       </div>
-                      <Stepper small value={qty} onChange={(n) => setQty(key, n)} />
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 {lines.length > 0 && (
                   <div className="p-4 border-t border-[#e3e8f2] space-y-3 shrink-0">
                     {offOk && <p className="text-[13.5px] font-semibold text-[var(--c)]">Offer: {offer!.title}{discountOff > 0 ? ` · you save ${money(discountOff)}` : ''}</p>}
                     {!offOk && store.offers.length > 0 && <p className="text-[13px] text-[#4a5672]">Offers: {store.offers.map((o) => o.title).join(' · ')}</p>}
-                    <div className="flex justify-between text-[16px] font-extrabold"><span>Total</span><span>{money(subtotal)}</span></div>
+                    {(() => {
+                      // Price details: the MRP total, the saving, the delivery charge
+                      const mrpTotal = lines.reduce((sum, l) => sum + ((l.product.mrp && (!l.variant || l.variant.price === l.product.price) && l.product.mrp > l.price ? l.product.mrp : l.price) * l.qty), 0)
+                      const saved = Math.max(0, Math.round((mrpTotal - subtotal) * 100) / 100)
+                      const fee = store.delivery && !store.pickup ? (store.freeFrom > 0 && subtotal >= store.freeFrom ? 0 : store.deliveryFee) : null
+                      return (
+                        <div className="rounded-md border border-[#e3e8f2] p-3 space-y-1.5 text-[14px]">
+                          <p className="text-[12px] font-bold uppercase tracking-wide text-[#6B7894] pb-1">Price details</p>
+                          <div className="flex justify-between"><span>Price ({count} item{count === 1 ? '' : 's'})</span><span>{money(mrpTotal)}</span></div>
+                          {saved > 0 && <div className="flex justify-between"><span>Discount</span><span className="font-bold text-[var(--c)]">− {money(saved)}</span></div>}
+                          {fee !== null && <div className="flex justify-between"><span>Delivery</span><span>{fee ? money(fee) : <span className="font-bold text-[var(--c)]">Free</span>}</span></div>}
+                          <div className="flex justify-between text-[16px] font-extrabold border-t border-dashed border-[#d5ddeb] pt-2"><span>Total</span><span>{money(subtotal + (fee || 0))}</span></div>
+                          {saved > 0 && <p className="text-[13px] font-bold text-[var(--c)]">You save {money(saved)} on this order</p>}
+                        </div>
+                      )
+                    })()}
                     {short && <p className="text-[13.5px] text-[#b91c1c] font-semibold">The smallest order here is {money(store.minOrder)}. Add {money(store.minOrder - subtotal)} more.</p>}
-                    <button type="button" disabled={short} onClick={() => setPanel('checkout')} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] disabled:opacity-50 cursor-pointer">Continue</button>
+                    <button type="button" disabled={short} onClick={() => setPanel('checkout')} className="w-full h-12 rounded-md bg-[var(--c)] text-white font-extrabold text-[15px] disabled:opacity-50 cursor-pointer">Place order</button>
                     {store.whatsapp && <a href={waLink(cartText())} target="_blank" rel="noreferrer" className="block text-center text-[14px] font-semibold text-[#4a5672] underline">Or send this cart on WhatsApp</a>}
                   </div>
                 )}
@@ -776,9 +933,9 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 <p className="mt-4 text-[20px] font-extrabold">Payment not finished</p>
                 <p className="mt-1 text-[15px] text-[#4a5672]">Your order <b>#{unpaid.orderNumber}</b> is saved and waits for payment of {money(unpaid.total)}.</p>
                 {error && <p role="alert" className="mt-3 rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}
-                <button type="button" disabled={placing} onClick={() => payOnline(unpaid).catch((err) => setError(err.message))} className="mt-6 w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-60">Try paying again</button>
+                <button type="button" disabled={placing} onClick={() => payOnline(unpaid).catch((err) => setError(err.message))} className="mt-6 w-full h-12 rounded-md bg-[var(--c)] text-white font-bold text-[15px] cursor-pointer disabled:opacity-60">Try paying again</button>
                 {store.payLater && (
-                  <button type="button" disabled={placing} onClick={payLaterInstead} className="mt-3 w-full h-12 rounded-full border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer disabled:opacity-60">
+                  <button type="button" disabled={placing} onClick={payLaterInstead} className="mt-3 w-full h-12 rounded-md border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer disabled:opacity-60">
                     {placing && <Loader2 size={16} className="inline animate-spin mr-1" />} {handover === 'delivery' ? 'Cash on delivery instead' : 'Cash at pick up instead'}
                   </button>
                 )}
@@ -855,7 +1012,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                   )}
                 </div>
                 {error && <p role="alert" className="rounded-xl bg-[#fdf0f0] p-3 text-[14px] text-[#b91c1c] font-semibold">{error}</p>}
-                <button type="submit" disabled={placing} className="w-full h-12 rounded-full bg-[var(--c)] text-white font-bold text-[15px] inline-flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer">
+                <button type="submit" disabled={placing} className="w-full h-12 rounded-md bg-[var(--c)] text-white font-bold text-[15px] inline-flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer">
                   {placing && <Loader2 size={17} className="animate-spin" />} {pay === 'online' ? `Pay ${money(toPay)}` : 'Place order'}
                 </button>
               </form>
@@ -863,7 +1020,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
 
             {panel === 'done' && done && (
               <div className="flex-1 overflow-y-auto p-6 text-center">
-                <span className="mx-auto h-16 w-16 rounded-full bg-[var(--c)] text-white flex items-center justify-center"><Check size={32} /></span>
+                <span className="mx-auto h-16 w-16 rounded-md bg-[var(--c)] text-white flex items-center justify-center"><Check size={32} /></span>
                 <p className="mt-4 text-[22px] font-extrabold">Thank you, {name.split(' ')[0]}!</p>
                 <p className="mt-1 text-[15px] text-[#4a5672]">
                   {done.paid
@@ -873,7 +1030,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                 {store.whatsapp && (
                   <a href={waLink(`Hi ${store.name}, I just placed order #${done.orderNumber} on your website.`)} target="_blank" rel="noreferrer" className="mt-6 inline-flex h-12 px-6 rounded-full bg-[#25D366] text-white font-bold items-center">Message the shop on WhatsApp</a>
                 )}
-                <button type="button" onClick={() => { setPanel(null); setAccountView(shopper.session ? 'orders' : 'track') }} className="mt-3 w-full h-12 rounded-full border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer">
+                <button type="button" onClick={() => { setPanel(null); setAccountView(shopper.session ? 'orders' : 'track') }} className="mt-3 w-full h-12 rounded-md border-2 border-[#d5ddeb] font-bold text-[15px] cursor-pointer">
                   {shopper.session ? 'See it in My orders' : 'Track this order'}
                 </button>
                 {!shopper.session && store.accounts && <p className="mt-2 text-[13px] text-[#6B7894]">Keep your order number <b>#{done.orderNumber}</b>, or sign in next time to see all your orders.</p>}

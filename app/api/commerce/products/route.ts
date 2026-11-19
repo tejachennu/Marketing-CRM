@@ -237,8 +237,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Another product already uses the SKU "${input.retailer_id}". Edit that product, or choose a different SKU.` }, { status: 409 })
     }
 
-    // The catalog's full price is kept while the product stays below it; a price at or above it ends the sale
-    const listPrice = Number(getProductAttributes(existing).list_price) || 0
+    // The MRP typed in the form wins (empty = none). Without the field: the catalog's full price is kept while
+    // the product stays below it; a price at or above it ends the sale
+    const typedMrp = product && 'mrp' in product
+    const listPrice = typedMrp ? Number(attributes.list_price) || 0 : Number(getProductAttributes(existing).list_price) || 0
+    if (typedMrp) delete attributes.list_price
     const stillOnSale = listPrice > input.price
     // The catalog knows an item by its SKU, so a product given a new SKU starts again as a new item
     const skuChanged = Boolean(existing && existing.retailer_id !== input.retailer_id)

@@ -103,6 +103,8 @@ export interface StorefrontSettings {
   layout: StoreLayout
   /** Instagram: the shop's handle and up to 9 post / reel links shown on the store; live = the latest posts from the connected account */
   instagram: { handle: string; posts: string[]; live: boolean }
+  /** An AI chat on the store that answers from the Knowledge Base and the product list */
+  chat: boolean
 }
 
 
@@ -115,7 +117,7 @@ export function defaultStorefront(): StorefrontSettings {
     enabled: false, title: '', tagline: '', logo: '', colour: STORE_COLOURS[0], announcement: '',
     banners: [], categories: [], pickup: true, delivery: true, delivery_note: '', delivery_fee: null, free_delivery_from: null,
     min_order: 0, whatsapp: '', phone: '', address: '', about: '', show_out_of_stock: false, payment: 'later', accounts: true, pages: {},
-    layout: 'grid', instagram: { handle: '', posts: [], live: false },
+    layout: 'grid', instagram: { handle: '', posts: [], live: false }, chat: false,
   }
 }
 
@@ -200,6 +202,7 @@ export function readStorefront(raw: any): StorefrontSettings {
       live: raw.instagram?.live === true,
       posts: [...new Set((Array.isArray(raw.instagram?.posts) ? raw.instagram.posts : []).map((p: unknown) => instagramPost(/^(p|reel)\//.test(String(p)) ? `https://www.instagram.com/${p}` : p)).filter(Boolean))].slice(0, MAX_INSTAGRAM_POSTS) as string[],
     },
+    chat: raw.chat === true,
   }
 }
 
@@ -212,6 +215,14 @@ export interface StoreProduct {
   image: string
   category: string
   inStock: boolean
+  /** The price before the discount (MRP), only when above the price */
+  mrp?: number
+  brand?: string
+  /** Average stars (1–5) and how many published reviews */
+  rating?: number
+  ratingCount?: number
+  /** When it was added (newest first sorting) */
+  addedAt?: string
   /** Size, Colour…: when set, the shopper picks one of `variants`. */
   options?: ProductOption[]
   variants?: StoreVariant[]
@@ -249,6 +260,46 @@ export function storeCategories(settings: StorefrontSettings, products: StorePro
   return [...ordered, ...[...counts.values()].sort((a, b) => a.name.localeCompare(b.name))]
 }
 
+/** MRP (catalog list price above the price), brand and date added, from a product row. */
+export function productExtras(p: any): Pick<StoreProduct, 'mrp' | 'brand' | 'addedAt'> {
+  const attributes = p?.metadata?.attributes && typeof p.metadata.attributes === 'object' ? p.metadata.attributes : {}
+  const price = Number(p?.price) || 0
+  const mrp = Number(attributes.list_price) || 0
+  return {
+    ...(mrp > price && price > 0 ? { mrp: Math.round(mrp * 100) / 100 } : {}),
+    ...(text(attributes.brand, 60) ? { brand: text(attributes.brand, 60) } : {}),
+    ...(p?.created_at ? { addedAt: String(p.created_at) } : {}),
+  }
+}
+
+/** The business has at least one FAQ or document in its Knowledge Base. */
+async function hasKnowledge(db: any, organizationId: string): Promise<boolean> {
+  try {
+    const { data } = await db.from('knowledge_base').select('id').eq('organization_id', organizationId).limit(1)
+    return Boolean(data?.length)
+  } catch {
+    return false
+  }
+}
+
+/** Average stars and count of published reviews per product (empty when reviews are not set up). */
+async function ratingsFor(db: any, organizationId: string): Promise<Map<string, { rating: number; count: number }>> {
+  const out = new Map<string, { rating: number; count: number }>()
+  try {
+    const { data, error } = await db.from('commerce_reviews').select('product_id, rating').eq('organization_id', organizationId).eq('published', true).limit(5000)
+    if (error) return out
+    const sums = new Map<string, { total: number; count: number }>()
+    for (const r of data || []) {
+      const s = sums.get(r.product_id) || { total: 0, count: 0 }
+      s.total += Number(r.rating) || 0
+      s.count += 1
+      sums.set(r.product_id, s)
+    }
+    for (const [id, s] of sums) if (s.count) out.set(id, { rating: Math.round((s.total / s.count) * 10) / 10, count: s.count })
+  } catch {}
+  return out
+}
+
 export interface StorePage {
   organization: { id: string; name: string; slug: string; currency: string; domain: string | null }
   settings: StorefrontSettings
@@ -269,6 +320,8 @@ export interface StorePage {
   loyalty?: LoyaltySettings
   /** The latest posts of the connected Instagram account (when Website → Instagram → live is on) */
   instagramFeed?: { id: string; image: string; link: string; caption: string }[]
+  /** The AI chat is on, the business's AI is on, and there is something to answer from */
+  chat?: boolean
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,120}$/i
@@ -299,7 +352,14 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
       options: readOptions(p.options),
       images: cleanImages(p.images).filter((url) => isImageUrl(url)),
       video: readVideo(p.video_url),
+      ...productExtras(p),
     }))
+  // Stars on every card: the average of each product's published reviews (none yet = no stars)
+  const ratings = await ratingsFor(db, org.id)
+  for (const p of products) {
+    const r = ratings.get(p.id)
+    if (r) { p.rating = r.rating; p.ratingCount = r.count }
+  }
   // Products with options: each combination's price, stock and photo
   const withOptions = products.filter((p) => p.options && p.options.length)
   const variantMap = withOptions.length ? await variantsFor(db, org.id, withOptions.map((p) => p.id)) : new Map()
@@ -325,6 +385,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     returns: readReturnSettings(org.shop_returns),
     loyalty: readLoyaltySettings(org.shop_loyalty),
     instagramFeed,
+    chat: settings.chat && org.enable_ai !== false && (shownProducts.length > 0 || (await hasKnowledge(db, org.id))),
     offers: publicOffers(discounts),
     hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {
@@ -346,7 +407,7 @@ export function storeView(page: StorePage) {
     payOnline: page.pay.online, payLater: page.pay.later,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
     layout: s.layout, instagram: s.instagram, instagramFeed: page.instagramFeed || [],
-    offers: page.offers || [], hasCodes: page.hasCodes === true,
+    offers: page.offers || [], hasCodes: page.hasCodes === true, chat: page.chat === true,
     returns: page.returns || { on: false, days: 7 },
     loyalty: page.loyalty || readLoyaltySettings(null),
     // Which info pages have something to show (for the footer links)

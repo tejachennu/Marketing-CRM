@@ -126,6 +126,13 @@ export function parseProductAttributes(raw: Record<string, any> | null | undefin
 
   if (raw?.is_service === true) attributes.is_service = true
 
+  // MRP: the price before the discount (shown as a saving; sent to the catalog as the full price)
+  if (raw?.mrp !== undefined && raw?.mrp !== null && String(raw.mrp).trim() !== '') {
+    const mrp = Number(raw.mrp)
+    if (!Number.isFinite(mrp) || mrp < 0 || mrp > 100_000_000) throw new Error('MRP must be a number, like 1999')
+    if (mrp > 0) attributes.list_price = Math.round(mrp * 100) / 100
+  }
+
   // The importer is only meaningful for goods made abroad
   const importerName = text(raw?.importer_name, 200)
   const street = text(raw?.importer_street, 200)
