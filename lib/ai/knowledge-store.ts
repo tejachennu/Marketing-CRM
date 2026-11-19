@@ -9,8 +9,9 @@ import { aiFetch, type AiAccess } from '../ai-access'
 import { fallbackKeywordSearch } from '../ai-shared'
 import { expandQueryWithSynonyms, type SynonymGroup } from '../query-expander'
 import { cleanMedia } from './knowledge-text'
+import { readReplyStyle, type ReplyStyle } from './reply-format'
 import {
-  confidenceOf, fuseResults, gapKey, isRealQuestion, pausesAi, readHandoffSettings, searchWords, ticketSubject,
+  confidenceOf, fuseResults, gapKey, isRealQuestion, joinPassage, mergeByMeaning, pausesAi, rankHits, readHandoffSettings, sameMeaningText, searchWords, ticketSubject,
   type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit, type SearchRow,
 } from './knowledge-rules'
 
@@ -129,20 +130,38 @@ export interface KnowledgeSearch {
   confidence: Confidence
 }
 
-async function embed(db: any, ai: AiAccess, feature: string, text: string): Promise<number[] | null> {
+// Search vectors of recent questions, kept for 10 minutes on this server (the same question often comes again)
+const vectorCache = new Map<string, { at: number; vector: number[] }>()
+const CACHE_MS = 10 * 60_000
+
+/** Search vectors for several texts in one call; ones asked in the last 10 minutes come from memory. */
+async function embedTexts(db: any, ai: AiAccess, feature: string, texts: string[], now = Date.now()): Promise<(number[] | null)[]> {
+  const keys = texts.map((t) => t.trim().toLowerCase().slice(0, 2000))
+  const out: (number[] | null)[] = keys.map((k) => {
+    const hit = vectorCache.get(k)
+    return hit && now - hit.at < CACHE_MS ? hit.vector : null
+  })
+  const missing = keys.map((k, i) => (out[i] ? -1 : i)).filter((i) => i >= 0)
+  if (!missing.length) return out
   try {
     const res = await aiFetch(db, ai, feature, 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'text-embedding-3-small', input: text.slice(0, 8000) }),
+      body: JSON.stringify({ model: 'text-embedding-3-small', input: missing.map((i) => texts[i].slice(0, 8000)) }),
       signal: AbortSignal.timeout(15000),
     })
-    if (!res.ok) return null
-    const data = await res.json()
-    return Array.isArray(data?.data?.[0]?.embedding) ? data.data[0].embedding : null
-  } catch {
-    return null
-  }
+    if (!res.ok) return out
+    const rows: any[] = (await res.json())?.data || []
+    missing.forEach((i, j) => {
+      const vector = rows.find((r) => r.index === j)?.embedding
+      if (!Array.isArray(vector)) return
+      out[i] = vector
+      vectorCache.set(keys[i], { at: now, vector })
+    })
+    // Keep the memory small
+    if (vectorCache.size > 500) for (const key of [...vectorCache.keys()].slice(0, vectorCache.size - 400)) vectorCache.delete(key)
+  } catch {}
+  return out
 }
 
 async function byMeaning(db: any, orgId: string, embedding: number[]): Promise<SearchRow[]> {
@@ -177,14 +196,53 @@ export async function searchKnowledge(
   if (!query) return { hits: [], confidence: 'none' }
   const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(query, input.synonyms || [])
   const words = searchWords(`${input.question} ${vectorQuery}`)
+  // By meaning in two ways when they differ: the English search text, and the customer's own words
+  const own = String(input.question || '').trim()
+  const texts = [vectorQuery, ...(own && sameMeaningText(own, vectorQuery) ? [] : [own])]
+  const meaningSearch = async (): Promise<SearchRow[]> => {
+    const vectors = input.embedding ? [input.embedding] : ai ? await embedTexts(db, ai, input.feature || 'chatbot', texts) : []
+    const lists = await Promise.all(vectors.filter(Boolean).map((v) => byMeaning(db, orgId, v!)))
+    return mergeByMeaning(lists)
+  }
   const [meaning, wordRows] = await Promise.all([
-    // An embedding made by the caller is used as it is (the Twilio webhook makes its own)
-    (input.embedding ? Promise.resolve(input.embedding) : ai ? embed(db, ai, input.feature || 'chatbot', vectorQuery) : Promise.resolve(null))
-      .then((e) => (e ? byMeaning(db, orgId, e) : [] as SearchRow[])).catch(() => [] as SearchRow[]),
-    byWords(db, orgId, words, input.question || query, keywordQuery).catch(() => [] as SearchRow[]),
+    meaningSearch().catch(() => [] as SearchRow[]),
+    byWords(db, orgId, words, own || query, keywordQuery).catch(() => [] as SearchRow[]),
   ])
-  const hits = await withDetails(db, orgId, fuseResults(meaning, wordRows, input.limit ?? 5))
+  // A few more than needed, so the ranking below can bring the right one up
+  const fused = fuseResults(meaning, wordRows, (input.limit ?? 5) + 3)
+  const detailed = await withDetails(db, orgId, fused)
+  const hits = await withNeighbours(db, orgId, rankHits(detailed, own || query).slice(0, input.limit ?? 5))
   return { hits, confidence: confidenceOf(hits) }
+}
+
+/**
+ * Parts of a document get the part just before and after them (same source), so the AI reads the whole
+ * passage, not a cut piece. At most the top three parts, at most about 3,000 characters each.
+ */
+export async function withNeighbours(db: any, orgId: string, hits: KnowledgeHit[]): Promise<KnowledgeHit[]> {
+  const parts = hits.filter((h) => h.kind === 'part' && h.id).slice(0, 3)
+  if (!parts.length) return hits
+  try {
+    const { data: rows } = await db.from('knowledge_base').select('id, source_id, chunk_index').eq('organization_id', orgId).in('id', parts.map((p) => p.id))
+    const wanted: { source_id: string; index: number }[] = []
+    for (const r of rows || []) if (r.source_id && Number.isInteger(r.chunk_index)) wanted.push({ source_id: r.source_id, index: r.chunk_index - 1 }, { source_id: r.source_id, index: r.chunk_index + 1 })
+    if (!wanted.length) return hits
+    const sourceIds = [...new Set(wanted.map((w) => w.source_id))]
+    const indexes = [...new Set(wanted.map((w) => w.index))].filter((i) => i >= 0)
+    const { data: around } = await db.from('knowledge_base').select('id, source_id, chunk_index, content').eq('organization_id', orgId).in('source_id', sourceIds).in('chunk_index', indexes)
+    const taken = new Set(hits.map((h) => h.id))
+    return hits.map((h) => {
+      const row = (rows || []).find((r: any) => r.id === h.id)
+      if (!row || h.kind !== 'part') return h
+      const near = (i: number) => (around || []).find((a: any) => a.source_id === row.source_id && a.chunk_index === i && !taken.has(a.id))
+      const before = near(row.chunk_index - 1)
+      const after = near(row.chunk_index + 1)
+      if (!before && !after) return h
+      return { ...h, content: joinPassage(before?.content, h.content, after?.content) }
+    })
+  } catch {
+    return hits
+  }
 }
 
 /** Each hit's kind (FAQ or part of a source), the FAQ's attachments, and the part's source name and page. */
@@ -220,9 +278,18 @@ export async function loadHandoffSettings(db: any, orgId: string, org?: any): Pr
   return readHandoffSettings(error ? null : data?.ai_handoff)
 }
 
-export async function saveHandoffSettings(db: any, orgId: string, settings: HandoffSettings): Promise<void> {
-  const { error } = await withKnowledgeSchema(() => db.from('organizations').update({ ai_handoff: settings }).eq('id', orgId))
+export async function saveHandoffSettings(db: any, orgId: string, settings: HandoffSettings, style?: ReplyStyle): Promise<void> {
+  // Tone, emoji, buttons and typing live with the hand-off settings (one column)
+  const { data: current } = await db.from('organizations').select('ai_handoff').eq('id', orgId).maybeSingle()
+  const value = { ...settings, style: style || readReplyStyle(current?.ai_handoff?.style) }
+  const { error } = await withKnowledgeSchema(() => db.from('organizations').update({ ai_handoff: value }).eq('id', orgId))
   if (error) throw new Error('The settings could not be saved. Try again.')
+}
+
+/** How the AI replies (tone, emoji, quick buttons, typing). */
+export async function loadReplyStyle(db: any, orgId: string): Promise<ReplyStyle> {
+  const { data, error } = await db.from('organizations').select('ai_handoff').eq('id', orgId).maybeSingle()
+  return readReplyStyle(error ? null : data?.ai_handoff?.style)
 }
 
 // ── Hand-off to the team ────────────────────────────────────────────────────

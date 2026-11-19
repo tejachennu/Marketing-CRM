@@ -19,6 +19,7 @@ import {
   type AnswerStatus, type Attachment, type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit,
 } from './knowledge-rules'
 import { searchKnowledge } from './knowledge-store'
+import { DEFAULT_STYLE, plainText, quickButtons, readReplyStyle, styleRules, type ReplyPlan, type ReplyStyle } from './reply-format'
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -37,6 +38,8 @@ export interface AnswerInput {
   feature?: string
   channel?: 'whatsapp' | 'instagram' | 'playground'
   settings?: HandoffSettings
+  /** Tone, emoji, quick buttons (Settings → How the AI replies) */
+  style?: ReplyStyle
 }
 
 export interface AnswerResult {
@@ -54,6 +57,8 @@ export interface AnswerResult {
   model: string
   /** Photos, videos and files of the FAQs the answer used: send them after the reply */
   attachments: Attachment[]
+  /** The reply as each channel sends it: words, quick buttons, one link button */
+  plan: ReplyPlan
 }
 
 const MODEL = 'gpt-4o-mini'
@@ -70,7 +75,8 @@ export function businessFacts(org: any): string {
 }
 
 /** The system prompt (exported for tests). */
-export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string } = {}): string {
+export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string; style?: ReplyStyle } = {}): string {
+  const style = opts.style || DEFAULT_STYLE
   const where = opts.channel === 'instagram' ? 'Instagram' : 'WhatsApp'
   const own = String(org?.chatbot_base_prompt || '').trim()
   return `You are the ${where} assistant of ${org?.name || 'this business'}. You answer customers for the business like a helpful, honest shop assistant.
@@ -89,11 +95,12 @@ HOW TO ANSWER:
 - The customer complains or is upset about a problem (late or wrong order, bad service, refund, payment taken): status "complaint"; say sorry briefly and that the team will look into it and reply here soon.
 - Use the conversation to understand follow-ups like "how much is it?" or "and on Sunday?".
 - When an item says a photo, video, file or link is sent with it and you use that item, you may say it is attached below (it is sent automatically).
-- Keep it short (under 80 words), plain text, no markdown, no lists unless needed.
+- Keep it under 80 words. No headings, no tables, no [text](link) markdown.
+${styleRules(style, opts.channel || 'whatsapp')}
 ${opts.askedPerson ? '- This customer has asked for a person: status "person".\n' : ''}${LANGUAGE_RULES}
 
 Answer in JSON only:
-{"reply": "your message to the customer", "status": "answered" | "chat" | "unknown" | "person" | "complaint", "used": [the numbers of the knowledge items your reply used, e.g. [1, 3]; [] when none], "summary": "one short line for the team: what the customer wants", "urgent": true only when the customer is angry or money already paid is involved, else false}`
+{"reply": "your message to the customer", "status": "answered" | "chat" | "unknown" | "person" | "complaint", "used": [the numbers of the knowledge items your reply used, e.g. [1, 3]; [] when none], "next": ${style.buttons ? 'up to 2 follow-ups this customer may want next, that the knowledge above can answer, as [{"label": "2-3 words, at most 20 characters", "question": "the full question"}]; [] when none or when you hand over' : '[]'}, "summary": "one short line for the team: what the customer wants", "urgent": true only when the customer is angry or money already paid is involved, else false}`
 }
 
 /** The customer's message as one English search text (follow-ups and other languages resolved). */
@@ -133,6 +140,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   const message = String(input.message || '').trim()
   if (!message) return null
   const settings = input.settings || readHandoffSettings(org?.ai_handoff)
+  const style = input.style || readReplyStyle(org?.ai_handoff?.style)
   const history = (input.history || []).filter((m) => m && m.content && m.content.trim()).slice(-10)
   const askedPerson = wantsPerson(message)
 
@@ -155,7 +163,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
       body: JSON.stringify({
         model: MODEL,
         messages: [
-          { role: 'system', content: answerPrompt(org, hits, { askedPerson, channel: input.channel }) },
+          { role: 'system', content: answerPrompt(org, hits, { askedPerson, channel: input.channel, style }) },
           ...history.map((m) => ({ role: m.role, content: m.content.slice(0, 1500) })),
           { role: 'user', content: message },
         ],
@@ -171,15 +179,30 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   if (!raw) {
     // The AI could not be reached: a customer who asked for a person still gets the team
     if (!askedPerson) return null
-    return { reply: handoffText({ reply: '', status: 'person', summary: '', urgent: false }, settings), status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL, attachments: [] }
+    const text = handoffText({ reply: '', status: 'person', summary: '', urgent: false }, settings)
+    return { reply: text, plan: { text }, status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL, attachments: [] }
   }
 
   const answer = parseAnswer(raw)
   const decision = decideHandoff(answer, { askedPerson })
   const extras = answerExtras(hits, answer.used, decision.handoff)
-  const reply = decision.handoff ? handoffText(answer, settings) : withLinks(answer.reply, extras.links)
+  let plan: ReplyPlan
+  if (decision.handoff) {
+    plan = { text: handoffText(answer, settings) }
+  } else {
+    // One link: a button (WhatsApp); more: written in the words
+    const links = extras.links.map((line) => { const i = line.lastIndexOf('https://'); return { label: line.slice(0, i).replace(/:\s*$/, '').trim() || 'Open link', url: line.slice(i) } }).filter((l) => l.url.startsWith('https://'))
+    const buttons = style.buttons && (answer.status === 'answered' || answer.status === 'chat')
+      ? quickButtons(answer.next, { person: answer.status === 'answered' })
+      : []
+    plan = links.length === 1 && !buttons.length && !answer.reply.includes(links[0].url)
+      ? { text: answer.reply, link: links[0] }
+      : { text: withLinks(answer.reply, extras.links), buttons }
+  }
+  const reply = plainText(plan)
   return {
     reply,
+    plan,
     attachments: extras.attachments,
     status: answer.status,
     handoff: decision.handoff,

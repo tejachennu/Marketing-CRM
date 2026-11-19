@@ -341,7 +341,7 @@ async function typedFile(db: any, organizationId: string, url: string, fetcher: 
  * PDF (other photo types become JPEG). A file and its words go as two Instagram messages. Inside 24 hours
  * a normal message; up to 7 days with the Human Agent tag when a person answers; never after.
  */
-export async function sendDm(db: any, organizationId: string, conversation: any, input: { text?: string; mediaUrl?: string; imageUrl?: string; byPerson: boolean }, fetcher: Fetcher = fetch): Promise<{ ok: true; mid: string; mids: string[]; mediaUrl?: string } | { ok: false; error: string; mids?: string[] }> {
+export async function sendDm(db: any, organizationId: string, conversation: any, input: { text?: string; mediaUrl?: string; imageUrl?: string; byPerson: boolean; quickReplies?: { title: string; payload: string }[] }, fetcher: Fetcher = fetch): Promise<{ ok: true; mid: string; mids: string[]; mediaUrl?: string } | { ok: false; error: string; mids?: string[] }> {
   const account = await accountFor(db, organizationId)
   if (!account) return { ok: false, error: 'Instagram is not connected. Connect it in Settings → Instagram.' }
   const { data: contact } = await db.from('contacts').select('instagram_id').eq('id', conversation.contact_id).maybeSingle()
@@ -365,7 +365,7 @@ export async function sendDm(db: any, organizationId: string, conversation: any,
       media = { url: ready, kind: how.kind }
     }
   }
-  const bodies = dmBodies(contact.instagram_id, { text: input.text, media, humanAgent: window.humanAgent })
+  const bodies = dmBodies(contact.instagram_id, { text: input.text, media, humanAgent: window.humanAgent, quickReplies: input.quickReplies })
   if ('error' in bodies) return { ok: false, error: bodies.error }
   // One Instagram message id per part (file, then words), so each part is saved once and never fetched again
   const mids: string[] = []
@@ -385,6 +385,19 @@ export async function sendDm(db: any, organizationId: string, conversation: any,
     await noteError(db, account, error)
     if (isRateLimit(error)) return { ok: false, error: 'Instagram is busy (too many requests just now). Please send it again in a few minutes.', mids }
     return { ok: false, error: `Instagram did not send it: ${igSendError(error?.message || 'please try again')}`, mids }
+  }
+}
+
+/** "typing…" (or "seen") in an Instagram chat while the AI writes. Best effort, never throws. */
+export async function sendTyping(db: any, organizationId: string, conversation: any, action: 'typing_on' | 'mark_seen' = 'typing_on', fetcher: Fetcher = fetch): Promise<boolean> {
+  try {
+    const account = await accountFor(db, organizationId)
+    const { data: contact } = await db.from('contacts').select('instagram_id').eq('id', conversation.contact_id).maybeSingle()
+    if (!account || !contact?.instagram_id) return false
+    await igCall(account.access_token, `/${account.ig_user_id}/messages`, { method: 'POST', body: { recipient: { id: contact.instagram_id }, sender_action: action } }, fetcher)
+    return true
+  } catch {
+    return false
   }
 }
 

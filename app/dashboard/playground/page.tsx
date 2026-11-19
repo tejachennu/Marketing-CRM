@@ -26,6 +26,8 @@ interface ChatMessage {
   handoffReason?: string | null
   attachments?: { type: string; url: string; name?: string }[]
   sources?: string[]
+  /** Quick buttons under the answer; a tap asks the question behind it */
+  buttons?: { title: string; question: string }[]
 }
 
 interface PlaygroundSession {
@@ -330,6 +332,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
         condensedQuery: data.condensedQuery || undefined,
         handoffReason: data.handoffReason || null,
         attachments: Array.isArray(data.attachments) ? data.attachments : [],
+        buttons: Array.isArray(data.buttons) ? data.buttons : [],
         sources: Array.isArray(data.matchedFaqs) ? data.matchedFaqs.map((f: any) => f.kind === 'part' ? `${f.sourceTitle || 'Document'}: ${f.title}` : f.title) : [],
       }
 
@@ -607,6 +610,16 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                             <span className="shrink-0">{a.type === 'image' ? 'Photo' : a.type === 'video' ? 'Video' : 'File'}:</span>
                             <span className="truncate">{a.name || a.url.split('/').pop()}</span>
                           </a>
+                        ))}
+                      </div>
+                    )}
+                    {msg.buttons && msg.buttons.length > 0 && (
+                      <div className="mt-2 -mx-1 flex flex-wrap gap-1.5">
+                        {msg.buttons.map((b) => (
+                          <button key={b.title} type="button" disabled={sending} onClick={() => sendMessage(b.question)} title={b.question}
+                            className="rounded-full border border-[#d5ddeb] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1D5BEA] hover:bg-[#f4f6fa] disabled:opacity-50">
+                            {b.title}
+                          </button>
                         ))}
                       </div>
                     )}

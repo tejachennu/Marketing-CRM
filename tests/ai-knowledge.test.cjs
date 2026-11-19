@@ -55,7 +55,7 @@ test('a customer asking for a person, in English, Tenglish, Hinglish, Telugu and
 })
 
 test('the model answer is read safely: never half a JSON to a customer', () => {
-  assert.deepEqual(R.parseAnswer('{"reply":"We open at 10 am.","status":"answered","summary":"Asked timings","urgent":false}'), { reply: 'We open at 10 am.', status: 'answered', summary: 'Asked timings', urgent: false, used: [] })
+  assert.deepEqual(R.parseAnswer('{"reply":"We open at 10 am.","status":"answered","summary":"Asked timings","urgent":false}'), { reply: 'We open at 10 am.', status: 'answered', summary: 'Asked timings', urgent: false, used: [], next: [] })
   // Cut off by the length limit: the words are kept
   const cut = R.parseAnswer('{"reply":"Avunu andi, maa daggara \\"Gold\\" facial undi. Price')
   assert.equal(cut.reply, 'Avunu andi, maa daggara "Gold" facial undi. Price')

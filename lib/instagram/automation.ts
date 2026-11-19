@@ -12,7 +12,8 @@ import { readHandoffSettings } from '../ai/knowledge-rules'
 import { handOffToTeam, recordKnowledgeGap } from '../ai/knowledge-store'
 import { instagramAiReply, instagramCommentAi } from './ai'
 import { commentPlan } from './rules'
-import { actOnComment, automationOf, sendDm } from './store'
+import { actOnComment, automationOf, sendDm, sendTyping } from './store'
+import { instagramMessages, readReplyStyle } from '../ai/reply-format'
 
 const DM_FRESH_MS = 2 * 3_600_000
 const COMMENT_FRESH_MS = 86_400_000
@@ -28,12 +29,20 @@ export async function answerDm(db: any, account: any, input: { conversation: any
   if (!text || !automationOf(account).dmAi || conversation.auto_reply_enabled === false) return 'skipped'
   if (input.at && now - input.at > DM_FRESH_MS) return 'skipped'
   const org = await orgOf(db, account.organization_id)
-  const answer = org ? await instagramAiReply(db, org, conversation.id, text) : null
+  if (!org) return 'skipped'
+  // "typing…" while the AI writes (as the business set it)
+  if (readReplyStyle(org.ai_handoff?.style).typing) await sendTyping(db, account.organization_id, conversation)
+  const answer = await instagramAiReply(db, org, conversation.id, text)
   if (!answer) return 'skipped'
   let sent: { ok: boolean; mid?: string | null; error?: string } = { ok: true }
   if (answer.reply) {
-    sent = await sendDm(db, account.organization_id, conversation, { text: answer.reply, byPerson: false })
-    await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: answer.reply, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
+    // Instagram's style: no formatting marks, ≤1,000 characters a message, quick-reply chips under the last one
+    const parts = instagramMessages(answer.plan || { text: answer.reply })
+    for (const part of parts as { text: string; quick_replies?: { title: string; payload: string }[] }[]) {
+      sent = await sendDm(db, account.organization_id, conversation, { text: part.text, byPerson: false, quickReplies: part.quick_replies })
+      await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: part.text, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
+      if (!sent.ok) break
+    }
     // The photos, videos and files of the FAQs the answer used
     for (const file of sent.ok ? answer.attachments || [] : []) {
       const out = await sendDm(db, account.organization_id, conversation, { mediaUrl: file.url, byPerson: false })

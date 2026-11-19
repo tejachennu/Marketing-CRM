@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendPush } from '@/lib/push'
 import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
 import { answerFromKnowledge } from '@/lib/ai/faq-answer'
+import { askedByButton, readReplyStyle, whatsappMessage, whatsappTyping } from '@/lib/ai/reply-format'
 import { readHandoffSettings, wantsPerson } from '@/lib/ai/knowledge-rules'
 import { handOffToTeam, recordKnowledgeGap } from '@/lib/ai/knowledge-store'
 import { NextRequest, NextResponse } from 'next/server'
@@ -392,6 +393,12 @@ async function processEvent(
       if (interactive?.type === 'button_reply') {
         messageBody = interactive.button_reply?.title || ''
         interactiveButtonId = interactive.button_reply?.id
+        // A quick button under an AI answer: its full question is answered like a typed message
+        const asked = askedByButton(interactiveButtonId)
+        if (asked) {
+          messageBody = asked
+          interactiveButtonId = undefined
+        }
       } else if (interactive?.type === 'list_reply') {
         messageBody = interactive.list_reply?.title || ''
         interactiveButtonId = interactive.list_reply?.id
@@ -1044,24 +1051,39 @@ async function processEvent(
           .map((m: any) => ({ role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const, content: getMessagePreview(m) }))
           .filter((m: any) => m.content)
         const settings = readHandoffSettings(orgData.ai_handoff)
-        const answer = await answerFromKnowledge({ db: supabase, ai: ai!, org: orgData, message: messageBody, history: faqHistory, channel: 'whatsapp', settings })
+        const style = readReplyStyle(orgData.ai_handoff?.style)
+        // "typing…" for the customer while the AI writes (also marks their message read); best effort
+        if (style.typing && messageSid && whatsappPhoneNumberId && whatsappApiToken) {
+          await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
+            body: JSON.stringify(whatsappTyping(messageSid)),
+            signal: AbortSignal.timeout(5000),
+          }).catch(() => null)
+        }
+        const answer = await answerFromKnowledge({ db: supabase, ai: ai!, org: orgData, message: messageBody, history: faqHistory, channel: 'whatsapp', settings, style })
 
         if (answer?.reply) {
           let fbMessageSid: string | null = null
           let sendError: string | null = null
           if (whatsappPhoneNumberId && whatsappApiToken) {
-            try {
-              const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
-                body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phoneNumber.replace('+', '').trim(), type: 'text', text: { body: answer.reply } }),
-                signal: AbortSignal.timeout(20000),
-              })
-              const fbData = await fbRes.json().catch(() => null)
-              if (fbRes.ok && fbData?.messages?.[0]?.id) fbMessageSid = `FB_${fbData.messages[0].id}`
-              else sendError = fbData?.error?.message || `WhatsApp did not accept the reply (${fbRes.status})`
-            } catch (sendErr: any) {
-              sendError = sendErr?.message || 'The reply could not be sent'
+            // Quick buttons or a link button when they fit; the same words as plain text when Meta refuses them
+            const { message: styled, plain } = whatsappMessage(answer.plan)
+            const tries = styled === plain ? [plain] : [styled, plain]
+            for (const body of tries) {
+              try {
+                const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
+                  body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phoneNumber.replace('+', '').trim(), ...body }),
+                  signal: AbortSignal.timeout(20000),
+                })
+                const fbData = await fbRes.json().catch(() => null)
+                if (fbRes.ok && fbData?.messages?.[0]?.id) { fbMessageSid = `FB_${fbData.messages[0].id}`; sendError = null; break }
+                sendError = fbData?.error?.message || `WhatsApp did not accept the reply (${fbRes.status})`
+              } catch (sendErr: any) {
+                sendError = sendErr?.message || 'The reply could not be sent'
+              }
             }
           }
           if (sendError) console.error('[Facebook Webhook Chatbot] Reply not sent:', sendError)

@@ -117,6 +117,24 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **AI replies in each channel's own style, and smarter search** (owner, 19 Nov 2026: "improve the searching mechanism
+  and sending messages style ... instagram and whatsapp"). `lib/ai/reply-format.ts` (pure): `ReplyStyle` {tone friendly |
+  professional | short, emoji, buttons, typing} kept in `organizations.ai_handoff.style` (no new column; `GET/PUT
+  /api/ai/handoff` take `style`; Settings card "How the AI replies, and when it hands a chat to your team" with a
+  WhatsApp / Instagram preview). The model also returns `next` [{label ≤20 chars, question}]; `answerFromKnowledge`
+  returns `plan` {text, buttons, link}: quick buttons (≤2 follow-ups + "Talk to a person" on answered replies) or, for a
+  single used FAQ link, a link button. WhatsApp (`whatsappMessage`): *bold* / • lists, interactive reply buttons (body
+  ≤1,024, ≤3, ids `aq:<full question>`) or `cta_url`, else text; the plain twin is sent when Meta refuses the
+  interactive one; "typing…" + read via `whatsappTyping(messageSid)`. Tapped `aq:` buttons become the typed question
+  (`askedByButton` in the webhook; `interactiveButtonId` cleared). Instagram (`instagramMessages`): no formatting marks
+  (`forInstagram`), ≤1,000 bytes per message (`splitMessage`, ≤3), quick-reply chips on the last (`dmBodies`
+  `quickReplies`, `sendDm`), `sendTyping` (sender_action typing_on); `readIgWebhook` reads `quick_reply.payload` "aq:".
+  Meta's docs could not be opened from the cloud session (developers.facebook.com blocked): shapes are from memory —
+  **check buttons, chips, cta_url and typing on a real number / account.** Search (`searchKnowledge`): meaning search in
+  both the English search text and the customer's own words (one embeddings call; `mergeByMeaning`), 10-minute
+  in-memory vector cache (`embedTexts`), `rankHits` (exact question first via `gapKey`, strong word overlap ×1.3, FAQs
+  ×1.015 tiebreak), `withNeighbours` (a matching document part gets the parts before and after it, overlap removed by
+  `joinPassage`). Playground shows the buttons and a tap asks the question behind it. Tests `tests/reply-style.test.cjs`.
 - **Knowledge base: websites, PDFs, documents, text, and FAQ attachments** (owner, 19 Nov 2026: "PDFs, FAQs supports
   images videos, links and PDFs, chunking, web scraping"). Sources in `knowledge_sources` (kind website / pdf / document
   / text; status processing → ready / failed with a plain reason; lock 724519033, migration `20261207_knowledge_sources.sql`).

@@ -231,6 +231,7 @@ export async function POST(request: NextRequest) {
       let searchQuery = cleanMessage
       let faqs: { title: string; content: string; similarity: number | null; wordScore: number | null; kind?: string; sourceTitle?: string | null }[] = []
       let attachments: { type: string; url: string; name?: string }[] = []
+      let buttons: { title: string; question: string }[] = []
       let confidence = 'none'
       let status = ''
       let handoffReason: string | null = null
@@ -242,6 +243,8 @@ export async function POST(request: NextRequest) {
           searchQuery = answer.searchQuery
           faqs = answer.hits.map((h) => ({ title: h.title, content: h.content, similarity: h.similarity, wordScore: h.wordScore, kind: h.kind, sourceTitle: h.sourceTitle }))
           attachments = answer.attachments
+          // Quick buttons as the customer would see them (the question behind each)
+          buttons = (answer.plan.buttons || []).map((b) => ({ title: b.title, question: b.id.replace(/^aq:/, '') }))
           confidence = answer.confidence
           status = answer.status
           handoffReason = answer.reason ? HANDOFF_REASON_LABELS[answer.reason] : null
@@ -262,6 +265,7 @@ export async function POST(request: NextRequest) {
         isRiseTicket,
         handoffReason,
         attachments,
+        buttons,
         matchedFaqs: faqs.length,
         condensedQuery: searchQuery !== cleanMessage ? searchQuery : undefined 
       }
@@ -292,6 +296,7 @@ export async function POST(request: NextRequest) {
         status,
         confidence,
         attachments,
+        buttons,
         matchedFaqs: faqs,
         condensedQuery: searchQuery !== cleanMessage ? searchQuery : null
       })

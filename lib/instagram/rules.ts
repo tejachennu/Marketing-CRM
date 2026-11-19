@@ -65,7 +65,8 @@ export function readIgWebhook(payload: any): IgEvent[] {
         const echo = m.message.is_echo === true
         out.push({
           kind: 'message', accountId: accountId || (echo ? sender : recipient), senderId: echo ? recipient : sender,
-          mid: str(m.message.mid), text: str(m.message.text).slice(0, 4000),
+          // A tapped quick reply under an AI answer carries its full question ("aq:<question>")
+          mid: str(m.message.mid), text: (/^aq:./.test(str(m.message.quick_reply?.payload)) ? str(m.message.quick_reply.payload).slice(3) : str(m.message.text)).slice(0, 4000),
           attachments: (Array.isArray(m.message.attachments) ? m.message.attachments : []).map((a: any) => ({ type: str(a?.type), url: str(a?.payload?.url) })).filter((a: any) => a.type),
           timestamp: Number(m.timestamp) || Date.now(), echo, replyTo: m.message.reply_to?.mid ? str(m.message.reply_to.mid) : null,
           unsupported: m.message.is_unsupported === true,
@@ -147,14 +148,16 @@ export function sendKind(url: string): { kind: IgMediaKind } | { convert: true }
  * The request bodies for one reply: the file first (Instagram sends a file and its words as two
  * messages), then the text (≤1000 bytes). Human Agent tag on each when a person answers after 24 hours.
  */
-export function dmBodies(recipientId: string, input: { text?: string; media?: { url: string; kind: IgMediaKind }; humanAgent?: boolean }): Record<string, unknown>[] | { error: string } {
+export function dmBodies(recipientId: string, input: { text?: string; media?: { url: string; kind: IgMediaKind }; humanAgent?: boolean; quickReplies?: { title: string; payload: string }[] }): Record<string, unknown>[] | { error: string } {
   const text = str(input.text).trim()
   if (!text && !input.media) return { error: 'Type a message.' }
   if (text && new TextEncoder().encode(text).length > 1000) return { error: 'Instagram takes at most 1,000 characters (fewer with emoji). Shorten the message.' }
   const tag = input.humanAgent ? { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' } : {}
   const out: Record<string, unknown>[] = []
   if (input.media) out.push({ recipient: { id: recipientId }, message: { attachment: { type: input.media.kind, payload: { url: input.media.url } } }, ...tag })
-  if (text) out.push({ recipient: { id: recipientId }, message: { text }, ...tag })
+  // Quick replies (chips, up to 13, titles up to 20 characters) under the words
+  const chips = (input.quickReplies || []).filter((q) => q.title && q.payload).slice(0, 13).map((q) => ({ content_type: 'text', title: q.title.slice(0, 20), payload: q.payload.slice(0, 1000) }))
+  if (text) out.push({ recipient: { id: recipientId }, message: chips.length ? { text, quick_replies: chips } : { text }, ...tag })
   return out
 }
 

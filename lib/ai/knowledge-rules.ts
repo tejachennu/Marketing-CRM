@@ -84,6 +84,65 @@ export function knowledgeText(hits: (Pick<KnowledgeHit, 'title' | 'content'> & P
   }).join('\n\n---\n\n')
 }
 
+/** Several meaning-search lists as one: each entry once, with its best similarity, best first. */
+export function mergeByMeaning(lists: SearchRow[][]): SearchRow[] {
+  const byKey = new Map<string, SearchRow>()
+  for (const list of lists) for (const row of list || []) {
+    if (!row?.title) continue
+    const key = keyOf(row)
+    const old = byKey.get(key)
+    if (!old || (Number(row.similarity) || 0) > (Number(old.similarity) || 0)) byKey.set(key, row)
+  }
+  return [...byKey.values()].sort((a, b) => (Number(b.similarity) || 0) - (Number(a.similarity) || 0))
+}
+
+/** Two texts that are the same question in the same words (no need to search twice). */
+export function sameMeaningText(a: string, b: string): boolean {
+  return gapKey(a) === gapKey(b)
+}
+
+/**
+ * The final order: the business's own FAQ whose question is the customer's question comes first; an FAQ goes
+ * a little ahead of a document part that scored about the same (the business wrote it as the answer).
+ */
+export function rankHits<T extends KnowledgeHit>(hits: T[], question: string): T[] {
+  const asked = gapKey(question)
+  const words = new Set(asked.split(' ').filter(Boolean))
+  const scored = hits.map((h) => {
+    let score = h.score
+    const titleKey = gapKey(h.title)
+    if (asked && titleKey === asked) score += 1
+    else if (h.kind !== 'part' && words.size >= 2) {
+      // Most of the question's words are in the FAQ's question
+      const titleWords = titleKey.split(' ').filter(Boolean)
+      const shared = titleWords.filter((w) => words.has(w)).length
+      if (titleWords.length && shared / Math.max(words.size, titleWords.length) >= 0.6) score *= 1.3
+    }
+    // About one place in the ranking: only breaks near-ties
+    if (h.kind !== 'part') score *= 1.015
+    return { h, score }
+  })
+  return scored.sort((a, b) => b.score - a.score).map((x) => x.h)
+}
+
+/** A part with the text around it, without repeating the overlap between parts. */
+export function joinPassage(before: string | null | undefined, middle: string, after: string | null | undefined, max = 3000): string {
+  const glue = (a: string, b: string) => {
+    // The end of a that the next part repeats at its start (chunks overlap a little)
+    for (let n = Math.min(200, a.length, b.length); n >= 12; n--) if (a.endsWith(b.slice(0, n))) return a + b.slice(n)
+    return `${a}\n\n${b}`
+  }
+  let text = middle
+  if (before) text = glue(before, text)
+  if (after) text = glue(text, after)
+  if (text.length <= max) return text
+  // Too long: keep the matching part whole, with what fits around it
+  const at = text.indexOf(middle)
+  const room = Math.max(0, max - middle.length)
+  const start = Math.max(0, at - Math.floor(room / 2))
+  return `${start > 0 ? '…' : ''}${text.slice(start, start + max)}${start + max < text.length ? '…' : ''}`
+}
+
 // ── A customer asking for a person ──────────────────────────────────────────
 
 const PERSON_PATTERNS: RegExp[] = [
@@ -126,7 +185,15 @@ export interface ParsedAnswer {
   urgent: boolean
   /** The knowledge items the answer used ([1] = 1) */
   used?: number[]
+  /** Follow-up questions for quick buttons: a short label and the full question */
+  next?: { label: string; question: string }[]
 }
+
+const readNext = (v: unknown): { label: string; question: string }[] => (Array.isArray(v) ? v : []).map((x: any) => {
+  const question = String(typeof x === 'string' ? x : x?.question || x?.label || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+  const label = String(typeof x === 'string' ? x : x?.label || question).replace(/\s+/g, ' ').trim().slice(0, 40)
+  return { label, question }
+}).filter((x) => x.question.length >= 3).slice(0, 2)
 
 const readUsed = (v: unknown): number[] => (Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 20).slice(0, 5)
 
@@ -165,7 +232,7 @@ export function parseAnswer(raw: string): ParsedAnswer {
   let status = STATUSES.find((s) => s === String(data.status || '').toLowerCase()) || null
   // Older answers: {reply, isRiseTicket}
   if (!status) status = data.isRiseTicket === true || data.handOff === true ? 'unknown' : 'answered'
-  return { reply: tidyReply(reply), status, summary: String(data.summary || '').replace(/\s+/g, ' ').trim().slice(0, 200), urgent: data.urgent === true, used: readUsed(data.used) }
+  return { reply: tidyReply(reply), status, summary: String(data.summary || '').replace(/\s+/g, ' ').trim().slice(0, 200), urgent: data.urgent === true, used: readUsed(data.used), next: readNext(data.next) }
 }
 
 /** No markdown stars or headings on WhatsApp; at most 1,500 characters. */
