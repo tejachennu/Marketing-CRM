@@ -1,3 +1,4 @@
+import { markTeamReplied } from '@/lib/ai/knowledge-store'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
@@ -337,6 +338,7 @@ export async function POST(request: NextRequest) {
       }]).select().single()
       if (igSaveError) throw igSaveError
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString(), auto_reply_enabled: false }).eq('id', conversation.id)
+      if (sent.ok) await markTeamReplied(supabase, conversation.id)
       if (!sent.ok) return NextResponse.json({ success: false, error: sent.error, message: igSaved, twilioSent: false }, { status: 400 })
       // No twilioSent here: screens read twilioSent === false as "not delivered", and this one was
       return NextResponse.json({ success: true, message: igSaved, ...(fileSaved ? { fileMessage: fileSaved } : {}), channel: 'instagram' })
@@ -743,6 +745,7 @@ export async function POST(request: NextRequest) {
         auto_reply_enabled: false,
       })
       .eq('id', conversation.id)
+    if (sendStatus !== 'failed') await markTeamReplied(supabase, conversation.id)
 
     if (sendStatus === 'failed') {
       return NextResponse.json(

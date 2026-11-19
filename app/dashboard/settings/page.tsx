@@ -1,5 +1,7 @@
 'use client'
 
+import { HandoffSettingsCard } from '@/components/ai/handoff-settings'
+import { KnowledgeGaps } from '@/components/ai/knowledge-gaps'
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { TeamManager } from '@/components/team/team-manager'
 import { ApiKeysPanel } from '@/components/settings/api-keys'
@@ -1175,6 +1177,9 @@ export default function SettingsPage() {
             </section>
           )}
 
+          {/* How the AI hands a chat to the team (ticket, AI paused, back on when resolved) */}
+          {organization?.id && <HandoffSettingsCard organizationId={organization.id} canEdit={canManageKnowledge} />}
+
           {/* Custom Credentials & Integrations Settings (the "Connect WhatsApp" card links to #whatsapp) */}
           <div id="whatsapp" className={`${cardClass} scroll-mt-4`}>
             <SectionHeader
@@ -1892,6 +1897,9 @@ export default function SettingsPage() {
 
       {activeTab === 'knowledge' && canManageKnowledge && (
         <div className="space-y-5 w-full max-w-6xl mx-auto">
+
+          {/* What customers asked that the Knowledge Base did not answer */}
+          {organization?.id && <KnowledgeGaps organizationId={organization.id} onAdded={() => loadArticles(organization.id)} />}
 
           {/* Add FAQ panel */}
           <div className={cardClass}>

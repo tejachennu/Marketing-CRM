@@ -3,12 +3,13 @@ import { handleCodButton } from '@/lib/commerce/cod-check'
 import { createClient } from '@supabase/supabase-js'
 import { sendPush } from '@/lib/push'
 import { findSharedNumber, handleSharedIncoming, handleSharedStatus } from '@/lib/shared-whatsapp'
-import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '@/lib/chat-language'
+import { answerFromKnowledge } from '@/lib/ai/faq-answer'
+import { readHandoffSettings, wantsPerson } from '@/lib/ai/knowledge-rules'
+import { handOffToTeam, recordKnowledgeGap } from '@/lib/ai/knowledge-store'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { verifyMetaSignature, ownsWhatsAppEvent, pickEventOwner } from '@/lib/meta-webhook'
-import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { executeFlowRuntime, saveUnownedSubmission } from '@/lib/flows/flow-executor'
 import { buildWhatsAppFlowMessage } from '@/lib/flows/flow-messages'
 import { isBsuid, canonicalizeBsuid, formatBsuidLabel } from '@/lib/whatsapp-bsuid'
@@ -30,19 +31,6 @@ import {
   handleInboundAddressSubmission,
   handleInboundPaymentConfirmation,
 } from '@/lib/commerce/commerce-webhook-handler'
-
-const DEFAULT_BASE_PROMPT = `You are a strict automated customer service chatbot. Your task is to respond to the customer's message.
-
-CLASSIFICATION AND RESPONSE RULES:
-1. NORMAL COMMUNICATION MESSAGES (Greetings, thanks, simple politeness, acknowledgments):
-   - If the customer's message is a standard greeting, thank you, or simple polite acknowledgment (e.g., "Hi", "Hello", "Hey", "Good morning", "Thanks", "Thank you", "Ok", "Great", "Awesome", "How are you"), reply with a brief, friendly, and natural response (e.g., greeting them back and asking how you can help, or saying you're welcome).
-2. ALL OTHER CONTEXTS (Questions, topic queries, specific inquiries, or any other statements):
-   - You must answer using ONLY the facts directly mentioned in the MATCHED FAQ ARTICLES. Do not assume, extrapolate, or refer to outside knowledge.
-   - If you do not have the knowledge (i.e., the answer is not explicitly written in the matched FAQs, or no matched FAQs are provided), you MUST respond with EXACTLY this text: "Our support team will reply you soon."
-
-ADDITIONAL CONSTRAINTS:
-- Do not make up any facts, procedures, URLs, phone numbers, or fees. Only state what is explicitly written in the matched FAQs.
-- Keep the reply helpful, direct, professional, and under 80 words. Do not add conversational filler to topic answers.`;
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -900,7 +888,8 @@ async function processEvent(
       orgData.enable_ai !== false &&
       conversation.auto_reply_enabled !== false &&
       messageBody &&
-      openAiKey
+      openAiKey &&
+      !previousMessage
     ) {
       const greetingResult = classifyGreeting(messageBody)
       if (greetingResult.isGreeting) {
@@ -960,22 +949,25 @@ async function processEvent(
       }
     }
 
-    // Step 5: Chatbot Auto-Reply Trigger
+    // Step 5: Chatbot Auto-Reply Trigger (a redelivered message was answered the first time)
     if (
       orgData.enable_ai !== false &&
       conversation.auto_reply_enabled !== false &&
       messageBody &&
-      openAiKey
+      openAiKey &&
+      !previousMessage
     ) {
       console.log(`[Facebook Webhook Chatbot] Triggering auto-reply for conversation ${conversation.id}...`)
       const chatbotStartTime = Date.now()
+      // "Talk to a person" goes straight to the team (the FAQ chatbot below hands it over)
+      const askedPerson = wantsPerson(messageBody)
 
       // Product and order questions: the shopping assistant answers with the store's own products and
       // the customer's own orders. Everything else falls through to the FAQ chatbot below.
       // A redelivered message (Meta retries webhooks) was already answered the first time
       // Spa & Salon: questions about services, prices and timings, and bookings, answered from the
       // salon's own menu. Anything else passes to the shopping assistant and the FAQ chatbot.
-      if (salonChatReady(orgData) && !previousMessage) {
+      if (salonChatReady(orgData) && !previousMessage && !askedPerson) {
         try {
           const { data: recentForSalon } = await supabase
             .from('messages')
@@ -1000,7 +992,7 @@ async function processEvent(
         }
       }
 
-      if (shoppingAssistantEnabled(orgData) && !previousMessage) {
+      if (shoppingAssistantEnabled(orgData) && !previousMessage && !askedPerson) {
         try {
           const { data: recentForAssistant } = await supabase
             .from('messages')
@@ -1037,389 +1029,76 @@ async function processEvent(
       }
 
       try {
-        // 0. Contextual Query Condensation — rewrite follow-up messages as standalone search queries
-        //    This fixes context blindness where "how much is it?" loses the topic from earlier messages
-        let searchQuery = messageBody // default: use raw message if condensation fails or is unnecessary
+        // The FAQ chatbot (lib/ai/faq-answer.ts): searches the knowledge base, answers only from it, and hands
+        // the chat to the team when the customer asks for a person, complains, or the answer is not there.
+        const { data: recentForFaq } = await supabase
+          .from('messages')
+          .select('sender_type, body, media_url')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(11)
+        // The newest row is the message being answered; it is passed on its own
+        const faqHistory = (recentForFaq || [])
+          .slice(1)
+          .reverse()
+          .map((m: any) => ({ role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const, content: getMessagePreview(m) }))
+          .filter((m: any) => m.content)
+        const settings = readHandoffSettings(orgData.ai_handoff)
+        const answer = await answerFromKnowledge({ db: supabase, ai: ai!, org: orgData, message: messageBody, history: faqHistory, channel: 'whatsapp', settings })
 
-        try {
-          const { data: historyForCondensation } = await supabase
-            .from('messages')
-            .select('sender_type, body')
-            .eq('conversation_id', conversation.id)
-            .order('created_at', { ascending: false })
-            .limit(6)
-
-          const recentHistory = (historyForCondensation || [])
-            .reverse()
-            .filter((m: any) => m.body && m.body.trim())
-
-          // Only condense if there is conversation history (follow-up scenario)
-          if (recentHistory.length > 0) {
-            const condensationPrompt = `You are a query rewriter. Given the conversation history and the user's latest message, rewrite the latest message as a single standalone search query that captures the full intent including any context from previous messages.
-
-Rules:
-- Output ONLY the rewritten query, nothing else
-- If the latest message is already self-contained (e.g., a greeting like "hi" or "hello", or a complete question), return it as-is
-- Resolve pronouns and references (e.g., "it", "that", "this") using conversation history
-- Keep the query concise (under 30 words)
-${SEARCH_QUERY_LANGUAGE_RULE}
-- Do NOT add information not implied by the conversation
-
-Conversation history:
-${recentHistory.map((m: any) => `${m.sender_type === 'contact' ? 'Customer' : 'Bot'}: ${m.body}`).join('\n')}
-
-Latest customer message: ${messageBody}
-
-Rewritten standalone query:`
-
-            const condensationRes = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: condensationPrompt }],
-                temperature: 0,
-                max_tokens: 80
+        if (answer?.reply) {
+          let fbMessageSid: string | null = null
+          let sendError: string | null = null
+          if (whatsappPhoneNumberId && whatsappApiToken) {
+            try {
+              const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
+                body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phoneNumber.replace('+', '').trim(), type: 'text', text: { body: answer.reply } }),
+                signal: AbortSignal.timeout(20000),
               })
-            })
-
-            if (condensationRes.ok) {
-              const condensationData = await condensationRes.json()
-              const condensed = condensationData.choices?.[0]?.message?.content?.trim()
-              if (condensed && condensed.length > 0) {
-                searchQuery = condensed
-                console.log(`[Facebook Webhook Chatbot] Query condensed: "${messageBody}" → "${searchQuery}"`)
-              }
-            } else {
-              console.warn('[Facebook Webhook Chatbot] Query condensation API call failed, using raw message')
+              const fbData = await fbRes.json().catch(() => null)
+              if (fbRes.ok && fbData?.messages?.[0]?.id) fbMessageSid = `FB_${fbData.messages[0].id}`
+              else sendError = fbData?.error?.message || `WhatsApp did not accept the reply (${fbRes.status})`
+            } catch (sendErr: any) {
+              sendError = sendErr?.message || 'The reply could not be sent'
             }
-          } else {
-            console.log('[Facebook Webhook Chatbot] No conversation history, skipping query condensation')
           }
-        } catch (condensationErr) {
-          console.warn('[Facebook Webhook Chatbot] Query condensation failed, using raw message:', condensationErr)
+          if (sendError) console.error('[Facebook Webhook Chatbot] Reply not sent:', sendError)
+          await supabase.from('messages').insert([{ organization_id: orgId, conversation_id: conversation.id, sender_type: 'user', body: answer.reply, twilio_message_sid: fbMessageSid, ...(sendError ? { status: 'failed', error_message: sendError } : {}) }])
+          await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
         }
 
-        // 1. Expand query with synonym dictionary for better matching (using condensed query)
-        const synonyms: SynonymGroup[] = orgData.service_synonyms || []
-        const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(searchQuery, synonyms)
-        console.log(`[Facebook Webhook Chatbot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
-
-        // 2. Generate query embedding (using expanded vector query)
-        const embedRes = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: vectorQuery.substring(0, 8000)
+        if (answer?.handoff) {
+          const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+          await handOffToTeam(supabase, {
+            organizationId: orgId, conversationId: conversation.id, contactId: contact.id, message: messageBody,
+            reason: answer.reason || 'not_answered', summary: answer.summary, urgent: answer.urgent, channel: 'whatsapp', settings,
+            contactName, contactPhone: contact.phone_number || contact.whatsapp_number || '',
           })
-        })
+          if (answer.reason === 'not_answered') await recordKnowledgeGap(supabase, orgId, messageBody, conversation.id)
+        }
 
-        if (embedRes.ok) {
-          const embedData = await embedRes.json()
-          const embedding = embedData.data?.[0]?.embedding
-
-          if (embedding) {
-            const embeddingStr = `[${embedding.join(',')}]`
-
-            // 2. Query match_faqs similarity search and fallback keyword search in parallel
-            let faqs: { title: string; content: string }[] = []
-            try {
-              let vectorFaqs: any[] = []
-              let keywordFaqs: any[] = []
-
-              // Try vector similarity match
-              try {
-                const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
-                  query_embedding: embeddingStr,
-                  match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
-                  match_count: 3,
-                  org_id: orgId
-                })
-                if (rpcError) {
-                  console.error('[Facebook Webhook Chatbot] match_faqs RPC error:', rpcError)
-                } else {
-                  vectorFaqs = matchedFaqs || []
-                }
-              } catch (vecErr) {
-                console.error('[Facebook Webhook Chatbot] Vector RPC error:', vecErr)
-              }
-
-              // Always fetch keyword matches as well to build a hybrid pool using keywordQuery
-              try {
-                keywordFaqs = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
-              } catch (kwErr) {
-                console.error('[Facebook Webhook Chatbot] Keyword fallback search error:', kwErr)
-              }
-
-              // Combine and deduplicate
-              const merged: any[] = []
-              const seen = new Set<string>()
-
-              for (const f of vectorFaqs) {
-                const titleLower = f.title.toLowerCase().trim()
-                if (!seen.has(titleLower)) {
-                  seen.add(titleLower)
-                  merged.push({ title: f.title, content: f.content })
-                }
-              }
-
-              for (const f of keywordFaqs) {
-                const titleLower = f.title.toLowerCase().trim()
-                if (!seen.has(titleLower)) {
-                  seen.add(titleLower)
-                  merged.push({ title: f.title, content: f.content })
-                }
-              }
-
-              faqs = merged.slice(0, 3)
-              console.log(`[Facebook Webhook Chatbot] Hybrid search merged ${faqs.length} FAQs (vector: ${vectorFaqs.length}, keyword: ${keywordFaqs.length})`)
-            } catch (err) {
-              console.error('[Facebook Webhook Chatbot] Search failed, falling back to simple keyword search:', err)
-              try {
-                faqs = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
-              } catch (kwFallbackErr) {
-                console.error('[Facebook Webhook Chatbot] Ultimate keyword fallback failed:', kwFallbackErr)
-              }
-            }
-
-            // 3. Format matched context
-            const formattedContext = faqs.map((faq: any, i: number) => {
-              return `[FAQ ${i + 1}]\nQuestion: ${faq.title}\nAnswer: ${faq.content}`
-            }).join('\n\n---\n\n')
-
-            // 4. Fetch last 6 messages for conversation context
-            const { data: recentMessages } = await supabase
-              .from('messages')
-              .select('sender_type, body')
-              .eq('conversation_id', conversation.id)
-              .order('created_at', { ascending: false })
-              .limit(6)
-
-            const chatHistory = (recentMessages || [])
-              .reverse()
-              .filter((m: any) => m.body)
-              .map((m: any) => ({
-                role: m.sender_type === 'contact' ? 'user' as const : 'assistant' as const,
-                content: m.body
-              }))
-
-            console.log(`[Facebook Webhook Chatbot] Including ${chatHistory.length} previous messages as context`)
-
-            // Context-filter synonyms for terminology note
-            const faqsText = faqs.map((f: any) => `${f.title} ${f.content}`).join(' ')
-            const activeRelationships = getActiveSynonymRelationships(messageBody || '', faqsText, synonyms)
-            
-            let synonymContext = ''
-            if (activeRelationships.length > 0) {
-              synonymContext = `\n\nTERMINOLOGY EQUIVALENCE NOTE (All terms are case-insensitive):
-${activeRelationships.map(r => `- ${r}`).join('\n')}`
-            }
-
-            // 5. Construct System Prompt
-            const basePrompt = orgData.chatbot_base_prompt || DEFAULT_BASE_PROMPT
-            const systemPrompt = `${basePrompt}
-
-MATCHED FAQ ARTICLES FROM KNOWLEDGE BASE (Use this as your source of truth):
-${formattedContext || '(No matching FAQs found in the knowledge base)'}${synonymContext}
-
-CONVERSATION HISTORY:
-The messages below are the recent conversation between you (assistant) and the customer (user).
-Use this history to maintain context, avoid repeating information, and respond naturally as a continuation of the conversation.
-
-CRITICAL INSTRUCTIONS:
-You MUST respond in JSON format. The JSON object must contain two keys:
-1. "reply": (string) Your natural conversational reply to the customer. If you cannot answer the query using the matched FAQ articles, or if the user asks to connect with support/a human, or if you need to hand off to a human agent, set "reply" to a friendly notice indicating that the support team will get in touch soon.
-2. "isRiseTicket": (boolean) Set this to true ONLY if you cannot answer the user's question, if they explicitly ask for human/agent/support assistance, if they are reporting a bug or raising an issue that requires agent intervention, or if you are giving the fallback reply. Otherwise, set it to false.
-
-${LANGUAGE_RULES}
-- The fixed "support team will reply" notice is also given in the customer's language; set "isRiseTicket" to true for it as before.`
-
-            // 6. Call GPT-4o-mini with conversation history
-            const gptResponse = await aiFetch(supabase, ai!, 'chatbot', 'https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  ...chatHistory,
-                  { role: 'user', content: messageBody }
-                ],
-                response_format: { type: 'json_object' },
-                temperature: 0.3,
-                max_tokens: 300
-              })
-            })
-
-            if (gptResponse.ok) {
-              const gptData = await gptResponse.json()
-              const contentString = gptData.choices?.[0]?.message?.content?.trim() || '{}'
-
-              let botReply = ''
-              let isRiseTicket = false
-
-              try {
-                const parsed = JSON.parse(contentString)
-                botReply = parsed.reply || ''
-                isRiseTicket = !!parsed.isRiseTicket
-              } catch (parseErr) {
-                console.error('[Facebook Webhook Chatbot] Failed to parse JSON response from GPT:', parseErr, contentString)
-                botReply = contentString
-                isRiseTicket = false
-              }
-
-              // Safety check: if bot reply or incoming message suggests human agent or support team, raise ticket
-              const lowerReply = botReply.toLowerCase()
-              const lowerIncoming = messageBody ? messageBody.toLowerCase() : ''
-              if (
-                !isRiseTicket &&
-                (lowerReply.includes('support team') ||
-                 lowerReply.includes('reply you soon') ||
-                 lowerReply.includes('reply soon') ||
-                 lowerReply.includes('contact you') ||
-                 lowerReply.includes('reach you') ||
-                 lowerReply.includes('human agent') ||
-                 lowerReply.includes('representative') ||
-                 lowerIncoming.includes('support team') ||
-                 lowerIncoming.includes('human') ||
-                 lowerIncoming.includes('agent') ||
-                 lowerIncoming.includes('connect to support') ||
-                 lowerIncoming.includes('talk to a person') ||
-                 lowerIncoming.includes('representative') ||
-                 lowerIncoming.includes('raise ticket') ||
-                 lowerIncoming.includes('create ticket') ||
-                 lowerIncoming.includes('need help'))
-              ) {
-                isRiseTicket = true
-                console.log('[Facebook Webhook Chatbot] Force-setting isRiseTicket to true based on text analysis. Incoming:', messageBody, 'Reply:', botReply)
-              }
-
-              if (botReply) {
-                console.log(`[Facebook Webhook Chatbot] Generated reply: "${botReply}" (isRiseTicket: ${isRiseTicket})`)
-
-                // 6. Send reply via Facebook Cloud API
-                let fbMessageSid = null
-                if (whatsappPhoneNumberId && whatsappApiToken) {
-                  try {
-                    const fbRes = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${whatsappApiToken}`
-                      },
-                      body: JSON.stringify({
-                        messaging_product: 'whatsapp',
-                        recipient_type: 'individual',
-                        to: phoneNumber.replace('+', '').trim(),
-                        type: 'text',
-                        text: {
-                          body: botReply
-                        }
-                      })
-                    })
-
-                    if (fbRes.ok) {
-                      const fbData = await fbRes.json()
-                      fbMessageSid = fbData.messages?.[0]?.id ? `FB_${fbData.messages[0].id}` : `FB_${Date.now()}`
-                      console.log(`[Facebook Webhook Chatbot] Sent Facebook message: ${fbMessageSid}`)
-                    } else {
-                      const errText = await fbRes.text()
-                      console.error(`[Facebook Webhook Chatbot] Failed to send Facebook message: ${fbRes.status} ${errText}`)
-                    }
-                  } catch (sendErr: any) {
-                    console.error('[Facebook Webhook Chatbot] Failed to send Facebook message:', sendErr.message)
-                  }
-                }
-
-                // 7. Save bot reply in messages table
-                await supabase
-                  .from('messages')
-                  .insert([
-                    {
-                      organization_id: orgId,
-                      conversation_id: conversation.id,
-                      sender_type: 'user',
-                      body: botReply,
-                      twilio_message_sid: fbMessageSid
-                    }
-                  ])
-
-                // Track chatbot analytics (fire-and-forget)
-                trackChatbotEvent({
-                  organization_id: orgId,
-                  conversation_id: conversation.id,
-                  query: messageBody,
-                  condensed_query: searchQuery !== messageBody ? searchQuery : null,
-                  confidence_level: faqs.length >= 2 ? 'high' : faqs.length === 1 ? 'medium' : 'low',
-                  best_similarity: null, // similarity score not easily available here
-                  matched_faq_count: faqs.length,
-                  matched_faq_titles: faqs.map((f: any) => f.title),
-                  was_escalated: isRiseTicket,
-                  was_cached: false,
-                  was_greeting: false,
-                  response_time_ms: Date.now() - chatbotStartTime,
-                  model_used: 'gpt-4o-mini',
-                  source: 'whatsapp'
-                })
-
-                // Note: Greeting-handled messages are tracked separately in the greeting classifier block
-
-                // 8. Update conversation timestamp
-                await supabase
-                  .from('conversations')
-                  .update({ last_message_at: new Date().toISOString() })
-                  .eq('id', conversation.id)
-
-                // 9. Generate a ticket if chatbot fallbacks or isRiseTicket is true
-                if (isRiseTicket) {
-                  try {
-                    const { data: existingTicket } = await supabase
-                      .from('tickets')
-                      .select('id')
-                      .eq('conversation_id', conversation.id)
-                      .eq('status', 'open')
-                      .limit(1)
-                      .maybeSingle()
-
-                    if (!existingTicket) {
-                      const { data: newTicket } = await supabase
-                        .from('tickets')
-                        .insert([
-                          {
-                            organization_id: orgId,
-                            conversation_id: conversation.id,
-                            contact_id: contact.id,
-                            subject: messageBody ? (messageBody.length > 100 ? messageBody.substring(0, 97) + '...' : messageBody) : 'Support Request',
-                            status: 'open'
-                          }
-                        ])
-                        .select('id')
-                        .maybeSingle()
-
-                      console.log('[Facebook Webhook Chatbot] Created active support ticket for conversation:', conversation.id)
-
-                      if (newTicket) {
-                        const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
-                        const contactPhone = contact.phone_number || contact.whatsapp_number || ''
-                        const originUrl = request.nextUrl ? request.nextUrl.origin : new URL(request.url).origin
-
-                        // Pop-up on the team's phones (awaited: a call left running can be stopped once the webhook answers)
-                        await notifyTicketRaised(supabase, { organizationId: orgId, ticketId: newTicket.id, subject: messageBody || 'Support Request', contactName, contactPhone, conversationId: conversation.id })
-
-                      }
-                    }
-                  } catch (ticketErr: any) {
-                    console.error('[Facebook Webhook Chatbot] Failed to create support ticket:', ticketErr.message)
-                  }
-                }
-              }
-            } else {
-              console.error('[Facebook Webhook Chatbot] GPT API call failed:', gptResponse.status)
-            }
-          }
+        if (answer) {
+          trackChatbotEvent({
+            organization_id: orgId,
+            conversation_id: conversation.id,
+            query: messageBody,
+            condensed_query: answer.searchQuery !== messageBody ? answer.searchQuery : null,
+            confidence_level: answer.confidence === 'none' ? 'low' : answer.confidence,
+            best_similarity: answer.hits.reduce((best, h) => Math.max(best, h.similarity ?? 0), 0) || null,
+            matched_faq_count: answer.hits.length,
+            matched_faq_titles: answer.hits.map((h) => h.title),
+            was_escalated: answer.handoff,
+            was_cached: false,
+            was_greeting: answer.status === 'chat',
+            response_time_ms: Date.now() - chatbotStartTime,
+            model_used: answer.model,
+            source: 'whatsapp',
+          })
+          console.log(`[Facebook Webhook Chatbot] ${answer.status}${answer.handoff ? ` → team (${answer.reason})` : ''}, ${answer.hits.length} FAQs (${answer.confidence}) in ${Date.now() - chatbotStartTime}ms`)
         } else {
-          console.error('[Facebook Webhook Chatbot] Embedding API call failed:', embedRes.status)
+          console.error('[Facebook Webhook Chatbot] The AI could not be reached; nothing sent')
         }
       } catch (err: any) {
         console.error('[Facebook Webhook Chatbot] Error in auto-reply process:', err)
@@ -1433,92 +1112,6 @@ ${LANGUAGE_RULES}
   }
 }
 
-async function fallbackKeywordSearch(
-  supabase: any,
-  queryText: string,
-  orgId: string
-): Promise<{ title: string; content: string }[]> {
-  try {
-    // 1. Search title column first (since it matches user question headers directly)
-    const { data: titleMatches } = await supabase
-      .from('knowledge_base')
-      .select('title, content')
-      .eq('organization_id', orgId)
-      .textSearch('title', queryText, { config: 'english', type: 'websearch' })
-      .limit(3)
-
-    // 2. Search content column (for detail matches)
-    const { data: contentMatches } = await supabase
-      .from('knowledge_base')
-      .select('title, content')
-      .eq('organization_id', orgId)
-      .textSearch('content', queryText, { config: 'english', type: 'websearch' })
-      .limit(3)
-
-    // 3. Combine and deduplicate, prioritizing title matches
-    const merged: any[] = []
-    const seen = new Set<string>()
-
-    if (titleMatches) {
-      for (const item of titleMatches) {
-        const titleLower = item.title.toLowerCase().trim()
-        if (!seen.has(titleLower)) {
-          seen.add(titleLower)
-          merged.push({ title: item.title, content: item.content })
-        }
-      }
-    }
-
-    if (contentMatches) {
-      for (const item of contentMatches) {
-        const titleLower = item.title.toLowerCase().trim()
-        if (!seen.has(titleLower)) {
-          seen.add(titleLower)
-          merged.push({ title: item.title, content: item.content })
-        }
-      }
-    }
-
-    if (merged.length > 0) {
-      return merged.slice(0, 3)
-    }
-  } catch (err) {
-    console.error('[Keyword Search] Websearch failed, trying ILIKE:', err)
-  }
-
-  // 4. Final fallback: ILIKE on both title and content
-  try {
-    const rawWords = queryText
-      .replace(/OR/g, ' ')
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter((w: string) => w.length > 2)
-
-    if (rawWords.length > 0) {
-      const ilikeFilters = rawWords.flatMap((w: string) => [
-        `content.ilike.%${w}%`,
-        `title.ilike.%${w}%`
-      ])
-      const { data: fallbackKb } = await supabase
-        .from('knowledge_base')
-        .select('title, content')
-        .eq('organization_id', orgId)
-        .or(ilikeFilters.join(','))
-        .limit(3)
-
-      return (fallbackKb || []).map((a: any) => ({ title: a.title, content: a.content }))
-    }
-  } catch (e) {
-    console.error('[Keyword Search] ILIKE fallback search failed:', e)
-  }
-
-  return []
-}
-
-/**
- * A question asked in the middle of a booking was answered: send the booking step again. Not when the
- * Front Desk assistant moved to times of its own (it took the booking over from there).
- */
 async function carryOnBooking(response: Response, afterReply: () => Promise<void>) {
   try {
     const result = await response.clone().json().catch(() => ({}))

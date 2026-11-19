@@ -117,6 +117,29 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **AI chatbot (RAG) and tickets rebuilt, like a business AI on WhatsApp** (owner, 19 Nov 2026: "rag having lot of issues
+  and ticketing ... works like meta bot"). One answer for every place: `lib/ai/faq-answer.ts` `answerFromKnowledge`
+  (WhatsApp webhook, Instagram DMs, Playground; Copilot and Twilio use the shared search only, Twilio keeps its own
+  embedding and wallet charging). Steps: "talk to a person" (`wantsPerson`, English / Tenglish / Hinglish / Telugu /
+  Hindi; the word "agent" alone no longer makes a ticket) goes straight to the team; else the message becomes an English
+  search text (always, not only with history), `searchKnowledge` in `lib/ai/knowledge-store.ts` searches by meaning
+  (`search_knowledge` RPC, exact, no approximate index so small businesses never miss answers; falls back to
+  `match_faqs`) and by words (`search_knowledge_words`: any word, 'simple' + 'english' text search, pg_trgm close
+  spellings; falls back to `fallbackKeywordSearch`), ranked together (`fuseResults`, reciprocal rank fusion, top 5).
+  The model answers JSON {reply, status answered|chat|unknown|person|complaint, summary, urgent} from business details
+  + knowledge only; `parseAnswer` never sends broken JSON. Pure rules in `lib/ai/knowledge-rules.ts`.
+  Hand-off (`handOffToTeam`): one open ticket per chat with `reason`, `summary`, `priority` (urgent), `channel`,
+  `ai_paused`; AI paused in that chat; pop-up + ticket email. Resolving (tickets PATCH, to-deal) turns the AI back on
+  (`afterTicketResolved`); a team reply sets `first_reply_at` and `ai_paused` (`markTeamReplied` in messages/send).
+  Settings `organizations.ai_handoff` {pauseAi, resumeOnResolve, keepAiWhenUnsure, message} via `GET/PUT /api/ai/handoff`
+  (Settings → General → "When the AI hands a chat to your team", `components/ai/handoff-settings.tsx`). Unanswered
+  questions: `knowledge_gaps` (counted once per `gapKey`), `GET/POST /api/knowledge/gaps` (draft = AI writes the FAQ
+  from the team's reply in that chat, blanks in [brackets]; answered / ignore), Settings → Knowledge Base
+  "Questions the AI couldn't answer" (`components/ai/knowledge-gaps.tsx`). Tickets page: reason / Urgent / Waiting for
+  your reply / AI paused chips, summary, filters. Fixed: no reply at all when the embedding failed, the current
+  message sent twice to the model, redelivered webhooks answered twice, 300-token cut-off JSON reaching customers.
+  Lock 724519032, migration `20261206_ai_knowledge_handoff.sql` (checked on a local Postgres 16 + pgvector). Tests
+  `tests/ai-knowledge.test.cjs`. **Not tried against real WhatsApp / OpenAI yet; mobile app not updated.**
 - **Instagram** (owner, 19 Nov 2026: DMs in the inbox, comments, live feed on the store, posting). Built on Meta's
   **Instagram API with Unified Login** (Meta says new apps can't set up "Instagram Login"; new features ship on Unified
   Login): Facebook Login for Business with its own configuration `NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID` (never add these

@@ -4,6 +4,10 @@ import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 import { can, canSeeAll, describeDenied } from '@/lib/rbac'
 import { isUuid } from '@/lib/record-visibility'
+import { afterTicketResolved, isMissingKnowledgeSchema, withKnowledgeSchema } from '@/lib/ai/knowledge-store'
+
+/** The hand-off details (why, summary, urgency, AI paused, first reply); older databases have none of them. */
+const HANDOFF_FIELDS = 'reason, summary, priority, channel, ai_paused, first_reply_at, resolved_at'
 
 const TICKET_STATUSES = ['open', 'resolved']
 
@@ -34,32 +38,19 @@ export async function GET(request: NextRequest) {
     // The Tickets screen (the app): either list, search, dates, a page, the counts, and the team and stages
     if (searchParams.get('view') === 'list') return listTickets(supabase, orgId, authResult.user, searchParams)
 
-    let query = supabase
-      .from('tickets')
-      .select(`
-        id,
-        subject,
-        status,
-        created_at,
-        conversation_id,
-        contact_id,
-        assigned_to,
-        contacts (
-          first_name,
-          last_name,
-          phone_number
-        )
-      `)
-      .eq('organization_id', orgId)
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
-
-    // Someone who only sees their own work gets the tickets assigned to them
-    if (!canSeeAll(authResult.user)) {
-      query = query.eq('assigned_to', authResult.user.id)
+    const run = (extra: string) => {
+      let query = supabase
+        .from('tickets')
+        .select(`id, subject, status, created_at, conversation_id, contact_id, assigned_to, ${extra}contacts ( first_name, last_name, phone_number )`)
+        .eq('organization_id', orgId)
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+      // Someone who only sees their own work gets the tickets assigned to them
+      if (!canSeeAll(authResult.user)) query = query.eq('assigned_to', authResult.user.id)
+      return query
     }
-
-    const { data: tickets, error } = await query
+    let { data: tickets, error } = await withKnowledgeSchema(() => run(`${HANDOFF_FIELDS}, `))
+    if (error && isMissingKnowledgeSchema(error)) ({ data: tickets, error } = await run(''))
 
     if (error) {
       throw error
@@ -76,6 +67,12 @@ export async function GET(request: NextRequest) {
 }
 
 const PAGE = 20
+
+/** Are the hand-off columns there (set them up once when they are not)? */
+async function handoffFieldsReady(supabase: any, orgId: string): Promise<boolean> {
+  const { error } = await withKnowledgeSchema(() => supabase.from('tickets').select(`id, ${HANDOFF_FIELDS}`).eq('organization_id', orgId).limit(1))
+  return !error
+}
 const clean = (value: string | null) => String(value || '').replace(/[%,()*\\]/g, ' ').trim().slice(0, 60)
 
 async function listTickets(supabase: any, orgId: string, user: any, params: URLSearchParams) {
@@ -89,9 +86,14 @@ async function listTickets(supabase: any, orgId: string, user: any, params: URLS
     return query
   }
 
+  const fields = await handoffFieldsReady(supabase, orgId) ? `${HANDOFF_FIELDS}, ` : ''
   let query = mine(supabase.from('tickets')
-    .select('id, subject, status, created_at, updated_at, conversation_id, contact_id, assigned_to, contacts ( first_name, last_name, phone_number, email )', { count: 'exact' })
+    .select(`id, subject, status, created_at, updated_at, conversation_id, contact_id, assigned_to, ${fields}contacts ( first_name, last_name, phone_number, email )`, { count: 'exact' })
     .eq('organization_id', orgId).eq('status', status))
+  const reason = params.get('reason')
+  if (fields && reason && /^[a-z_]{2,20}$/.test(reason)) query = query.eq('reason', reason)
+  if (fields && params.get('waiting') === '1') query = query.is('first_reply_at', null)
+  if (fields && params.get('urgent') === '1') query = query.eq('priority', 'urgent')
   const search = clean(params.get('q'))
   if (search) {
     const { data: people } = await supabase.from('contacts').select('id').eq('organization_id', orgId)
@@ -178,24 +180,25 @@ export async function PATCH(request: NextRequest) {
     const update: Record<string, any> = { updated_at: new Date().toISOString() }
     if (status !== undefined) update.status = status
     if (changesAssignee) update.assigned_to = assignedTo
+    const withTimes = status === undefined ? update : { ...update, resolved_at: status === 'resolved' ? new Date().toISOString() : null }
 
-    const { data, error } = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('id', ticketId)
-      .select()
-      .single()
+    let { data, error } = await withKnowledgeSchema(() => supabase.from('tickets').update(withTimes).eq('id', ticketId).select().single())
+    if (error && isMissingKnowledgeSchema(error)) ({ data, error } = await supabase.from('tickets').update(update).eq('id', ticketId).select().single())
 
     if (error) {
       throw error
     }
+
+    // Resolved: the AI answers this chat again when it was paused for the ticket (Settings → Chat and tickets)
+    let aiBackOn = false
+    if (status === 'resolved' && data) aiBackOn = await afterTicketResolved(supabase, data).catch(() => false)
 
     // Tell the person it was given to (not when they took it themselves)
     if (changesAssignee && assignedTo && data?.organization_id) {
       await sendPush(supabase, { organizationId: data.organization_id, userIds: [assignedTo], exceptUserId: recordResult.user?.id }, { kind: 'ticket', title: 'Ticket assigned to you', body: data.subject || 'Open it to see the details', open: 'tickets', tag: `ticket:${data.id}` })
     }
 
-    return NextResponse.json({ success: true, ticket: data })
+    return NextResponse.json({ success: true, ticket: data, aiBackOn })
   } catch (error: any) {
     console.error('[API] Update ticket error:', error)
     return NextResponse.json(

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/api-auth-helper'
 import { verifyConversationAccess } from '@/lib/record-visibility'
+import { searchKnowledge } from '@/lib/ai/knowledge-store'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { trackChatbotEvent } from '@/lib/ai-analytics'
 import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
@@ -187,69 +188,11 @@ export async function POST(request: NextRequest) {
       const { vectorQuery, keywordQuery } = expandQueryWithSynonyms(queryText, synonyms)
       console.log(`[Copilot] Synonym expansion - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}"`)
 
-      let vectorFaqs: any[] = []
-      let keywordFaqs: any[] = []
-
-      // Generate embedding for the expanded vector query
-      const queryEmbedding = await generateQueryEmbedding(vectorQuery, supabase, ai)
-
-      if (queryEmbedding) {
-        // Use pgvector similarity search via the match_faqs RPC function
-        const embeddingStr = `[${queryEmbedding.join(',')}]`
-
-        try {
-          const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
-            query_embedding: embeddingStr,
-            match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
-            match_count: 3,
-            org_id: conv.organization_id
-          })
-
-          if (rpcError) {
-            console.error('[Copilot] RPC match_faqs error:', rpcError)
-          } else {
-            vectorFaqs = matchedFaqs || []
-          }
-        } catch (err) {
-          console.error('[Copilot] Vector search failed:', err)
-        }
-      }
-
-      // Always fetch keyword matches too for hybrid pool using keywordQuery
-      try {
-        keywordFaqs = await fallbackKeywordSearch(supabase, keywordQuery, conv.organization_id)
-      } catch (kwErr) {
-        console.error('[Copilot] Keyword fallback search failed:', kwErr)
-      }
-
-      // Combine and deduplicate
-      const merged: any[] = []
-      const seen = new Set<string>()
-
-      for (const f of vectorFaqs) {
-        const titleLower = f.title.toLowerCase().trim()
-        if (!seen.has(titleLower)) {
-          seen.add(titleLower)
-          merged.push({
-            title: f.title,
-            content: f.content,
-            similarity: f.similarity
-          })
-        }
-      }
-
-      for (const f of keywordFaqs) {
-        const titleLower = f.title.toLowerCase().trim()
-        if (!seen.has(titleLower)) {
-          seen.add(titleLower)
-          merged.push({
-            title: f.title,
-            content: f.content,
-            similarity: null
-          })
-        }
-      }
-      kbArticles = merged.slice(0, 3)
+      // The shared knowledge search (meaning and words, ranked together)
+      const found = await searchKnowledge(supabase, ai, conv.organization_id, { question: lastMsg.body, searchQuery: queryText, synonyms, limit: 4 })
+      kbArticles = found.hits.map((h) => ({ title: h.title, content: h.content, similarity: h.similarity as number }))
+      const vectorFaqs = found.hits.filter((h) => h.similarity !== null)
+      const keywordFaqs = found.hits.filter((h) => h.wordScore !== null)
       console.log(`[Copilot] Hybrid search returned ${kbArticles.length} articles (vector: ${vectorFaqs.length}, keyword: ${keywordFaqs.length})`)
     }
 
@@ -523,87 +466,13 @@ async function handlePlayground(request: NextRequest, body: any) {
     const { vectorQuery, keywordQuery, matchedSynonyms } = expandQueryWithSynonyms(query, synonyms)
     console.log(`[Playground API] Query expansion: "${query}" - Vector query: "${vectorQuery}", Keyword query: "${keywordQuery}" (${matchedSynonyms.length} synonyms matched)`)
 
-    // Step 1: Generate Embedding (using expanded vector query)
-    let embedding: number[] | null = null
-    try {
-      const embedRes = await aiFetch(supabase, ai, 'playground', 'https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: vectorQuery.substring(0, 8000)
-        })
-      })
-
-      if (embedRes.ok) {
-        const embedData = await embedRes.json()
-        embedding = embedData.data?.[0]?.embedding || null
-      }
-    } catch (e) {
-      console.error('[Playground API] Embedding error:', e)
-    }
-
-    // Step 2: Query via RPC Vector Search
-    let vectorResults: any[] = []
-    let vectorError: string | null = null
-    if (embedding) {
-      try {
-        const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
-          query_embedding: `[${embedding.join(',')}]`,
-          match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
-          match_count: 3,
-          org_id: orgId
-        })
-        if (rpcError) {
-          vectorError = rpcError.message
-        } else {
-          vectorResults = matchedFaqs || []
-        }
-      } catch (err: any) {
-        vectorError = err.message || 'RPC execution failed'
-      }
-    } else {
-      vectorError = 'Could not generate query embedding'
-    }
-
-    // Step 3: Query via Keyword Search (Fallback mechanism using keywordQuery)
-    let keywordResults: any[] = []
-    try {
-      keywordResults = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
-    } catch (err: any) {
-      console.error('[Playground API] Keyword search error:', err)
-    }
-
-    // Step 4: Combine, Deduplicate and Select FAQ articles
-    const mergedFaqs: any[] = []
-    const seenTitles = new Set<string>()
-
-    for (const faq of vectorResults) {
-      const normalizedTitle = faq.title.toLowerCase().trim()
-      if (!seenTitles.has(normalizedTitle)) {
-        seenTitles.add(normalizedTitle)
-        mergedFaqs.push({
-          title: faq.title,
-          content: faq.content,
-          similarity: faq.similarity,
-          source: 'vector'
-        })
-      }
-    }
-
-    for (const faq of keywordResults) {
-      const normalizedTitle = faq.title.toLowerCase().trim()
-      if (!seenTitles.has(normalizedTitle)) {
-        seenTitles.add(normalizedTitle)
-        mergedFaqs.push({
-          title: faq.title,
-          content: faq.content,
-          similarity: null,
-          source: 'keyword'
-        })
-      }
-    }
-
+    // Steps 1–4: the shared knowledge search (meaning and words, ranked together)
+    const found = await searchKnowledge(supabase, ai, orgId, { question: query, synonyms, feature: 'playground', limit: 5 })
+    const vectorResults = found.hits.filter((h) => h.similarity !== null)
+    const keywordResults = found.hits.filter((h) => h.wordScore !== null)
+    const vectorError: string | null = null
+    const mergedFaqs = found.hits.map((h) => ({ title: h.title, content: h.content, similarity: h.similarity, source: h.similarity !== null && h.wordScore !== null ? 'both' : h.similarity !== null ? 'vector' : 'keyword' }))
+    console.log(`[Playground API] Query: "${query}" (${matchedSynonyms.length} synonyms matched, vector query "${vectorQuery}", ${keywordQuery ? 'with' : 'no'} keyword query)`)
     const selectedFaqs = mergedFaqs.slice(0, 3)
     let retrievalMode: 'vector' | 'keyword' | 'hybrid' | 'none' = 'none'
     if (vectorResults.length > 0 && keywordResults.length > 0) {

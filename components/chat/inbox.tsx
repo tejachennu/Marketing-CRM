@@ -19,6 +19,7 @@ import { useAlert } from '@/lib/dialog-context'
 import { formatContactDisplayName, getContactAvatarInitials, isBsuid, isInstagramContact } from '@/lib/whatsapp-bsuid'
 import { formatBadgeCount, formatWindowRemaining, getAvatarTone, getMessagePreview, getMessageText, getServiceWindow, parseReplyMarker, withReplyMarker } from '@/lib/chat-message-format'
 import { MessageList } from '@/components/chat/message-list'
+import { HANDOFF_REASON_LABELS, readReason } from '@/lib/ai/knowledge-rules'
 import { collectProductRefs, parseCommerceMessage, type ChatOrderCard, type ChatProductCard } from '@/lib/chat-commerce'
 import { ConversationRow } from '@/components/chat/conversation-row'
 
@@ -1189,6 +1190,9 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to resolve ticket')
+      // The AI answers this chat again when it was paused for the ticket
+      const convId = data.ticket?.conversation_id
+      if (data.aiBackOn && convId) setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, auto_reply_enabled: true } : c))
       setCurrentTicket(null)
     } catch (err) {
       console.error('[Ticket Resolve] Error:', err)
@@ -1929,8 +1933,12 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
               {/* Ticket Controls */}
               {selectedConversation && currentTicket && (
                 <div className="flex items-center gap-1 md:gap-2 border-l border-slate-200 dark:border-slate-800 pl-1.5 md:pl-4">
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full select-none" title={`Ticket: ${currentTicket.subject}`}>
-                    🎫 Open Ticket
+                  <span
+                    className={`hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full select-none ${currentTicket.priority === 'urgent' ? 'bg-[#fdf0f0] text-[#b91c1c]' : 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}
+                    title={`Ticket: ${currentTicket.summary || currentTicket.subject}${currentTicket.ai_paused ? ' · The AI is paused in this chat and comes back on when you resolve it.' : ''}`}
+                  >
+                    <Ticket size={11} />
+                    {currentTicket.priority === 'urgent' ? 'Urgent · ' : ''}{(readReason(currentTicket.reason) && HANDOFF_REASON_LABELS[readReason(currentTicket.reason)!]) || 'Open ticket'}
                   </span>
                   <button
                     onClick={() => handleResolveTicket(currentTicket.id)}

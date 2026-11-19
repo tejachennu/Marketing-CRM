@@ -9,6 +9,7 @@ import { authSessionManager } from '@/lib/auth-context'
 import { canAssign, canSeeAll, isReadOnly } from '@/lib/rbac'
 import { useAlert } from '@/lib/dialog-context'
 import { sanitizeSearchTerm } from '@/lib/utils'
+import { HANDOFF_REASON_LABELS, readReason } from '@/lib/ai/knowledge-rules'
 import { Ticket, Clock, CheckCircle2, MessageSquare, TrendingUp, Search, Calendar, X, ChevronLeft, ChevronRight, Loader2, User, Users } from 'lucide-react'
 
 interface TicketItem {
@@ -19,6 +20,11 @@ interface TicketItem {
   conversation_id: string
   contact_id: string
   assigned_to: string | null
+  reason?: string | null
+  summary?: string | null
+  priority?: string | null
+  ai_paused?: boolean | null
+  first_reply_at?: string | null
   contacts?: {
     first_name: string | null
     last_name: string | null
@@ -37,6 +43,23 @@ interface OrgUser {
   id: string
   full_name: string | null
   email: string
+}
+
+/** Why the ticket came, urgent, and whether the customer still waits for the team's first reply. */
+function TicketChips({ ticket }: { ticket: TicketItem }) {
+  const reason = readReason(ticket.reason)
+  const chip = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold'
+  if (!reason && !ticket.priority) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {ticket.priority === 'urgent' && <span className={`${chip} bg-[#fdf0f0] text-[#b91c1c]`}>Urgent</span>}
+      {reason && <span className={`${chip} bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300`}>{HANDOFF_REASON_LABELS[reason]}</span>}
+      {ticket.status === 'open' && (ticket.first_reply_at
+        ? <span className={`${chip} bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300`}>Replied</span>
+        : <span className={`${chip} bg-[#fdf0f0] text-[#b91c1c]`}>Waiting for your reply</span>)}
+      {ticket.status === 'open' && ticket.ai_paused && <span className={`${chip} bg-[#f4f6fa] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400`} title="The AI is not replying in this chat. It comes back on when you resolve the ticket.">AI paused</span>}
+    </div>
+  )
 }
 
 export default function TicketsPage() {
@@ -65,6 +88,8 @@ export default function TicketsPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
+  // Open tickets: all, still waiting for the team's first reply, urgent, or the AI could not answer
+  const [showOnly, setShowOnly] = useState<'all' | 'waiting' | 'urgent' | 'not_answered'>('all')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -200,25 +225,20 @@ export default function TicketsPage() {
     try {
       const seeAll = adminSeeAll
 
-      let query = supabase
+      // The hand-off details (why, summary, urgency) when the database has them; older ones do not
+      const handoffFields = 'reason, summary, priority, ai_paused, first_reply_at, '
+      const build = (extra: string) => supabase
         .from('tickets')
-        .select(`
-          id,
-          subject,
-          status,
-          created_at,
-          conversation_id,
-          contact_id,
-          assigned_to,
-          contacts (
-            first_name,
-            last_name,
-            phone_number,
-            email
-          )
-        `, { count: 'exact' })
+        .select(`id, subject, status, created_at, conversation_id, contact_id, assigned_to, ${extra}contacts ( first_name, last_name, phone_number, email )`, { count: 'exact' })
         .eq('organization_id', orgId)
         .eq('status', activeTab === 'active' ? 'open' : 'resolved')
+      const probe = await supabase.from('tickets').select(`id, ${handoffFields.replace(/, $/, '')}`).limit(1)
+      const hasHandoff = !probe.error
+      let query = build(hasHandoff ? handoffFields : '')
+      if (activeTab !== 'active') { /* filters are for open tickets */ }
+      else if (hasHandoff && showOnly === 'waiting') query = query.is('first_reply_at', null)
+      else if (hasHandoff && showOnly === 'urgent') query = query.eq('priority', 'urgent')
+      else if (hasHandoff && showOnly === 'not_answered') query = query.eq('reason', 'not_answered')
 
       if (!seeAll && userId) {
         query = query.eq('assigned_to', userId)
@@ -272,7 +292,7 @@ export default function TicketsPage() {
     } finally {
       setLoading(false)
     }
-  }, [orgId, activeTab, searchTerm, fromDate, toDate, currentPage, userId, userRole, adminSeeAll])
+  }, [orgId, activeTab, searchTerm, fromDate, toDate, currentPage, userId, userRole, adminSeeAll, showOnly])
 
   // Refetch when dependencies change
   useEffect(() => {
@@ -546,6 +566,23 @@ export default function TicketsPage() {
 
           </div>
 
+          {/* Open tickets: which ones need the team first */}
+          {activeTab === 'active' && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Show">
+              {([['all', 'All'], ['waiting', 'Waiting for your reply'], ['urgent', 'Urgent'], ['not_answered', 'AI could not answer']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={showOnly === key}
+                  onClick={() => { setShowOnly(key); setCurrentPage(1) }}
+                  className={`px-3 h-8 rounded-full text-[11px] font-bold border transition-colors ${showOnly === key ? 'bg-[#0E1B3D] border-[#0E1B3D] text-white' : 'bg-white dark:bg-[#1f2c34] border-[#d5ddeb] dark:border-[#2a3942] text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Filtering inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             
@@ -632,12 +669,11 @@ export default function TicketsPage() {
                       
                       {/* Subject */}
                       <td className="px-6 py-4">
-                        <div className="font-bold text-[#111b21] dark:text-white max-w-sm truncate group-hover:text-[#00a884] transition-colors leading-relaxed">
+                        <div className="font-bold text-[#111b21] dark:text-white max-w-sm truncate group-hover:text-[#1D5BEA] transition-colors leading-relaxed">
                           {ticket.subject}
                         </div>
-                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-xs">
-                          ID: {ticket.id}
-                        </div>
+                        {ticket.summary && <div className="text-[11px] text-[#4a5672] dark:text-slate-400 mt-0.5 max-w-sm truncate" title={ticket.summary}>{ticket.summary}</div>}
+                        <TicketChips ticket={ticket} />
                       </td>
 
                       {/* Contact */}
@@ -753,7 +789,8 @@ export default function TicketsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-bold text-xs text-[#111b21] dark:text-white leading-relaxed break-words">{ticket.subject}</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono">ID: {ticket.id}</p>
+                      {ticket.summary && <p className="text-[11px] text-[#4a5672] dark:text-slate-400 mt-0.5 break-words">{ticket.summary}</p>}
+                      <TicketChips ticket={ticket} />
                     </div>
                     
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border shrink-0 ${

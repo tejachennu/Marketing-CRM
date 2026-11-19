@@ -8,7 +8,8 @@
  *   other comment. Once per comment, only for comments under a day old.
  */
 
-import { sendPush } from '../push'
+import { readHandoffSettings } from '../ai/knowledge-rules'
+import { handOffToTeam, recordKnowledgeGap } from '../ai/knowledge-store'
 import { instagramAiReply, instagramCommentAi } from './ai'
 import { commentPlan } from './rules'
 import { actOnComment, automationOf, sendDm } from './store'
@@ -29,12 +30,17 @@ export async function answerDm(db: any, account: any, input: { conversation: any
   const org = await orgOf(db, account.organization_id)
   const answer = org ? await instagramAiReply(db, org, conversation.id, text) : null
   if (!answer) return 'skipped'
-  const sent = await sendDm(db, account.organization_id, conversation, { text: answer.reply, byPerson: false })
-  await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: answer.reply, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
+  let sent: { ok: boolean; mid?: string | null; error?: string } = { ok: true }
+  if (answer.reply) {
+    sent = await sendDm(db, account.organization_id, conversation, { text: answer.reply, byPerson: false })
+    await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: answer.reply, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
+  }
   if (answer.handOff) {
-    await db.from('conversations').update({ auto_reply_enabled: false }).eq('id', conversation.id)
+    // One ticket for the chat, AI paused (as the business set it), pop-up and ticket email
     const who = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') || `@${contact?.instagram_username || 'instagram'}`
-    await sendPush(db, { organizationId: account.organization_id, userIds: [conversation.assigned_to] }, { kind: 'ticket', title: `${who} needs a person (Instagram)`, body: text.slice(0, 120), open: `chat:${conversation.id}`, tag: `chat:${conversation.id}` }).catch(() => null)
+    const settings = readHandoffSettings(org?.ai_handoff)
+    await handOffToTeam(db, { organizationId: account.organization_id, conversationId: conversation.id, contactId: contact?.id || conversation.contact_id, message: text, reason: answer.reason || 'not_answered', summary: answer.summary, urgent: answer.urgent, channel: 'instagram', settings, contactName: who, contactPhone: null })
+    if (answer.reason === 'not_answered') await recordKnowledgeGap(db, account.organization_id, text, conversation.id)
     return 'handed_off'
   }
   return sent.ok ? 'sent' : 'failed'

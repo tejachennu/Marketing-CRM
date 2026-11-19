@@ -1,3 +1,4 @@
+import { afterTicketResolved } from '@/lib/ai/knowledge-store'
 import { NextRequest, NextResponse } from 'next/server'
 import { canSeeAll } from '@/lib/rbac'
 import { isUuid } from '@/lib/record-visibility'
@@ -26,7 +27,8 @@ export async function POST(request: NextRequest) {
     if (result.error) return NextResponse.json({ error: result.error, field: result.field }, { status: 400 })
     if (ticket.conversation_id) await db.from('conversations').update({ lead_id: result.lead.id }).eq('id', ticket.conversation_id).eq('organization_id', organizationId)
     if (body?.resolve !== false && ticket.status !== 'resolved') {
-      await db.from('tickets').update({ status: 'resolved', updated_at: new Date().toISOString() }).eq('id', ticket.id)
+      const { data: done } = await db.from('tickets').update({ status: 'resolved', updated_at: new Date().toISOString() }).eq('id', ticket.id).select().maybeSingle()
+      if (done) await afterTicketResolved(db, done).catch(() => false)
     }
     return NextResponse.json({ success: true, lead: result.lead, resolved: body?.resolve !== false })
   } catch (error: any) {

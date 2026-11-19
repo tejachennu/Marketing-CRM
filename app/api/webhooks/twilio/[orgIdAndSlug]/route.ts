@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { searchKnowledge } from '@/lib/ai/knowledge-store'
 import { expandQueryWithSynonyms, SynonymGroup, getActiveSynonymRelationships } from '@/lib/query-expander'
 import { isBsuid, canonicalizeBsuid } from '@/lib/whatsapp-bsuid'
 import { classifyGreeting } from '@/lib/greeting-classifier'
@@ -417,58 +418,12 @@ export async function POST(
           if (embedding) {
             const embeddingStr = `[${embedding.join(',')}]`
 
-            // 2. Query match_faqs similarity search and fallback keyword search in parallel
+            // 2. The shared knowledge search (meaning and words, ranked together; lib/ai/knowledge-store.ts)
             let faqs: { title: string; content: string }[] = []
             try {
-              let vectorFaqs: any[] = []
-              let keywordFaqs: any[] = []
-
-              // Try vector similarity match
-              try {
-                const { data: matchedFaqs, error: rpcError } = await supabase.rpc('match_faqs', {
-                  query_embedding: embeddingStr,
-                  match_threshold: 0.45, // Lowered threshold for text-embedding-3-small
-                  match_count: 3,
-                  org_id: orgId
-                })
-                if (rpcError) {
-                  console.error('[Webhook Chatbot] match_faqs RPC error:', rpcError)
-                } else {
-                  vectorFaqs = matchedFaqs || []
-                }
-              } catch (vecErr) {
-                console.error('[Webhook Chatbot] Vector RPC error:', vecErr)
-              }
-
-              // Always fetch keyword matches as well to build a hybrid pool using keywordQuery
-              try {
-                keywordFaqs = await fallbackKeywordSearch(supabase, keywordQuery, orgId)
-              } catch (kwErr) {
-                console.error('[Webhook Chatbot] Keyword fallback search error:', kwErr)
-              }
-
-              // Combine and deduplicate
-              const merged: any[] = []
-              const seen = new Set<string>()
-
-              for (const f of vectorFaqs) {
-                const titleLower = f.title.toLowerCase().trim()
-                if (!seen.has(titleLower)) {
-                  seen.add(titleLower)
-                  merged.push({ title: f.title, content: f.content })
-                }
-              }
-
-              for (const f of keywordFaqs) {
-                const titleLower = f.title.toLowerCase().trim()
-                if (!seen.has(titleLower)) {
-                  seen.add(titleLower)
-                  merged.push({ title: f.title, content: f.content })
-                }
-              }
-
-              faqs = merged.slice(0, 3)
-              console.log(`[Webhook Chatbot] Hybrid search merged ${faqs.length} FAQs (vector: ${vectorFaqs.length}, keyword: ${keywordFaqs.length})`)
+              const found = await searchKnowledge(supabase, null, orgId, { question: messageBody, synonyms, embedding, limit: 4 })
+              faqs = found.hits.map((h) => ({ title: h.title, content: h.content }))
+              console.log(`[Webhook Chatbot] Knowledge search found ${faqs.length} FAQs (${found.confidence})`)
             } catch (err) {
               console.error('[Webhook Chatbot] Search failed, falling back to simple keyword search:', err)
               try {
