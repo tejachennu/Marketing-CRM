@@ -440,3 +440,57 @@ test('cleared or deleted chats stay gone: messages from before the clear are not
   assert.deepEqual(db.tables.messages.map((m) => m.body), ['Hello again'])
   assert.equal(R.readSyncState(db.tables.instagram_accounts[0].sync_state).forget['901'], '2026-11-18T14:30:00Z')
 })
+
+test('new post photos: only this workspace\'s uploaded photos count as ours; odd shapes are trimmed to fit', () => {
+  const base = 'https://x.supabase.co/storage/v1/object/public/media-attachments/'
+  assert.equal(R.postPhotoPath(`${base}instagram-posts/${ORG}/1763450000000-ab12cd34ef56.jpg`, ORG), `instagram-posts/${ORG}/1763450000000-ab12cd34ef56.jpg`)
+  assert.equal(R.postPhotoPath(`${base}instagram-posts/22222222-2222-4222-8222-222222222222/1-a.jpg`, ORG), null) // another workspace
+  assert.equal(R.postPhotoPath(`${base}uploads/1-photo.jpg`, ORG), null) // a product or chat photo
+  assert.equal(R.postPhotoPath(`${base}instagram-posts/${ORG}/../uploads/x.jpg`, ORG), null)
+  assert.equal(R.postPhotoPath('https://wamacrm.magnetora.in/logo.jpg', ORG), null)
+  assert.equal(R.fitForInstagram(1080, 1080), null)
+  assert.equal(R.fitForInstagram(1080, 1350), null) // 4:5 fits
+  assert.deepEqual(R.fitForInstagram(1000, 2000), { left: 0, top: 375, width: 1000, height: 1250 }) // phone screenshot → 4:5
+  assert.deepEqual(R.fitForInstagram(3000, 1000), { left: 545, top: 0, width: 1910, height: 1000 }) // panorama → 1.91:1
+})
+
+test('new post photos: saved as JPEG, deleted after posting, old leftovers cleared; product photos never touched', async () => {
+  const stored = {}
+  const removed = []
+  const db = { storage: { from: () => ({
+    upload: async (p, buffer, opts) => { stored[p] = { buffer, type: opts.contentType }; return { error: null } },
+    getPublicUrl: (p) => ({ data: { publicUrl: `https://x.supabase.co/storage/v1/object/public/media-attachments/${p}` } }),
+    list: async (dir) => ({ data: Object.keys(stored).filter((k) => k.startsWith(dir + '/')).map((k) => ({ name: k.slice(dir.length + 1) })) }),
+    remove: async (paths) => { for (const p of paths) { removed.push(p); delete stored[p] } return { error: null } },
+  }) } }
+  const sharp = require('sharp')
+  const tall = await sharp({ create: { width: 400, height: 1000, channels: 4, background: { r: 29, g: 91, b: 234, alpha: 0.5 } } }).png().toBuffer()
+  const old = `instagram-posts/${ORG}/${Date.now() - 2 * 86400000}-aaaaaaaaaaaa.jpg`
+  stored[old] = { buffer: Buffer.alloc(1), type: 'image/jpeg' }
+  const saved = await S.savePostPhoto(db, ORG, tall)
+  assert.ok(saved.url && R.postPhotoPath(saved.url, ORG))
+  const file = stored[R.postPhotoPath(saved.url, ORG)]
+  assert.equal(file.type, 'image/jpeg')
+  const meta = await sharp(file.buffer).metadata()
+  assert.equal(meta.format, 'jpeg')
+  assert.equal(meta.width / meta.height, 0.8) // trimmed to 4:5
+  assert.deepEqual(removed, [old]) // the day-old leftover is gone, the new one stays
+  assert.ok((await S.savePostPhoto(db, ORG, Buffer.from('not a photo'))).error)
+  const productPhoto = 'https://x.supabase.co/storage/v1/object/public/media-attachments/uploads/1-saree.jpg'
+  assert.equal(await S.removePostPhotos(db, ORG, [saved.url, productPhoto, 'https://wamacrm.magnetora.in/logo.jpg']), 1)
+  assert.deepEqual(Object.keys(stored), [])
+  assert.ok(!removed.includes('uploads/1-saree.jpg'))
+})
+
+test('new post photos: wiring (upload route, cleanup only after a post goes up, form uploads)', () => {
+  const route = read('app/api/instagram/photos/route.ts')
+  assert.match(route, /permission: 'automation\.manage'/)
+  assert.match(route, /savePostPhoto/)
+  assert.match(route, /export async function DELETE/)
+  const posts = read('app/api/instagram/posts/route.ts')
+  assert.ok(posts.indexOf("if ('error' in result)") < posts.indexOf('removePostPhotos(db'))
+  const ui = read('components/instagram/instagram-parts.tsx')
+  assert.match(ui, /\/api\/instagram\/photos/)
+  assert.match(ui, /type="file" accept="image\/\*" multiple/)
+  assert.match(ui, /or paste a photo link/)
+})

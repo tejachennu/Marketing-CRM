@@ -10,8 +10,8 @@
  */
 
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
-import { createHash } from 'node:crypto'
-import { IG_FIELDS, IG_GRAPH, OLDEST_MS, PER_SYNC, SEND_TYPES, SLOW_DOWN_MS, apiAttachments, fileExtension, checkCaption, dmBodies, extensionForType, feedItem, igSendError, keepableKind, sendKind, igContactKey, isRateLimit, messageText, readIgAutomation, readSyncState, replyWindow, syncAllowed, type IgAutomation, type IgComment, type IgIncomingMessage, type IgMediaKind, type IgSyncState } from './rules'
+import { createHash, randomBytes } from 'node:crypto'
+import { IG_FIELDS, IG_GRAPH, POST_PHOTO_DIR, fitForInstagram, postPhotoPath, OLDEST_MS, PER_SYNC, SEND_TYPES, SLOW_DOWN_MS, apiAttachments, fileExtension, checkCaption, dmBodies, extensionForType, feedItem, igSendError, keepableKind, sendKind, igContactKey, isRateLimit, messageText, readIgAutomation, readSyncState, replyWindow, syncAllowed, type IgAutomation, type IgComment, type IgIncomingMessage, type IgMediaKind, type IgSyncState } from './rules'
 
 /** supabase/migrations/20261204_instagram.sql word for word. */
 export const INSTAGRAM_SQL = `-- Instagram (DMs in the inbox, comments, feed, posting). Safe to run more than once. The app runs it on its own when first needed.
@@ -461,6 +461,56 @@ export async function latestPosts(db: any, organizationId: string, options: { fr
     await noteError(db, account, error)
     return { posts: account.feed || [], connected: true, error: error?.message }
   }
+}
+
+const POST_PHOTO_KEEP_MS = 24 * 60 * 60_000
+
+/**
+ * A photo picked on the device for a new post → a JPEG Instagram accepts (turned upright, cropped to 4:5–1.91:1
+ * if needed, at most 1440 px wide, under 8 MB) in our public storage. Returns its link for publishPost. Leftovers
+ * from posts that were never sent are cleared here after a day.
+ */
+export async function savePostPhoto(db: any, organizationId: string, input: Buffer): Promise<{ url: string } | { error: string }> {
+  let jpeg: Buffer
+  try {
+    const sharp = (await import('sharp')).default
+    const upright = await sharp(input).rotate().toBuffer({ resolveWithObject: true })
+    let image = sharp(upright.data)
+    const crop = fitForInstagram(upright.info.width, upright.info.height)
+    if (crop) image = image.extract(crop)
+    jpeg = await image.resize({ width: 1440, withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer()
+  } catch {
+    return { error: 'This file could not be read as a photo. Please pick a JPEG, PNG, WebP or HEIC photo.' }
+  }
+  if (jpeg.length > 8 * 1024 * 1024) return { error: 'This photo is too big for Instagram (8 MB). Please pick a smaller one.' }
+  const path = `${POST_PHOTO_DIR}/${organizationId}/${Date.now()}-${randomBytes(6).toString('hex')}.jpg`
+  const { error } = await db.storage.from(MEDIA_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: false })
+  if (error) return { error: 'The photo could not be saved. Please try again.' }
+  await clearOldPostPhotos(db, organizationId).catch(() => {})
+  return { url: db.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl }
+}
+
+/** Deletes photos this workspace uploaded for a post (other links, like product photos, are left alone). Never throws. */
+export async function removePostPhotos(db: any, organizationId: string, urls: unknown[]): Promise<number> {
+  const paths = [...new Set(urls.map((u) => postPhotoPath(u, organizationId)).filter((p): p is string => Boolean(p)))]
+  if (!paths.length || !db.storage) return 0
+  try {
+    const { error } = await db.storage.from(MEDIA_BUCKET).remove(paths)
+    return error ? 0 : paths.length
+  } catch {
+    return 0
+  }
+}
+
+/** Photos uploaded for a post that was never sent (page closed, Cancel lost): gone after a day. */
+async function clearOldPostPhotos(db: any, organizationId: string, now = Date.now()) {
+  const dir = `${POST_PHOTO_DIR}/${organizationId}`
+  const { data } = await db.storage.from(MEDIA_BUCKET).list(dir, { limit: 100 })
+  const old = (data || []).filter((f: any) => {
+    const at = Number(String(f?.name || '').split('-')[0])
+    return at > 0 && now - at > POST_PHOTO_KEEP_MS
+  }).map((f: any) => `${dir}/${f.name}`)
+  if (old.length) await db.storage.from(MEDIA_BUCKET).remove(old)
 }
 
 /**

@@ -230,6 +230,40 @@ export function feedItem(m: any): { id: string; type: string; image: string; lin
   return { id: str(m.id), type, image: /^https:\/\//.test(image) ? image : '', link: str(m.permalink), caption: str(m.caption).slice(0, 300), at: str(m.timestamp) }
 }
 
+// ── Photos uploaded for a new post ───────────────────────────────────────────
+// Instagram's posting API takes only a public photo link, so a photo picked on the device is saved as a JPEG
+// in our storage under instagram-posts/<workspace>/, handed to Instagram, and deleted once the post is up.
+
+export const POST_PHOTO_DIR = 'instagram-posts'
+export const POST_PHOTO_MAX_BYTES = 15 * 1024 * 1024
+/** Instagram feed photos must be between 4:5 (tall) and 1.91:1 (wide). */
+export const POST_RATIO = { min: 4 / 5, max: 1.91 }
+
+/** The storage path of a photo this workspace uploaded for a post, from its public link; null for any other link. */
+export function postPhotoPath(url: unknown, organizationId: string): string | null {
+  const match = String(url || '').match(/\/storage\/v1\/object\/public\/media-attachments\/(.+)$/)
+  if (!match) return null
+  const path = decodeURIComponent(match[1].split('?')[0])
+  const dir = `${POST_PHOTO_DIR}/${organizationId}/`
+  if (!path.startsWith(dir) || path.includes('..') || !/^[\w-]+\.jpg$/.test(path.slice(dir.length))) return null
+  return path
+}
+
+/** The middle part to keep so a photo fits Instagram's 4:5 to 1.91:1 shape; null when it already fits. */
+export function fitForInstagram(width: number, height: number): { left: number; top: number; width: number; height: number } | null {
+  if (!(width > 0 && height > 0)) return null
+  const ratio = width / height
+  if (ratio < POST_RATIO.min) {
+    const h = Math.floor(width / POST_RATIO.min)
+    return { left: 0, top: Math.floor((height - h) / 2), width, height: h }
+  }
+  if (ratio > POST_RATIO.max) {
+    const w = Math.floor(height * POST_RATIO.max)
+    return { left: Math.floor((width - w) / 2), top: 0, width: w, height }
+  }
+  return null
+}
+
 /** A caption checked against Instagram's limits (2,200 characters, 30 hashtags, 20 @tags). */
 export function checkCaption(raw: unknown): { caption: string } | { error: string } {
   const caption = str(raw).trim()

@@ -794,8 +794,12 @@ function AutoRepliesPanel({ orgId, initial: start, canEdit, onSaved }: { orgId: 
 function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
   const [posts, setPosts] = useState<Post[] | null>(null)
   const [composing, setComposing] = useState(false)
-  const [images, setImages] = useState<string[]>([''])
+  const [images, setImages] = useState<string[]>([])
+  const [uploading, setUploading] = useState(0)
+  const [link, setLink] = useState('')
+  const [showLink, setShowLink] = useState(false)
   const [caption, setCaption] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -814,11 +818,51 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
     if ('error' in check) { setNote({ ok: false, text: check.error }); return }
     setBusy(true)
     setNote(null)
-    const res = await fetch('/api/instagram/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, images: images.map((u) => u.trim()).filter(Boolean), caption }) })
+    // The server deletes photos uploaded for this post once Instagram has it
+    const res = await fetch('/api/instagram/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, images, caption }) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) setNote({ ok: false, text: d.error || 'Could not post.' })
-    else { setNote({ ok: true, text: 'Posted on Instagram.' }); setImages(['']); setCaption(''); setComposing(false); await load(true) }
+    else { setNote({ ok: true, text: 'Posted on Instagram.' }); reset(); await load(true) }
     setBusy(false)
+  }
+
+  function reset() {
+    setImages([]); setCaption(''); setLink(''); setShowLink(false); setComposing(false)
+  }
+
+  /** Photos picked on the device: each is saved as a JPEG Instagram accepts and shown as a thumbnail. */
+  async function upload(files: FileList | null) {
+    const picked = Array.from(files || []).slice(0, 10 - images.length)
+    if (fileInput.current) fileInput.current.value = ''
+    if (!picked.length) return
+    setNote(null)
+    setUploading((n) => n + picked.length)
+    for (const file of picked) {
+      const form = new FormData()
+      form.append('organizationId', orgId)
+      form.append('file', file)
+      const res = await fetch('/api/instagram/photos', { method: 'POST', body: form }).catch(() => null)
+      const d = res ? await res.json().catch(() => ({})) : {}
+      if (res?.ok && d.url) setImages((list) => (list.length < 10 ? [...list, d.url] : list))
+      else setNote({ ok: false, text: `${file.name}: ${d.error || 'could not be uploaded.'}` })
+      setUploading((n) => n - 1)
+    }
+  }
+
+  /** Takes photos off the post; ones uploaded here are deleted from storage too. */
+  function drop(urls: string[]) {
+    if (!urls.length) return
+    setImages((list) => list.filter((u) => !urls.includes(u)))
+    void fetch('/api/instagram/photos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, urls }) }).catch(() => null)
+  }
+
+  function addLink() {
+    const url = link.trim()
+    if (!/^https:\/\/\S+$/.test(url)) { setNote({ ok: false, text: 'Paste a photo link that starts with https://' }); return }
+    if (images.length >= 10) { setNote({ ok: false, text: 'A post can have up to 10 photos.' }); return }
+    setNote(null)
+    setImages((list) => (list.includes(url) ? list : [...list, url]))
+    setLink('')
   }
 
   return (
@@ -834,19 +878,43 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
         <div className={`${cardClass} p-4 sm:p-5 space-y-3`}>
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold flex items-center gap-2 flex-1"><ImagePlus size={16} className="text-[#1D5BEA]" /> New post</h2>
-            <button type="button" onClick={() => setComposing(false)} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] cursor-pointer">Cancel</button>
+            <button type="button" onClick={() => { drop(images); reset() }} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] cursor-pointer">Cancel</button>
           </div>
-          {images.map((url, i) => (
-            <input key={i} aria-label={`Photo link ${i + 1}`} value={url} onChange={(e) => setImages((list) => list.map((x, j) => (j === i ? e.target.value : x)))} placeholder="Photo link (https://…, JPEG)" className={inputClass} />
-          ))}
-          {images.length < 10 && <button type="button" onClick={() => setImages((l) => [...l, ''])} className="text-xs font-semibold text-[#1D5BEA] cursor-pointer">+ Add another photo (carousel)</button>}
+          <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void upload(e.target.files)} />
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {images.map((url, i) => (
+              <div key={url} className="relative aspect-square rounded-lg overflow-hidden bg-[#eef1f6] dark:bg-slate-800 border border-[#e3e8f2] dark:border-slate-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                <span className="absolute bottom-1 left-1 h-5 min-w-5 px-1 rounded bg-black/55 text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                <button type="button" onClick={() => drop([url])} aria-label={`Remove photo ${i + 1}`} title="Remove" className="absolute top-1 right-1 h-7 w-7 rounded-full bg-white/90 text-[#0E1B3D] flex items-center justify-center hover:bg-white cursor-pointer"><Trash2 size={13} /></button>
+              </div>
+            ))}
+            {Array.from({ length: uploading }).map((_, i) => (
+              <div key={`up-${i}`} className="aspect-square rounded-lg bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center"><Loader2 size={18} className="animate-spin text-[#6B7894]" /></div>
+            ))}
+            {images.length + uploading < 10 && (
+              <button type="button" onClick={() => fileInput.current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#1D5BEA] hover:text-[#1D5BEA] flex flex-col items-center justify-center gap-1 text-xs font-semibold cursor-pointer">
+                <ImagePlus size={20} /> {images.length ? 'Add photo' : 'Upload photos'}
+              </button>
+            )}
+          </div>
+          <p className={hintClass}>{images.length > 1 ? `${images.length} photos: posted as a carousel. ` : 'Pick up to 10 photos; 2 or more are posted as a carousel. '}Very tall or very wide photos are trimmed in the middle to fit Instagram.</p>
+          {showLink ? (
+            <div className="flex gap-2">
+              <input aria-label="Photo link" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }} placeholder="https://… (a JPEG photo on the web)" className={`${inputClass} flex-1 min-w-0`} />
+              <button type="button" onClick={addLink} className={secondaryButton}>Add</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShowLink(true)} className="text-xs font-semibold text-[#1D5BEA] cursor-pointer">or paste a photo link</button>
+          )}
           <div>
             <label className={labelClass} htmlFor="ig-caption">Caption</label>
             <textarea id="ig-caption" rows={4} maxLength={2200} value={caption} onChange={(e) => setCaption(e.target.value)} className={textareaClass} placeholder="New arrivals this week… #handloom" />
-            <p className={hintClass}>{caption.length}/2200. Photos: JPEG, square to 4:5 portrait or 1.91:1 wide. Tip: Products → a product → Post on Instagram fills this in.</p>
+            <p className={hintClass}>{caption.length}/2200. Tip: Products → a product → Post on Instagram fills this in.</p>
           </div>
           {note && !note.ok && <p className="text-sm text-[#b91c1c]">{note.text}</p>}
-          <button type="button" onClick={publish} disabled={busy || !images.some((u) => u.trim())} className={primaryButton}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} {busy ? 'Posting… (Instagram takes a few seconds)' : 'Post on Instagram'}</button>
+          <button type="button" onClick={publish} disabled={busy || uploading > 0 || !images.length} className={primaryButton}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} {busy ? 'Posting… (Instagram takes a few seconds)' : 'Post on Instagram'}</button>
         </div>
       )}
 
