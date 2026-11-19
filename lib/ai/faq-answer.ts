@@ -15,8 +15,8 @@ import { aiFetch, type AiAccess } from '../ai-access'
 import { LANGUAGE_RULES, SEARCH_QUERY_LANGUAGE_RULE } from '../chat-language'
 import type { SynonymGroup } from '../query-expander'
 import {
-  decideHandoff, handoffText, knowledgeText, parseAnswer, readHandoffSettings, wantsPerson,
-  type AnswerStatus, type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit,
+  answerExtras, decideHandoff, handoffText, knowledgeText, parseAnswer, readHandoffSettings, wantsPerson, withLinks,
+  type AnswerStatus, type Attachment, type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit,
 } from './knowledge-rules'
 import { searchKnowledge } from './knowledge-store'
 
@@ -52,6 +52,8 @@ export interface AnswerResult {
   confidence: Confidence
   searchQuery: string
   model: string
+  /** Photos, videos and files of the FAQs the answer used: send them after the reply */
+  attachments: Attachment[]
 }
 
 const MODEL = 'gpt-4o-mini'
@@ -68,7 +70,7 @@ export function businessFacts(org: any): string {
 }
 
 /** The system prompt (exported for tests). */
-export function answerPrompt(org: any, hits: Pick<KnowledgeHit, 'title' | 'content'>[], opts: { askedPerson?: boolean; channel?: string } = {}): string {
+export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string } = {}): string {
   const where = opts.channel === 'instagram' ? 'Instagram' : 'WhatsApp'
   const own = String(org?.chatbot_base_prompt || '').trim()
   return `You are the ${where} assistant of ${org?.name || 'this business'}. You answer customers for the business like a helpful, honest shop assistant.
@@ -76,7 +78,7 @@ ${own ? `\nTHE BUSINESS'S OWN INSTRUCTIONS (follow them, but never invent facts)
 BUSINESS DETAILS (true facts):
 ${businessFacts(org)}
 
-KNOWLEDGE BASE (the business's own answers; with the details above, your only source of truth):
+KNOWLEDGE BASE (the business's own answers and documents; with the details above, your only source of truth):
 ${knowledgeText(hits)}
 
 HOW TO ANSWER:
@@ -86,11 +88,12 @@ HOW TO ANSWER:
 - The customer asks for a person, a call back or a human: status "person"; reply briefly that someone from the team will reply here soon.
 - The customer complains or is upset about a problem (late or wrong order, bad service, refund, payment taken): status "complaint"; say sorry briefly and that the team will look into it and reply here soon.
 - Use the conversation to understand follow-ups like "how much is it?" or "and on Sunday?".
+- When an item says a photo, video, file or link is sent with it and you use that item, you may say it is attached below (it is sent automatically).
 - Keep it short (under 80 words), plain text, no markdown, no lists unless needed.
 ${opts.askedPerson ? '- This customer has asked for a person: status "person".\n' : ''}${LANGUAGE_RULES}
 
 Answer in JSON only:
-{"reply": "your message to the customer", "status": "answered" | "chat" | "unknown" | "person" | "complaint", "summary": "one short line for the team: what the customer wants", "urgent": true only when the customer is angry or money already paid is involved, else false}`
+{"reply": "your message to the customer", "status": "answered" | "chat" | "unknown" | "person" | "complaint", "used": [the numbers of the knowledge items your reply used, e.g. [1, 3]; [] when none], "summary": "one short line for the team: what the customer wants", "urgent": true only when the customer is angry or money already paid is involved, else false}`
 }
 
 /** The customer's message as one English search text (follow-ups and other languages resolved). */
@@ -139,7 +142,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   if (!askedPerson) {
     searchQuery = await searchTextFor(db, ai, feature, message, history)
     const synonyms: SynonymGroup[] = Array.isArray(org?.service_synonyms) ? org.service_synonyms : []
-    const found = await searchKnowledge(db, ai, org.id, { question: message, searchQuery, synonyms, feature })
+    const found = await searchKnowledge(db, ai, org.id, { question: message, searchQuery, synonyms, feature, limit: 6 })
     hits = found.hits
     confidence = found.confidence
   }
@@ -168,14 +171,16 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   if (!raw) {
     // The AI could not be reached: a customer who asked for a person still gets the team
     if (!askedPerson) return null
-    return { reply: handoffText({ reply: '', status: 'person', summary: '', urgent: false }, settings), status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL }
+    return { reply: handoffText({ reply: '', status: 'person', summary: '', urgent: false }, settings), status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL, attachments: [] }
   }
 
   const answer = parseAnswer(raw)
   const decision = decideHandoff(answer, { askedPerson })
-  const reply = decision.handoff ? handoffText(answer, settings) : answer.reply
+  const extras = answerExtras(hits, answer.used, decision.handoff)
+  const reply = decision.handoff ? handoffText(answer, settings) : withLinks(answer.reply, extras.links)
   return {
     reply,
+    attachments: extras.attachments,
     status: answer.status,
     handoff: decision.handoff,
     reason: decision.reason,

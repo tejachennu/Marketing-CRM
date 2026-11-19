@@ -8,6 +8,7 @@ import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schem
 import { aiFetch, type AiAccess } from '../ai-access'
 import { fallbackKeywordSearch } from '../ai-shared'
 import { expandQueryWithSynonyms, type SynonymGroup } from '../query-expander'
+import { cleanMedia } from './knowledge-text'
 import {
   confidenceOf, fuseResults, gapKey, isRealQuestion, pausesAi, readHandoffSettings, searchWords, ticketSubject,
   type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit, type SearchRow,
@@ -182,8 +183,33 @@ export async function searchKnowledge(
       .then((e) => (e ? byMeaning(db, orgId, e) : [] as SearchRow[])).catch(() => [] as SearchRow[]),
     byWords(db, orgId, words, input.question || query, keywordQuery).catch(() => [] as SearchRow[]),
   ])
-  const hits = fuseResults(meaning, wordRows, input.limit ?? 5)
+  const hits = await withDetails(db, orgId, fuseResults(meaning, wordRows, input.limit ?? 5))
   return { hits, confidence: confidenceOf(hits) }
+}
+
+/** Each hit's kind (FAQ or part of a source), the FAQ's attachments, and the part's source name and page. */
+async function withDetails(db: any, orgId: string, hits: KnowledgeHit[]): Promise<KnowledgeHit[]> {
+  const ids = hits.map((h) => h.id).filter(Boolean) as string[]
+  if (!ids.length) return hits
+  try {
+    const { data, error } = await db.from('knowledge_base').select('id, kind, media, source_id, source_url').eq('organization_id', orgId).in('id', ids)
+    if (error || !data) return hits
+    const sourceIds = [...new Set(data.map((r: any) => r.source_id).filter(Boolean))]
+    const { data: sources } = sourceIds.length ? await db.from('knowledge_sources').select('id, title').in('id', sourceIds) : { data: [] }
+    return hits.map((h) => {
+      const row = data.find((r: any) => r.id === h.id)
+      if (!row) return h
+      const kind = row.kind === 'part' ? 'part' as const : 'faq' as const
+      return {
+        ...h,
+        kind,
+        ...(kind === 'part' ? { sourceTitle: (sources || []).find((s: any) => s.id === row.source_id)?.title || null, url: row.source_url || null } : {}),
+        ...(Array.isArray(row.media) && row.media.length ? { media: cleanMedia(row.media) } : {}),
+      }
+    })
+  } catch {
+    return hits
+  }
 }
 
 // ── Hand-off settings ───────────────────────────────────────────────────────

@@ -22,6 +22,10 @@ interface ChatMessage {
   matchedFaqs?: number
   condensedQuery?: string
   isError?: boolean
+  /** Why the chat would go to the team, and what would be sent with the answer */
+  handoffReason?: string | null
+  attachments?: { type: string; url: string; name?: string }[]
+  sources?: string[]
 }
 
 interface PlaygroundSession {
@@ -323,7 +327,10 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
         timestamp: new Date().toISOString(),
         isRiseTicket: data.isRiseTicket,
         matchedFaqs: data.matchedFaqs?.length || 0,
-        condensedQuery: data.condensedQuery || undefined
+        condensedQuery: data.condensedQuery || undefined,
+        handoffReason: data.handoffReason || null,
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
+        sources: Array.isArray(data.matchedFaqs) ? data.matchedFaqs.map((f: any) => f.kind === 'part' ? `${f.sourceTitle || 'Document'}: ${f.title}` : f.title) : [],
       }
 
       setMessages(prev => [...prev, botMsg])
@@ -592,7 +599,23 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                         ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-300 rounded-tl-none'
                         : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none'
                   }`}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {msg.attachments.map((a) => (
+                          <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 max-w-full rounded-lg border border-[#d5ddeb] bg-[#f4f6fa] px-2 py-1 text-[10px] font-semibold text-[#4a5672] hover:text-[#1D5BEA]">
+                            <span className="shrink-0">{a.type === 'image' ? 'Photo' : a.type === 'video' ? 'Video' : 'File'}:</span>
+                            <span className="truncate">{a.name || a.url.split('/').pop()}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <details className="mt-1.5 text-[10px] text-[#6B7894]">
+                        <summary className="cursor-pointer select-none">Found in your knowledge ({msg.sources.length})</summary>
+                        <ul className="mt-1 space-y-0.5 list-disc pl-4">{msg.sources.map((t, j) => <li key={j} className="break-words">{t}</li>)}</ul>
+                      </details>
+                    )}
                     <div className="flex items-center justify-end gap-1.5 mt-1.5 pt-0.5 border-t border-black/5 dark:border-white/5">
                       {msg.condensedQuery && (
                         <span 
@@ -604,7 +627,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                       )}
                       {msg.isRiseTicket && (
                         <span className="text-[10px] bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 px-1.5 py-0.2 rounded font-semibold">
-                          🎟️ escalate
+                          🎟️ {msg.handoffReason || 'escalate'}
                         </span>
                       )}
                       {msg.matchedFaqs !== undefined && msg.matchedFaqs > 0 && (

@@ -21,6 +21,13 @@ export interface KnowledgeHit {
   similarity: number | null
   /** Strength of the word match, 0–1, when the word search found it */
   wordScore: number | null
+  /** faq = typed by the business; part = a piece of a PDF, website or document */
+  kind?: 'faq' | 'part'
+  /** For parts: the source's name and the page address */
+  sourceTitle?: string | null
+  url?: string | null
+  /** Photos, videos, files and links the FAQ carries, sent with the answer */
+  media?: { type: 'image' | 'video' | 'document' | 'link'; url: string; name?: string }[]
 }
 
 export interface SearchRow {
@@ -68,9 +75,13 @@ export function confidenceOf(hits: KnowledgeHit[]): Confidence {
 }
 
 /** The knowledge-base entries as the model reads them. */
-export function knowledgeText(hits: Pick<KnowledgeHit, 'title' | 'content'>[]): string {
+export function knowledgeText(hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[]): string {
   if (!hits.length) return '(nothing in the knowledge base matched this question)'
-  return hits.map((h, i) => `[${i + 1}] Question: ${h.title}\nAnswer: ${h.content}`).join('\n\n---\n\n')
+  return hits.map((h, i) => {
+    if (h.kind === 'part') return `[${i + 1}] From the business's ${h.sourceTitle ? `"${h.sourceTitle}"` : 'document'} (${h.title}):\n${h.content}`
+    const extras = (h.media || []).map((m) => m.type === 'link' ? `link "${m.name || m.url}"` : (m.name ? `${m.type} "${m.name}"` : m.type))
+    return `[${i + 1}] Question: ${h.title}\nAnswer: ${h.content}${extras.length ? `\n(Sent with this answer: ${extras.join(', ')})` : ''}`
+  }).join('\n\n---\n\n')
 }
 
 // ── A customer asking for a person ──────────────────────────────────────────
@@ -113,7 +124,11 @@ export interface ParsedAnswer {
   status: AnswerStatus
   summary: string
   urgent: boolean
+  /** The knowledge items the answer used ([1] = 1) */
+  used?: number[]
 }
+
+const readUsed = (v: unknown): number[] => (Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 20).slice(0, 5)
 
 const STATUSES: AnswerStatus[] = ['answered', 'chat', 'unknown', 'person', 'complaint']
 
@@ -150,7 +165,7 @@ export function parseAnswer(raw: string): ParsedAnswer {
   let status = STATUSES.find((s) => s === String(data.status || '').toLowerCase()) || null
   // Older answers: {reply, isRiseTicket}
   if (!status) status = data.isRiseTicket === true || data.handOff === true ? 'unknown' : 'answered'
-  return { reply: tidyReply(reply), status, summary: String(data.summary || '').replace(/\s+/g, ' ').trim().slice(0, 200), urgent: data.urgent === true }
+  return { reply: tidyReply(reply), status, summary: String(data.summary || '').replace(/\s+/g, ' ').trim().slice(0, 200), urgent: data.urgent === true, used: readUsed(data.used) }
 }
 
 /** No markdown stars or headings on WhatsApp; at most 1,500 characters. */
@@ -272,4 +287,34 @@ export function searchWords(text: string): string {
     .split(/\s+/)
     .filter((w) => w.length >= 2 && !SEARCH_STOP.has(w))
   return [...new Set(words)].slice(0, 12).join(' or ')
+}
+
+// ── What is sent with an answer ─────────────────────────────────────────────
+
+export type Attachment = { type: 'image' | 'video' | 'document'; url: string; name?: string }
+
+/**
+ * The photos, videos and files of the FAQs the answer used (at most 3), and their links as text lines for the
+ * reply. Nothing when the chat goes to the team or the answer used no FAQ.
+ */
+export function answerExtras(hits: Pick<KnowledgeHit, 'media'>[], used: number[] | undefined, handoff: boolean): { attachments: Attachment[]; links: string[] } {
+  const attachments: Attachment[] = []
+  const links: string[] = []
+  if (handoff || !used?.length) return { attachments, links }
+  for (const n of used) {
+    for (const m of hits[n - 1]?.media || []) {
+      if (m.type === 'link') {
+        if (links.length < 3 && !links.some((l) => l.endsWith(m.url))) links.push(m.name ? `${m.name}: ${m.url}` : m.url)
+      } else if (attachments.length < 3 && !attachments.some((a) => a.url === m.url)) {
+        attachments.push({ type: m.type, url: m.url, ...(m.name ? { name: m.name } : {}) })
+      }
+    }
+  }
+  return { attachments, links }
+}
+
+/** The reply with the used FAQs' links added (each once, only when not already in the words). */
+export function withLinks(reply: string, links: string[]): string {
+  const extra = links.filter((l) => !reply.includes(l.split(': ').pop() || l))
+  return extra.length ? `${reply}\n\n${extra.join('\n')}` : reply
 }

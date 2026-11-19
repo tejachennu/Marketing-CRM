@@ -1066,6 +1066,26 @@ async function processEvent(
           }
           if (sendError) console.error('[Facebook Webhook Chatbot] Reply not sent:', sendError)
           await supabase.from('messages').insert([{ organization_id: orgId, conversation_id: conversation.id, sender_type: 'user', body: answer.reply, twilio_message_sid: fbMessageSid, ...(sendError ? { status: 'failed', error_message: sendError } : {}) }])
+          // The photos, videos and files of the FAQs the answer used, after the words
+          for (const file of sendError ? [] : answer.attachments) {
+            let fileSid: string | null = null
+            let fileError: string | null = null
+            try {
+              const media = file.type === 'document' ? { link: file.url, filename: file.name || file.url.split('/').pop() } : { link: file.url }
+              const res = await fetch(`https://graph.facebook.com/${whatsappGraphApiVersion}/${whatsappPhoneNumberId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${whatsappApiToken}` },
+                body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phoneNumber.replace('+', '').trim(), type: file.type, [file.type]: media }),
+                signal: AbortSignal.timeout(20000),
+              })
+              const data = await res.json().catch(() => null)
+              if (res.ok && data?.messages?.[0]?.id) fileSid = `FB_${data.messages[0].id}`
+              else fileError = data?.error?.message || `WhatsApp did not accept the file (${res.status})`
+            } catch (fileErr: any) {
+              fileError = fileErr?.message || 'The file could not be sent'
+            }
+            await supabase.from('messages').insert([{ organization_id: orgId, conversation_id: conversation.id, sender_type: 'user', body: file.name || '[Media Attachment]', media_url: file.url, twilio_message_sid: fileSid, ...(fileError ? { status: 'failed', error_message: fileError } : {}) }])
+          }
           await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
         }
 

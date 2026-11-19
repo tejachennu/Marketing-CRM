@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
 import { SynonymGroup } from '@/lib/query-expander'
 import { aiFetch, getAiAccess, type AiAccess } from '@/lib/ai-access'
+import { cleanMedia } from '@/lib/ai/knowledge-text'
+import { isMissingSourcesSchema, withSourcesSchema } from '@/lib/ai/knowledge-sources'
+
+/** Save an FAQ's search vector: the older database function, else the one the app sets up itself. */
+async function setEmbedding(db: any, organizationId: string, id: string, vector: string) {
+  const first = await db.rpc('update_faq_embedding', { faq_id: id, new_embedding: vector })
+  if (!first.error) return first
+  return withSourcesSchema(() => db.rpc('set_knowledge_embeddings', { org_id: organizationId, items: [{ id, e: vector }] }))
+}
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -114,11 +123,17 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient()
-    const { data, error } = await supabase
+    // Only the FAQs (parts of PDFs and websites are listed under their source), without the search vectors
+    let { data, error } = await withSourcesSchema(() => supabase
       .from('knowledge_base')
-      .select('*')
+      .select('id, organization_id, title, content, source_url, created_at, updated_at, media')
       .eq('organization_id', orgId)
-      .order('created_at', { ascending: false })
+      .eq('kind', 'faq')
+      .order('created_at', { ascending: false }))
+    if (error && isMissingSourcesSchema(error)) {
+      ;({ data, error } = await supabase.from('knowledge_base').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }))
+      data = (data || []).map(({ embedding, ...row }: any) => row)
+    }
 
     if (error) throw error
     return NextResponse.json({ articles: data || [] })
@@ -160,6 +175,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { organizationId, type, title, content } = body
+    const media = cleanMedia(body?.media)
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 })
@@ -215,15 +231,16 @@ export async function POST(request: NextRequest) {
       organization_id: organizationId,
       title,
       content,
-      source_url: null
+      source_url: null,
+      ...(media.length ? { media } : {}),
     }
 
     // Supabase JS client doesn't natively handle vector types,
     // so we insert without embedding first, then update with raw SQL if we have one
-    const { data, error } = await supabase
+    const { data, error } = await withSourcesSchema(() => supabase
       .from('knowledge_base')
       .insert([insertData])
-      .select()
+      .select('id, organization_id, title, content, source_url, created_at, media'))
 
     if (error) throw error
 
@@ -231,10 +248,7 @@ export async function POST(request: NextRequest) {
     if (embedding && data && data[0]) {
       const embeddingStr = `[${embedding.join(',')}]`
       try {
-        const { error: embedError } = await supabase.rpc('update_faq_embedding', {
-          faq_id: data[0].id,
-          new_embedding: embeddingStr
-        })
+        const { error: embedError } = await setEmbedding(supabase, organizationId, data[0].id, embeddingStr)
         if (embedError) {
           console.warn('[Knowledge] RPC update_faq_embedding error:', embedError.message)
         }
@@ -254,6 +268,8 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
     const { id, title, content } = body
+    const hasMedia = Array.isArray(body?.media)
+    const media = cleanMedia(body?.media)
 
     if (!id) {
       return NextResponse.json({ error: 'Missing article id' }, { status: 400 })
@@ -307,11 +323,11 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update the FAQ article title and content
-    const { data, error } = await supabase
+    const { data, error } = await withSourcesSchema(() => supabase
       .from('knowledge_base')
-      .update({ title, content })
+      .update({ title, content, ...(hasMedia ? { media: media.length ? media : null } : {}) })
       .eq('id', id)
-      .select()
+      .select('id, organization_id, title, content, source_url, created_at, media'))
 
     if (error) throw error
 
@@ -319,10 +335,7 @@ export async function PATCH(request: NextRequest) {
     if (embedding && data && data[0]) {
       const embeddingStr = `[${embedding.join(',')}]`
       try {
-        await supabase.rpc('update_faq_embedding', {
-          faq_id: data[0].id,
-          new_embedding: embeddingStr
-        })
+        await setEmbedding(supabase, organizationId, data[0].id, embeddingStr)
       } catch (rpcErr) {
         console.warn('[Knowledge PATCH] RPC update_faq_embedding not available.')
       }

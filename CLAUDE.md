@@ -117,6 +117,28 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Knowledge base: websites, PDFs, documents, text, and FAQ attachments** (owner, 19 Nov 2026: "PDFs, FAQs supports
+  images videos, links and PDFs, chunking, web scraping"). Sources in `knowledge_sources` (kind website / pdf / document
+  / text; status processing → ready / failed with a plain reason; lock 724519033, migration `20261207_knowledge_sources.sql`).
+  Each source is read and split into parts (`chunkText` in `lib/ai/knowledge-text.ts`: ~1,100 characters, keeps its
+  heading, 150 overlap; `chunkTitle` "Source — heading — page N") saved in `knowledge_base` as `kind = 'part'` with
+  `source_id` (ON DELETE CASCADE), `chunk_index`, `source_url` (the page), and search vectors set in batches by the
+  `set_knowledge_embeddings` RPC; the shared search finds FAQs and parts alike (`withDetails` adds kind, source name,
+  attachments). Reading: `lib/ai/knowledge-sources.ts` — PDF with `unpdf` (page by page; scanned PDFs have no text →
+  plain message), Word .docx with `mammoth` (headings kept), .txt/.md/.csv; websites with `readWebsite` (one page, or
+  the whole site up to 25 pages through robots.txt sitemaps + links, robots.txt Disallow kept, 2-minute budget);
+  `fetchPublic` refuses private / local addresses at every redirect (DNS checked), 3 MB per page. Both readers are
+  `serverExternalPackages` in next.config. APIs: `POST /api/knowledge/upload-url` (signed upload straight to the
+  `media-attachments` bucket under `knowledge/<org>/sources|attachments/`, so big files skip Vercel's body limit),
+  `GET/POST/DELETE /api/knowledge/sources` (website / file / text / `action: refresh`; read in `after()`,
+  `maxDuration` 300; `?id=&parts=1` lists parts). `/api/knowledge` GET lists FAQs only (no vectors) and POST/PATCH take
+  `media`. FAQ attachments (`knowledge_base.media`, `cleanMedia`: photo / video / file / link, https, max 5): the model
+  answers with `used: [n]`; `answerExtras` sends the used FAQs' photos, videos and files after the words (WhatsApp
+  image / video / document by link; Instagram `sendDm` mediaUrl) and adds their links to the reply (`withLinks`); never
+  on a hand-off. Screens: Settings → Knowledge Base → "Add knowledge from your website, PDFs and documents"
+  (`components/ai/knowledge-sources.tsx`), FAQ form and edit → "Send with this answer" (`components/ai/media-editor.tsx`),
+  Playground shows what was found and what would be sent. Tests `tests/knowledge-sources.test.cjs` (fixtures in
+  `tests/fixtures/`). **Not tried against real websites, Supabase storage or WhatsApp yet; mobile app not updated.**
 - **AI chatbot (RAG) and tickets rebuilt, like a business AI on WhatsApp** (owner, 19 Nov 2026: "rag having lot of issues
   and ticketing ... works like meta bot"). One answer for every place: `lib/ai/faq-answer.ts` `answerFromKnowledge`
   (WhatsApp webhook, Instagram DMs, Playground; Copilot and Twilio use the shared search only, Twilio keeps its own

@@ -34,6 +34,11 @@ export async function answerDm(db: any, account: any, input: { conversation: any
   if (answer.reply) {
     sent = await sendDm(db, account.organization_id, conversation, { text: answer.reply, byPerson: false })
     await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: answer.reply, twilio_message_sid: sent.ok && sent.mid ? `IG_${sent.mid}` : null, status: sent.ok ? 'sent' : 'failed', error_message: sent.ok ? null : sent.error })
+    // The photos, videos and files of the FAQs the answer used
+    for (const file of sent.ok ? answer.attachments || [] : []) {
+      const out = await sendDm(db, account.organization_id, conversation, { mediaUrl: file.url, byPerson: false })
+      await db.from('messages').insert({ organization_id: account.organization_id, conversation_id: conversation.id, sender_type: 'user', sender_id: null, body: '[Media Attachment]', media_url: file.url, twilio_message_sid: out.ok && out.mid ? `IG_${out.mid}` : null, status: out.ok ? 'sent' : 'failed', error_message: out.ok ? null : out.error })
+    }
   }
   if (answer.handOff) {
     // One ticket for the chat, AI paused (as the business set it), pop-up and ticket email

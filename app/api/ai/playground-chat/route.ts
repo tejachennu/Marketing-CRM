@@ -229,7 +229,8 @@ export async function POST(request: NextRequest) {
       let botReply = ''
       let isRiseTicket = false
       let searchQuery = cleanMessage
-      let faqs: { title: string; content: string; similarity: number | null; wordScore: number | null }[] = []
+      let faqs: { title: string; content: string; similarity: number | null; wordScore: number | null; kind?: string; sourceTitle?: string | null }[] = []
+      let attachments: { type: string; url: string; name?: string }[] = []
       let confidence = 'none'
       let status = ''
       let handoffReason: string | null = null
@@ -239,7 +240,8 @@ export async function POST(request: NextRequest) {
           botReply = answer.reply || '(nothing is sent: the chat goes to your team)'
           isRiseTicket = answer.handoff
           searchQuery = answer.searchQuery
-          faqs = answer.hits.map((h) => ({ title: h.title, content: h.content, similarity: h.similarity, wordScore: h.wordScore }))
+          faqs = answer.hits.map((h) => ({ title: h.title, content: h.content, similarity: h.similarity, wordScore: h.wordScore, kind: h.kind, sourceTitle: h.sourceTitle }))
+          attachments = answer.attachments
           confidence = answer.confidence
           status = answer.status
           handoffReason = answer.reason ? HANDOFF_REASON_LABELS[answer.reason] : null
@@ -259,6 +261,7 @@ export async function POST(request: NextRequest) {
         timestamp: new Date().toISOString(),
         isRiseTicket,
         handoffReason,
+        attachments,
         matchedFaqs: faqs.length,
         condensedQuery: searchQuery !== cleanMessage ? searchQuery : undefined 
       }
@@ -288,6 +291,7 @@ export async function POST(request: NextRequest) {
         handoffReason,
         status,
         confidence,
+        attachments,
         matchedFaqs: faqs,
         condensedQuery: searchQuery !== cleanMessage ? searchQuery : null
       })

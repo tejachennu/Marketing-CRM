@@ -2,6 +2,9 @@
 
 import { HandoffSettingsCard } from '@/components/ai/handoff-settings'
 import { KnowledgeGaps } from '@/components/ai/knowledge-gaps'
+import { KnowledgeSources } from '@/components/ai/knowledge-sources'
+import { MediaEditor } from '@/components/ai/media-editor'
+import type { KnowledgeMedia } from '@/lib/ai/knowledge-text'
 import { CopyPhoneButton } from '@/components/ui/copy-phone-button'
 import { TeamManager } from '@/components/team/team-manager'
 import { ApiKeysPanel } from '@/components/settings/api-keys'
@@ -200,6 +203,9 @@ export default function SettingsPage() {
   const [loadingArticles, setLoadingArticles] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
   const [manualContent, setManualContent] = useState('')
+  // Photos, videos, files and links sent with an FAQ's answer
+  const [manualMedia, setManualMedia] = useState<KnowledgeMedia[]>([])
+  const [editMedia, setEditMedia] = useState<KnowledgeMedia[]>([])
   const [editingArticle, setEditingArticle] = useState<any | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
@@ -500,13 +506,15 @@ export default function SettingsPage() {
           organizationId: user.organization_id,
           type: 'manual',
           title: manualTitle.trim(),
-          content: manualContent.trim()
+          content: manualContent.trim(),
+          media: manualMedia,
         })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add FAQ')
       setManualTitle('')
       setManualContent('')
+      setManualMedia([])
       showNotification('success', 'FAQ successfully added to knowledge base!', 'FAQ Added')
       await loadArticles(user.organization_id)
     } catch (err: any) {
@@ -542,7 +550,8 @@ export default function SettingsPage() {
         body: JSON.stringify({
           id: editingArticle.id,
           title: editTitle.trim(),
-          content: editContent.trim()
+          content: editContent.trim(),
+          media: editMedia,
         })
       })
       const data = await res.json()
@@ -1901,6 +1910,9 @@ export default function SettingsPage() {
           {/* What customers asked that the Knowledge Base did not answer */}
           {organization?.id && <KnowledgeGaps organizationId={organization.id} onAdded={() => loadArticles(organization.id)} />}
 
+          {/* Websites, PDFs, documents and text, split into parts the AI searches */}
+          {organization?.id && <KnowledgeSources organizationId={organization.id} canEdit={canManageKnowledge} />}
+
           {/* Add FAQ panel */}
           <div className={cardClass}>
             <SectionHeader
@@ -1935,6 +1947,8 @@ export default function SettingsPage() {
                   className={`${inputClass} resize-y`}
                 />
               </div>
+
+              {organization?.id && <MediaEditor organizationId={organization.id} value={manualMedia} onChange={setManualMedia} />}
 
               <div className="flex justify-end">
                 <button
@@ -2014,6 +2028,9 @@ export default function SettingsPage() {
                       <tr key={art.id} className="border-b border-[#e9edef] dark:border-[#202d36] last:border-b-0 hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]/50 transition-colors">
                         <td className="px-6 py-3.5 font-bold text-[#111b21] dark:text-white max-w-xs">
                           <p className="truncate">{art.title}</p>
+                          {Array.isArray(art.media) && art.media.length > 0 && (
+                            <p className="text-[10px] font-semibold text-[#1D5BEA] mt-0.5">Sends {art.media.length} {art.media.length === 1 ? 'attachment' : 'attachments'}</p>
+                          )}
                         </td>
                         <td className="px-6 py-3.5 text-[#667781] dark:text-[#8696a0] font-medium text-[10px] max-w-sm">
                           <p className="line-clamp-2 whitespace-normal">{art.content?.substring(0, 120)}{art.content?.length > 120 ? '...' : ''}</p>
@@ -2028,6 +2045,7 @@ export default function SettingsPage() {
                                 setEditingArticle(art)
                                 setEditTitle(art.title || '')
                                 setEditContent(art.content || '')
+                                setEditMedia(Array.isArray(art.media) ? art.media : [])
                               }}
                               className="p-1 text-[#008069] dark:text-emerald-400 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
                               title="Edit"
@@ -2351,6 +2369,7 @@ export default function SettingsPage() {
                   className={`${inputClass} resize-y`}
                 />
               </div>
+              {organization?.id && <MediaEditor organizationId={organization.id} value={editMedia} onChange={setEditMedia} />}
             </div>
             <div className="p-6 bg-[#f0f2f5] dark:bg-[#1f2c34]/40 border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-end gap-3 select-none">
               <button

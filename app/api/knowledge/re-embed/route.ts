@@ -1,3 +1,4 @@
+import { isMissingSourcesSchema, withSourcesSchema } from '@/lib/ai/knowledge-sources'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
@@ -149,10 +150,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch all articles for this organization
-    const { data: allArticles, error: articlesError } = await supabase
+    // FAQs only: parts of PDFs and websites are refreshed with "Read again" on their source
+    let { data: allArticles, error: articlesError } = await supabase
       .from('knowledge_base')
       .select('id, title, content')
       .eq('organization_id', organizationId)
+      .eq('kind', 'faq')
+    if (articlesError && isMissingSourcesSchema(articlesError)) {
+      ;({ data: allArticles, error: articlesError } = await supabase.from('knowledge_base').select('id, title, content').eq('organization_id', organizationId))
+    }
 
     if (articlesError) throw articlesError
     if (!allArticles || allArticles.length === 0) {
@@ -196,10 +202,11 @@ export async function POST(request: NextRequest) {
 
       const embeddingStr = `[${embedding.join(',')}]`
       try {
-        await supabase.rpc('update_faq_embedding', {
-          faq_id: article.id,
-          new_embedding: embeddingStr
-        })
+        const saved = await supabase.rpc('update_faq_embedding', { faq_id: article.id, new_embedding: embeddingStr })
+        if (saved.error) {
+          const again = await withSourcesSchema(() => supabase.rpc('set_knowledge_embeddings', { org_id: organizationId, items: [{ id: article.id, e: embeddingStr }] }))
+          if (again.error) throw again.error
+        }
         updated++
       } catch (rpcErr) {
         console.error(`[Re-Embed] Failed to update embedding for "${article.title}":`, rpcErr)
