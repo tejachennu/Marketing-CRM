@@ -117,6 +117,29 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Online store redesigned like a big marketplace, and an AI chat on it** (owner, 19 Nov 2026: "Flipkart feel ...
+  professional, not a dummy website ... enable the chat bot in the site"). Not a copy of any marketplace's look: the
+  shop's own colour (`--c`), no gradients. `app/s/[slug]/store-parts.tsx` (Picture contain, Stepper, `RatingChip`,
+  `PriceLine` MRP struck + % off, `ProductCard` with heart / brand / stars, `Rail`, `TrustStrip`, `SearchBox` with
+  suggestions, `FilterPanel`, `SortTabs`, `Sheet`, `OffersList`); `storefront.tsx` keeps every cart / checkout /
+  Razorpay / account behaviour and lays out: colour header + wide search, category bar, banners, trust strip, rails
+  (Deals for you, Recently viewed, Top rated, Best of <category>, Saved for later; localStorage `store-wish:` /
+  `store-recent:`), list with side filters (lg) or Sort / Filter sheets (phones), product page (offers, options,
+  delivery + PIN check, services, seller, details, reviews; Add to cart / Buy now under the photo, bottom bar on
+  phones), cart "Price details" + "You save", navy footer, phone bottom menu (Home, Categories, Account, Cart);
+  `?q=` search from a product page. `lib/commerce/store-browse.ts` (pure: `discountPercent`, `sortProducts`,
+  `filterProducts`, `priceRanges`, `dealProducts`, `topRated`, `categoryRails`, `searchProducts` / `searchSuggestions`
+  spelling-tolerant with `soundKey` / `editDistance`). Store products now carry `mrp` (`metadata.attributes.list_price`,
+  product form **MRP** field → `parseProductAttributes` `mrp`; the products route lets a typed MRP win), `brand`,
+  `addedAt` (`productExtras`) and `rating` / `ratingCount` (published reviews, `ratingsFor`). **AI chat**:
+  `storefront.chat` (Website tab switch "AI chat on your website"); `loadStore` sets `chat` only when on, AI on and
+  products or knowledge exist. `POST /api/public/store/[slug]/chat` (20 per 10 min per address, 600 a day per store,
+  AI wallet feature `website_chat`): `answerFromKnowledge` with `channel: 'website'` and `products` (`chatProductHits`
+  in `lib/commerce/store-chat.ts`, kind `product`), returns reply, product cards the answer used (`chatProductCards`,
+  `AnswerResult.used`), follow-up buttons, FAQ attachments, and `handoff` → "Message the shop on WhatsApp"; an
+  unanswered question goes to the knowledge gaps. Widget `app/s/[slug]/store-chat.tsx` ("Ask us", starters, product
+  cards with Add to cart, sessionStorage). Tests `tests/store-browse.test.cjs`, `tests/store-chat.test.cjs`. Checked
+  with local screenshots (360 / 390 / 1280, no sideways scroll at 320). **Not merged to `v4` yet.**
 - **AI replies in each channel's own style, and smarter search** (owner, 19 Nov 2026: "improve the searching mechanism
   and sending messages style ... instagram and whatsapp"). `lib/ai/reply-format.ts` (pure): `ReplyStyle` {tone friendly |
   professional | short, emoji, buttons, typing} kept in `organizations.ai_handoff.style` (no new column; `GET/PUT

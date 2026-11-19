@@ -36,8 +36,10 @@ export interface AnswerInput {
   history: ChatTurn[]
   /** For the AI wallet: 'chatbot' (customers) or 'playground' */
   feature?: string
-  channel?: 'whatsapp' | 'instagram' | 'playground'
+  channel?: 'whatsapp' | 'instagram' | 'playground' | 'website'
   settings?: HandoffSettings
+  /** The store's products for a search text (the website chat): shown to the AI with the knowledge */
+  products?: (search: string) => KnowledgeHit[]
   /** Tone, emoji, quick buttons (Settings → How the AI replies) */
   style?: ReplyStyle
 }
@@ -59,6 +61,8 @@ export interface AnswerResult {
   attachments: Attachment[]
   /** The reply as each channel sends it: words, quick buttons, one link button */
   plan: ReplyPlan
+  /** Which knowledge items ([1] = hits[0]) the answer used */
+  used: number[]
 }
 
 const MODEL = 'gpt-4o-mini'
@@ -77,7 +81,7 @@ export function businessFacts(org: any): string {
 /** The system prompt (exported for tests). */
 export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string; style?: ReplyStyle } = {}): string {
   const style = opts.style || DEFAULT_STYLE
-  const where = opts.channel === 'instagram' ? 'Instagram' : 'WhatsApp'
+  const where = opts.channel === 'instagram' ? 'Instagram' : opts.channel === 'website' ? 'online store chat' : 'WhatsApp'
   const own = String(org?.chatbot_base_prompt || '').trim()
   return `You are the ${where} assistant of ${org?.name || 'this business'}. You answer customers for the business like a helpful, honest shop assistant.
 ${own ? `\nTHE BUSINESS'S OWN INSTRUCTIONS (follow them, but never invent facts):\n${own}\n` : ''}
@@ -153,6 +157,15 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
     const found = await searchKnowledge(db, ai, org.id, { question: message, searchQuery, synonyms, feature, limit: 6 })
     hits = found.hits
     confidence = found.confidence
+    // The website chat: the store's matching products come first (searched in both wordings)
+    if (input.products) {
+      const seen = new Set<string>()
+      const products = [...input.products(message), ...input.products(searchQuery)].filter((p) => p.id && !seen.has(p.id) && seen.add(p.id)).slice(0, 4)
+      if (products.length) {
+        hits = [...products, ...hits.slice(0, 4)]
+        if (confidence === 'none' || confidence === 'low') confidence = 'medium'
+      }
+    }
   }
 
   let raw = ''
@@ -180,7 +193,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
     // The AI could not be reached: a customer who asked for a person still gets the team
     if (!askedPerson) return null
     const text = handoffText({ reply: '', status: 'person', summary: '', urgent: false }, settings)
-    return { reply: text, plan: { text }, status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL, attachments: [] }
+    return { reply: text, plan: { text }, used: [], status: 'person', handoff: true, reason: 'asked_person', summary: 'Asked to talk to a person', urgent: false, hits, confidence, searchQuery, model: MODEL, attachments: [] }
   }
 
   const answer = parseAnswer(raw)
@@ -203,6 +216,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   return {
     reply,
     plan,
+    used: answer.used || [],
     attachments: extras.attachments,
     status: answer.status,
     handoff: decision.handoff,

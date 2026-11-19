@@ -643,6 +643,10 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           <input type="checkbox" checked={settings.accounts !== false} onChange={(e) => set({ accounts: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
           <span>Customers can sign in with Google<span className={`block font-normal ${hintClass}`}>They see their orders and where each one is, keep their cart on any phone, and check out faster. Anyone can still order without signing in, and track an order with its number.</span></span>
         </label>
+        <label className="flex items-start gap-2 text-[13px] font-semibold cursor-pointer">
+          <input type="checkbox" checked={settings.chat === true} onChange={(e) => set({ chat: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
+          <span>AI chat on your website<span className={`block font-normal ${hintClass}`}>A chat button on every page. It answers shoppers from your products and your Knowledge Base (Settings → Knowledge Base), shows products they can add to the cart, and sends them to your WhatsApp for anything else. Each answer uses a little of your AI wallet.</span></span>
+        </label>
         <p className={hintClass}>Your team confirms each order from Orders. For payment online, connect Razorpay below.</p>
       </section>
 

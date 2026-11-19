@@ -49,6 +49,8 @@ export function styleRules(style: ReplyStyle, channel: string): string {
       : 'Friendly and warm, like a helpful shop assistant.'
   const look = channel === 'instagram'
     ? 'Instagram: casual and short. No formatting marks (no * or _). Use "•" for a short list.'
+    : channel === 'website'
+      ? 'Chat on the online store: short and clear, no formatting marks (no * or _), "•" for a short list. Products you mention are shown as cards under your reply, so do not paste links to them.'
     : 'WhatsApp: you may put a key fact in *bold* (one pair of stars) and use "•" for a short list.'
   return `- Tone: ${tone}\n- ${look}\n- ${style.emoji ? 'At most one emoji, only where it feels natural.' : 'No emoji.'}`
 }

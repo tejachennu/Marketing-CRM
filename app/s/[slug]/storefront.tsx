@@ -8,6 +8,7 @@ import { PhoneField } from '@/components/phone-field'
 import { formatMoney } from '@/lib/commerce/commerce-utils'
 import { showPhone } from '@/lib/phone-display'
 import { AccountPanel, useShopper } from './account'
+import { StoreChat } from './store-chat'
 import type { StoreView } from '@/lib/commerce/storefront'
 import { loyaltyLine, pointsUsable } from '@/lib/commerce/loyalty'
 import { findVariant, valueAvailable } from '@/lib/commerce/variants'
@@ -830,6 +831,12 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           </button>
         </nav>
       ) : null}
+
+      {/* The AI chat (Website settings → AI chat on your website) */}
+      {store.chat && !panel && !accountView && !sheet && (
+        <StoreChat slug={store.slug} storeName={store.name} whatsapp={store.whatsapp} money={money} productHref={productHref} raised={Boolean(viewing)}
+          onAdd={(id) => setQty(id, (cart[id] || 0) + 1)} />
+      )}
 
       {sheet === 'sort' && (
         <Sheet title="Sort by" onClose={() => setSheet(null)}>
