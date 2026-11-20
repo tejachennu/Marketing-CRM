@@ -23,7 +23,7 @@ function hasValue(value: unknown): boolean {
   return String(value ?? '').trim().length > 0
 }
 
-export function getOrganizationCredentials(organization: Record<string, any> | null | undefined): OrganizationCredentials {
+export function getOrganizationCredentials(organization: Record<string, any> | null | undefined, globalAiKey = false): OrganizationCredentials {
   const metaConnected = hasValue(organization?.whatsapp_api_token) && hasValue(organization?.whatsapp_phone_number_id)
   const twilioConnected = hasValue(organization?.twilio_account_sid) && hasValue(organization?.twilio_auth_token)
   const smtpConfigured = hasValue(organization?.smtp_host) && hasValue(organization?.smtp_email) && hasValue(organization?.smtp_password)
@@ -31,7 +31,8 @@ export function getOrganizationCredentials(organization: Record<string, any> | n
     messaging: metaConnected || twilioConnected,
     email: hasValue(organization?.sendgrid_api_key) || smtpConfigured,
     // AI is built in (WAMA CRM's key, paid from the AI credits); exempt workspaces may still use their own
-    ai: hasValue(organization?.openai_api_key) || hasValue(process.env.OPENAI_API_KEY),
+    // (the global key: OPENAI_API_KEY, or the one the Super Admin saved; see platformAiKey)
+    ai: hasValue(organization?.openai_api_key) || hasValue(process.env.OPENAI_API_KEY) || globalAiKey,
   }
 }
 
@@ -39,12 +40,12 @@ export function getOrganizationCredentials(organization: Record<string, any> | n
  * The organization as any member may see it: every credential column removed, replaced by
  * yes/no answers about what is configured.
  */
-export function toSafeOrganization(organization: Record<string, any>): Record<string, any> {
+export function toSafeOrganization(organization: Record<string, any>, globalAiKey = false): Record<string, any> {
   const safe: Record<string, any> = {}
   for (const [column, value] of Object.entries(organization)) {
     if (!isSecretColumn(column)) safe[column] = value
   }
-  safe.credentials = getOrganizationCredentials(organization)
+  safe.credentials = getOrganizationCredentials(organization, globalAiKey)
   // Read by getCommerceSetup in place of the token columns
   safe.whatsapp_connected = hasValue(organization.whatsapp_api_token) && hasValue(organization.whatsapp_phone_number_id)
   // Read by isConsularHelpdesk (lib/workspace-modules.ts) in place of the Twilio credentials

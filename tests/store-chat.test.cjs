@@ -81,3 +81,26 @@ test('store chat: the owner is told why the chat button is hidden', async () => 
     else process.env.OPENAI_API_KEY = saved
   }
 })
+
+test('AI key: the global key the Super Admin saved on WAMA CRM\'s own workspace is used when the server has none', async () => {
+  const { salonDb } = require('./salon-fake-db.cjs')
+  const AA = require('../lib/ai-access.ts')
+  const saved = process.env.OPENAI_API_KEY
+  delete process.env.OPENAI_API_KEY
+  try {
+    AA.forgetPlatformAiKey()
+    const db = salonDb({
+      organizations: [{ id: AA.PLATFORM_KEY_WORKSPACES[0], openai_api_key: 'sk-global-from-super-admin' }, { id: 'shop-1' }],
+      organization_billing: [{ organization_id: 'shop-1', billing_exempt: false, status: 'active', ai_balance: 50, whatsapp_mode: 'own', trial_ends_at: new Date(Date.now() + 86_400_000).toISOString(), current_period_end: new Date(Date.now() + 86_400_000).toISOString() }],
+    })
+    assert.equal(await AA.platformAiKey(db), 'sk-global-from-super-admin')
+    const access = await AA.getAiAccess(db, 'shop-1', { openai_api_key: null })
+    assert.deepEqual([access.allowed, access.apiKey, access.billed], [true, 'sk-global-from-super-admin', true])
+    process.env.OPENAI_API_KEY = 'sk-env'
+    assert.equal(await AA.platformAiKey(db), 'sk-env', 'the server setting still wins when present')
+  } finally {
+    AA.forgetPlatformAiKey()
+    if (saved === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = saved
+  }
+})

@@ -2,14 +2,50 @@
  * Which OpenAI key a workspace's AI features use, whether they may run, and charging each call to the
  * workspace's AI wallet.
  *
- * - Billed workspaces use WAMA CRM's own key (OPENAI_API_KEY). Each call is charged to the wallet at
- *   OpenAI's price (see lib/billing.ts); when the wallet is empty, AI features pause.
+ * - Billed workspaces use WAMA CRM's own key: OPENAI_API_KEY when the server has it, else the global key the
+ *   Super Admin saved on WAMA CRM's own workspace (Super Admin → Advanced → OpenAI API Key; `platformAiKey`).
+ *   Each call is charged to the wallet at OpenAI's price (see lib/billing.ts); when the wallet is empty, AI
+ *   features pause.
  * - Exempt workspaces (billing_exempt) keep working exactly as before: their own key if they set one,
  *   otherwise the platform key, and nothing is charged.
  * - Before the billing migration has run, every workspace behaves as before.
  */
 
 import { aiCostInr, billingState, getBilling } from './billing'
+import { MASTER_ORG_ID } from './constants'
+
+/** WAMA CRM's own workspaces: the global AI key is the one saved on these (first one that has a key). */
+export const PLATFORM_KEY_WORKSPACES = [MASTER_ORG_ID, 'b2acf062-c379-49f2-8905-267413c9c394']
+
+let keyCache: { key: string; at: number } | null = null
+
+/**
+ * The global (platform) OpenAI key: the server's OPENAI_API_KEY, else the key the Super Admin saved on WAMA CRM's
+ * own workspace. Kept for 5 minutes, so a key changed in Super Admin is used within minutes.
+ */
+export async function platformAiKey(db: any, now = Date.now()): Promise<string> {
+  const env = String(process.env.OPENAI_API_KEY || '').trim()
+  if (env) return env
+  if (keyCache && now - keyCache.at < 5 * 60_000) return keyCache.key
+  let key = ''
+  try {
+    const { data } = await db.from('organizations').select('id, openai_api_key').in('id', PLATFORM_KEY_WORKSPACES)
+    const rows = (data || []) as { id: string; openai_api_key?: string | null }[]
+    for (const id of PLATFORM_KEY_WORKSPACES) {
+      const found = String(rows.find((r) => r.id === id)?.openai_api_key || '').trim()
+      if (found) { key = found; break }
+    }
+  } catch (error: any) {
+    console.error('[AI access] The global AI key could not be read:', error?.message)
+  }
+  keyCache = { key, at: now }
+  return key
+}
+
+/** Forget the kept global key (after the Super Admin saves a new one). */
+export function forgetPlatformAiKey() {
+  keyCache = null
+}
 
 export interface AiAccess {
   organizationId: string
@@ -26,7 +62,7 @@ export const AI_PAUSED_MESSAGE = 'AI credits are used up. Add credits in Billing
 
 /** The AI access for a workspace. `organization` may be passed when already loaded (needs openai_api_key). */
 export async function getAiAccess(db: any, organizationId: string, organization?: { openai_api_key?: string | null } | null): Promise<AiAccess> {
-  const platformKey = String(process.env.OPENAI_API_KEY || '').trim()
+  const platformKey = await platformAiKey(db)
   let billing = null
   try {
     billing = organizationId ? await getBilling(db, organizationId) : null

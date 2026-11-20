@@ -59,7 +59,8 @@ and run `vercel link && vercel env pull .env.local`. Values never go in the repo
 Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 Direct DB for auto-migrations: `POSTGRES_URL_NON_POOLING` / `POSTGRES_URL` / `DATABASE_URL`.
 WhatsApp/Meta: `WHATSAPP_*`, `META_APP_SECRET`, `META_SYSTEM_USER_TOKEN`, `NEXT_PUBLIC_META_*`.
-Twilio: `TWILIO_*`. AI: `OPENAI_API_KEY`, `AI_PRICE_MARKUP`, `AI_USD_INR_RATE`.
+Twilio: `TWILIO_*`. AI: `OPENAI_API_KEY` (optional: without it the global key is the one the Super Admin saves on
+WAMA CRM's own workspace in Super Admin → Advanced, read by `platformAiKey` in `lib/ai-access.ts`), `AI_PRICE_MARKUP`, `AI_USD_INR_RATE`.
 Billing: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, optional `RAZORPAY_PLAN_<STARTER|GROWTH|PRO_1|PRO_2|PRO_3>`, `META_PRICE_<UTILITY|…>_INR`.
 Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `SUPERADMIN_EMAILS`.
 

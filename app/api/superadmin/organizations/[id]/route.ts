@@ -1,3 +1,4 @@
+import { forgetPlatformAiKey } from '@/lib/ai-access'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkSuperAdmin, getSupabaseAdminClient } from '@/lib/superadmin-auth'
 import { MASTER_ORG_ID } from '@/lib/constants'
@@ -103,6 +104,8 @@ export async function PUT(
       .single()
 
     if (error) throw error
+    // A new key on WAMA CRM's own workspace is the global AI key: use it at once
+    if ('openai_api_key' in updateData) forgetPlatformAiKey()
 
     return NextResponse.json({ success: true, organization: org })
   } catch (error: any) {

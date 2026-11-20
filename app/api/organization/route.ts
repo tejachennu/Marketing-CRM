@@ -1,3 +1,4 @@
+import { platformAiKey } from '@/lib/ai-access'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { planOrganizationUpdate, toSafeOrganization } from '@/lib/organization-access'
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
-    const safe = toSafeOrganization(organization)
+    const safe = toSafeOrganization(organization, Boolean(await platformAiKey(getSupabaseAdminClient())))
     return NextResponse.json(
       { organization: wantsCredentials ? { ...organization, credentials: safe.credentials, whatsapp_connected: safe.whatsapp_connected } : safe },
       { headers: NO_STORE }
@@ -77,7 +78,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, organization: toSafeOrganization(organization) }, { headers: NO_STORE })
+    return NextResponse.json({ success: true, organization: toSafeOrganization(organization, Boolean(await platformAiKey(getSupabaseAdminClient()))) }, { headers: NO_STORE })
   } catch (error: any) {
     console.error('[API] Update organization error:', error)
     return NextResponse.json({ error: error.message || 'Failed to save settings' }, { status: 500 })
