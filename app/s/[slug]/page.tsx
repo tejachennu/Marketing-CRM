@@ -5,11 +5,23 @@ import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { loadStore, storeView } from '@/lib/commerce/storefront'
 import { storeBase } from '@/lib/commerce/store-seo'
 import { Storefront } from './storefront'
+import { domainSite, loadSite } from '@/lib/salon/website-store'
+import { BusinessSite } from '@/components/salon-site/business-site'
+import { siteMetadata } from '@/components/salon-site/site-metadata'
+
+/** On a business's own domain: its Front Desk website when that is what the domain opens. */
+async function websiteForDomain(slug: string) {
+  const db = getSupabaseAdminClient()
+  const target = await domainSite(db, slug).catch(() => null)
+  return target?.opens === 'website' ? loadSite(db, target.slug).catch(() => null) : null
+}
 
 export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
+  const website = await websiteForDomain(slug)
+  if (website) return siteMetadata(website, `https://${slug}/`)
   const page = await loadStore(getSupabaseAdminClient(), slug).catch(() => null)
   if (!page) return { title: 'Store' }
   const name = page.organization.name
@@ -29,6 +41,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function StorePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ c?: string }> }) {
   const { slug } = await params
   const { c } = await searchParams
+  const website = await websiteForDomain(slug)
+  if (website) return <BusinessSite {...website} hours={website.page.setup.settings} bookHref="/book" storeLink={null} />
   const page = await loadStore(getSupabaseAdminClient(), slug)
   if (!page) notFound()
   const view = storeView(page)

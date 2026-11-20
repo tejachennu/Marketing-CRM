@@ -185,7 +185,9 @@ interface DomainInfo {
 }
 
 /** Where the store opens: our address, or the business's own domain (like Shopify). */
-function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManage: boolean; showToast: ShowToast }) {
+/** The address card: our free address or the business's own domain. Shared by the online store and the Front Desk website (one domain per business). */
+export function StoreAddress({ orgId, canManage, showToast, kind = 'store', ourLink }: { orgId: string; canManage: boolean; showToast: ShowToast; kind?: 'store' | 'website'; ourLink?: string }) {
+  const thing = kind === 'website' ? 'website' : 'store'
   const [info, setInfo] = useState<DomainInfo | null>(null)
   const [choice, setChoice] = useState<'ours' | 'own'>('ours')
   const [domain, setDomain] = useState('')
@@ -228,14 +230,14 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
   async function useOurs() {
     setChoice('ours')
     if (!info?.domain) return
-    if (!window.confirm(`Stop using ${info.domain}? Your store goes back to our address.`)) {
+    if (!window.confirm(`Stop using ${info.domain}? Your ${thing} goes back to our address.`)) {
       setChoice('own')
       return
     }
     const data = await call('DELETE')
     if (data) {
       setDomain('')
-      showToast('success', 'Your store uses our address again.')
+      showToast('success', `Your ${thing} uses our address again.`)
     } else setChoice('own')
   }
 
@@ -243,13 +245,13 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
     const data = await call('PUT', { domain })
     if (data) {
       setDomain(data.domain || domain)
-      showToast('success', data.state === 'connected' ? 'Connected. Your store opens on your domain.' : 'Added. Now add the record at your domain company.')
+      showToast('success', data.state === 'connected' ? `Connected. Your ${thing} opens on your domain.` : 'Added. Now add the record at your domain company.')
     }
   }
 
   async function check() {
     const data = await call('GET')
-    if (data) showToast(data.state === 'connected' ? 'success' : 'error', data.state === 'connected' ? 'Connected. Your store opens on your domain.' : 'Not working yet. Check the record, or wait a little longer.')
+    if (data) showToast(data.state === 'connected' ? 'success' : 'error', data.state === 'connected' ? `Connected. Your ${thing} opens on your domain.` : 'Not working yet. Check the record, or wait a little longer.')
   }
 
   const heading = 'text-sm font-bold text-slate-900 dark:text-white'
@@ -268,11 +270,11 @@ function StoreAddress({ orgId, canManage, showToast }: { orgId: string; canManag
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
       <div>
-        <h2 className={heading}>Store address</h2>
-        <p className={sub}>Use our free address, or open your store on your own domain, like shop.yourname.com.</p>
+        <h2 className={heading}>{kind === 'website' ? 'Website address' : 'Store address'}</h2>
+        <p className={sub}>Use our free address, or open your {thing} on your own domain, like {kind === 'website' ? 'www.yourname.com' : 'shop.yourname.com'}.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {option('ours', 'Our address (free)', (info?.ourLink || '').replace(/^https?:\/\//, '') || 'wamacrm.magnetora.in/s/…', useOurs)}
+        {option('ours', 'Our address (free)', (ourLink || info?.ourLink || '').replace(/^https?:\/\//, '') || 'wamacrm.magnetora.in/s/…', useOurs)}
         {option('own', 'My own domain', 'A domain you bought from GoDaddy, Hostinger or any other company.', () => setChoice('own'))}
       </div>
 

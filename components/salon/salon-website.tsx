@@ -1,0 +1,208 @@
+'use client'
+
+/**
+ * Front Desk → Setup → Website and booking: the business's own website. On/off, the address (our free one, or the
+ * business's own domain, shared with the online store), the cover photo, a gallery, a line and a few words about
+ * the business, a colour, which parts to show, and what the domain opens when the store is on too.
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { Check, Copy, ExternalLink, ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { DEFAULT_SITE, MAX_GALLERY, SITE_COLOURS, readSite, type SiteSettings } from '@/lib/salon/website'
+import { StoreAddress } from '@/components/commerce/storefront-settings'
+import { api, card, input, primaryButton, secondaryButton } from './ui'
+
+async function uploadPhoto(file: File): Promise<string> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Use a JPG, PNG or WebP photo.')
+  if (file.size > 4 * 1024 * 1024) throw new Error('Photos can be up to 4 MB.')
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch('/api/media/upload', { method: 'POST', body: form })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !/^https:\/\//.test(String(data.url || ''))) throw new Error(data.error || 'The photo could not be uploaded. Try again.')
+  return data.url
+}
+
+export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId: string; canEdit: boolean; canManageDomain: boolean; flash: (kind: 'success' | 'error', message: string) => void }) {
+  const [site, setSite] = useState<SiteSettings>(DEFAULT_SITE)
+  const [saved, setSaved] = useState('')
+  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null } | null>(null)
+  const [busy, setBusy] = useState<'' | 'save' | 'cover' | 'gallery'>('')
+  const coverRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    api(`/api/salon/website?organizationId=${orgId}`).then((data) => {
+      const s = readSite(data.site)
+      setSite(s)
+      setSaved(JSON.stringify(s))
+      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain })
+    }).catch((err) => flash('error', err.message))
+    // Loaded once per workspace (flash may be a new function on every render)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId])
+
+  if (!meta) return <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
+  const set = (patch: Partial<SiteSettings>) => setSite((s) => ({ ...s, ...patch }))
+  const dirty = JSON.stringify(site) !== saved
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://wamacrm.magnetora.in'
+  const link = meta.domain && (!meta.storeOn || site.domainShows === 'website') ? `https://${meta.domain}` : `${origin}/v/${meta.slug}`
+
+  async function save() {
+    setBusy('save')
+    try {
+      const data = await api('/api/salon/website', { method: 'PUT', body: JSON.stringify({ organizationId: orgId, site }) })
+      const s = readSite(data.site)
+      setSite(s)
+      setSaved(JSON.stringify(s))
+      flash('success', 'Website saved.')
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function pickCover(files: FileList | null) {
+    const file = files?.[0]
+    if (coverRef.current) coverRef.current.value = ''
+    if (!file) return
+    setBusy('cover')
+    try { set({ cover: await uploadPhoto(file) }) } catch (err: any) { flash('error', err.message) } finally { setBusy('') }
+  }
+
+  async function pickGallery(files: FileList | null) {
+    const list = Array.from(files || []).slice(0, MAX_GALLERY - site.gallery.length)
+    if (galleryRef.current) galleryRef.current.value = ''
+    if (!list.length) return
+    setBusy('gallery')
+    try {
+      const urls: string[] = []
+      for (const file of list) urls.push(await uploadPhoto(file))
+      setSite((s) => ({ ...s, gallery: [...s.gallery, ...urls].slice(0, MAX_GALLERY) }))
+    } catch (err: any) {
+      flash('error', err.message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const label = 'block text-[13px] font-bold text-[#4a5672] dark:text-slate-300 mb-1.5'
+  const check = (key: keyof SiteSettings['show'], text: string) => (
+    <label className="flex items-center gap-2.5 text-[14px] text-[#0E1B3D] dark:text-white cursor-pointer">
+      <input type="checkbox" checked={site.show[key]} disabled={!canEdit} onChange={(e) => set({ show: { ...site.show, [key]: e.target.checked } })} className="h-4 w-4 accent-[#1D5BEA]" /> {text}
+    </label>
+  )
+
+  return (
+    <div className="space-y-4">
+      <section className={`${card} p-5`}>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Your website</h2>
+            <p className="text-[14px] text-[#4a5672] dark:text-slate-400 mt-1">A full website for your business: services and prices with Book, your team, photos, reviews, hours and a map. Share it on Google Maps, Instagram and WhatsApp.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-[14px] font-bold cursor-pointer shrink-0">
+            <input type="checkbox" checked={site.enabled} disabled={!canEdit} onChange={(e) => set({ enabled: e.target.checked })} className="h-5 w-5 accent-[#1D5BEA]" /> {site.enabled ? 'On' : 'Off'}
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="min-w-0 max-w-full truncate rounded-lg bg-[#f4f6fa] dark:bg-slate-900 px-3 py-2 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-white">{link.replace(/^https?:\/\//, '')}</span>
+          <a href={link} target="_blank" rel="noreferrer" className={secondaryButton}><ExternalLink size={16} /> Open</a>
+          <button type="button" onClick={() => navigator.clipboard?.writeText(link).then(() => flash('success', 'Link copied'))} className={secondaryButton}><Copy size={16} /> Copy link</button>
+        </div>
+      </section>
+
+      <section className={`${card} p-5 space-y-4`}>
+        <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">How it looks</h3>
+        <div>
+          <p className={label}>Cover photo (the big photo at the top)</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {site.cover ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={site.cover} alt="Cover" className="h-24 w-40 rounded-lg object-cover border border-[#e3e8f2]" />
+            ) : <span className="h-24 w-40 rounded-lg bg-[#0E1B3D] text-white/70 text-[12px] flex items-center justify-center text-center px-2">No photo: a plain dark top</span>}
+            <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => pickCover(e.target.files)} />
+            {canEdit && <button type="button" onClick={() => coverRef.current?.click()} disabled={Boolean(busy)} className={secondaryButton}>{busy === 'cover' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />} {site.cover ? 'Change' : 'Upload'}</button>}
+            {canEdit && site.cover && <button type="button" onClick={() => set({ cover: '' })} className={secondaryButton}><Trash2 size={15} /> Remove</button>}
+          </div>
+          <p className="mt-1 text-[12px] text-[#6B7894]">A wide photo of your place or your work looks best (landscape, at least 1600 pixels wide).</p>
+        </div>
+        <div>
+          <label htmlFor="site-tagline" className={label}>One line about you</label>
+          <input id="site-tagline" maxLength={140} disabled={!canEdit} value={site.tagline} onChange={(e) => set({ tagline: e.target.value })} placeholder="Hair, skin and bridal studio in Banjara Hills" className={input} />
+        </div>
+        <div>
+          <label htmlFor="site-about" className={label}>About your business (optional)</label>
+          <textarea id="site-about" rows={4} maxLength={1500} disabled={!canEdit} value={site.about} onChange={(e) => set({ about: e.target.value })} placeholder="How long you have been open, what you are known for, why people come back." className={`${input} h-auto py-2.5`} />
+        </div>
+        <div>
+          <p className={label}>Colour</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Colour">
+            {SITE_COLOURS.map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={site.colour === c} aria-label={c} disabled={!canEdit} onClick={() => set({ colour: c })} className="h-9 w-9 rounded-full flex items-center justify-center ring-offset-2 cursor-pointer" style={{ background: c, boxShadow: site.colour === c ? `0 0 0 2px #fff, 0 0 0 4px ${c}` : undefined }}>
+                {site.colour === c && <Check size={16} className="text-white" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white mr-auto">Photos ({site.gallery.length}/{MAX_GALLERY})</h3>
+          <input ref={galleryRef} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => pickGallery(e.target.files)} />
+          {canEdit && site.gallery.length < MAX_GALLERY && <button type="button" onClick={() => galleryRef.current?.click()} disabled={Boolean(busy)} className={secondaryButton}>{busy === 'gallery' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />} Add photos</button>}
+        </div>
+        {site.gallery.length === 0 ? <p className="text-[13.5px] text-[#6B7894]">Add photos of your place, your team at work and results customers love. The first one shows biggest.</p> : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+            {site.gallery.map((src, i) => (
+              <div key={src} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`Photo ${i + 1}`} className="aspect-square w-full rounded-lg object-cover border border-[#e3e8f2]" />
+                {canEdit && <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => set({ gallery: site.gallery.filter((x) => x !== src) })} className="absolute top-1 right-1 h-7 w-7 rounded-full bg-white/95 shadow flex items-center justify-center text-[#b91c1c] cursor-pointer"><Trash2 size={13} /></button>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">What to show</h3>
+        <div className="grid sm:grid-cols-2 gap-2.5">
+          {check('prices', 'Prices of services')}
+          {check('team', 'Your team, with Book with each person')}
+          {check('memberships', 'Memberships')}
+          {check('reviews', 'Customer reviews (4 and 5 stars with words)')}
+        </div>
+        <div className="max-w-sm">
+          <label htmlFor="site-ig" className={label}>Instagram (optional)</label>
+          <input id="site-ig" maxLength={60} disabled={!canEdit} value={site.instagram} onChange={(e) => set({ instagram: e.target.value })} placeholder="@yourstudio" className={input} />
+        </div>
+      </section>
+
+      <StoreAddress orgId={orgId} canManage={canManageDomain} showToast={(kind, text) => flash(kind, text)} kind="website" ourLink={`${origin}/v/${meta.slug}`} />
+      {meta.storeOn && (
+        <section className={`${card} p-5 space-y-2`}>
+          <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">You also have an online store</h3>
+          <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400">One domain opens one site. Choose what your own domain opens; the other stays on our free address.</p>
+          <div className="flex flex-wrap gap-4 pt-1">
+            {(['website', 'store'] as const).map((v) => (
+              <label key={v} className="inline-flex items-center gap-2 text-[14px] font-semibold cursor-pointer">
+                <input type="radio" name="domain-shows" checked={site.domainShows === v} disabled={!canEdit} onChange={() => set({ domainShows: v })} className="h-4 w-4 accent-[#1D5BEA]" /> {v === 'website' ? 'This website' : 'The online store'}
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {canEdit && (
+        <div className="sticky bottom-3 z-10 flex justify-end">
+          <button type="button" onClick={save} disabled={!dirty || busy === 'save'} className={`${primaryButton} shadow-lg disabled:opacity-60`}>
+            {busy === 'save' && <Loader2 size={15} className="animate-spin" />} {dirty ? 'Save website' : 'Saved'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

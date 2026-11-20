@@ -117,6 +117,24 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Front Desk website, on our address or the business's own domain** (owner, 20 Nov 2026: "same for the frontdesk
+  connector ... website ... own domain else our domain"). `lib/salon/website.ts` (pure: `readSite` {enabled, tagline,
+  about, cover, gallery ≤12 https, colour from `SITE_COLOURS`, show {prices, team, memberships, reviews}, instagram,
+  domainShows website|store}, `domainOpens`, `openStatus` (IST "Open now · closes 9 pm"), `weekRows`, `niceTime`,
+  `duration`, `fromPrice`); `lib/salon/website-store.ts` (lock 724519035, migration `20261209_front_desk_website.sql`:
+  `salon_settings.website`; `loadSiteSettings`, `saveSiteSettings`, `loadSite` (booking page data + reviews + plans +
+  review link + store link), `domainSite` (own domain → website or store)). Page `components/salon-site/business-site.tsx`
+  (server-rendered: sticky header with section links + Book now, cover hero with Open now / rating / from-price, quick
+  facts card, services menu `services-menu.tsx` with category tabs, search and Book `?s=`, memberships, team with Book
+  `?p=`, gallery, reviews + Review us on Google, about, Visit us with Google map embed and week hours, closing Book band,
+  navy footer with Shop online when the store is on, phone bar Call / WhatsApp / Book now). `/v/[slug]` uses it;
+  `/s/[slug]` shows it first when an own domain opens the website; middleware maps `/book` on own domains to
+  `/s/<host>/book` (booking wizard). Settings: Front Desk → Setup → **Website and booking**
+  (`components/salon/salon-website.tsx`: on/off, link, cover, tagline, about, colour, photos, what to show, Instagram,
+  the shared `StoreAddress` card from `storefront-settings.tsx` with `kind="website"`, and "You also have an online
+  store" → what the domain opens); `GET/PUT /api/salon/website`. One domain per business (`organizations.store_domain`).
+  Tests `tests/front-desk-website.test.cjs`. Checked with local screenshots (390 / 1280, 320 no sideways scroll).
+  **Not merged to `v4` yet; not tried on a real own domain.**
 - **Online store redesigned like a big marketplace, and an AI chat on it** (owner, 19 Nov 2026: "Flipkart feel ...
   professional, not a dummy website ... enable the chat bot in the site"). Not a copy of any marketplace's look: the
   shop's own colour (`--c`), no gradients. `app/s/[slug]/store-parts.tsx` (Picture contain, Stepper, `RatingChip`,
