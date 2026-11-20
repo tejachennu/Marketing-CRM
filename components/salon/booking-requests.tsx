@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { CalendarClock, Check, Loader2, MessageCircle, X } from 'lucide-react'
 import { useConfirm } from '@/lib/dialog-context'
 import { formatRupees } from '@/lib/salon/invoice'
+import { paymentNote } from '@/lib/salon/booking-pay'
 import { addDays, bookingSlots, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { api, card, Chip } from './ui'
 import type { Appointment } from './types'
@@ -61,6 +62,7 @@ export function BookingRequests({ orgId, requests, canWrite, onDone, flash }: { 
                 <div className="min-w-0 flex-1">
                   <p className="text-[16.5px] font-bold text-[#0E1B3D] dark:text-white">{request.customer_name}{request.customer_phone && <span className="ml-2 text-[13.5px] font-normal text-[#6B7894]">{request.customer_phone}</span>}</p>
                   <p className="mt-0.5 text-[14.5px] text-[#0E1B3D] dark:text-slate-200 flex items-center gap-1.5"><CalendarClock size={16} className="text-[#4a5672]" /> <strong>{formatIstDay(day, today)}, {formatIstTime(request.starts_at)}</strong> · {request.services.map((s) => s.name).join(', ')} · {formatRupees(total)}</p>
+                  {paymentNote(request) && <p className="mt-1 text-[13px] font-bold text-[#1D5BEA] dark:text-blue-300">{paymentNote(request)}</p>}
                 </div>
                 {canWrite && (
                   <div className="flex gap-2 shrink-0">

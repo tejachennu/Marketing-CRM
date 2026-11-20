@@ -152,10 +152,11 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                 <div className="flex justify-between"><dt className="text-[#4a5672]">SGST</dt><dd>{money(invoice.sgst)}</dd></div>
               </>)}
             <div className="flex justify-between border-t border-[#e3e8f2] pt-2 mt-2 text-[18px] font-extrabold"><dt>Total</dt><dd>{money(invoice.total)}</dd></div>
-            {Number(invoice.membership_paid) > 0 && (
+            {(Number(invoice.membership_paid) > 0 || Number(invoice.advance_paid) > 0) && (
               <>
-                <div className="flex justify-between text-[14.5px]"><dt>Paid from membership</dt><dd>− {money(invoice.membership_paid)}</dd></div>
-                <div className="flex justify-between font-bold text-[15.5px]"><dt>{invoice.status === 'paid' ? 'Paid' : 'To pay'}</dt><dd>{money(Math.max(0, Number(invoice.total) - Number(invoice.membership_paid)))}</dd></div>
+                {Number(invoice.membership_paid) > 0 && <div className="flex justify-between text-[14.5px]"><dt>Paid from membership</dt><dd>− {money(invoice.membership_paid)}</dd></div>}
+                {Number(invoice.advance_paid) > 0 && <div className="flex justify-between text-[14.5px]"><dt>Paid online when booking</dt><dd>− {money(invoice.advance_paid)}</dd></div>}
+                <div className="flex justify-between font-bold text-[15.5px]"><dt>{invoice.status === 'paid' ? 'Paid' : 'To pay'}</dt><dd>{money(Math.max(0, Number(invoice.total) - (Number(invoice.membership_paid) || 0) - (Number(invoice.advance_paid) || 0)))}</dd></div>
               </>
             )}
             {invoice.prices_include_tax && registered && <p className="text-[12px] text-[#6B7894] text-right">Prices include GST</p>}

@@ -6,6 +6,7 @@ import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Download, ExternalLink, G
 import { PhoneField } from '@/components/phone-field'
 import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, STORE_LAYOUT_INFO, cleanInstagramHandle, instagramPost } from '@/lib/commerce/store-look'
 import { MAX_PAGE_TEXT, STORE_PAGES, STORE_PAGE_TITLES, starterPage, type StorePageKey } from '@/lib/commerce/store-pages'
+import { OnlinePayments } from '@/components/payments/online-payments'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
 const COLOURS = ['#1D5BEA', '#0E1B3D', '#008069', '#B45309', '#BE185D', '#6D28D9', '#0F766E', '#B91C1C']
@@ -60,95 +61,29 @@ function PictureButton({ value, onChange, label, wide, showToast }: { value: str
   )
 }
 
-/** The business's own Razorpay account for the store page: keys are checked with Razorpay, then saved; the secret is never shown again. */
-function RazorpayConnect({ orgId, payment, onPayment, showToast }: { orgId: string; payment: string; onPayment: (value: 'later' | 'online' | 'both') => void; showToast: ShowToast }) {
-  const [state, setState] = useState<{ connected: boolean; keyId: string | null; live: boolean; webhook: boolean; webhookUrl: string | null } | null>(null)
-  const [keyId, setKeyId] = useState('')
-  const [keySecret, setKeySecret] = useState('')
-  const [webhookSecret, setWebhookSecret] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    fetch(`/api/commerce/storefront/payments?organizationId=${orgId}`).then((r) => r.json()).then((data) => { if (!data.error) { setState(data); setKeyId(data.keyId || '') } }).catch(() => {})
-  }, [orgId])
-
-  async function connect() {
-    setBusy(true)
-    setError('')
-    try {
-      const res = await fetch('/api/commerce/storefront/payments', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId: orgId, keyId, keySecret, ...(webhookSecret ? { webhookSecret } : {}) }) })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Razorpay could not be connected.')
-      setState(data)
-      setKeySecret('')
-      setWebhookSecret('')
-      if (payment === 'later') onPayment('both')
-      showToast('success', `Razorpay connected${data.live ? '' : ' in test mode (no real money)'}. Save the website to use it.`)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-  async function disconnect() {
-    setBusy(true)
-    try {
-      const res = await fetch(`/api/commerce/storefront/payments?organizationId=${orgId}`, { method: 'DELETE' })
-      const data = await res.json().catch(() => ({}))
-      setState(data)
-      setKeyId('')
-      onPayment('later')
-      showToast('success', 'Razorpay disconnected. Customers pay on delivery or pick up.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const connected = Boolean(state?.connected)
+/** Online payment on the store page (the business's own Razorpay or Stripe), and which ways to pay customers see. */
+function RazorpayConnect({ orgId, payment, onPayment, showToast, canManage = true }: { orgId: string; payment: string; onPayment: (value: 'later' | 'online' | 'both') => void; showToast: ShowToast; canManage?: boolean }) {
+  const [connected, setConnected] = useState(false)
+  const [gateway, setGateway] = useState<string | null>(null)
+  const [was, setWas] = useState<boolean | null>(null)
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
       <div>
-        <h2 className="text-sm font-bold text-slate-900 dark:text-white">Online payment (Razorpay)</h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Customers pay by UPI, card or net banking on your website. The money goes straight to <b>your own</b> Razorpay account; Razorpay charges its fee (about 2%).</p>
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white">Online payment</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Customers pay on your website with Razorpay (UPI, cards, net banking) or Stripe (cards, Apple Pay, Google Pay).</p>
       </div>
-      {connected ? (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
-          <span className="flex-1 text-[13px]"><b>Connected</b> · {state?.keyId}{!state?.live && <span className="ml-1 text-[#b91c1c] font-semibold">(test mode: no real money)</span>}</span>
-          <button type="button" onClick={disconnect} disabled={busy} className={secondaryButton}>Disconnect</button>
-        </div>
-      ) : (
-        <p className={hintClass}>In Razorpay, open Account &amp; Settings → API Keys → Generate key. Paste both here.</p>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className={labelClass}>Key ID</label>
-          <input value={keyId} onChange={(e) => setKeyId(e.target.value.trim())} placeholder="rzp_live_…" autoComplete="off" className={inputClass} />
-        </div>
-        <div>
-          <label className={labelClass}>Key Secret{connected ? ' (leave empty to keep)' : ''}</label>
-          <input type="password" value={keySecret} onChange={(e) => setKeySecret(e.target.value.trim())} placeholder={connected ? '••••••••' : 'Key Secret'} autoComplete="new-password" className={inputClass} />
-        </div>
-      </div>
-      <details className="text-[13px]">
-        <summary className="cursor-pointer font-semibold text-[#1D5BEA]">Webhook (recommended): marks orders paid even if the customer closes the page</summary>
-        <div className="mt-2 space-y-2">
-          <p className={hintClass}>In Razorpay → Account &amp; Settings → Webhooks → Add new webhook: paste this address, tick <b>payment.captured</b> and <b>order.paid</b>, choose a secret, and type the same secret below.</p>
-          {state?.webhookUrl && (
-            <div className="flex gap-2">
-              <input readOnly value={state.webhookUrl} className={`${inputClass} font-mono text-[12px]`} />
-              <button type="button" onClick={() => navigator.clipboard?.writeText(state.webhookUrl!).then(() => showToast('success', 'Webhook address copied.'))} className={secondaryButton}><Copy size={13} /></button>
-            </div>
-          )}
-          <input type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={state?.webhook ? 'Webhook secret saved (type to change)' : 'Webhook secret'} autoComplete="new-password" className={inputClass} />
-        </div>
-      </details>
-      {error && <p role="alert" className="rounded-lg bg-[#fdf0f0] p-2.5 text-xs font-semibold text-[#b91c1c]">{error}</p>}
-      <button type="button" onClick={connect} disabled={busy || !keyId || (!keySecret && !connected)} className={primaryButton}>
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} {connected ? 'Save keys' : 'Connect Razorpay'}
-      </button>
+      <OnlinePayments orgId={orgId} canManage={canManage} showToast={(kind, message) => showToast(kind, message)} onChange={(state) => {
+        const on = Boolean(state.use)
+        setConnected(on)
+        setGateway(state.use)
+        // Just connected: offer Pay now too; all disconnected: back to pay on delivery
+        if (was === false && on && payment === 'later') onPayment('both')
+        if (was === true && !on) onPayment('later')
+        setWas(on)
+      }} />
       <div>
         <span className={labelClass}>Payment options on your website</span>
-        <p className={`${hintClass} -mt-0.5 mb-2`}>Customers see only the ones switched on. Keep at least one on.</p>
+        <p className={`${hintClass} -mt-0.5 mb-2`}>Customers see only the ones switched on. Keep at least one on. Save the website after changing them.</p>
         {(() => {
           const cod = payment !== 'online'
           const now = connected && payment !== 'later'
@@ -164,7 +99,7 @@ function RazorpayConnect({ orgId, payment, onPayment, showToast }: { orgId: stri
               </label>
               <label className={`flex items-start gap-2.5 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-[13px] ${connected ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
                 <input type="checkbox" checked={now} disabled={!connected} onChange={(e) => pick(cod, e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
-                <span><span className="block font-bold">Pay now</span><span className="block text-slate-500">{connected ? 'UPI, card or net banking with Razorpay' : 'Connect Razorpay above first'}</span></span>
+                <span><span className="block font-bold">Pay now</span><span className="block text-slate-500">{connected ? (gateway === 'stripe' ? 'Card, Apple Pay or Google Pay with Stripe' : 'UPI, card or net banking with Razorpay') : 'Connect Razorpay or Stripe above first'}</span></span>
               </label>
             </div>
           )
@@ -649,7 +584,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           <input type="checkbox" checked={settings.chat === true} onChange={(e) => set({ chat: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
           <span>AI chat on your website<span className={`block font-normal ${hintClass}`}>A chat button on every page. It answers shoppers from your products and your Knowledge Base (Settings → Knowledge Base), shows products they can add to the cart, and sends them to your WhatsApp for anything else. Each answer uses a little of your AI wallet.</span></span>
         </label>
-        <p className={hintClass}>Your team confirms each order from Orders. For payment online, connect Razorpay below.</p>
+        <p className={hintClass}>Your team confirms each order from Orders. For payment online, connect Razorpay or Stripe below.</p>
       </section>
 
       {canManage && <RazorpayConnect orgId={orgId} payment={settings.payment || 'later'} onPayment={(payment) => set({ payment })} showToast={showToast} />}

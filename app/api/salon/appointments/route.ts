@@ -41,7 +41,8 @@ export async function GET(request: NextRequest) {
       const { data: appointments, error } = await rangeDb.from('salon_appointments').select('*').eq('organization_id', rangeOrg)
         .gte('starts_at', istDayRange(from).start).lt('starts_at', istDayRange(to).end).neq('status', 'requested').order('starts_at').limit(3000)
       if (error) throw error
-      return NextResponse.json({ success: true, from, to, appointments: appointments || [] })
+      // A booking still waiting for its online payment is not a booking yet
+      return NextResponse.json({ success: true, from, to, appointments: (appointments || []).filter((a: any) => a.status !== 'awaiting_payment') })
     } catch (error) {
       return serverError('appointments', error)
     }
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     // Booking requests from WhatsApp waiting for the counter, from today on (whichever day is shown)
     const { data: requests } = await withSalonSchema(() => db.from('salon_appointments').select('*').eq('organization_id', organizationId).eq('status', 'requested')
       .gte('starts_at', istDayRange(istDate()).start).order('starts_at').limit(50))
-    return NextResponse.json({ success: true, date, appointments: (appointments || []).filter((a: any) => a.status !== 'requested'), invoices: invoices || [], requests: requests || [] })
+    return NextResponse.json({ success: true, date, appointments: (appointments || []).filter((a: any) => a.status !== 'requested' && a.status !== 'awaiting_payment'), invoices: invoices || [], requests: requests || [] })
   } catch (error) {
     return serverError('appointments', error)
   }

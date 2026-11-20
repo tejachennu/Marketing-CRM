@@ -5,13 +5,16 @@
  * Call / WhatsApp / Book. The business's own colour (--c); no gradients. Server-rendered (fast, found by Google).
  */
 
-import { AtSign, CalendarCheck, Clock, IdCard, MapPin, MessageCircle, Navigation, Phone, ShoppingBag, Star } from 'lucide-react'
+import { AtSign, CalendarCheck, Clock, CreditCard, IdCard, MapPin, MessageCircle, Navigation, Phone, ShoppingBag, Star } from 'lucide-react'
 import { planBenefits } from '@/lib/salon/membership-rules'
 import { openStatus, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
 import { ServicesMenu } from './services-menu'
+import { BookButton } from './book-button'
+import { BookingWizard } from '@/app/b/[slug]/booking-wizard'
+import type { BookingPageView } from '@/lib/salon/booking-page'
 
 export interface BusinessSiteProps {
-  view: { slug: string; business: string; logo: string | null; address: string | null; phone: string | null; services: { id: string; name: string; category: string; price: number; minutes: number }[]; staff: { id: string; name: string; service_ids: string[] }[] }
+  view: BookingPageView
   hours: { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null }
   site: SiteSettings
   average: number
@@ -20,8 +23,15 @@ export interface BusinessSiteProps {
   plans: any[]
   reviewLink: string | null
   storeLink: string | null
-  /** The booking page: /b/<slug> on WAMA, /book on the business's own domain */
+  /** The booking page on its own: /b/<slug> on WAMA, /book on the business's own domain */
   bookHref: string
+  /** Days the booking form offers */
+  days: string[]
+  /** Start the booking form with this service / person picked (?s= / ?p=) */
+  startService?: string | null
+  startPerson?: string | null
+  /** The connected Instagram account's latest posts (when switched on) */
+  instagramPosts?: { id: string; image: string; link: string; caption: string }[]
   now?: number
 }
 
@@ -48,7 +58,7 @@ function SectionHead({ id, kicker, title, children }: { id?: string; kicker: str
   )
 }
 
-export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, now = Date.now() }: BusinessSiteProps) {
+export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, days, startService = null, startPerson = null, instagramPosts = [], now = Date.now() }: BusinessSiteProps) {
   const phoneDigits = String(view.phone || '').replace(/\D/g, '')
   const callHref = phoneDigits.length >= 10 ? `tel:+${phoneDigits}` : null
   const waHref = phoneDigits.length >= 10 ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Hi ${view.business}`)}` : null
@@ -64,10 +74,14 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
     ['services', 'Services'],
     showPlans && ['offers', 'Memberships'],
     showTeam && ['team', 'Team'],
-    site.gallery.length > 0 && ['photos', 'Photos'],
+    (site.gallery.length > 0 || instagramPosts.length > 0) && ['photos', 'Photos'],
     showReviews && ['reviews', 'Reviews'],
     ['visit', 'Visit us'],
   ].filter(Boolean) as [string, string][]
+  const showPhotos = site.gallery.length > 0 || instagramPosts.length > 0
+  const payLine = !view.pay.online ? 'Pay at the shop after your visit.'
+    : view.pay.mode === 'online' ? `Pay ${view.pay.advance === 100 ? '' : `a ${view.pay.advance}% advance `}online to book (${view.pay.methods}).`
+    : `Pay online now (${view.pay.methods}) or at the shop.`
   const solid = 'inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-[15px] font-bold'
 
   return (
@@ -89,7 +103,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           </nav>
           <div className="ml-auto lg:ml-2 flex items-center gap-2 shrink-0">
             {callHref && <a href={callHref} aria-label="Call" className="hidden sm:flex h-11 w-11 rounded-full border border-[#d5ddeb] items-center justify-center hover:border-[var(--c)]"><Phone size={18} /></a>}
-            <a href={bookHref} className="h-11 px-5 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2"><CalendarCheck size={17} /> Book now</a>
+            <a href="#book" className="h-11 px-5 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2"><CalendarCheck size={17} /> Book now</a>
           </div>
         </div>
       </header>
@@ -115,7 +129,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
               {view.address && <span className="inline-flex items-center gap-1.5 min-w-0"><MapPin size={16} className="shrink-0" /> <span className="truncate max-w-[18rem]">{view.address.split('\n')[0]}</span></span>}
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <a href={bookHref} className={`${solid} bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book an appointment</a>
+              <a href="#book" className={`${solid} bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book an appointment</a>
               {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={`${solid} border-2 border-white/50 text-white hover:bg-white/10`}><MessageCircle size={18} /> WhatsApp us</a>}
             </div>
           </div>
@@ -139,9 +153,37 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         {/* Services */}
         <section aria-labelledby="services-title">
           <SectionHead id="services" kicker="What we do" title="Services and prices">
-            <a href={bookHref} className="h-10 px-4 rounded-full bg-[var(--c)] text-white text-[14px] font-bold inline-flex items-center gap-2"><CalendarCheck size={16} /> Book a visit</a>
+            <a href="#book" className="h-10 px-4 rounded-full bg-[var(--c)] text-white text-[14px] font-bold inline-flex items-center gap-2"><CalendarCheck size={16} /> Book a visit</a>
           </SectionHead>
-          <ServicesMenu services={view.services} bookHref={bookHref} showPrices={site.show.prices} money="INR" />
+          <ServicesMenu services={view.services} showPrices={site.show.prices} money="INR" />
+        </section>
+
+        {/* Book online, right here: live free times, and pay online or at the shop */}
+        <section aria-labelledby="book-title">
+          <SectionHead id="book" kicker="Book online" title="Book your visit" />
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
+            <div className="min-w-0 max-w-2xl">
+              <BookingWizard page={view} days={days} startService={startService} startPerson={startPerson} embedded colour={site.colour} />
+            </div>
+            <aside className="bg-white rounded-2xl border border-[#e3e8f2] p-5 space-y-4 lg:sticky lg:top-24">
+              <div className="flex gap-3">
+                <Clock size={19} className="shrink-0 mt-0.5 text-[var(--c)]" />
+                <div className="min-w-0 text-[14px]">
+                  <p className={`font-bold ${status.open ? 'text-[#0E1B3D]' : 'text-[#4a5672]'}`}>{status.text}</p>
+                  <p className="text-[#6B7894]">Pick any free time in the next 30 days.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <CreditCard size={19} className="shrink-0 mt-0.5 text-[var(--c)]" />
+                <p className="min-w-0 text-[14px] text-[#4a5672]">{payLine}</p>
+              </div>
+              <div className="flex gap-3">
+                <MessageCircle size={19} className="shrink-0 mt-0.5 text-[var(--c)]" />
+                <p className="min-w-0 text-[14px] text-[#4a5672]">{view.approval ? `${view.business} confirms your time on WhatsApp.` : 'Your booking is confirmed at once, on WhatsApp.'}</p>
+              </div>
+              <a href={bookHref} className="block text-[13px] font-semibold text-[var(--c)] hover:underline">Open the booking page on its own</a>
+            </aside>
+          </div>
         </section>
 
         {showPlans && (
@@ -171,26 +213,42 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                 <div key={m.id} className="bg-white rounded-2xl border border-[#e3e8f2] p-5 text-center">
                   <span className="mx-auto h-20 w-20 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center text-[24px] font-extrabold">{initials(m.name)}</span>
                   <p className="mt-3 text-[16px] font-bold break-words">{m.name}</p>
-                  <a href={`${bookHref}?p=${m.id}`} className="mt-3 inline-flex h-9 px-4 rounded-full border border-[#d5ddeb] text-[13px] font-bold items-center hover:border-[var(--c)] hover:text-[var(--c)]">Book with {m.name.split(' ')[0]}</a>
+                  <BookButton person={m.id} className="mt-3 inline-flex h-9 px-4 rounded-full border border-[#d5ddeb] text-[13px] font-bold items-center hover:border-[var(--c)] hover:text-[var(--c)]">Book with {m.name.split(' ')[0]}</BookButton>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        {site.gallery.length > 0 && (
+        {showPhotos && (
           <section>
             <SectionHead id="photos" kicker="Take a look" title="Photos">
               {site.instagram && <a href={`https://www.instagram.com/${site.instagram}/`} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full border border-[#d5ddeb] bg-white text-[14px] font-bold inline-flex items-center gap-2"><AtSign size={16} /> @{site.instagram}</a>}
             </SectionHead>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {site.gallery.map((src, i) => (
-                <a key={src} href={src} target="_blank" rel="noreferrer" className={`block overflow-hidden rounded-xl bg-[#eef1f6] ${i === 0 ? 'col-span-2 row-span-2' : ''}`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`${view.business} photo ${i + 1}`} loading="lazy" className="h-full w-full aspect-square object-cover hover:scale-[1.03] transition-transform" />
-                </a>
-              ))}
-            </div>
+            {site.gallery.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {site.gallery.map((src, i) => (
+                  <a key={src} href={src} target="_blank" rel="noreferrer" className={`block overflow-hidden rounded-xl bg-[#eef1f6] ${i === 0 ? 'col-span-2 row-span-2' : ''}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={`${view.business} photo ${i + 1}`} loading="lazy" className="h-full w-full aspect-square object-cover hover:scale-[1.03] transition-transform" />
+                  </a>
+                ))}
+              </div>
+            )}
+            {instagramPosts.length > 0 && (
+              <div className={site.gallery.length > 0 ? 'mt-10' : ''}>
+                <h3 className="text-[17px] font-extrabold flex items-center gap-2"><AtSign size={18} className="text-[var(--c)]" /> Latest on Instagram</h3>
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {instagramPosts.map((post) => (
+                    <a key={post.id} href={post.link} target="_blank" rel="noreferrer" title={post.caption || 'See on Instagram'} className="group relative block overflow-hidden rounded-xl bg-[#eef1f6]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={post.image} alt={post.caption ? post.caption.slice(0, 100) : `${view.business} on Instagram`} loading="lazy" className="w-full aspect-square object-cover group-hover:scale-[1.03] transition-transform" />
+                      {post.caption && <span className="absolute inset-x-0 bottom-0 bg-[#0E1B3D]/75 text-white text-[12px] leading-snug px-2.5 py-2 line-clamp-2">{post.caption}</span>}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -274,7 +332,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
             <h2 className="text-[26px] sm:text-[32px] font-extrabold leading-tight">Ready for your visit?</h2>
             <p className="mt-1 text-[16px] text-white/85">Pick a service and a free time. It takes a minute.</p>
           </div>
-          <a href={bookHref} className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book now</a>
+          <a href="#book" className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book now</a>
         </section>
       </main>
 
@@ -288,7 +346,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           <div>
             <p className="text-[12px] font-bold uppercase tracking-wide text-white/55">Visit</p>
             <ul className="mt-3 space-y-2">
-              <li><a href={bookHref} className="hover:underline">Book an appointment</a></li>
+              <li><a href="#book" className="hover:underline">Book an appointment</a></li>
               <li><a href="#services" className="hover:underline">Services and prices</a></li>
               {storeLink && <li><a href={storeLink} className="hover:underline inline-flex items-center gap-1.5"><ShoppingBag size={14} /> Shop online</a></li>}
             </ul>
@@ -313,7 +371,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
       <nav aria-label="Quick actions" className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white border-t border-[#e3e8f2] grid grid-cols-4 shadow-[0_-2px_10px_rgba(14,27,61,0.08)]">
         {callHref ? <a href={callHref} className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><Phone size={20} /> Call</a> : <span />}
         {waHref ? <a href={waHref} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><MessageCircle size={20} /> WhatsApp</a> : <span />}
-        <a href={bookHref} className="col-span-2 m-2 rounded-xl bg-[var(--c)] text-white flex items-center justify-center gap-2 text-[15px] font-extrabold"><CalendarCheck size={18} /> Book now</a>
+        <a href="#book" className="col-span-2 m-2 rounded-xl bg-[var(--c)] text-white flex items-center justify-center gap-2 text-[15px] font-extrabold"><CalendarCheck size={18} /> Book now</a>
       </nav>
     </div>
   )

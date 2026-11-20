@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { formatMoney } from './commerce-utils'
 import { sendPush } from '../push'
 import { isUuid } from '../record-visibility'
+import { majorUnits, minorUnits } from '../payments/stripe'
 
 const API = 'https://api.razorpay.com/v1'
 
@@ -55,12 +56,17 @@ export async function checkStoreKeys(keys: StoreRazorpayKeys, fetcher: typeof fe
   }
 }
 
+/** A Razorpay order for an amount (in rupees), tied to our record by its notes. */
+export async function createRazorpayOrder(keys: StoreRazorpayKeys, input: { amount: number; currency?: string | null; receipt: string; notes: Record<string, string> }, fetcher: typeof fetch = fetch): Promise<{ id: string; amount: number; currency: string }> {
+  const amount = Math.round((Number(input.amount) || 0) * 100)
+  if (amount < 100) throw new Error('The amount is too small to pay online.')
+  const data = await call(keys, '/orders', { method: 'POST', body: { amount, currency: String(input.currency || 'INR').toUpperCase(), receipt: input.receipt.slice(0, 40), payment_capture: 1, notes: input.notes } }, fetcher)
+  return { id: data.id, amount: data.amount, currency: data.currency }
+}
+
 /** A Razorpay order for the amount to pay (in paise), tied to our order by its notes. */
 export async function createStorePayment(keys: StoreRazorpayKeys, order: { id: string; order_number: string; total_amount: unknown; currency?: string | null }, fetcher: typeof fetch = fetch): Promise<{ id: string; amount: number; currency: string }> {
-  const amount = Math.round((Number(order.total_amount) || 0) * 100)
-  if (amount < 100) throw new Error('The amount is too small to pay online.')
-  const data = await call(keys, '/orders', { method: 'POST', body: { amount, currency: String(order.currency || 'INR').toUpperCase(), receipt: order.order_number.slice(0, 40), payment_capture: 1, notes: { wama_order_id: order.id, wama_order_number: order.order_number } } }, fetcher)
-  return { id: data.id, amount: data.amount, currency: data.currency }
+  return createRazorpayOrder(keys, { amount: Number(order.total_amount) || 0, currency: order.currency, receipt: order.order_number, notes: { wama_order_id: order.id, wama_order_number: order.order_number } }, fetcher)
 }
 
 /** Razorpay's checkout signature: HMAC-SHA256 of "<order id>|<payment id>" with the key secret. */
@@ -101,25 +107,31 @@ export function razorpayOrderOf(order: { shipping_address?: any }): string {
   return String(order?.shipping_address?.payment?.order_id || '')
 }
 
+/** The Stripe Checkout Session our order waits on. */
+export function stripeSessionOf(order: { shipping_address?: any }): string {
+  return String(order?.shipping_address?.payment?.session_id || '')
+}
+
 /**
  * Mark a website order paid (once). The amount must match the order. Records the transaction, and tells
  * the team. Returns true when this call marked it.
  */
-export async function markStoreOrderPaid(db: any, order: any, payment: { id: string; amount: number }): Promise<boolean> {
-  const expected = Math.round((Number(order.total_amount) || 0) * 100)
+export async function markStoreOrderPaid(db: any, order: any, payment: { id: string; amount: number; gateway?: 'razorpay' | 'stripe'; intent?: string }): Promise<boolean> {
+  const gateway = payment.gateway || 'razorpay'
+  const expected = minorUnits(Number(order.total_amount) || 0, String(order.currency || 'INR'))
   if (payment.amount !== expected) {
     console.warn(`[Store payment] Order ${order.order_number}: paid ${payment.amount} paise, expected ${expected}`)
     return false
   }
-  const shipping = { ...(order.shipping_address || {}), payment: { ...(order.shipping_address?.payment || {}), payment_id: payment.id, paid_at: new Date().toISOString() } }
+  const shipping = { ...(order.shipping_address || {}), payment: { ...(order.shipping_address?.payment || {}), payment_id: payment.id, ...(payment.intent ? { payment_intent: payment.intent } : {}), paid_at: new Date().toISOString() } }
   const { data: marked } = await db.from('commerce_orders')
-    .update({ status: order.status === 'payment_pending' ? 'paid' : order.status, payment_status: 'paid', payment_method: 'razorpay', shipping_address: shipping, updated_at: new Date().toISOString() })
+    .update({ status: order.status === 'payment_pending' ? 'paid' : order.status, payment_status: 'paid', payment_method: gateway, shipping_address: shipping, updated_at: new Date().toISOString() })
     .eq('id', order.id)
     .eq('organization_id', order.organization_id)
     .neq('payment_status', 'paid')
     .select('id')
   if (!marked || marked.length === 0) return false
-  await db.from('commerce_transactions').insert({ order_id: order.id, organization_id: order.organization_id, gateway: 'razorpay', transaction_id: payment.id, amount: payment.amount / 100, currency: order.currency || 'INR', status: 'captured', raw_payload: { source: 'store_page' } })
+  await db.from('commerce_transactions').insert({ order_id: order.id, organization_id: order.organization_id, gateway, transaction_id: payment.id, amount: majorUnits(payment.amount, String(order.currency || 'INR')), currency: order.currency || 'INR', status: 'captured', raw_payload: { source: 'store_page' } })
   const name = String(order.shipping_address?.full_name || '').trim()
   await sendPush(db, { organizationId: order.organization_id }, {
     kind: 'order',

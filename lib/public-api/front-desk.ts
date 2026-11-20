@@ -23,6 +23,8 @@ export const toApiAppointment = (row: any) => ({
   invoice_id: row.invoice_id || null,
   source: row.source || 'counter',
   notes: row.notes || null,
+  /** Paid online when booking (taken off the bill) */
+  paid_online: row.payment_status === 'paid' ? Number(row.payment_paid) || 0 : 0,
   created_at: row.created_at || null,
 })
 
@@ -65,7 +67,7 @@ export async function availableTimes(db: any, organizationId: string, input: { d
     db.from('salon_settings').select('opens_at, closes_at, closed_weekdays').eq('organization_id', organizationId).maybeSingle(),
     db.from('salon_services').select('id, duration_minutes, active').eq('organization_id', organizationId).in('id', input.serviceIds),
     db.from('salon_staff').select('id, service_ids, active').eq('organization_id', organizationId),
-    db.from('salon_appointments').select('starts_at, ends_at, status, staff_id, services').eq('organization_id', organizationId).gte('starts_at', istDayRange(input.date).start).lt('starts_at', istDayRange(input.date).end),
+    db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', istDayRange(input.date).start).lt('starts_at', istDayRange(input.date).end),
   ])
   const found = (services || []).filter((s: any) => s.active !== false)
   if (found.length !== new Set(input.serviceIds).size) return { error: 'One of those services is not on the list (or is switched off). GET /api/v1/services shows them.' }

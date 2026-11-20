@@ -240,7 +240,7 @@ const LIST_LIMIT = 10
 /** Busy time on a day: every appointment that holds a chair. */
 export async function busyOn(db: any, organizationId: string, date: string): Promise<Busy[]> {
   const { start, end } = istDayRange(date)
-  const { data } = await db.from('salon_appointments').select('starts_at, ends_at, status, staff_id, services').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end)
+  const { data } = await db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end)
   return busyFrom(data || [])
 }
 

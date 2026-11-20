@@ -10,6 +10,7 @@
 import { readReturnSettings, type ReturnSettings } from './returns'
 import { readLoyaltySettings, type LoyaltySettings } from './loyalty'
 import { latestPosts } from '../instagram/store'
+import { onlineGateway, type Gateway } from '../payments/gateway'
 import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, cleanInstagramHandle, instagramPost, type StoreLayout } from './store-look'
 export { STORE_LAYOUTS, STORE_LAYOUT_INFO, type StoreLayout } from './store-look'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
@@ -309,6 +310,8 @@ export interface StorePage {
   fees: { fee: number; freeFrom: number }
   /** How customers can pay right now: online needs the business's Razorpay keys. */
   pay: { online: boolean; later: boolean }
+  /** Which of the business's accounts online payment goes through */
+  gateway?: Gateway | null
   /** A courier partner is connected, so the page can check a PIN code. */
   pinCheck?: boolean
   /** Offers that apply by themselves ("Buy 2 get 1 free"), and whether any code exists. */
@@ -380,7 +383,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     settings,
     products: shownProducts,
     categories: storeCategories(settings, shownProducts),
-    pay: payOptions(settings, Boolean(String(org.store_razorpay_key_id || '').trim() && String(org.store_razorpay_key_secret || '').trim())),
+    pay: payOptions(settings, Boolean(onlineGateway(org))),
+    gateway: onlineGateway(org),
     pinCheck: settings.delivery && readyPartners(org).length > 0,
     returns: readReturnSettings(org.shop_returns),
     loyalty: readLoyaltySettings(org.shop_loyalty),
@@ -404,7 +408,7 @@ export function storeView(page: StorePage) {
     categories: page.categories, products: page.products, pickup: s.pickup, delivery: s.delivery,
     deliveryNote: s.delivery_note, deliveryFee: page.fees.fee, freeFrom: page.fees.freeFrom, minOrder: s.min_order,
     whatsapp: s.whatsapp, phone: s.phone, address: s.address, about: s.about,
-    payOnline: page.pay.online, payLater: page.pay.later,
+    payOnline: page.pay.online, payLater: page.pay.later, payWith: page.pay.online ? page.gateway || 'razorpay' : null,
     accounts: s.accounts, domain: page.organization.domain, pinCheck: page.pinCheck === true,
     layout: s.layout, instagram: s.instagram, instagramFeed: page.instagramFeed || [],
     offers: page.offers || [], hasCodes: page.hasCodes === true, chat: page.chat === true,
@@ -416,7 +420,7 @@ export function storeView(page: StorePage) {
 }
 export type StoreView = ReturnType<typeof storeView>
 
-/** Ways to pay on the page: online only when the business's Razorpay is connected; never none. */
+/** Ways to pay on the page: online only when the business's Razorpay or Stripe is connected; never none. */
 export function payOptions(settings: Pick<StorefrontSettings, 'payment'>, razorpayConnected: boolean): { online: boolean; later: boolean } {
   const online = razorpayConnected && settings.payment !== 'later'
   return { online, later: !online || settings.payment !== 'online' }

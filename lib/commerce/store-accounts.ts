@@ -180,7 +180,7 @@ export function shopperOrderView(order: any, items: any[]) {
     status: status.label,
     tone: status.tone,
     paid: order.payment_status === 'paid',
-    payment: order.payment_status === 'paid' ? (method === 'razorpay' ? 'Paid online' : 'Paid') : ship.handover === 'delivery' ? 'Pay on delivery' : 'Pay at pick up',
+    payment: order.payment_status === 'paid' ? (method === 'razorpay' || method === 'stripe' ? 'Paid online' : 'Paid') : ship.handover === 'delivery' ? 'Pay on delivery' : 'Pay at pick up',
     handover: ship.handover === 'delivery' ? 'delivery' : 'pickup',
     address: [ship.address_line_1, ship.address_line_2, ship.city, [ship.state, ship.pincode].filter(Boolean).join(' ')].map((p) => String(p || '').trim()).filter(Boolean).join(', '),
     tracking: ship.tracking_number ? { number: String(ship.tracking_number), carrier: String(ship.carrier || '') } : null,

@@ -38,11 +38,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 /** A business's online store: /s/<workspace slug>, ?c=<category> to open on one category. */
-export default async function StorePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ c?: string }> }) {
+export default async function StorePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ c?: string; s?: string; p?: string }> }) {
   const { slug } = await params
-  const { c } = await searchParams
+  const { c, s, p } = await searchParams
   const website = await websiteForDomain(slug)
-  if (website) return <BusinessSite {...website} hours={website.page.setup.settings} bookHref="/book" storeLink={null} />
+  if (website) {
+    return <BusinessSite {...website} hours={website.page.setup.settings} bookHref="/book" storeLink={null}
+      startService={website.view.services.some((x) => x.id === s) ? s! : null} startPerson={website.view.staff.some((m) => m.id === p) ? p! : null} />
+  }
   const page = await loadStore(getSupabaseAdminClient(), slug)
   if (!page) notFound()
   const view = storeView(page)

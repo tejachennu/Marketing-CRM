@@ -61,7 +61,7 @@ export function OrderReturns({ orgId, orderId, currency, canEdit, onChanged, sho
         <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-300">
           {state.refunds.map((r) => (
             <li key={r.id} className="flex justify-between gap-2">
-              <span className="min-w-0 truncate">{new Date(r.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {r.method === 'razorpay' ? `Through Razorpay${r.status === 'pending' ? ' (on its way)' : ''}` : 'Paid back by hand'}{r.reason ? ` · ${r.reason}` : ''}</span>
+              <span className="min-w-0 truncate">{new Date(r.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {r.method === 'razorpay' || r.method === 'stripe' ? `Through ${r.method === 'stripe' ? 'Stripe' : 'Razorpay'}${r.status === 'pending' ? ' (on its way)' : ''}` : 'Paid back by hand'}{r.reason ? ` · ${r.reason}` : ''}</span>
               <span className="font-semibold tabular-nums shrink-0">− {money(r.amount)}</span>
             </li>
           ))}

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle, Phone, Receipt, RotateCcw, Search, UserRound, Users, X } from 'lucide-react'
 import { dayWindow, layoutDay, onDay, periodSummary, shiftDate, STATUS_WORDS, weekOf } from '@/lib/salon/calendar'
 import { formatRupees } from '@/lib/salon/invoice'
+import { paymentNote } from '@/lib/salon/booking-pay'
 import { formatIstDay, formatIstTime, istDate } from '@/lib/salon/spoken'
 import { BillSheet, BookingSheet, DayAndTime, ResultSheet, type BillTarget, type BookingDraft } from './counter-sheets'
 import { api, Avatar, card, Chip, input, Modal, primaryButton, secondaryButton, Toggle } from './ui'
@@ -382,6 +383,7 @@ function AppointmentSheet({ orgId, setup, appointment, canWrite, staffName, flas
               </div>
             ))}
             <div className="flex justify-between pt-2 border-t border-dashed border-[#d5ddeb] dark:border-slate-700 font-bold text-[#0E1B3D] dark:text-white"><span>Value</span><span>{formatRupees(value)}</span></div>
+            {paymentNote(a) && <p className="text-[13.5px] font-bold text-[#1D5BEA] dark:text-blue-300">{paymentNote(a)} · taken off the bill</p>}
             {a.notes && <p className="text-[13.5px] text-[#4a5672] dark:text-slate-300 whitespace-pre-line"><b>Note:</b> {a.notes}</p>}
           </div>
 

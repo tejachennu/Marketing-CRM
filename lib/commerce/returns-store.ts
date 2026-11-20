@@ -8,6 +8,7 @@ import { formatMoney } from './commerce-utils'
 import { readReturn, readReturnSettings, refundable, type ReturnRequest, type ReturnSettings } from './returns'
 import { sendShopMessage } from './shop-messages-send'
 import { refundStorePayment, storeRazorpayKeys } from './store-payments'
+import { refundStripe, stripeKeys, minorUnits } from '../payments/stripe'
 import { changeVariantStock } from './variant-store'
 import { returnPointsFor } from './loyalty-store'
 import { issueCreditNote } from './invoice-store'
@@ -105,9 +106,20 @@ export async function refundOrder(db: any, org: any, order: any, input: { amount
   if (input.amount > left + 0.001) return { error: 'Nothing (or less) is left to refund on this order.' }
   const paymentId = String(order.shipping_address?.payment?.payment_id || '')
   const keys = order.payment_method === 'razorpay' && paymentId ? storeRazorpayKeys(org) : null
+  const intent = String(order.shipping_address?.payment?.payment_intent || '')
+  const stripe = order.payment_method === 'stripe' && intent ? stripeKeys(org) : null
   let method = 'manual'
   let razorpay: { id: string; status: string } | null = null
-  if (keys) {
+  if (stripe) {
+    try {
+      // Kept in the same refund id column as Razorpay's
+      razorpay = await refundStripe(stripe.secretKey, intent, minorUnits(input.amount, String(order.currency || 'INR')), { order: String(order.order_number || ''), reason: input.reason.slice(0, 200) }, fetcher)
+      razorpay = { ...razorpay, status: razorpay.status === 'succeeded' ? 'processed' : razorpay.status }
+      method = 'stripe'
+    } catch (error: any) {
+      return { error: `Stripe did not make the refund: ${error?.message || 'please try again'}.` }
+    }
+  } else if (keys) {
     try {
       razorpay = await refundStorePayment(keys, paymentId, input.amount * 100, { order: String(order.order_number || ''), reason: input.reason.slice(0, 200) }, fetcher)
       method = 'razorpay'
@@ -137,7 +149,7 @@ export async function refundOrder(db: any, org: any, order: any, input: { amount
   // Refunded in full: points used come back, points earned go
   if (after.left <= 0) await returnPointsFor(db, org.id, order.id).catch(() => null)
   const amount = formatMoney(input.amount, order.currency || 'INR')
-  await tellCustomer(db, org.id, order, method === 'razorpay'
+  await tellCustomer(db, org.id, order, method !== 'manual'
     ? `we have refunded ${amount}. It goes back to the same card, UPI or bank account in 5–7 working days.`
     : `we have refunded ${amount}.`)
   return { refund: saved, method, left: after.left }

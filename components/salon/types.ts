@@ -84,6 +84,9 @@ export interface Appointment {
   services: BookedService[]
   notes: string | null
   invoice_id: string | null
+  /** Paid online when booking (website / booking page): pending, paid, at_shop, expired */
+  payment_status?: string | null
+  payment_paid?: number | string | null
 }
 
 export interface Invoice {

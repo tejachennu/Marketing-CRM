@@ -17,6 +17,10 @@ import { ratingSummary, type PublicReview } from '@/lib/commerce/reviews'
 
 type Product = StoreView['products'][number]
 
+/** An online payment started but not finished: Razorpay's order, or Stripe's page. */
+interface UnpaidOrder { orderNumber: string; total: number; razorpay?: any; stripe?: { sessionId: string; url: string } }
+const proofOf = (order: UnpaidOrder) => (order.stripe ? { sessionId: order.stripe.sessionId } : { razorpayOrderId: order.razorpay?.orderId })
+
 /** Razorpay's checkout window, loaded only when someone pays online. */
 function loadRazorpay(): Promise<any> {
   const w = window as any
@@ -187,16 +191,22 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const [done, setDone] = useState<{ orderNumber: string; total: number; paid: boolean } | null>(null)
   const [pay, setPay] = useState<'online' | 'later'>(store.payOnline ? 'online' : 'later')
   // An online payment that was started but not finished: try again, or pay later
-  const [unpaid, setUnpaid] = useState<{ orderNumber: string; total: number; razorpay: any } | null>(null)
+  const [unpaid, setUnpaid] = useState<UnpaidOrder | null>(null)
   const unpaidKey = `store-unpaid:${store.slug}`
   // An unfinished payment survives a reload: ask once whether it was paid after all, else offer it again
   useEffect(() => {
-    let saved: { orderNumber: string; total: number; razorpay: any } | null = null
+    let saved: UnpaidOrder | null = null
     try {
       saved = JSON.parse(localStorage.getItem(unpaidKey) || 'null')
     } catch {}
-    if (!saved?.orderNumber || !saved.razorpay?.orderId) return
-    fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber: saved.orderNumber, razorpayOrderId: saved.razorpay.orderId, action: 'check' }) })
+    // Back from Stripe's page (?paid= / ?unpaid=): tidy the address; the check below says whether it was paid
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('paid') || url.searchParams.has('unpaid')) {
+      for (const key of ['paid', 'unpaid', 'session']) url.searchParams.delete(key)
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+    }
+    if (!saved?.orderNumber || !(saved.razorpay?.orderId || saved.stripe?.sessionId)) return
+    fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber: saved.orderNumber, ...proofOf(saved), action: 'check' }) })
       .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (ok && data.paid) {
@@ -286,16 +296,21 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
   const toPay = Math.max(0, Math.round((subtotal - offerOff - pointsOff + (memberWins ? delivery : deliveryToPay)) * 100) / 100)
   const short = store.minOrder > 0 && subtotal < store.minOrder
 
-  const confirmPayment = async (orderNumber: string, razorpayOrderId: string, extra: Record<string, string>) => {
-    const res = await fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber, razorpayOrderId, ...extra }) })
+  const confirmPayment = async (order: UnpaidOrder, extra: Record<string, string>) => {
+    const res = await fetch(`/api/public/store/${store.slug}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber: order.orderNumber, ...proofOf(order), ...extra }) })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || 'The payment could not be confirmed.')
     return data
   }
 
-  /** Open Razorpay for an order; resolves when the window closes, paid or not. */
-  async function payOnline(order: { orderNumber: string; total: number; razorpay: any }) {
+  /** Open Razorpay for an order (resolves when its window closes, paid or not), or go to Stripe's page. */
+  async function payOnline(order: UnpaidOrder) {
     setError('')
+    if (order.stripe) {
+      try { localStorage.setItem(unpaidKey, JSON.stringify(order)) } catch {}
+      window.location.href = order.stripe.url
+      return
+    }
     const Razorpay = await loadRazorpay()
     await new Promise<void>((resolve) => {
       const checkout = new Razorpay({
@@ -311,7 +326,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
         theme: { color: store.colour },
         handler: async (response: any) => {
           try {
-            const data = await confirmPayment(order.orderNumber, order.razorpay.orderId, { paymentId: response.razorpay_payment_id, signature: response.razorpay_signature })
+            const data = await confirmPayment(order, { paymentId: response.razorpay_payment_id, signature: response.razorpay_signature })
             if (data.paid) {
               setUnpaid(null)
               setDone({ orderNumber: order.orderNumber, total: order.total, paid: true })
@@ -343,8 +358,8 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       if (!res.ok) throw new Error(data.error || 'The order could not be placed. Please try again.')
       setCart({})
       if (shopper.session) shopper.refresh()
-      if (data.razorpay) {
-        const order = { orderNumber: data.orderNumber, total: data.total, razorpay: data.razorpay }
+      if (data.razorpay || data.stripe) {
+        const order: UnpaidOrder = { orderNumber: data.orderNumber, total: data.total, ...(data.razorpay ? { razorpay: data.razorpay } : { stripe: data.stripe }) }
         setUnpaid(order)
         await payOnline(order)
       } else {
@@ -362,7 +377,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
     if (!unpaid) return
     setPlacing(true)
     try {
-      await confirmPayment(unpaid.orderNumber, unpaid.razorpay.orderId, { action: 'later' })
+      await confirmPayment(unpaid, { action: 'later' })
       setDone({ orderNumber: unpaid.orderNumber, total: unpaid.total, paid: false })
       setUnpaid(null)
       setPanel('done')
@@ -796,7 +811,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
           <div>
             <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Ways to pay</p>
             <ul className="mt-3 space-y-2 text-white/80">
-              {store.payOnline && <li className="flex gap-2"><CreditCard size={17} /> UPI, cards and net banking</li>}
+              {store.payOnline && <li className="flex gap-2"><CreditCard size={17} /> {store.payWith === 'stripe' ? 'Cards, Apple Pay and Google Pay' : 'UPI, cards and net banking'}</li>}
               {store.payLater && <li className="flex gap-2"><Banknote size={17} /> {store.delivery ? 'Cash on delivery' : 'Pay at pick up'}</li>}
               <li className="flex gap-2"><ShieldCheck size={17} /> Safe and secure shopping</li>
             </ul>
@@ -1013,7 +1028,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                   {handover === 'delivery' && <div className="flex justify-between"><span>Delivery</span><span>{memberWins ? (delivery ? money(delivery) : 'Free') : deliveryToPay ? money(deliveryToPay) : offOk && offer!.freeDelivery && delivery ? <><s className="text-[#8a94a8] mr-1">{money(delivery)}</s>Free</> : 'Free'}</span></div>}
                   <div className="flex justify-between font-extrabold text-[17px] pt-1"><span>To pay</span><span>{money(toPay)}</span></div>
                   {pay === 'online' ? (
-                    <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> Pay securely by UPI, card or net banking with Razorpay.</p>
+                    <p className="text-[13px] text-[#6B7894] flex gap-1.5"><ShieldCheck size={15} className="shrink-0 mt-px text-[var(--c)]" /> {store.payWith === 'stripe' ? 'Pay securely by card, Apple Pay or Google Pay with Stripe.' : 'Pay securely by UPI, card or net banking with Razorpay.'}</p>
                   ) : (
                     <p className="text-[13px] text-[#6B7894]">Pay cash when you {handover === 'delivery' ? 'get your order' : 'pick it up'}. The shop will confirm your order.</p>
                   )}

@@ -92,7 +92,7 @@ const PAYMENT_TEXT: Record<string, string> = { razorpay: 'Paid online', upi: 'UP
 /** What the invoice says about payment. */
 function paymentText(order: any): string {
   const method = String(order.payment_method || '')
-  if (order.payment_status === 'paid') return method === 'razorpay' ? 'Paid online' : `Paid${PAYMENT_TEXT[method] && method !== 'cod' ? ` · ${PAYMENT_TEXT[method]}` : ''}`
+  if (order.payment_status === 'paid') return method === 'razorpay' || method === 'stripe' ? 'Paid online' : `Paid${PAYMENT_TEXT[method] && method !== 'cod' ? ` · ${PAYMENT_TEXT[method]}` : ''}`
   return order.shipping_address?.handover === 'pickup' ? 'Pay at pick up' : method === 'cod' ? 'Cash on delivery' : 'Not paid yet'
 }
 

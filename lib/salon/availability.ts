@@ -27,10 +27,19 @@ export function isClosedOn(date: string, hours: OpeningHours): boolean {
   return (hours.closed_weekdays || []).includes(istWeekday(date))
 }
 
+/**
+ * Does this appointment take up its time? A booking waiting for its online payment holds it only until its hold
+ * runs out (payment_hold_until); then the time is free again.
+ */
+export function holdsTime(a: { status: string; payment_hold_until?: string | null }, now = Date.now()): boolean {
+  if (a.status === 'awaiting_payment') return Boolean(a.payment_hold_until) && Date.parse(String(a.payment_hold_until)) > now
+  return HOLDING_STATUSES.includes(a.status)
+}
+
 /** The appointments of a day as busy time: everyone named on the visit or on any of its services. */
-export function busyFrom(appointments: { starts_at: string; ends_at: string; status: string; staff_id?: string | null; services?: { staff_id?: string | null }[] }[]): Busy[] {
+export function busyFrom(appointments: { starts_at: string; ends_at: string; status: string; payment_hold_until?: string | null; staff_id?: string | null; services?: { staff_id?: string | null }[] }[], now = Date.now()): Busy[] {
   return appointments
-    .filter((a) => HOLDING_STATUSES.includes(a.status))
+    .filter((a) => holdsTime(a, now))
     .map((a) => ({ starts_at: a.starts_at, ends_at: a.ends_at, staff_ids: [...new Set([a.staff_id, ...(a.services || []).map((s) => s.staff_id)].filter(Boolean))] as string[] }))
 }
 

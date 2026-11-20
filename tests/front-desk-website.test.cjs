@@ -61,7 +61,7 @@ test('migration, routes and setup are wired', () => {
   assert.match(mw, /const book = \/\^\\\/book\\\/\?\$\/\.test\(pathname\)/)
   assert.match(mw, /book \? `\/s\/\$\{host\}\/book`/)
   const store = read('app/s/[slug]/page.tsx')
-  assert.match(store, /const website = await websiteForDomain\(slug\)\n  if \(website\) return <BusinessSite/, 'the own domain opens the website first when chosen')
+  assert.match(store, /const website = await websiteForDomain\(slug\)\n  if \(website\) \{\n    return <BusinessSite/, 'the own domain opens the website first when chosen')
   assert.match(read('app/s/[slug]/book/page.tsx'), /<BookingWizard/)
   assert.match(read('app/v/[slug]/page.tsx'), /loadSite\(getSupabaseAdminClient\(\), slug\)/)
   assert.match(read('components/salon/salon-setup.tsx'), /<SalonWebsite orgId=\{orgId\}/)

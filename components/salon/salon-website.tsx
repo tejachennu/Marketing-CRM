@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, ExternalLink, ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { DEFAULT_SITE, MAX_GALLERY, SITE_COLOURS, readSite, type SiteSettings } from '@/lib/salon/website'
 import { StoreAddress } from '@/components/commerce/storefront-settings'
+import { OnlinePayments } from '@/components/payments/online-payments'
+import { ADVANCE_CHOICES } from '@/lib/salon/booking-pay'
 import { api, card, input, primaryButton, secondaryButton } from './ui'
 
 async function uploadPhoto(file: File): Promise<string> {
@@ -26,7 +28,8 @@ async function uploadPhoto(file: File): Promise<string> {
 export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId: string; canEdit: boolean; canManageDomain: boolean; flash: (kind: 'success' | 'error', message: string) => void }) {
   const [site, setSite] = useState<SiteSettings>(DEFAULT_SITE)
   const [saved, setSaved] = useState('')
-  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null } | null>(null)
+  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null; instagram: { connected: boolean; username: string } } | null>(null)
+  const [gatewayOn, setGatewayOn] = useState(false)
   const [busy, setBusy] = useState<'' | 'save' | 'cover' | 'gallery'>('')
   const coverRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -36,7 +39,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
       const s = readSite(data.site)
       setSite(s)
       setSaved(JSON.stringify(s))
-      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain })
+      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain, instagram: data.instagram || { connected: false, username: '' } })
     }).catch((err) => flash('error', err.message))
     // Loaded once per workspace (flash may be a new function on every render)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +157,15 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           <input ref={galleryRef} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => pickGallery(e.target.files)} />
           {canEdit && site.gallery.length < MAX_GALLERY && <button type="button" onClick={() => galleryRef.current?.click()} disabled={Boolean(busy)} className={secondaryButton}>{busy === 'gallery' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />} Add photos</button>}
         </div>
+        <label className="flex items-start gap-2.5 rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 cursor-pointer">
+          <input type="checkbox" checked={site.instagramLive} disabled={!canEdit} onChange={(e) => set({ instagramLive: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+          <span className="min-w-0 text-[13.5px]">
+            <span className="block font-bold text-[#0E1B3D] dark:text-white">Show my latest Instagram posts</span>
+            <span className="block text-[#6B7894]">{meta.instagram.connected
+              ? <>From <b>@{meta.instagram.username || 'your account'}</b>, by themselves: new posts appear on the website within 30 minutes.</>
+              : <>Connect Instagram first in <a href="/dashboard/settings?tab=instagram" className="font-semibold text-[#1D5BEA] hover:underline">Settings → Instagram</a>. Until then, your photos above show.</>}</span>
+          </span>
+        </label>
         {site.gallery.length === 0 ? <p className="text-[13.5px] text-[#6B7894]">Add photos of your place, your team at work and results customers love. The first one shows biggest.</p> : (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {site.gallery.map((src, i) => (
@@ -179,6 +191,40 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           <label htmlFor="site-ig" className={label}>Instagram (optional)</label>
           <input id="site-ig" maxLength={60} disabled={!canEdit} value={site.instagram} onChange={(e) => set({ instagram: e.target.value })} placeholder="@yourstudio" className={input} />
         </div>
+      </section>
+
+      <section className={`${card} p-5 space-y-4`}>
+        <div>
+          <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Payment when booking</h3>
+          <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 mt-1">On your website and booking page. An online payment keeps the time for 30 minutes; once paid, the booking is confirmed on WhatsApp and the amount is taken off the bill.</p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Payment when booking">
+          {([['shop', 'Pay at the shop', 'No online payment'], ['choice', 'Customer chooses', 'Pay now or at the shop'], ['online', 'Pay online to book', 'Fewer no-shows']] as const).map(([value, title, sub]) => (
+            <button key={value} type="button" role="radio" aria-checked={site.bookingPay.mode === value} disabled={!canEdit} onClick={() => set({ bookingPay: { ...site.bookingPay, mode: value } })}
+              className={`text-left rounded-xl border-2 p-3 cursor-pointer ${site.bookingPay.mode === value ? 'border-[#1D5BEA] bg-[#f4f7fe] dark:bg-slate-900' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
+              <span className="block text-[14px] font-bold text-[#0E1B3D] dark:text-white">{title}</span>
+              <span className="block text-[12.5px] text-[#6B7894]">{sub}</span>
+            </button>
+          ))}
+        </div>
+        {site.bookingPay.mode !== 'shop' && (
+          <>
+            <div>
+              <p className={label}>How much is paid online</p>
+              <div className="flex flex-wrap gap-2">
+                {ADVANCE_CHOICES.map((n) => (
+                  <button key={n} type="button" aria-pressed={site.bookingPay.advance === n} disabled={!canEdit} onClick={() => set({ bookingPay: { ...site.bookingPay, advance: n } })}
+                    className={`h-9 px-3.5 rounded-full border text-[13.5px] font-semibold cursor-pointer ${site.bookingPay.advance === n ? 'border-[#1D5BEA] bg-[#1D5BEA] text-white' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white'}`}>
+                    {n === 100 ? 'Full amount' : `${n}% advance`}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[12px] text-[#6B7894]">{site.bookingPay.advance === 100 ? 'Customers pay the whole price of the services when they book.' : `Customers pay ${site.bookingPay.advance}% (rounded up to whole rupees) when they book, and the rest at the shop.`}</p>
+            </div>
+            {!gatewayOn && <p role="alert" className="rounded-lg bg-[#fdf0f0] p-2.5 text-[13px] font-semibold text-[#b91c1c]">Connect Razorpay or Stripe below. Until then, customers pay at the shop.</p>}
+            <OnlinePayments orgId={orgId} canManage={canManageDomain} showToast={flash} onChange={(state) => setGatewayOn(Boolean(state.use))} />
+          </>
+        )}
       </section>
 
       <StoreAddress orgId={orgId} canManage={canManageDomain} showToast={(kind, text) => flash(kind, text)} kind="website" ourLink={`${origin}/v/${meta.slug}`} />

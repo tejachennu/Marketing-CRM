@@ -14,9 +14,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 /** A Front Desk business's website on WAMA's address: /v/<workspace slug>. Own domains show the same (see /s/[slug]). */
-export default async function BusinessWebsite({ params }: { params: Promise<{ slug: string }> }) {
+export default async function BusinessWebsite({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ s?: string; p?: string }> }) {
   const { slug } = await params
+  const { s, p } = await searchParams
   const data = await loadSite(getSupabaseAdminClient(), slug)
   if (!data) notFound()
-  return <BusinessSite {...data} hours={data.page.setup.settings} bookHref={`/b/${data.view.slug}`} />
+  return <BusinessSite {...data} hours={data.page.setup.settings} bookHref={`/b/${data.view.slug}`}
+    startService={data.view.services.some((x) => x.id === s) ? s! : null} startPerson={data.view.staff.some((m) => m.id === p) ? p! : null} />
 }

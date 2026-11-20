@@ -4,6 +4,8 @@
  * both end here, so every action is checked the same way whichever way it was asked for.
  */
 
+import { advanceForBill } from './booking-pay'
+import { withPaymentsSchema } from '../payments/schema'
 import { randomBytes } from 'crypto'
 import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
 import { formatIstDay, formatIstTime, istDate, parsePhoneNumber, phoneKey } from './spoken'
@@ -15,7 +17,7 @@ import { addUsage, cardBelongsTo, insertCard, loadCard, loadPlan, recordCardUse,
 
 export type PaymentMethod = 'cash' | 'upi' | 'card'
 export const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'upi', 'card']
-export const PAYMENT_LABELS: Record<PaymentMethod | 'membership', string> = { cash: 'Cash', upi: 'UPI', card: 'Card', membership: 'Membership' }
+export const PAYMENT_LABELS: Record<PaymentMethod | 'membership' | 'online', string> = { cash: 'Cash', upi: 'UPI', card: 'Card', membership: 'Membership', online: 'Online' }
 
 export interface CustomerRef {
   contact_id?: string | null
@@ -254,6 +256,8 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   staff_name?: string | null
   /** A membership card paying from its credit (up to the bill's total) */
   membership?: { id: string; credit: number } | null
+  /** Paid online when the visit was booked (website / booking page); taken off what is left to pay */
+  advance?: number | null
 }) {
   const settings = ctx.settings
   // Without a GSTIN a business cannot charge GST: the bill carries no tax
@@ -265,13 +269,14 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   const feedbackDueAt = askFeedback ? new Date(Date.now() + (Number(settings.feedback_delay_minutes) || 120) * 60_000).toISOString() : null
   // A card's credit pays first; the rest by the chosen method, or later. Nothing left to pay = paid.
   const fromCard = input.membership ? creditToUse({ credit_balance: input.membership.credit }, totals.total) : 0
-  const due = Math.round((totals.total - fromCard) * 100) / 100
-  const method = input.membership && due <= 0 ? 'membership' : input.payment_method || null
-  const card = input.membership ? { membership_id: input.membership.id, membership_paid: fromCard } : {}
+  const fromAdvance = advanceForBill(input.advance, totals.total - fromCard)
+  const due = Math.round((totals.total - fromCard - fromAdvance) * 100) / 100
+  const method = due <= 0 && (input.membership || fromAdvance > 0) ? (fromAdvance > 0 && fromAdvance >= fromCard ? 'online' : 'membership') : input.payment_method || null
+  const card = { ...(input.membership ? { membership_id: input.membership.id, membership_paid: fromCard } : {}), ...(fromAdvance > 0 ? { advance_paid: fromAdvance } : {}) }
   for (let attempt = 0; attempt < 6; attempt++) {
     const last = await checked(db.from('salon_invoices').select('seq').eq('organization_id', ctx.organizationId).order('seq', { ascending: false }).limit(1))
     const seq = (Number(last?.[0]?.seq) || 0) + 1
-    const { data, error } = await withSalonSchema(() => withMembershipSchema(() => db.from('salon_invoices').insert({
+    const { data, error } = await withPaymentsSchema(() => withSalonSchema(() => withMembershipSchema(() => db.from('salon_invoices').insert({
       organization_id: ctx.organizationId, seq, number: formatInvoiceNumber(settings.invoice_prefix, seq),
       appointment_id: input.appointment_id || null, contact_id: input.customer.contact_id, customer_name: input.customer.name,
       customer_phone: input.customer.phone, staff_name: input.staff_name || null, items: totals.lines,
@@ -281,7 +286,7 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
       public_token: makeToken(), business, created_by: ctx.userId || null, issued_at: now,
       ...(feedbackDueAt ? { feedback_due_at: feedbackDueAt } : {}),
       ...card,
-    }).select('*').single()))
+    }).select('*').single())))
     if (!error) return data
     if (!(error.code === '23505' || /duplicate key/i.test(error.message || ''))) throw new Error(error.message)
   }
@@ -375,6 +380,7 @@ export async function executeCounterAction(
         lines: use ? use.lines : services, discount: action.discount, payment_method: action.payment_method,
         appointment_id: appointment.id, staff_name: team.staff_name,
         membership: card ? { id: card.id, credit: Number(card.credit_balance) || 0 } : null,
+        advance: appointment.payment_status === 'paid' ? Number(appointment.payment_paid) || 0 : 0,
       })
       if (card && use) await recordCardUse(db, organizationId, card.id, { sessions: use.sessions, credit: Number(invoice.membership_paid) || 0, discountSaved: use.discountSaved }, invoice.id, userId)
       const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services, staff_id: team.staff_id || appointment.staff_id || null, updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())

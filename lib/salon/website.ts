@@ -1,8 +1,10 @@
 /**
  * The Front Desk business website (salons, clinics, studios, service centres): its settings, "Open now", the
- * week's hours, and which site a business's own domain opens (website or online store). Pure, no imports
- * (browser-safe); the database side is in website-store.ts.
+ * week's hours, and which site a business's own domain opens (website or online store). Pure (browser-safe); the
+ * database side is in website-store.ts.
  */
+
+import { DEFAULT_BOOKING_PAY, readBookingPay, type BookingPay } from './booking-pay'
 
 export const SITE_COLOURS = ['#1D5BEA', '#0E1B3D', '#7A2E4D', '#0F6E6E', '#8A4B2A', '#111827'] as const
 export const MAX_GALLERY = 12
@@ -23,13 +25,17 @@ export interface SiteSettings {
   show: { prices: boolean; team: boolean; memberships: boolean; reviews: boolean }
   /** Instagram handle, shown as a link */
   instagram: string
+  /** Show the connected Instagram account's latest posts (Settings → Instagram) */
+  instagramLive: boolean
+  /** Paying while booking: at the shop, online, or the customer's choice; full or an advance */
+  bookingPay: BookingPay
   /** When the business has both: the own domain opens the website or the online store */
   domainShows: 'website' | 'store'
 }
 
 export const DEFAULT_SITE: SiteSettings = {
   enabled: true, tagline: '', about: '', cover: '', gallery: [], colour: SITE_COLOURS[0],
-  show: { prices: true, team: true, memberships: true, reviews: true }, instagram: '', domainShows: 'website',
+  show: { prices: true, team: true, memberships: true, reviews: true }, instagram: '', instagramLive: false, bookingPay: DEFAULT_BOOKING_PAY, domainShows: 'website',
 }
 
 const text = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -50,6 +56,8 @@ export function readSite(raw: unknown): SiteSettings {
     colour: /^#[0-9A-F]{6}$/.test(colour) ? colour : DEFAULT_SITE.colour,
     show: { prices: show.prices !== false, team: show.team !== false, memberships: show.memberships !== false, reviews: show.reviews !== false },
     instagram: String(v.instagram || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '').replace(/[^a-zA-Z0-9._]/g, '').slice(0, 30),
+    instagramLive: v.instagramLive === true,
+    bookingPay: readBookingPay(v.bookingPay),
     domainShows: v.domainShows === 'store' ? 'store' : 'website',
   }
 }

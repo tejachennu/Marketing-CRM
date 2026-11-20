@@ -9,6 +9,8 @@ function salonDb(seed = {}) {
     const q = {
       select() { return this },
       eq(k, v) { filters.push((r) => r[k] === v); return this },
+      // Like SQL: a NULL is never <> anything
+      neq(k, v) { filters.push((r) => r[k] != null && r[k] !== v); return this },
       in(k, list) { filters.push((r) => list.includes(r[k])); return this },
       or(expr) {
         // "first_name.ilike.pri*,last_name.ilike.pri*": any of them

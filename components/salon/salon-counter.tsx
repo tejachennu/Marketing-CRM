@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Hourglass, Loader2, MoreHorizontal, Play, Receipt, ReceiptText, UserCheck, UserX, Wallet, XCircle, Zap } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
+import { paymentNote } from '@/lib/salon/booking-pay'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { useConfirm } from '@/lib/dialog-context'
 import { announceFrontDeskBadges } from '@/lib/front-desk-nav'
@@ -240,6 +241,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                         {appointment.customer_phone && <a href={`tel:${appointment.customer_phone}`} className="text-[13px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:underline">{appointment.customer_phone}</a>}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}{mixed && serviceStaff[index] && <span className="font-normal text-[#8a94a8]">&nbsp;· {serviceStaff[index]}</span>}</span>)}
+                          {paymentNote(appointment) && <span className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#eef3fe] dark:bg-slate-800 text-[12.5px] font-bold text-[#1D5BEA] dark:text-blue-300">{paymentNote(appointment)}</span>}
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <span className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold text-[#4a5672] dark:text-slate-300">

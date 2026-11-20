@@ -26,7 +26,8 @@ export async function GET(request: Request) {
   if (status && !STATUSES.includes(status)) return apiError(400, 'invalid_request', `status is one of: ${STATUSES.join(', ')}.`, { field: 'status' })
   const page = paging(params)
   let query = auth.ctx.db.from('salon_appointments').select('*').eq('organization_id', auth.ctx.organizationId).gte('starts_at', window.start).lt('starts_at', window.end)
-  if (status) query = query.eq('status', status)
+  // A booking still waiting for its online payment is not a booking yet
+  query = status ? query.eq('status', status) : query.neq('status', 'awaiting_payment')
   const { data, error } = await withSalonSchema(() => query.order('starts_at').range(page.offset, page.offset + page.limit))
   if (error) return apiError(500, 'server_error', 'The appointments could not be read. Please try again.')
   return listResponse((data || []).map(toApiAppointment), page)

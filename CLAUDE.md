@@ -117,6 +117,38 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Stripe, paying while booking, booking form and Instagram posts on the Front Desk website** (owner, 20 Nov 2026: "photo
+  gallery or instgram posts, booking form also dynamic, pay also while booking or at store, support stripe gateway").
+  **Stripe** on the business's OWN account (`lib/payments/stripe.ts`: plain REST, form-encoded `formBody`, Checkout Sessions
+  `checkoutForm` / `createCheckout` (≥30 min, Stripe's minimum) / `getCheckout` / `readCheckout`, `refundStripe`,
+  `verifyStripeWebhook` "t=,v1=" HMAC with 5-min tolerance, `minorUnits`). Keys `organizations.stripe_secret_key`,
+  `stripe_webhook_secret`, and `pay_gateway` (which one when both are connected; `lib/payments/gateway.ts`
+  `onlineGateway`). Lock 724519036, migration `20261210_stripe_and_booking_payments.sql` (`lib/payments/schema.ts`
+  `withPaymentsSchema`). Settings: one shared card `components/payments/online-payments.tsx` (Razorpay + Stripe +
+  "Customers pay with") used by Store → Website and Front Desk → Setup → Website and booking; API
+  `GET/PUT/DELETE /api/commerce/storefront/payments` (PUT `{gateway:'stripe', secretKey, webhookSecret}` or `{use}`;
+  DELETE `?gateway=`). Store checkout: order route opens Stripe Checkout (`shipping_address.payment.session_id`), the
+  page goes to Stripe and back with `?paid=<order>&session=` (`returnBase` in `lib/payments/return-url.ts` only trusts
+  WAMA's address or the store's own domain), `/pay` checks `sessionId`; refunds through Stripe (`returns-store.ts`).
+  Webhooks: `POST /api/public/store/[slug]/stripe-webhook` (store orders and bookings, by `metadata.wama_kind`) and
+  the Razorpay one now also marks bookings (`notes.wama_kind = 'booking'`).
+  **Paying while booking** (`lib/salon/booking-pay.ts`, pure; kept in `salon_settings.website.bookingPay` {mode shop |
+  choice | online, advance %}): `bookingPayOptions` (never no way to book), `amountOnline` (advance rounded up to
+  rupees). An online booking is saved as status `awaiting_payment` with `payment_hold_until` (30 min); `holdsTime` in
+  availability.ts keeps the time held only until then; the counter, ranges and `/api/v1/appointments` hide those rows.
+  `lib/salon/booking-payments.ts`: `startBookingPayment` (Razorpay order / Stripe Checkout, ref in `payment_ref`),
+  `markBookingPaid` (once, amount ≥ asked → booked or request; after an expired hold with the time taken → request with
+  a note), `checkBookingPayment`, `payAtShopInstead`, `expireUnpaidBookings` (cancelled + expired after a day). Routes:
+  `POST /api/public/booking/[slug]` takes `pay` + `returnPath`, `POST /api/public/booking/[slug]/pay` (check / Razorpay
+  signature / `action: 'shop'`). The advance is taken off the bill (`issueInvoice` `advance` → `salon_invoices.advance_paid`;
+  fully paid → method `online`); bill page shows "Paid online when booking". Counter, requests and the appointment sheet
+  show `paymentNote`. **Website**: the booking form is inside the page (`#book`, `BookingWizard embedded colour`), Book
+  buttons pick the service / person there (`components/salon-site/book-button.tsx`, window event `wama-book`), the
+  wizard has a payment step (Razorpay window or Stripe page, "Payment not finished" with Try again / Pay at the shop /
+  check again). Latest Instagram posts of the connected account (`site.instagramLive`, `loadSite` → `instagramPosts`
+  via `latestPosts`, cached 30 min) under the photos. Tests `tests/payments.test.cjs`. Checked with local screenshots
+  (320 / 390 / 1280, no sideways scroll). **Not tried with real Stripe or Razorpay keys yet; Stripe's API shapes are
+  from memory (its docs were not opened from here). Mobile app not updated. Next free lock: 724519037.**
 - **Front Desk website, on our address or the business's own domain** (owner, 20 Nov 2026: "same for the frontdesk
   connector ... website ... own domain else our domain"). `lib/salon/website.ts` (pure: `readSite` {enabled, tagline,
   about, cover, gallery ≤12 https, colour from `SITE_COLOURS`, show {prices, team, memberships, reviews}, instagram,

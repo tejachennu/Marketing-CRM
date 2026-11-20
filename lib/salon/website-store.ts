@@ -5,7 +5,8 @@
  */
 
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
-import { loadBookingPage, publicView, type BookingPage } from './booking-page'
+import { bookableDays, loadBookingPage, publicView, type BookingPage } from './booking-page'
+import { latestPosts } from '../instagram/store'
 import { readSite, domainOpens, type SiteSettings } from './website'
 import { readStorefront } from '../commerce/storefront'
 
@@ -75,6 +76,10 @@ export interface SiteData {
   reviewLink: string | null
   /** The business's online store link, when its store is on */
   storeLink: string | null
+  /** Days the booking form offers */
+  days: string[]
+  /** The connected Instagram account's latest posts, when the website shows them */
+  instagramPosts: { id: string; image: string; link: string; caption: string }[]
 }
 
 /** Everything the website shows, by the workspace slug; null when the website (or Front Desk) is off. */
@@ -83,11 +88,16 @@ export async function loadSite(db: any, slug: string): Promise<SiteData | null> 
   if (!page) return null
   const site = await loadSiteSettings(db, page.organization.id)
   if (!site.enabled) return null
-  const [feedback, plans, org] = await Promise.all([
+  const [feedback, plans, org, instagram] = await Promise.all([
     db.from('salon_feedback').select('rating, comment, customer_name, created_at').eq('organization_id', page.organization.id).order('created_at', { ascending: false }).limit(500),
     db.from('salon_membership_plans').select('name, price, validity_days, discount_percent, credit, sessions, colour').eq('organization_id', page.organization.id).eq('active', true).order('price'),
     db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle(),
+    // Cached on the account for 30 minutes, so the website does not ask Instagram on every visit
+    site.instagramLive ? latestPosts(db, page.organization.id).catch(() => ({ posts: [] })) : Promise.resolve({ posts: [] }),
   ])
+  const instagramPosts = ((instagram as any).posts || [] as any[])
+    .filter((p: any) => /^https:\/\//.test(String(p?.image || '')) && /^https:\/\//.test(String(p?.link || '')))
+    .slice(0, 8).map((p: any) => ({ id: String(p.id), image: String(p.image), link: String(p.link), caption: String(p.caption || '').slice(0, 200) }))
   const ratings = (feedback.data || []) as { rating: number; comment: string | null; customer_name: string | null; created_at: string }[]
   const average = ratings.length ? Math.round((ratings.reduce((s, r) => s + r.rating, 0) / ratings.length) * 10) / 10 : 0
   // Good reviews with words, first name only
@@ -97,5 +107,7 @@ export async function loadSite(db: any, slug: string): Promise<SiteData | null> 
   return {
     page, view: publicView(page), site, average, count: ratings.length, reviews, plans: plans.error ? [] : plans.data || [], reviewLink,
     storeLink: storeOn(org.data) ? `/s/${page.organization.slug}` : null,
+    days: bookableDays(page.setup.settings),
+    instagramPosts,
   }
 }

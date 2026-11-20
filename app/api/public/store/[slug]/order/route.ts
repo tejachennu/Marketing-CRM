@@ -11,6 +11,10 @@ import { askCodCheck } from '@/lib/commerce/cod-check'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
+import { onlineGateway } from '@/lib/payments/gateway'
+import { createCheckout, SESSION_PLACEHOLDER, stripeKeys } from '@/lib/payments/stripe'
+import { withPaymentsSchema } from '@/lib/payments/schema'
+import { returnBase, withQuery } from '@/lib/payments/return-url'
 import { loadShopper, samePhone, saveShopper, shopperFrom, withStoreAccountsSchema } from '@/lib/commerce/store-accounts'
 import { loadLoyaltySettings, pointsBalance, usePoints } from '@/lib/commerce/loyalty-store'
 import { memberDiscount, pointsUsable } from '@/lib/commerce/loyalty'
@@ -36,9 +40,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
   if (!checkRateLimit(`store-order-phone:${parsed.order.customer.phone}`, 6, 24 * 60 * 60_000).allowed) return NextResponse.json({ error: 'You have placed several orders today. Please call the shop for more.' }, { status: 429 })
   try {
-    const { data: org } = await db.from('organizations').select('id, currency, commerce_default_shipping_fee, commerce_free_shipping_threshold, store_razorpay_key_id, store_razorpay_key_secret').eq('id', page.organization.id).maybeSingle()
-    const keys = parsed.pay === 'online' ? storeRazorpayKeys(org) : null
-    if (parsed.pay === 'online' && !keys) return NextResponse.json({ error: 'Online payment is not available here right now. Please choose to pay on delivery or pick up.' }, { status: 400 })
+    const { data: org } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
+    // Online payment through the business's own Razorpay or Stripe (its pick when both are connected)
+    const gateway = parsed.pay === 'online' ? onlineGateway(org) : null
+    const keys = gateway === 'razorpay' ? storeRazorpayKeys(org) : null
+    const stripe = gateway === 'stripe' ? stripeKeys(org) : null
+    if (parsed.pay === 'online' && !keys && !stripe) return NextResponse.json({ error: 'Online payment is not available here right now. Please choose to pay on delivery or pick up.' }, { status: 400 })
     if (parsed.order.handover === 'delivery') parsed.order.shippingFee = deliveryCharge(page.settings, parsed.subtotal, org || {})
     // A typed code, or the best offer that applies by itself (decided here, never by the browser)
     const decided = await decideDiscount(db, page.organization.id, body?.code, cartForDiscount(page, parsed.order.items, parsed.order.shippingFee || 0), parsed.order.customer.phone)
@@ -80,7 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     for (const item of parsed.order.items) if (item.variantId) await changeVariantStock(db, page.organization.id, item.variantId, -item.quantity).catch(() => null)
     await markRecovered(db, page.organization.id, parsed.order.customer.phone, order.id).catch(() => null)
     // Cash on Delivery: ask on WhatsApp before shipping ("Yes, send it" / "Cancel order")
-    if (!keys && parsed.order.handover === 'delivery' && parsed.order.customer.phone) {
+    if (!keys && !stripe && parsed.order.handover === 'delivery' && parsed.order.customer.phone) {
       const { data: fullOrg } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
       if (fullOrg) await askCodCheck(db, fullOrg, order, parsed.order.customer.phone).catch(() => null)
     }
@@ -98,15 +105,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }).catch((error: any) => console.error('[Store order shopper]', error?.message))
     }
 
-    // Pay online: the order waits for its payment, which goes to the business's own Razorpay
-    if (keys) {
+    // Pay online: the order waits for its payment, which goes to the business's own Razorpay or Stripe
+    if (keys || stripe) {
       try {
-        const payment = await createStorePayment(keys, order)
+        if (stripe) {
+          // Back to the page the customer paid from (WAMA's address or the shop's own domain)
+          const base = returnBase({ origin: request.headers.get('origin'), appUrl: process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin, domain: page.organization.domain, path: body?.returnPath, fallback: `/s/${page.organization.slug}` })
+          const session = await createCheckout(stripe.secretKey, {
+            amount: Number(order.total_amount) || 0, currency: String(order.currency || 'INR'),
+            title: `${page.organization.name} · order #${order.order_number}`,
+            description: parsed.order.items.map((i) => `${i.quantity} × ${i.title}`).join(', ').slice(0, 400),
+            metadata: { wama_kind: 'order', wama_order_id: order.id, wama_order_number: order.order_number },
+            reference: order.order_number,
+            successUrl: withQuery(base, { paid: order.order_number, session: SESSION_PLACEHOLDER }),
+            cancelUrl: withQuery(base, { unpaid: order.order_number }),
+            email: body?.email ? String(body.email) : null,
+            minutes: 60,
+          })
+          const shipping = { ...(order.shipping_address || {}), payment: { gateway: 'stripe', session_id: session.id } }
+          await withPaymentsSchema(() => db.from('commerce_orders').update({ status: 'payment_pending', payment_method: 'stripe', shipping_address: shipping }).eq('id', order.id))
+          return NextResponse.json({
+            success: true, orderNumber: order.order_number, total: Number(order.total_amount), shipping: Number(order.shipping_fee), currency: order.currency,
+            stripe: { sessionId: session.id, url: session.url },
+          })
+        }
+        const payment = await createStorePayment(keys!, order)
         const shipping = { ...(order.shipping_address || {}), payment: { gateway: 'razorpay', order_id: payment.id } }
         await db.from('commerce_orders').update({ status: 'payment_pending', payment_method: 'razorpay', shipping_address: shipping }).eq('id', order.id)
         return NextResponse.json({
           success: true, orderNumber: order.order_number, total: Number(order.total_amount), shipping: Number(order.shipping_fee), currency: order.currency,
-          razorpay: { keyId: keys.keyId, orderId: payment.id, amount: payment.amount, currency: payment.currency, name: page.organization.name, customer: { name: parsed.order.customer.name, contact: parsed.order.customer.phone } },
+          razorpay: { keyId: keys!.keyId, orderId: payment.id, amount: payment.amount, currency: payment.currency, name: page.organization.name, customer: { name: parsed.order.customer.name, contact: parsed.order.customer.phone } },
         })
       } catch (error: any) {
         console.error('[Store page payment]', error?.message)

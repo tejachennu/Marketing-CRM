@@ -31,7 +31,7 @@ const appointment = {
   id: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d', status: 'booked', starts_at: '2026-11-08T11:30:00.000Z', ends_at: '2026-11-08T12:30:00.000Z',
   customer: { name: 'Priya Sharma', phone: '+919876543210', contact_id: contact.id },
   services: [{ service_id: service.id, name: 'Facial', price: 1200, duration_minutes: 60, staff_id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', staff_name: 'Anitha' }],
-  staff_id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', invoice_id: null, source: 'api', notes: null, created_at: '2026-11-08T09:00:00.000Z',
+  staff_id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', invoice_id: null, source: 'api', notes: null, paid_online: 0, created_at: '2026-11-08T09:00:00.000Z',
 }
 const invoice = {
   id: '4d5e6f70-8192-4a3b-9c4d-5e6f708192a3', number: 'GLOW-0042', status: 'paid', customer: { name: 'Priya Sharma', phone: '+919876543210', contact_id: contact.id }, appointment_id: appointment.id,
