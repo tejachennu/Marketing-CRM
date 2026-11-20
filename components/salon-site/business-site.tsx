@@ -10,6 +10,7 @@ import { planBenefits } from '@/lib/salon/membership-rules'
 import { openStatus, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
 import { ServicesMenu } from './services-menu'
 import { BookButton } from './book-button'
+import { SiteChat } from '@/components/site-chat/site-chat'
 import { BookingWizard } from '@/app/b/[slug]/booking-wizard'
 import type { BookingPageView } from '@/lib/salon/booking-page'
 
@@ -32,6 +33,8 @@ export interface BusinessSiteProps {
   startPerson?: string | null
   /** The connected Instagram account's latest posts (when switched on) */
   instagramPosts?: { id: string; image: string; link: string; caption: string }[]
+  /** The AI chat (switched on in settings, and the AI can answer) */
+  chat?: boolean
   now?: number
 }
 
@@ -58,7 +61,7 @@ function SectionHead({ id, kicker, title, children }: { id?: string; kicker: str
   )
 }
 
-export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, days, startService = null, startPerson = null, instagramPosts = [], now = Date.now() }: BusinessSiteProps) {
+export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, days, startService = null, startPerson = null, instagramPosts = [], chat = false, now = Date.now() }: BusinessSiteProps) {
   const phoneDigits = String(view.phone || '').replace(/\D/g, '')
   const callHref = phoneDigits.length >= 10 ? `tel:+${phoneDigits}` : null
   const waHref = phoneDigits.length >= 10 ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Hi ${view.business}`)}` : null
@@ -368,6 +371,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
       </footer>
 
       {/* Phones: Call · WhatsApp · Book now */}
+      {chat && <SiteChat kind="desk" endpoint={`/api/public/booking/${view.slug}/chat`} storageKey={`site-chat:${view.slug}`} name={view.business} logo={view.logo} whatsapp={phoneDigits.length >= 10 ? phoneDigits : null} phone={view.phone} raised />}
       <nav aria-label="Quick actions" className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white border-t border-[#e3e8f2] grid grid-cols-4 shadow-[0_-2px_10px_rgba(14,27,61,0.08)]">
         {callHref ? <a href={callHref} className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><Phone size={20} /> Call</a> : <span />}
         {waHref ? <a href={waHref} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><MessageCircle size={20} /> WhatsApp</a> : <span />}

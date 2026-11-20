@@ -7,6 +7,7 @@
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import { bookableDays, loadBookingPage, publicView, type BookingPage } from './booking-page'
 import { latestPosts } from '../instagram/store'
+import { getAiAccess } from '../ai-access'
 import { readSite, domainOpens, type SiteSettings } from './website'
 import { readStorefront } from '../commerce/storefront'
 
@@ -80,6 +81,17 @@ export interface SiteData {
   days: string[]
   /** The connected Instagram account's latest posts, when the website shows them */
   instagramPosts: { id: string; image: string; link: string; caption: string }[]
+  /** The AI chat shows on the website (switched on, and the AI can answer) */
+  chat: boolean
+}
+
+/** Why the website's AI chat cannot answer right now, in plain words for the owner; null when it can. */
+export async function siteChatProblem(db: any, org: any): Promise<string | null> {
+  if (!org) return 'Workspace not found.'
+  if (org.enable_ai === false) return 'AI replies are switched off for this workspace (Settings → AI).'
+  const ai = await getAiAccess(db, org.id, org).catch(() => null)
+  if (!ai?.allowed) return ai?.reason || 'AI is not available right now.'
+  return null
 }
 
 /** Everything the website shows, by the workspace slug; null when the website (or Front Desk) is off. */
@@ -109,5 +121,6 @@ export async function loadSite(db: any, slug: string): Promise<SiteData | null> 
     storeLink: storeOn(org.data) ? `/s/${page.organization.slug}` : null,
     days: bookableDays(page.setup.settings),
     instagramPosts,
+    chat: site.chat && !(await siteChatProblem(db, org.data)),
   }
 }

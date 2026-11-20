@@ -849,8 +849,8 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
 
       {/* The AI chat (Website settings → AI chat on your website) */}
       {store.chat && !panel && !accountView && !sheet && (
-        <StoreChat slug={store.slug} storeName={store.name} whatsapp={store.whatsapp} money={money} productHref={productHref} raised={Boolean(viewing)}
-          onAdd={(id) => setQty(id, (cart[id] || 0) + 1)} />
+        <StoreChat slug={store.slug} storeName={store.name} logo={store.logo || null} whatsapp={store.whatsapp} phone={store.phone} money={money} productHref={productHref} raised={Boolean(viewing)}
+          onAdd={(id) => setQty(id, (cart[id] || 0) + 1)} authHeaders={() => shopper.headers()} />
       )}
 
       {sheet === 'sort' && (

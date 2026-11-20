@@ -118,6 +118,28 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Website AI assistants answer from the business's own data; order / booking checks; new chat design** (owner, 21 Nov
+  2026: "answer from the data it have, services products ... where is my order ... 100% accurate ... design
+  improvements"). `lib/ai/site-assistant.ts` (pure): `storeFacts` (delivery charge / free-from / minimum, pick up, paying
+  incl. gateway methods, returns days, loyalty, automatic offers, "never make up a code", the store's info pages, contact)
+  and `deskFacts` (hours + each day + open now, every service with price and length by category, team and what each
+  does, booking and paying rules, memberships, rating, about) given to the AI as true facts (`answerFromKnowledge`
+  `facts`, `where`); `serviceHits` (services as `kind: 'service'` knowledge → cards with Book). **Amount check**
+  (`strictAmounts`): `unknownAmounts` (every ₹ amount in the reply must be in the facts / knowledge, or a sum of two);
+  a wrong one → asked once more (temperature 0) → still wrong → "the team will tell you" (hand-off). **No-AI answers**:
+  `asksAboutOrder` / `asksAboutBooking` (English, Tenglish, Hinglish), `findOrderNumber` (ORD-YYMMDD-XXXX), `findPhone`,
+  `findName`, `detailsGiven` (this and earlier messages), `orderReply`. Store chat (`/api/public/store/[slug]/chat`):
+  signed-in shopper → own latest orders; order number + phone → `trackOrder`; else asks (form 'order'); 10 look-ups an
+  hour per address; works before the AI check. Front Desk chat (`POST /api/public/booking/[slug]/chat`, new): upcoming
+  bookings by phone + first name (both must match; form 'booking'); else the AI with `deskFacts` + `serviceHits`.
+  Setting `salon_settings.website.chat` (default on; Setup → Website and booking → "AI chat on your website" with the
+  `siteChatProblem` note); `loadSite` → `chat` only when the AI can answer. Shared window `components/site-chat/site-chat.tsx`
+  (`SiteChat kind="store"|"desk"`: header with logo, quick-action tiles then a chip row, *bold* / • / links rendered
+  safely, product cards (Add to cart), service cards (Book → `wama-book` event, the page's booking form), order card
+  with a step bar, booking card, inline look-up forms, WhatsApp / Call on hand-off, typing dots, New chat; full screen on
+  phones). `app/s/[slug]/store-chat.tsx` is now a thin wrapper (passes the shopper's token). Tests
+  `tests/site-assistant.test.cjs` (incl. a made-up price never reaching the customer). Screenshots 320 / 390 / 1280.
+  **Not tried against the real AI or real orders yet.**
 - **Stripe, paying while booking, booking form and Instagram posts on the Front Desk website** (owner, 20 Nov 2026: "photo
   gallery or instgram posts, booking form also dynamic, pay also while booking or at store, support stripe gateway").
   **Stripe** on the business's OWN account (`lib/payments/stripe.ts`: plain REST, form-encoded `formBody`, Checkout Sessions

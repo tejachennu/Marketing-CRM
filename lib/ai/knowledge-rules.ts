@@ -22,7 +22,7 @@ export interface KnowledgeHit {
   /** Strength of the word match, 0–1, when the word search found it */
   wordScore: number | null
   /** faq = typed by the business; part = a piece of a PDF, website or document; product = from the store's products */
-  kind?: 'faq' | 'part' | 'product'
+  kind?: 'faq' | 'part' | 'product' | 'service'
   /** For parts: the source's name and the page address */
   sourceTitle?: string | null
   url?: string | null
@@ -79,6 +79,7 @@ export function knowledgeText(hits: (Pick<KnowledgeHit, 'title' | 'content'> & P
   if (!hits.length) return '(nothing in the knowledge base matched this question)'
   return hits.map((h, i) => {
     if (h.kind === 'product') return `[${i + 1}] Product in the store: ${h.title}\n${h.content}`
+    if (h.kind === 'service') return `[${i + 1}] Service: ${h.title}\n${h.content}`
     if (h.kind === 'part') return `[${i + 1}] From the business's ${h.sourceTitle ? `"${h.sourceTitle}"` : 'document'} (${h.title}):\n${h.content}`
     const extras = (h.media || []).map((m) => m.type === 'link' ? `link "${m.name || m.url}"` : (m.name ? `${m.type} "${m.name}"` : m.type))
     return `[${i + 1}] Question: ${h.title}\nAnswer: ${h.content}${extras.length ? `\n(Sent with this answer: ${extras.join(', ')})` : ''}`

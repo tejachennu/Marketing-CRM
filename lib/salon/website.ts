@@ -27,6 +27,8 @@ export interface SiteSettings {
   instagram: string
   /** Show the connected Instagram account's latest posts (Settings → Instagram) */
   instagramLive: boolean
+  /** The AI chat on the website (answers from the services, hours, team and Knowledge Base) */
+  chat: boolean
   /** Paying while booking: at the shop, online, or the customer's choice; full or an advance */
   bookingPay: BookingPay
   /** When the business has both: the own domain opens the website or the online store */
@@ -35,7 +37,7 @@ export interface SiteSettings {
 
 export const DEFAULT_SITE: SiteSettings = {
   enabled: true, tagline: '', about: '', cover: '', gallery: [], colour: SITE_COLOURS[0],
-  show: { prices: true, team: true, memberships: true, reviews: true }, instagram: '', instagramLive: false, bookingPay: DEFAULT_BOOKING_PAY, domainShows: 'website',
+  show: { prices: true, team: true, memberships: true, reviews: true }, instagram: '', instagramLive: false, chat: true, bookingPay: DEFAULT_BOOKING_PAY, domainShows: 'website',
 }
 
 const text = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -57,6 +59,7 @@ export function readSite(raw: unknown): SiteSettings {
     show: { prices: show.prices !== false, team: show.team !== false, memberships: show.memberships !== false, reviews: show.reviews !== false },
     instagram: String(v.instagram || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '').replace(/[^a-zA-Z0-9._]/g, '').slice(0, 30),
     instagramLive: v.instagramLive === true,
+    chat: v.chat !== false,
     bookingPay: readBookingPay(v.bookingPay),
     domainShows: v.domainShows === 'store' ? 'store' : 'website',
   }

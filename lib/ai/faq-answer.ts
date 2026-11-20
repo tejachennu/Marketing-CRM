@@ -19,6 +19,7 @@ import {
   type AnswerStatus, type Attachment, type Confidence, type HandoffReason, type HandoffSettings, type KnowledgeHit,
 } from './knowledge-rules'
 import { searchKnowledge } from './knowledge-store'
+import { unknownAmounts } from './site-assistant'
 import { DEFAULT_STYLE, plainText, quickButtons, readReplyStyle, styleRules, type ReplyPlan, type ReplyStyle } from './reply-format'
 
 export interface ChatTurn {
@@ -42,6 +43,15 @@ export interface AnswerInput {
   products?: (search: string) => KnowledgeHit[]
   /** Tone, emoji, quick buttons (Settings → How the AI replies) */
   style?: ReplyStyle
+  /** More true facts from the business's own data (the website chats: services, hours, delivery, returns …) */
+  facts?: string
+  /** What the chat is: shown in the prompt ('online store chat', 'website chat') */
+  where?: string
+  /**
+   * Every amount in the reply must be in the facts or the knowledge (site-assistant.ts unknownAmounts). A reply with
+   * any other amount is written again once; if it still has one, it becomes "the team will tell you".
+   */
+  strictAmounts?: boolean
 }
 
 export interface AnswerResult {
@@ -79,20 +89,22 @@ export function businessFacts(org: any): string {
 }
 
 /** The system prompt (exported for tests). */
-export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string; style?: ReplyStyle } = {}): string {
+export function answerPrompt(org: any, hits: (Pick<KnowledgeHit, 'title' | 'content'> & Partial<KnowledgeHit>)[], opts: { askedPerson?: boolean; channel?: string; style?: ReplyStyle; facts?: string; where?: string } = {}): string {
   const style = opts.style || DEFAULT_STYLE
-  const where = opts.channel === 'instagram' ? 'Instagram' : opts.channel === 'website' ? 'online store chat' : 'WhatsApp'
+  const where = opts.where || (opts.channel === 'instagram' ? 'Instagram' : opts.channel === 'website' ? 'online store chat' : 'WhatsApp')
   const own = String(org?.chatbot_base_prompt || '').trim()
   return `You are the ${where} assistant of ${org?.name || 'this business'}. You answer customers for the business like a helpful, honest shop assistant.
 ${own ? `\nTHE BUSINESS'S OWN INSTRUCTIONS (follow them, but never invent facts):\n${own}\n` : ''}
 BUSINESS DETAILS (true facts):
-${businessFacts(org)}
+${businessFacts(org)}${opts.facts ? `\n${opts.facts}` : ''}
 
 KNOWLEDGE BASE (the business's own answers and documents; with the details above, your only source of truth):
 ${knowledgeText(hits)}
 
 HOW TO ANSWER:
 - Answer only with facts written above. Never guess or invent prices, timings, stock, offers, policies, links or phone numbers.
+- Prices, charges and times: copy them exactly as written above (same amount, same words). Never add, round or work out a new amount unless the customer asks for a total of items listed above.
+- When the customer asks about a product or service, answer for that exact one; if several match, name them with their prices and ask which one.
 - If the answer is not written above, do not guess: status "unknown", and in "reply" say briefly that you will check with the team and they will reply here soon.
 - Greetings, thanks, "ok", small talk: a short warm reply, status "chat".
 - The customer asks for a person, a call back or a human: status "person"; reply briefly that someone from the team will reply here soon.
@@ -169,6 +181,8 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   }
 
   let raw = ''
+  let fixNote = ''
+  const ask = async () => {
   try {
     const res = await aiFetch(db, ai, feature, 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -176,18 +190,34 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
       body: JSON.stringify({
         model: MODEL,
         messages: [
-          { role: 'system', content: answerPrompt(org, hits, { askedPerson, channel: input.channel, style }) },
+          { role: 'system', content: answerPrompt(org, hits, { askedPerson, channel: input.channel, style, facts: input.facts, where: input.where }) },
           ...history.map((m) => ({ role: m.role, content: m.content.slice(0, 1500) })),
           { role: 'user', content: message },
+          ...(fixNote ? [{ role: 'system', content: fixNote }] : []),
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.2,
+        temperature: input.strictAmounts ? 0 : 0.2,
         max_tokens: 600,
       }),
       signal: AbortSignal.timeout(25000),
     })
     if (res.ok) raw = String((await res.json())?.choices?.[0]?.message?.content || '')
   } catch {}
+  }
+  await ask()
+  // Accuracy: an amount that is not in the business's data is never sent. Ask once more, then hand over.
+  let amountsOk = true
+  if (raw && input.strictAmounts) {
+    const sources = [businessFacts(org), input.facts || '', ...hits.map((h) => `${h.title}\n${h.content}`)]
+    let wrong = unknownAmounts(parseAnswer(raw).reply, sources)
+    if (wrong.length) {
+      fixNote = `Your reply had amounts that are not in the details above: ${wrong.join(', ')}. Write it again using only amounts written above, exactly as written. If the amount is not written above, use status "unknown".`
+      raw = ''
+      await ask()
+      wrong = raw ? unknownAmounts(parseAnswer(raw).reply, sources) : []
+      if (wrong.length) amountsOk = false
+    }
+  }
 
   if (!raw) {
     // The AI could not be reached: a customer who asked for a person still gets the team
@@ -197,6 +227,7 @@ export async function answerFromKnowledge(input: AnswerInput): Promise<AnswerRes
   }
 
   const answer = parseAnswer(raw)
+  if (!amountsOk) { answer.status = 'unknown'; answer.reply = '' }
   const decision = decideHandoff(answer, { askedPerson })
   const extras = answerExtras(hits, answer.used, decision.handoff)
   let plan: ReplyPlan

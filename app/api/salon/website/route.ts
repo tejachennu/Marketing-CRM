@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { badRequest, salonAccess } from '@/lib/salon/server'
 import { readSite } from '@/lib/salon/website'
-import { loadSiteSettings, saveSiteSettings } from '@/lib/salon/website-store'
+import { loadSiteSettings, saveSiteSettings, siteChatProblem } from '@/lib/salon/website-store'
 import { readStorefront } from '@/lib/commerce/storefront'
 import { logChange } from '@/lib/salon/change-log'
 import { accountFor } from '@/lib/instagram/store'
@@ -11,13 +11,15 @@ export const runtime = 'nodejs'
 /** The workspace's slug and whether its online store is on (the domain may open either). */
 async function about(db: any, organizationId: string) {
   const [{ data: org }, ig] = await Promise.all([
-    db.from('organizations').select('slug, enable_commerce, storefront, store_domain').eq('id', organizationId).maybeSingle(),
+    db.from('organizations').select('*').eq('id', organizationId).maybeSingle(),
     accountFor(db, organizationId).catch(() => null),
   ])
   return {
     slug: org?.slug || '', storeOn: org?.enable_commerce !== false && readStorefront(org?.storefront).enabled, domain: org?.store_domain || null,
     // The connected Instagram account (its latest posts can show on the website)
     instagram: ig ? { connected: true, username: String(ig.username || '') } : { connected: false, username: '' },
+    // Why the AI chat would not show on the website right now (null when it works)
+    chatProblem: await siteChatProblem(db, org),
   }
 }
 

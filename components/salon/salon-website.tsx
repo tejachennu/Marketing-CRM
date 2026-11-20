@@ -28,7 +28,7 @@ async function uploadPhoto(file: File): Promise<string> {
 export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId: string; canEdit: boolean; canManageDomain: boolean; flash: (kind: 'success' | 'error', message: string) => void }) {
   const [site, setSite] = useState<SiteSettings>(DEFAULT_SITE)
   const [saved, setSaved] = useState('')
-  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null; instagram: { connected: boolean; username: string } } | null>(null)
+  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null; instagram: { connected: boolean; username: string }; chatProblem: string | null } | null>(null)
   const [gatewayOn, setGatewayOn] = useState(false)
   const [busy, setBusy] = useState<'' | 'save' | 'cover' | 'gallery'>('')
   const coverRef = useRef<HTMLInputElement>(null)
@@ -39,7 +39,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
       const s = readSite(data.site)
       setSite(s)
       setSaved(JSON.stringify(s))
-      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain, instagram: data.instagram || { connected: false, username: '' } })
+      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain, instagram: data.instagram || { connected: false, username: '' }, chatProblem: data.chatProblem || null })
     }).catch((err) => flash('error', err.message))
     // Loaded once per workspace (flash may be a new function on every render)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -187,6 +187,18 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           {check('memberships', 'Memberships')}
           {check('reviews', 'Customer reviews (4 and 5 stars with words)')}
         </div>
+        <label className="flex items-start gap-2.5 rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 cursor-pointer">
+          <input type="checkbox" checked={site.chat} disabled={!canEdit} onChange={(e) => set({ chat: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+          <span className="min-w-0 text-[13.5px]">
+            <span className="block font-bold text-[#0E1B3D] dark:text-white">AI chat on your website</span>
+            <span className="block text-[#6B7894]">An "Ask us" button that answers visitors from your services and prices, timings, team, memberships and Knowledge Base, shows services with Book, and checks a customer's booking. Each answer uses a little of your AI credit.</span>
+            {site.chat && meta.chatProblem && (
+              <span role="alert" className="mt-2 block rounded-lg bg-[#fdf0f0] p-2 text-[12.5px] font-semibold text-[#b91c1c]">
+                The chat is hidden on your website: {meta.chatProblem}{/credit/i.test(meta.chatProblem) && <a href="/dashboard/billing" className="ml-1 underline">Open Billing</a>}
+              </span>
+            )}
+          </span>
+        </label>
         <div className="max-w-sm">
           <label htmlFor="site-ig" className={label}>Instagram (optional)</label>
           <input id="site-ig" maxLength={60} disabled={!canEdit} value={site.instagram} onChange={(e) => set({ instagram: e.target.value })} placeholder="@yourstudio" className={input} />
