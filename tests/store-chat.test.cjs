@@ -57,6 +57,27 @@ test('wiring: switch in Website settings, chat API limits, chat on the store pag
   assert.match(route, /if \(!page \|\| !page\.chat\)/, 'only when the business switched it on')
   assert.match(route, /if \(!ai\.allowed\)/, 'nothing runs without AI credit')
   assert.match(route, /feature: 'website_chat'/)
-  assert.match(read('lib/commerce/storefront.ts'), /chat: settings\.chat && org\.enable_ai !== false/)
+  assert.match(read('lib/commerce/storefront.ts'), /chat: settings\.chat && !\(await storeChatProblem\(db, org, shownProducts\.length\)\)/, 'the button shows only when the AI can answer')
+  assert.doesNotMatch(read('app/api/public/store/[slug]/chat/route.ts'), /status: 503/, 'no red error for shoppers when the AI cannot answer')
   assert.match(read('app/s/[slug]/storefront.tsx'), /\{store\.chat && !panel && !accountView && !sheet && \(\s*<StoreChat/)
+})
+
+test('store chat: the owner is told why the chat button is hidden', async () => {
+  const { salonDb } = require('./salon-fake-db.cjs')
+  const { storeChatProblem } = require('../lib/commerce/storefront.ts')
+  const org = { id: 'org-1', enable_ai: true, openai_api_key: 'sk-own-key' }
+  const exempt = () => salonDb({ organization_billing: [{ organization_id: 'org-1', billing_exempt: true, whatsapp_mode: 'own' }] })
+  const paying = (balance) => salonDb({ organization_billing: [{ organization_id: 'org-1', billing_exempt: false, status: 'active', ai_balance: balance, whatsapp_mode: 'own', trial_ends_at: new Date(Date.now() + 86_400_000).toISOString(), current_period_end: new Date(Date.now() + 86_400_000).toISOString() }] })
+  const saved = process.env.OPENAI_API_KEY
+  process.env.OPENAI_API_KEY = 'sk-platform'
+  try {
+    assert.match(await storeChatProblem(exempt(), { ...org, enable_ai: false }, 5), /switched off/)
+    assert.match(await storeChatProblem(salonDb({ knowledge_base: [] }), org, 0), /Add products or Knowledge Base/)
+    assert.equal(await storeChatProblem(exempt(), org, 3), null, 'AI key and products: the chat works')
+    assert.equal(await storeChatProblem(paying(120), org, 3), null, 'credit left: the chat works')
+    assert.match(await storeChatProblem(paying(0), org, 3), /credits are used up/, 'credit used up: hidden, and the owner is told')
+  } finally {
+    if (saved === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = saved
+  }
 })

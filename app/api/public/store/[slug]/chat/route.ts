@@ -32,7 +32,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
   const { data: org } = await db.from('organizations').select('*').eq('id', page.organization.id).maybeSingle()
   if (!org || org.enable_ai === false) return NextResponse.json({ error: 'Chat is not available in this store.' }, { status: 404 })
   const ai = await getAiAccess(db, org.id, org)
-  if (!ai.allowed) return NextResponse.json({ error: 'The chat is resting right now. Please message the shop on WhatsApp.' }, { status: 503 })
+  // AI cannot answer (for example the shop's AI credit ran out after the page opened): say so kindly and offer WhatsApp
+  if (!ai.allowed) {
+    console.warn(`[Store chat] ${slug}: ${ai.reason || 'AI not allowed'}`)
+    return NextResponse.json({ reply: 'Sorry, I cannot answer questions just now. Please message the shop on WhatsApp and they will help you.', products: [], buttons: [], attachments: [], handoff: true })
+  }
 
   const answer = await answerFromKnowledge({
     db, ai, org: { ...org, name: page.organization.name }, message, history: cleanChatHistory(body?.history), channel: 'website', feature: 'website_chat',

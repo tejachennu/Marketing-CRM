@@ -10,6 +10,7 @@
 import { readReturnSettings, type ReturnSettings } from './returns'
 import { readLoyaltySettings, type LoyaltySettings } from './loyalty'
 import { latestPosts } from '../instagram/store'
+import { getAiAccess } from '../ai-access'
 import { onlineGateway, type Gateway } from '../payments/gateway'
 import { MAX_INSTAGRAM_POSTS, STORE_LAYOUTS, cleanInstagramHandle, instagramPost, type StoreLayout } from './store-look'
 export { STORE_LAYOUTS, STORE_LAYOUT_INFO, type StoreLayout } from './store-look'
@@ -273,6 +274,18 @@ export function productExtras(p: any): Pick<StoreProduct, 'mrp' | 'brand' | 'add
   }
 }
 
+/**
+ * Why the store's AI chat cannot answer right now, in plain words for the owner; null when it can. The chat button is
+ * shown only when this is null, so shoppers never meet a chat that only says sorry.
+ */
+export async function storeChatProblem(db: any, org: any, productCount: number): Promise<string | null> {
+  if (org?.enable_ai === false) return 'AI replies are switched off for this workspace (Settings → AI).'
+  if (productCount === 0 && !(await hasKnowledge(db, org.id))) return 'Add products or Knowledge Base answers first, so the chat has something to answer from.'
+  const ai = await getAiAccess(db, org.id, org).catch(() => null)
+  if (!ai?.allowed) return ai?.reason || 'AI is not available right now.'
+  return null
+}
+
 /** The business has at least one FAQ or document in its Knowledge Base. */
 async function hasKnowledge(db: any, organizationId: string): Promise<boolean> {
   try {
@@ -389,7 +402,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
     returns: readReturnSettings(org.shop_returns),
     loyalty: readLoyaltySettings(org.shop_loyalty),
     instagramFeed,
-    chat: settings.chat && org.enable_ai !== false && (shownProducts.length > 0 || (await hasKnowledge(db, org.id))),
+    // Only when it can really answer (AI on, something to answer from, AI credit left)
+    chat: settings.chat && !(await storeChatProblem(db, org, shownProducts.length)),
     offers: publicOffers(discounts),
     hasCodes: discounts.some((d) => d.code !== null && isOpen(d)),
     fees: {

@@ -294,6 +294,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
   const [qr, setQr] = useState('')
   const [suggested, setSuggested] = useState<any>(null)
   const [prefilled, setPrefilled] = useState(false)
+  const [chatProblem, setChatProblem] = useState<string | null>(null)
   // What is saved: the page shows "not saved" until these match, and whether the store is really open
   const [savedSnap, setSavedSnap] = useState('')
   const [liveEnabled, setLiveEnabled] = useState(false)
@@ -306,6 +307,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
       setSettings(data.settings)
       setSuggested(data.suggested || null)
       setPrefilled(data.prefilled === true)
+      setChatProblem(data.chatProblem || null)
       setLink(data.link)
       setStoreOn(data.storeOn !== false)
       setCategories(data.categories || [])
@@ -584,6 +586,12 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           <input type="checkbox" checked={settings.chat === true} onChange={(e) => set({ chat: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
           <span>AI chat on your website<span className={`block font-normal ${hintClass}`}>A chat button on every page. It answers shoppers from your products and your Knowledge Base (Settings → Knowledge Base), shows products they can add to the cart, and sends them to your WhatsApp for anything else. Each answer uses a little of your AI wallet.</span></span>
         </label>
+        {settings.chat === true && chatProblem && (
+          <p role="alert" className="-mt-1 ml-6 rounded-lg bg-[#fdf0f0] p-2.5 text-[12.5px] font-semibold text-[#b91c1c]">
+            The chat button is hidden on your website: {chatProblem}
+            {/credit/i.test(chatProblem) && <a href="/dashboard/billing" className="ml-1 underline">Open Billing</a>}
+          </p>
+        )}
         <p className={hintClass}>Your team confirms each order from Orders. For payment online, connect Razorpay or Stripe below.</p>
       </section>
 

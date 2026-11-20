@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
-import { readStorefront, storeCategories, suggestStorefront, withStorefrontSchema, type StoreProduct } from '@/lib/commerce/storefront'
+import { readStorefront, storeCategories, storeChatProblem, suggestStorefront, withStorefrontSchema, type StoreProduct } from '@/lib/commerce/storefront'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +21,11 @@ async function suggestionFor(db: any, org: any, appBase: string, colour?: string
     Promise.resolve(db.from('salon_settings').select('business_name, address, phone, logo_url').eq('organization_id', org.id).maybeSingle()).catch(() => ({ data: null })),
   ])
   return suggestStorefront({ appUrl: appBase, organization: org, salon: salon?.data || null, products: products || [], colour })
+}
+
+async function productCount(db: any, organizationId: string): Promise<number> {
+  const { data } = await db.from('commerce_products').select('id').eq('organization_id', organizationId).limit(1)
+  return data?.length || 0
 }
 
 // GET: the online store page's settings, its address and the categories in use (any member may look).
@@ -45,6 +50,8 @@ export async function GET(request: NextRequest) {
     link: org.slug ? `${appUrl(request)}/s/${org.slug}` : null,
     storeOn: org.enable_commerce !== false,
     categories: await categoriesFor(db, org.id, settings),
+    // Why the AI chat would not show on the website right now (null when it works)
+    chatProblem: await storeChatProblem(db, org, await productCount(db, org.id)),
   })
 }
 
