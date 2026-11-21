@@ -1,3 +1,4 @@
+import { normalizePhone } from '@/lib/public-api/keys'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
@@ -633,7 +634,9 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
               let contactId = null
               if (channel === 'email') {
                 const cleanEmail = recipientEmail ? recipientEmail.toLowerCase().trim() : ''
-                const { data: existingContact } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('email', cleanEmail).maybeSingle()
+                // Only this business's contacts (never another business's contact with the same email)
+                const { data: emailMatches } = await supabase.from('contacts').select('id, first_name, last_name, tags').eq('organization_id', campaign.organization_id).eq('email', cleanEmail).limit(1)
+                const existingContact = emailMatches?.[0] || null
                 if (existingContact) {
                   contactId = existingContact.id
                   const existingTags = Array.isArray(existingContact.tags) ? existingContact.tags : []
@@ -647,8 +650,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                   const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, email: cleanEmail, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) contactId = newContact.id
                   else {
-                    const { data: fallbackContact } = await supabase.from('contacts').select('id').eq('email', cleanEmail).maybeSingle()
-                    if (fallbackContact) contactId = fallbackContact.id
+                    const { data: fallbackContacts } = await supabase.from('contacts').select('id').eq('organization_id', campaign.organization_id).eq('email', cleanEmail).limit(1)
+                    if (fallbackContacts?.[0]) contactId = fallbackContacts[0].id
                   }
                 }
               } else {
@@ -659,7 +662,9 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                   cleanPhone.startsWith('+') ? cleanPhone.slice(1) : `+${cleanPhone}`,
                   `whatsapp:${cleanPhone}`,
                   cleanPhone.replace(/[\s\-\(\)]/g, ''),
-                  cleanPhone.startsWith('+') ? cleanPhone.slice(1).replace(/[\s\-\(\)]/g, '') : `+${cleanPhone.replace(/[\s\-\(\)]/g, '')}`
+                  cleanPhone.startsWith('+') ? cleanPhone.slice(1).replace(/[\s\-\(\)]/g, '') : `+${cleanPhone.replace(/[\s\-\(\)]/g, '')}`,
+                  // The form WhatsApp's own numbers are saved in (+91 added to 10-digit Indian numbers)
+                  normalizePhone(cleanPhone) || '',
                 ])).filter(Boolean)
 
                 const { data: matchedContacts } = await supabase
@@ -681,7 +686,7 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                     await supabase.from('contacts').update({ ...(needsNameUpdate ? { first_name: firstName, last_name: lastName } : {}), tags: mergedTags }).eq('id', existingContact.id)
                   }
                 } else {
-                  const stdPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`
+                  const stdPhone = normalizePhone(cleanPhone) || (cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`)
                   const { data: newContact } = await supabase.from('contacts').insert([{ organization_id: campaign.organization_id, first_name: firstName, last_name: lastName, phone_number: stdPhone, company: contactCompany, tags: contactTags }]).select().maybeSingle()
                   if (newContact) {
                     contactId = newContact.id
@@ -691,8 +696,8 @@ export async function runCampaignWorker(campaignId: string): Promise<{ success: 
                       .select('id')
                       .eq('organization_id', campaign.organization_id)
                       .in('phone_number', phoneVariants)
-                      .maybeSingle()
-                    if (retryContact) contactId = retryContact.id
+                      .limit(1)
+                    if (retryContact?.[0]) contactId = retryContact[0].id
                   }
                 }
               }

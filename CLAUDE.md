@@ -118,6 +118,21 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Version 1 freeze: security, bug pass, app parity** (owner, 21 Nov 2026: "freeze this version ... security ni baga
+  take care ... every web feature in the app ... chatting WhatsApp native feel"). Report at the top of
+  `docs/TESTING-REPORT.md`. **Security**: the public anon key could read core tables in production →
+  `lib/security/lockdown.ts` (`LOCKDOWN_SQL`, lock 724519037, migration `20261211_lock_down_tables.sql` must stay equal:
+  RLS on every public table, anon revoked, catch-all policies dropped, `wama_my_org()` + `wama_members_read` policies,
+  safe organization columns only); Super Admin → Setup → Database security (`/api/superadmin/security`) shows open
+  tables and locks them. **The owner must run it once on production.** Twilio signatures `lib/twilio-signature.ts`
+  (logs only until `TWILIO_SIGNATURE_CHECK=enforce`). Auth try limits `lib/auth/attempts.ts`. Escaped HTML in the
+  assistant drawer, sandboxed email preview, security headers in next.config, `/api/tickets/notify` removed.
+  Contacts: phone checked and saved with `normalizePhone`, duplicates by `phoneKey`; import checks every existing number;
+  campaign worker email lookup limited to the workspace. **App**: `chats/chat_parts.dart` (day chips, grouped bubbles,
+  ticks, WhatsApp text marks, swipe to reply), new screens `front_desk/members_screen.dart`,
+  `front_desk/website_settings_screen.dart`, `store/online_payments.dart`, `ai/ai_tools.dart` (unanswered questions,
+  sources, reply style), demo answers `data/demo_launch.dart`, `Backend.uploadToStorage` (signed upload URL).
+  Next free lock: **724519038**.
 - **Website AI assistants answer from the business's own data; order / booking checks; new chat design** (owner, 21 Nov
   2026: "answer from the data it have, services products ... where is my order ... 100% accurate ... design
   improvements"). `lib/ai/site-assistant.ts` (pure): `storeFacts` (delivery charge / free-from / minimum, pick up, paying

@@ -1,3 +1,5 @@
+import { normalizePhone } from '@/lib/public-api/keys'
+import { phoneKey } from '@/lib/salon/spoken'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess, verifyRecordAccess } from '@/lib/api-auth-helper'
@@ -185,21 +187,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const normalizedPhone = phoneNumber.replace(/[\s-()]/g, '')
-
-    // Check if contact already exists in this organization
-    const { data: existing, error: existingError } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('phone_number', normalizedPhone)
-      .single()
-
-    if (existingError && existingError.code !== 'PGRST116') {
-      throw existingError
+    // The same form as WhatsApp's own numbers, so the customer's messages land on this contact
+    const normalizedPhone = normalizePhone(phoneNumber)
+    if (!normalizedPhone) {
+      return NextResponse.json({ error: 'Please type a valid mobile number, like 98765 43210 or +91 98765 43210.' }, { status: 400 })
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) {
+      return NextResponse.json({ error: 'That email address does not look right.' }, { status: 400 })
     }
 
-    if (existing) {
+    // Already saved? (by the last 10 digits, with or without the country code)
+    const key = phoneKey(normalizedPhone)
+    const { data: existingRows, error: existingError } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .or(`phone_number.ilike.*${key},whatsapp_number.ilike.*${key}`)
+      .limit(1)
+
+    if (existingError) throw existingError
+
+    if (existingRows?.length) {
       return NextResponse.json(
         { error: 'Contact with this phone number already exists' },
         { status: 409 }
@@ -312,26 +320,33 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const normalizedPhone = phone_number.replace(/[\s-()]/g, '')
-
-    // Check if another contact in this organization has this phone number
-    const { data: existing, error: existingError } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('phone_number', normalizedPhone)
-      .neq('id', id)
-      .single()
-
-    if (existingError && existingError.code !== 'PGRST116') {
-      throw existingError
+    // An unchanged number stays as it is (WhatsApp ids and Instagram contacts are not phone numbers);
+    // a new one is saved like WhatsApp's own numbers and must not belong to another contact
+    const { data: current } = await supabase.from('contacts').select('phone_number').eq('id', id).eq('organization_id', organizationId).maybeSingle()
+    const unchanged = current && String(current.phone_number || '').replace(/[\s-()]/g, '') === String(phone_number).replace(/[\s-()]/g, '')
+    const normalizedPhone = unchanged ? current.phone_number : normalizePhone(phone_number)
+    if (!normalizedPhone) {
+      return NextResponse.json({ error: 'Please type a valid mobile number, like 98765 43210 or +91 98765 43210.' }, { status: 400 })
     }
 
-    if (existing) {
-      return NextResponse.json(
-        { error: 'Another contact with this phone number already exists' },
-        { status: 409 }
-      )
+    if (!unchanged) {
+      const key = phoneKey(normalizedPhone)
+      const { data: clash, error: existingError } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .or(`phone_number.ilike.*${key},whatsapp_number.ilike.*${key}`)
+        .neq('id', id)
+        .limit(1)
+
+      if (existingError) throw existingError
+
+      if (clash?.length) {
+        return NextResponse.json(
+          { error: 'Another contact with this phone number already exists' },
+          { status: 409 }
+        )
+      }
     }
 
     let formattedTags: string[] | undefined = undefined

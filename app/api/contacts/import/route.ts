@@ -1,3 +1,5 @@
+import { normalizePhone } from '@/lib/public-api/keys'
+import { phoneKey } from '@/lib/salon/spoken'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyOrgAccess } from '@/lib/api-auth-helper'
@@ -33,22 +35,19 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseClient()
 
-    // 1. Fetch existing phone numbers in organization for deduplication
-    const { data: existingRows } = await supabase
-      .from('contacts')
-      .select('phone_number')
-      .eq('organization_id', organizationId)
-
+    // 1. Every number already saved, as its last 10 digits (all pages: one read stops at 1,000 rows)
     const existingPhoneSet = new Set<string>()
-    if (existingRows) {
-      existingRows.forEach((r: any) => {
-        if (r.phone_number) {
-          const norm = r.phone_number.replace(/[\s-()]/g, '')
-          existingPhoneSet.add(norm)
-          // Also add without leading '+'
-          existingPhoneSet.add(norm.replace(/^\+/, ''))
-        }
-      })
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error: pageError } = await supabase
+        .from('contacts')
+        .select('phone_number, whatsapp_number')
+        .eq('organization_id', organizationId)
+        .range(from, from + 999)
+      if (pageError) throw pageError
+      for (const r of page || []) {
+        for (const p of [r.phone_number, r.whatsapp_number]) if (p) existingPhoneSet.add(phoneKey(p))
+      }
+      if (!page || page.length < 1000) break
     }
 
     const validNewContacts: any[] = []
@@ -57,28 +56,25 @@ export async function POST(request: NextRequest) {
     const seenInBatch = new Set<string>()
 
     for (const c of contacts) {
-      const rawPhone = String(c.phoneNumber || c.phone || '').trim()
-      const normalizedPhone = rawPhone.replace(/[\s-()]/g, '')
-      const phoneWithoutPlus = normalizedPhone.replace(/^\+/, '')
-
-      if (!normalizedPhone || normalizedPhone.length < 5) {
+      // The same form as WhatsApp's own numbers (+<country code><number>; 10-digit Indian numbers get +91),
+      // so a customer who writes later lands on this contact, not a new one
+      const normalizedPhone = normalizePhone(String(c.phoneNumber || c.phone || '').trim())
+      if (!normalizedPhone) {
         skippedCount++
         continue
       }
-
-      if (existingPhoneSet.has(normalizedPhone) || existingPhoneSet.has(phoneWithoutPlus) || seenInBatch.has(normalizedPhone) || seenInBatch.has(phoneWithoutPlus)) {
+      const key = phoneKey(normalizedPhone)
+      if (existingPhoneSet.has(key) || seenInBatch.has(key)) {
         skippedCount++
         continue
       }
-
-      seenInBatch.add(normalizedPhone)
-      seenInBatch.add(phoneWithoutPlus)
+      seenInBatch.add(key)
 
       validNewContacts.push({
         organization_id: organizationId,
         first_name: c.firstName ? String(c.firstName).trim() : null,
         last_name: c.lastName ? String(c.lastName).trim() : null,
-        phone_number: normalizedPhone.startsWith('+') ? normalizedPhone : `+${normalizedPhone}`,
+        phone_number: normalizedPhone,
         email: c.email ? String(c.email).trim().toLowerCase() : null,
         company: c.company ? String(c.company).trim() : null,
         tags: Array.isArray(c.tags)

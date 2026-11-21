@@ -1,5 +1,63 @@
 # WAMA CRM — Testing report
 
+## Launch check (21 Nov 2026): version 1 freeze
+
+**Branch:** `ccr-7a545d5a-4kbhlw`. The owner asked for a full bug, security and design pass before the first
+market version, and for every web feature to be in the app.
+
+| Check | Result |
+|---|---|
+| Web unit tests (`npm test`) | **807 / 807 passed** |
+| Web type check | **No errors** |
+| Web production build | **Passed** |
+| App code check (`flutter analyze lib test`) | **No issues** |
+| App tests: logic and flows | **37 / 37 passed** |
+| App tests: every screen at 320 px, 412 px and large text | **232 / 232 passed** (6 new screens added) |
+
+### Security: what was found and fixed
+
+| # | Risk | What was wrong | Fix |
+|---|---|---|---|
+| S1 | **Critical** | With only the **public** Supabase key (it is in every browser and in the app), the production database answered for core tables: workspaces, users, contacts, chats, messages, deals, tickets, orders, campaigns, password links. Only row counts were checked from here; no customer data was read. | `lib/security/lockdown.ts`: row security on every table, the public key gets nothing, signed-in team members see only their own workspace's rows, workspace secrets (tokens, keys) never. **Needs one step by the owner** (see below). Tested on a local Postgres 16. |
+| S2 | High | Twilio webhooks accepted messages without checking Twilio's signature. | `lib/twilio-signature.ts` checks it. It only logs for now; set `TWILIO_SIGNATURE_CHECK=enforce` in Vercel after the logs show `signature ok`. |
+| S3 | High | Login, code, password reset and sign-up had no limit on tries (password guessing). | `lib/auth/attempts.ts`: limits per address and per email, plain "Too many tries, wait a few minutes". |
+| S4 | Medium | AI assistant drawer and the campaign email preview could run HTML/script from text. | Text escaped; email preview in a sandboxed frame. |
+| S5 | Medium | Campaign worker looked up an email contact across **all** workspaces. | Limited to the campaign's own workspace. |
+| S6 | Low | `/api/tickets/notify` was open and no longer used. | Removed. |
+| S7 | Low | No browser security headers. | nosniff, HSTS, Referrer-Policy, Permissions-Policy; the dashboard and login cannot be put inside another site's frame. |
+
+**Owner action after deploying:** Super Admin → Setup → **Database security** → "Lock the database now"
+(or run `supabase/migrations/20261211_lock_down_tables.sql` in the Supabase SQL editor). The card shows which
+tables are still open.
+
+### Bugs fixed
+
+| # | Where | What was wrong | Fix |
+|---|---|---|---|
+| B1 | Contacts → Add | Any text was saved as a phone number; the same number typed as `98765 43210` and `+91 98765 43210` made two contacts. | Number checked and saved as `+91…`, duplicates found by the last 10 digits, email checked. Editing keeps an unchanged number as is. |
+| B2 | Contacts → Import | Only the first 1,000 existing numbers were checked for duplicates; numbers were saved in mixed forms. | Reads all numbers in pages; saves the standard form. |
+| B3 | Campaign sending | Contacts saved as `+91…` were sometimes not matched to the campaign row. | Standard form tried first. |
+| B4 | App → Booking flow → Try it | Tue and Thu showed their date twice; "Today" was offered after the last time had passed, then said "just filled up". | Date only under Today / Tomorrow; Today hidden when no time is left. |
+| B5 | Store chat | Said "resting" when the workspace had no AI key though the platform key was set. | Platform key used (earlier commit). |
+
+### App: web features added this round
+
+Memberships (cards, plans, sell, card page, send on WhatsApp), Front Desk website and booking (all settings,
+pay while booking), online payment accounts (Razorpay + Stripe, which one customers pay with), questions the
+AI couldn't answer (write the answer → FAQ), website and documents for the AI (website, file, text), how the
+AI replies (style + hand-off). Chat now looks and works like WhatsApp: day chips, grouped bubbles with tails,
+ticks (sent / delivered / read in blue / failed), *bold* _italic_ ~strike~ and links, swipe to reply, jump to the
+latest message, pill message box with a round send button.
+
+### Still needs a real try
+
+Everything in section 6 below, plus: Stripe and booking payments with test keys, the website AI chats on real
+data, and the database lock on production (run it once, then open the dashboard and the app to check that
+chats and contacts still load).
+
+---
+
+
 **Date:** 15 Nov 2026  **Branch:** `ccr-7a545d5a-4kbhlw`  **Last commit tested:** `0e85e9a`
 **Scope:** the whole web app and mobile app, with extra focus on this round's work: the online store
 website (filled from business details, made pictures, Razorpay, own domain through our Hostinger store server).
