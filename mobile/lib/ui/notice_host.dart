@@ -20,15 +20,14 @@ void openNotice(AppState app, String payload) {
   if (nav == null) return;
   if (payload.startsWith('chat:')) {
     final id = payload.substring(5);
-    final list = (app.cached('conversations')?['conversations'] as List? ?? const []);
-    final conv = list.cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
+    final conv = app.findChat(id);
     if (conv != null) {
       nav.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(conv))));
     } else {
       // Not loaded yet (the app was just opened by the notification): bring the chats up to date, then open it
       unawaited(
         app.syncNow().then((_) {
-          final fresh = (app.cached('conversations')?['conversations'] as List? ?? const []).cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
+          final fresh = app.findChat(id);
           if (fresh != null) navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => ChatScreen(conversation: Map<String, dynamic>.from(fresh))));
         }),
       );

@@ -718,8 +718,7 @@ class _OrderScreenState extends State<OrderScreen> {
   void _openChat() {
     final app = AppScope.read(context);
     final id = _order['conversation_id'];
-    final list = (app.cached('conversations')?['conversations'] as List? ?? const []);
-    final found = list.cast<Map?>().firstWhere((c) => c!['id'] == id, orElse: () => null);
+    final found = app.findChat('$id');
     final contact = (_order['contact'] as Map?) ?? const {};
     Navigator.push(
       context,

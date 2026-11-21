@@ -115,8 +115,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
   void _openChat(Map t) {
     final app = AppScope.read(context);
-    final conversations = (app.cached('conversations')?['conversations'] as List? ?? const []);
-    final found = conversations.cast<Map?>().firstWhere((c) => c!['id'] == t['conversation_id'], orElse: () => null);
+    final found = app.findChat('${t['conversation_id']}');
     final c = (t['contacts'] as Map?) ?? const {};
     final conversation = found != null
         ? Map<String, dynamic>.from(found)

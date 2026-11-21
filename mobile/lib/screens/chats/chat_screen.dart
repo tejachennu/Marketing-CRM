@@ -11,7 +11,7 @@ import '../templates/template_widgets.dart';
 import 'chat_parts.dart';
 import 'media.dart';
 
-/// One WhatsApp chat, with everything the web inbox has:
+/// One chat (WhatsApp or Instagram: the screen follows the chat's channel), with everything the web inbox has:
 /// - AI replies on/off for this chat (the chatbot answers from the knowledge base)
 /// - AI suggested replies, with the knowledge base answer they came from
 /// - Rephrase what you typed (professional, friendly, shorter, fix grammar)
@@ -34,6 +34,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   bool _showJump = false;
   String get _id => '${widget.conversation['id']}';
+
+  /// An Instagram DM chat: 7-day reply window, no templates, no phone number.
+  bool get _ig => AppState.isInstagramChat(widget.conversation);
   String get _key => 'messages:$_id';
   Map<String, dynamic>? _replyTo;
   bool _showSuggestions = false;
@@ -77,8 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// The chat as the phone knows it now, with a pending AI on/off change laid over it.
   Map<String, dynamic> _conversation(AppState app) {
-    final list = (app.cached('conversations')?['conversations'] as List? ?? const []);
-    final saved = list.cast<Map?>().firstWhere((c) => c!['id'] == _id, orElse: () => null);
+    final saved = app.findChat(_id);
     final conv = Map<String, dynamic>.from(saved ?? widget.conversation);
     for (final item in app.pending('chat_setting')) {
       if (item.body['conversationId'] != _id) continue;
@@ -123,7 +125,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final lastMessage = widget.conversation['last_message'] as Map?;
     if (last == null && lastMessage?['sender_type'] == 'contact') last = DateTime.tryParse('${lastMessage?['created_at']}');
-    return last != null && DateTime.now().difference(last).inHours < 24;
+    // WhatsApp: 24 hours for free messages. Instagram: 7 days (a person may answer up to then).
+    return last != null && DateTime.now().difference(last).inHours < (_ig ? 24 * 7 : 24);
   }
 
   // ── Sending ──
@@ -140,7 +143,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'organizationId': app.orgId,
         'phoneNumber': phone,
         'message': body,
-        'channel': 'whatsapp',
+        'channel': _ig ? 'instagram' : 'whatsapp',
         'replyToMessageId': ?_replyTo?['id'],
         'mediaUrl': ?mediaUrl,
         if (template != null) ...{
@@ -160,12 +163,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _attach(AppState app) async {
-    final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'mp4']);
+    // Instagram takes photos, videos, voice (m4a) and PDFs; WhatsApp also takes Word and Excel files
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: _ig ? ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'm4a', 'pdf'] : ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'mp4'],
+    );
     if (file == null) return;
     setState(() => _uploading = true);
     try {
       final bytes = await file.readAsBytes();
-      if (bytes.length > 15 * 1024 * 1024) throw Exception('That file is too big. WhatsApp takes up to 15 MB.');
+      final limit = _ig ? 8 : 15;
+      if (bytes.length > limit * 1024 * 1024) throw Exception('That file is too big. ${_ig ? 'Instagram' : 'WhatsApp'} takes up to $limit MB.');
       final uploaded = await app.uploadFile(bytes, file.name);
       if (!mounted) return;
       _send(app, text: _text.text.trim().isEmpty ? null : _text.text.trim(), mediaUrl: '${uploaded['url']}', fileName: file.name);
@@ -321,7 +329,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(contactName(c), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                        Text('${c['phone_number'] ?? ''}', style: const TextStyle(color: Brand.muted)),
+                        Text(_ig ? 'Instagram' : showPhone(c['phone_number']), style: const TextStyle(color: Brand.muted)),
                       ],
                     ),
                   ),
@@ -356,16 +364,25 @@ class _ChatScreenState extends State<ChatScreen> {
           onTap: () => _contactSheet(conv),
           child: Row(
             children: [
-              Avatar(name, size: 36),
+              Avatar(name, size: 38),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16.5)),
-                    Text(
-                      showPhone(conv['contact']?['phone_number']),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Brand.muted),
+                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600)),
+                    Row(
+                      children: [
+                        if (_ig) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.camera_alt_outlined, size: 13, color: Brand.muted)),
+                        Flexible(
+                          child: Text(
+                            _ig ? 'Instagram' : showPhone(conv['contact']?['phone_number']),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w400, color: Brand.muted),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -374,16 +391,31 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
+          // AI replies on / off for this chat: a small switch with its words, like a WhatsApp header action
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              avatar: Icon(Icons.smart_toy_outlined, size: 18, color: aiOn ? Colors.white : Brand.textSoft),
-              label: Text(aiOn ? 'AI on' : 'AI off'),
-              selected: aiOn,
-              selectedColor: Brand.blue,
-              labelStyle: TextStyle(color: aiOn ? Colors.white : Brand.textSoft, fontWeight: FontWeight.w700),
-              tooltip: 'AI replies to this customer',
-              onSelected: app.can('write') ? (v) => _toggleAi(app, v) : null,
+            padding: const EdgeInsets.only(right: 10),
+            child: Tooltip(
+              message: aiOn ? 'The AI answers this customer. Tap to answer yourself.' : 'You answer this customer. Tap to let the AI answer.',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(99),
+                onTap: app.can('write') ? () => _toggleAi(app, !aiOn) : null,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 5, 10, 5),
+                  decoration: BoxDecoration(
+                    color: aiOn ? Brand.blueSoft : Brand.lineSoft,
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: aiOn ? Brand.blue.withValues(alpha: 0.35) : Brand.border),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(aiOn ? Icons.smart_toy : Icons.smart_toy_outlined, size: 16, color: aiOn ? Brand.blue : Brand.muted),
+                      const SizedBox(width: 5),
+                      Text(aiOn ? 'AI on' : 'AI off', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: aiOn ? Brand.blue : Brand.muted)),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -487,9 +519,24 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!open)
             Container(
               width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: const Text('This customer has not messaged in 24 hours. WhatsApp only delivers an approved template now.', style: TextStyle(fontSize: 13, color: Brand.textSoft)),
+              margin: const EdgeInsets.fromLTRB(10, 4, 10, _igClosedGap),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(color: const Color(0xFFFFF6D6), borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.lock_clock_outlined, size: 18, color: Color(0xFF7A5D00)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _ig
+                          ? 'Instagram lets you reply only within 7 days of the customer\'s last message. You can answer again when they write to you.'
+                          : 'More than 24 hours since this customer wrote. WhatsApp only delivers an approved template now.',
+                      style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF5C4600)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           if (_replyTo != null)
             Container(
@@ -528,7 +575,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(
+                  if (open || !_ig) Expanded(
                     child: open
                         ? Container(
                             constraints: const BoxConstraints(minHeight: 48),
@@ -581,9 +628,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                       if (picked != null && mounted) _send(app, template: picked);
                                     }
                                   },
-                                  itemBuilder: (context) => const [
-                                    PopupMenuItem(value: 'file', child: ListTile(leading: Icon(Icons.photo_outlined), title: Text('Photo or document'), contentPadding: EdgeInsets.zero)),
-                                    PopupMenuItem(value: 'template', child: ListTile(leading: Icon(Icons.description_outlined), title: Text('Template'), contentPadding: EdgeInsets.zero)),
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem(value: 'file', child: ListTile(leading: const Icon(Icons.photo_outlined), title: Text(_ig ? 'Photo, video or PDF' : 'Photo or document'), contentPadding: EdgeInsets.zero)),
+                                    if (!_ig) const PopupMenuItem(value: 'template', child: ListTile(leading: Icon(Icons.description_outlined), title: Text('Template'), contentPadding: EdgeInsets.zero)),
                                   ],
                                 ),
                               ],
@@ -622,6 +669,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+const double _igClosedGap = 6;
 
 class _SuggestionsPanel extends StatelessWidget {
   const _SuggestionsPanel({required this.loading, required this.error, required this.suggestions, required this.onClose, required this.onRetry, required this.onPick});
@@ -762,12 +811,33 @@ class _Bubble extends StatelessWidget {
     final failed = message['_failed'] == true;
     final media = '${message['media_url'] ?? ''}';
     final bot = message['sender_type'] == 'bot' || message['is_ai'] == true;
+    final body = '${message['body'] ?? ''}'.trim();
+    final text = body == '[Media Attachment]' && media.isNotEmpty ? '' : body;
+    final maxWidth = MediaQuery.of(context).size.width * 0.8;
+    // Time and ticks sit at the end of the last line when there is room (WhatsApp), else under the text
+    final meta = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          failed
+              ? 'Not sent'
+              : waiting
+              ? 'Waiting for internet'
+              : formatTime(message['created_at']),
+          style: TextStyle(fontSize: 11, color: failed ? Brand.red : Brand.muted),
+        ),
+        if (mine) ...[
+          const SizedBox(width: 3),
+          MessageTicks(failed ? 'failed' : waiting ? 'pending' : '${message['status'] ?? 'sent'}'),
+        ],
+      ],
+    );
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-        margin: EdgeInsets.only(top: tail ? 6 : 1.5, bottom: 1.5),
-        padding: const EdgeInsets.fromLTRB(10, 7, 9, 5),
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        margin: EdgeInsets.only(top: tail ? 6 : 1.5, bottom: 1.5, left: mine ? 48 : 0, right: mine ? 0 : 48),
+        padding: EdgeInsets.fromLTRB(media.isNotEmpty ? 4 : 9, media.isNotEmpty ? 4 : 6, media.isNotEmpty ? 4 : 8, 4),
         decoration: BoxDecoration(
           color: failed
               ? Brand.redSoft
@@ -775,75 +845,68 @@ class _Bubble extends StatelessWidget {
               ? Brand.bubble
               : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(!mine && tail ? 2 : 10),
-            topRight: Radius.circular(mine && tail ? 2 : 10),
-            bottomLeft: const Radius.circular(10),
-            bottomRight: const Radius.circular(10),
+            topLeft: Radius.circular(!mine && tail ? 2 : 9),
+            topRight: Radius.circular(mine && tail ? 2 : 9),
+            bottomLeft: const Radius.circular(9),
+            bottomRight: const Radius.circular(9),
           ),
-          boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 1, offset: Offset(0, 1))],
+          boxShadow: const [BoxShadow(color: Color(0x1A0B141A), blurRadius: 0.5, offset: Offset(0, 1))],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (bot)
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    'AI reply',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.blue),
+        child: IntrinsicWidth(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (bot)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(media.isNotEmpty ? 5 : 0, 0, 0, 2),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.smart_toy_outlined, size: 13, color: Brand.blue),
+                      SizedBox(width: 4),
+                      Text('AI reply', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Brand.blue)),
+                    ],
                   ),
                 ),
-              ),
-            if (media.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Builder(
+              if (media.isNotEmpty)
+                Builder(
                   builder: (context) {
                     final file = ChatMedia(media);
                     final at = DateTime.tryParse('${message['created_at'] ?? ''}')?.toLocal();
                     final chip = _FileChip(name: file.label, icon: file.icon);
                     return InkWell(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(7),
                       onTap: waiting ? null : () => showMedia(context, file, at),
                       child: file.isImage && !waiting
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxHeight: 220, minWidth: 120),
-                                child: file.image(height: 200, onError: chip),
-                              ),
+                              borderRadius: BorderRadius.circular(7),
+                              child: SizedBox(width: (maxWidth - 8).clamp(120.0, 260.0), height: 220, child: file.image(height: 220, onError: chip)),
                             )
                           : chip,
                     );
                   },
                 ),
-              ),
-            if ('${message['body'] ?? ''}'.isNotEmpty)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: WaText('${message['body']}'),
-              ),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  failed
-                      ? 'Not sent'
-                      : waiting
-                      ? 'Waiting for internet'
-                      : formatTime(message['created_at']),
-                  style: TextStyle(fontSize: 11, color: failed ? Brand.red : Brand.muted),
+              if (text.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(media.isNotEmpty ? 5 : 0, media.isNotEmpty ? 5 : 0, media.isNotEmpty ? 4 : 0, 0),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.end,
+                    spacing: 10,
+                    children: [
+                      WaText(text),
+                      Padding(padding: const EdgeInsets.only(top: 4), child: meta),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: EdgeInsets.fromLTRB(4, 3, media.isNotEmpty ? 4 : 0, 0),
+                  child: Align(alignment: Alignment.centerRight, child: meta),
                 ),
-                if (mine) ...[
-                  const SizedBox(width: 4),
-                  MessageTicks(failed ? 'failed' : waiting ? 'pending' : '${message['status'] ?? 'sent'}'),
-                ],
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -200,6 +200,42 @@ class AppState extends ChangeNotifier {
   bool get frontDeskOn => me?['connectors']?['frontDesk'] == true;
   bool get storeOn => me?['connectors']?['ecommerce'] == true;
 
+  // ── Chats: WhatsApp and Instagram are two lists, never mixed (owner's rule) ──
+
+  /// The phone's copy of each channel's chat list.
+  static const chatLists = {'whatsapp': 'conversations', 'instagram': 'ig_conversations'};
+
+  /// Instagram is connected (or has chats already): it gets its own section.
+  bool get instagramOn => me?['instagram']?['connected'] == true || chatsOf('instagram').isNotEmpty;
+  String get instagramUsername => '${me?['instagram']?['username'] ?? ''}';
+
+  /// One channel's chats, newest first. Checked again here, so an old mixed copy on the phone never shows
+  /// an Instagram chat among WhatsApp ones (or the other way round).
+  List<Map<String, dynamic>> chatsOf(String channel) {
+    final ig = channel == 'instagram';
+    return [
+      for (final c in (cached(chatLists[channel]!)?['conversations'] as List? ?? const []))
+        if (isInstagramChat(c as Map) == ig) Map<String, dynamic>.from(c),
+    ];
+  }
+
+  static bool isInstagramChat(Map c) => c['channel'] == 'instagram' || '${(c['contact'] as Map?)?['phone_number'] ?? ''}'.startsWith('ig:');
+
+  /// The chat with this id, from whichever list has it.
+  Map<String, dynamic>? findChat(String id) {
+    for (final channel in chatLists.keys) {
+      for (final c in chatsOf(channel)) {
+        if (c['id'] == id) return c;
+      }
+    }
+    return null;
+  }
+
+  /// Unread messages in one channel's chats.
+  int unreadIn(String channel) => chatsOf(channel).where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
+
+  Future<void> loadChats(String channel) => load(chatLists[channel]!, '/api/conversations', query: {'limit': '50', 'channel': channel}, force: true);
+
   // ── Lists kept on the phone ──
 
   Map<String, dynamic>? cached(String key) => store.read(key);
@@ -251,7 +287,8 @@ class AppState extends ChangeNotifier {
           load('invoices', '/api/salon/invoices', query: {'preset': 'week'}, force: true),
         ],
         load('contacts', '/api/contacts', query: {'limit': '500', 'fields': 'basic'}, force: true),
-        load('conversations', '/api/conversations', query: {'limit': '50'}, force: true),
+        loadChats('whatsapp'),
+        loadChats('instagram'),
         load('templates', '/api/whatsapp-templates', query: const {'drafts': '1'}, force: true),
         if (can('campaigns')) load('campaigns', '/api/campaigns', query: {'limit': '30'}, force: true),
         load('knowledge', '/api/knowledge', force: true),
@@ -270,7 +307,7 @@ class AppState extends ChangeNotifier {
   /// Keep the latest chats on the phone, so they can be read and answered offline too.
   /// Only chats with something new since they were last saved are fetched.
   Future<void> _prefetchChats() async {
-    final conversations = (cached('conversations')?['conversations'] as List? ?? const []).take(10);
+    final conversations = [...chatsOf('whatsapp').take(10), ...chatsOf('instagram').take(5)];
     final stale = conversations.where((c) {
       final saved = savedAt('messages:${c['id']}');
       final last = DateTime.tryParse('${c['last_message_at']}');
@@ -486,18 +523,35 @@ extension LiveUpdates on AppState {
 
     // The chat list: last message, unread count, newest first
     final fromCustomer = row['sender_type'] == 'contact';
-    final listData = cached('conversations');
-    final convs = [for (final c in (listData?['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
-    final index = convs.indexWhere((c) => c['id'] == convId);
-    if (index < 0) {
-      unawaited(load('conversations', '/api/conversations', query: {'limit': '50'}, force: true));
+    // The list (WhatsApp or Instagram) that has this chat
+    String? listKey;
+    var index = -1;
+    var convs = <Map<String, dynamic>>[];
+    Map<String, dynamic>? listData;
+    for (final key in AppState.chatLists.values) {
+      final data = cached(key);
+      final list = [for (final c in (data?['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
+      final at = list.indexWhere((c) => c['id'] == convId);
+      if (at >= 0) {
+        listKey = key;
+        index = at;
+        convs = list;
+        listData = data;
+        break;
+      }
+    }
+    final instagram = listKey == AppState.chatLists['instagram'];
+    if (listKey == null) {
+      // A new chat: bring both lists up to date (it lands in the right one)
+      unawaited(loadChats('whatsapp'));
+      unawaited(loadChats('instagram'));
     } else {
       final conv = convs.removeAt(index);
-      conv['last_message'] = {'body': row['body'], 'sender_type': row['sender_type'], 'created_at': row['created_at']};
+      conv['last_message'] = {'body': row['body'], 'sender_type': row['sender_type'], 'created_at': row['created_at'], 'media_url': row['media_url']};
       conv['last_message_at'] = row['created_at'];
       if (fromCustomer && openChatId != convId) conv['unread_count'] = ((conv['unread_count'] as num?) ?? 0) + 1;
       convs.insert(0, conv);
-      unawaited(store.write('conversations', {...?listData, 'conversations': convs}));
+      unawaited(store.write(listKey, {...?listData, 'conversations': convs}));
     }
     changed();
 
@@ -509,7 +563,7 @@ extension LiveUpdates on AppState {
         unawaited(
           Notifier.instance.notify(
             Notice(
-              title: conv == null ? 'New WhatsApp message' : contactName(conv['contact']),
+              title: conv == null ? 'New message' : '${contactName(conv['contact'])}${instagram ? ' · Instagram' : ''}',
               body: body.isNotEmpty
                   ? body
                   : media
@@ -527,17 +581,20 @@ extension LiveUpdates on AppState {
   }
 
   void _onConversation(Map<String, dynamic> row) {
-    final listData = cached('conversations');
-    if (listData == null) return;
-    final convs = [for (final c in (listData['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
-    final index = convs.indexWhere((c) => c['id'] == row['id']);
-    if (index < 0) return;
-    for (final field in ['unread_count', 'auto_reply_enabled', 'last_message_at', 'assigned_to']) {
-      if (row.containsKey(field)) convs[index][field] = row[field];
+    for (final key in AppState.chatLists.values) {
+      final listData = cached(key);
+      if (listData == null) continue;
+      final convs = [for (final c in (listData['conversations'] as List? ?? const [])) Map<String, dynamic>.from(c)];
+      final index = convs.indexWhere((c) => c['id'] == row['id']);
+      if (index < 0) continue;
+      for (final field in ['unread_count', 'auto_reply_enabled', 'last_message_at', 'assigned_to']) {
+        if (row.containsKey(field)) convs[index][field] = row[field];
+      }
+      if (openChatId == row['id']) convs[index]['unread_count'] = 0;
+      unawaited(store.write(key, {...listData, 'conversations': convs}));
+      changed();
+      return;
     }
-    if (openChatId == row['id']) convs[index]['unread_count'] = 0;
-    unawaited(store.write('conversations', {...listData, 'conversations': convs}));
-    changed();
   }
 
   /// New booking requests (and bookings confirmed on their own) since last time: notify.

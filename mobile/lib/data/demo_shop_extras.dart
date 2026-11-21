@@ -1,6 +1,21 @@
 /// Demo answers for the shop's newer screens (reports, reviews, offers and points, returns, GST invoices,
 /// WhatsApp messages, delivery partners), shaped like the real /api/commerce/* replies.
 class DemoShopExtras {
+  Map<String, dynamic> _igAutomation = {
+    'dmAi': true,
+    'commentAi': false,
+    'rules': [
+      {'keywords': ['price', 'cost', 'how much'], 'reply': 'Sent you the price in a message, {name}! 💛', 'dm': 'Hi {name}, the linen shirt is ₹1,499. Sizes S, M and L. Order here: glowstore.in'},
+    ],
+    'everyComment': {'on': false, 'reply': '', 'dm': ''},
+    'hideWords': ['spam'],
+  };
+  final List<Map<String, dynamic>> _igComments = [
+    {'id': 'ic1', 'comment_id': 'c1', 'media_id': 'm1', 'from_username': 'asha.r', 'text': 'Price of the linen shirt?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().subtract(const Duration(minutes: 25)).toIso8601String()},
+    {'id': 'ic2', 'comment_id': 'c2', 'media_id': 'm1', 'from_username': 'kavya.designs', 'text': 'Do you ship to Bengaluru?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String()},
+    {'id': 'ic3', 'comment_id': 'c3', 'media_id': 'm2', 'from_username': 'ravi_k', 'text': 'Lovely colours 😍', 'hidden': false, 'reply_text': 'Thank you Ravi! 💛', 'replied_at': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(), 'private_reply_at': null, 'created_at': DateTime.now().subtract(const Duration(days: 1, hours: 2)).toIso8601String()},
+  ];
+
   final Map<String, dynamic> _returns = {'on': true, 'days': 7};
   final Map<String, dynamic> _invoice = {'gstin': '36ABCDE1234F1Z5', 'legalName': '', 'address': '', 'prefix': 'WEB', 'defaultRate': 5};
   final Map<String, dynamic> _loyalty = {'on': true, 'percent': 2, 'minUse': 50, 'maxPercent': 50};
@@ -74,14 +89,19 @@ class DemoShopExtras {
           for (final size in ['S', 'M', 'L']) {'id': 'v$size', 'options': {'Size': size}, 'name': size, 'price': null, 'stock': 5, 'active': true},
         ], 'productPrice': 1499};
       case '/api/instagram':
-        return {'account': {'igUserId': '1784', 'username': 'glowstore', 'name': 'Glow Store', 'subscribed': true, 'lastError': null}, 'login': {'appId': '', 'configId': ''}};
+        return {
+          'account': {'igUserId': '1784', 'username': 'glowstore', 'name': 'Glow Store', 'subscribed': true, 'lastError': null},
+          'automation': _igAutomation,
+          'summary': {'unreadChats': 1, 'openComments': _igComments.where((c) => c['replied_at'] == null && c['private_reply_at'] == null).length},
+          'login': {'appId': '', 'configId': ''},
+        };
+      case '/api/instagram/messages':
+        return {'chats': [], 'added': 0, 'messagesOff': false, 'waitMinutes': 0, 'syncError': null};
       case '/api/instagram/comments':
-        return {'comments': [
-          {'id': 'ic1', 'comment_id': 'c1', 'from_username': 'asha.r', 'text': 'Price of the linen shirt?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().toIso8601String()},
-          {'id': 'ic2', 'comment_id': 'c2', 'from_username': 'kavya.designs', 'text': 'Do you ship to Bengaluru?', 'hidden': false, 'reply_text': null, 'replied_at': null, 'private_reply_at': null, 'created_at': DateTime.now().toIso8601String()},
-        ]};
+        final open = query?['filter'] != 'all';
+        return {'comments': _igComments.where((c) => !open || (c['replied_at'] == null && c['private_reply_at'] == null)).toList()};
       case '/api/instagram/posts':
-        return {'posts': [], 'connected': true};
+        return {'posts': [for (var i = 1; i <= 7; i++) {'id': 'm$i', 'type': i == 2 ? 'VIDEO' : i == 4 ? 'CAROUSEL_ALBUM' : 'IMAGE', 'image': '', 'link': 'https://www.instagram.com/p/demo$i/', 'caption': 'Post $i', 'at': DateTime.now().subtract(Duration(days: i * 2)).toIso8601String()}], 'connected': true};
     }
     return null;
   }
@@ -119,6 +139,26 @@ class DemoShopExtras {
       case '/api/commerce/shipping/ship':
         return {'success': true, 'rates': [{'provider': 'shiprocket', 'courierId': '10', 'courierName': 'Delhivery Surface', 'price': 72, 'days': 4, 'recommended': true}], 'shipments': []};
       case '/api/instagram/comments':
+        final c = _igComments.firstWhere((c) => c['comment_id'] == body['commentId'], orElse: () => <String, dynamic>{});
+        if (c.isEmpty) return {'error': 'That comment is not there any more.'};
+        final now = DateTime.now().toIso8601String();
+        switch (body['action']) {
+          case 'reply':
+            c.addAll({'reply_text': body['text'], 'replied_at': now});
+          case 'private':
+            c.addAll({'reply_text': body['text'], 'private_reply_at': now});
+          case 'hide' || 'unhide':
+            c['hidden'] = body['action'] == 'hide';
+          case 'delete':
+            _igComments.remove(c);
+        }
+        return {'success': true};
+      case '/api/instagram' when method == 'PUT':
+        _igAutomation = Map<String, dynamic>.from(body['automation'] as Map);
+        return {'success': true, 'automation': _igAutomation};
+      case '/api/instagram/posts':
+        return {'success': true, 'mediaId': 'm-new'};
+      case '/api/instagram/photos':
         return {'success': true};
       case '/api/commerce/products/describe':
         return {'success': true, 'title': 'Linen shirt', 'description': 'A soft, breathable linen shirt for warm days. Easy to wash and comfortable all day.', 'category': 'Shirts'};

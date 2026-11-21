@@ -300,14 +300,24 @@ class DemoBackend implements Backend {
       conv(4, 'Booked for 6:30 pm. See you!', 180, 0, fromCustomer: false),
       conv(2, 'What are your timings on Sunday?', 60 * 26, 0),
       conv(6, 'Please send my bill again', 60 * 50, 0),
-      // An Instagram DM (Instagram customers have no phone number: "ig:<id>")
+      // Instagram DMs (Instagram customers have no phone number: "ig:<id>"). Listed only in the Instagram section.
       {
         'id': 'conv-ig',
+        'channel': 'instagram',
         'contact': {'id': 'c-ig', 'first_name': 'Meera', 'last_name': 'Iyer', 'phone_number': 'ig:17841400000000901', 'instagram_username': 'meera.iyer'},
         'unread_count': 1,
         'auto_reply_enabled': true,
         'last_message_at': now.subtract(const Duration(minutes: 12)).toIso8601String(),
         'last_message': {'body': 'Is the linen shirt there in size M?', 'sender_type': 'contact', 'created_at': now.subtract(const Duration(minutes: 12)).toIso8601String()},
+      },
+      {
+        'id': 'conv-ig2',
+        'channel': 'instagram',
+        'contact': {'id': 'c-ig2', 'first_name': 'anmol.here2', 'phone_number': 'ig:5006847006201551'},
+        'unread_count': 0,
+        'auto_reply_enabled': true,
+        'last_message_at': now.subtract(const Duration(days: 9)).toIso8601String(),
+        'last_message': {'body': 'Is editing videos still needed ?', 'sender_type': 'user', 'created_at': now.subtract(const Duration(days: 9)).toIso8601String()},
       },
     ];
     List<Map<String, dynamic>> thread(List<List<dynamic>> rows) => [
@@ -334,6 +344,11 @@ class DemoBackend implements Backend {
       ]),
       'conv-2': thread([
         ['contact', 'What are your timings on Sunday?', 60 * 26],
+      ]),
+      'conv-ig2': thread([
+        ['contact', 'Hi, saw your post about video editing', 60 * 24 * 9 + 30],
+        ['user', 'Hey hi bro', 60 * 24 * 9],
+        ['user', 'Is editing videos still needed ?', 60 * 24 * 9],
       ]),
     };
     String body(String text) => text;
@@ -610,6 +625,7 @@ class DemoBackend implements Backend {
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
           'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true, 'settings': true},
           'connectors': {'frontDesk': true, 'ecommerce': true, 'pipeline': true},
+          'instagram': {'connected': true, 'username': 'glowstore'},
         };
       case '/api/salon/setup':
         return {'success': true, ..._setup};
@@ -630,7 +646,10 @@ class DemoBackend implements Backend {
       case '/api/contacts':
         return {'success': true, 'contacts': _contacts, 'count': _contacts.length};
       case '/api/conversations':
-        return {'success': true, 'conversations': _conversations};
+        // Like the server: channel=instagram → Instagram chats only; channel=whatsapp → every other chat
+        final channel = query?['channel'];
+        bool ig(Map c) => c['channel'] == 'instagram';
+        return {'success': true, 'conversations': channel == null ? _conversations : _conversations.where((c) => ig(c) == (channel == 'instagram')).toList()};
       case '/api/messages':
         return {'success': true, 'messages': _messages[query?['conversationId']] ?? []};
       case '/api/whatsapp-templates':

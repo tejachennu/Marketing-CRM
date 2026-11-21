@@ -30,8 +30,10 @@ import 'screens/front_desk/new_bill_screen.dart';
 import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/billing_screen.dart';
 import 'screens/more/grow_screen.dart';
+import 'screens/instagram/instagram_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/store/new_order_screen.dart';
+import 'screens/store/shop_more.dart' show ShopReportsScreen;
 import 'screens/store/store_screen.dart';
 import 'screens/store/website_screen.dart';
 import 'screens/more/chat_tickets_screen.dart';
@@ -189,7 +191,14 @@ class WamaApp extends StatelessWidget {
       'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),
-      'chat_ai' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first), showSuggestions: true),
+      'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
+      'instagram' => const InstagramScreen(),
+      'instagram_comments' => const InstagramScreen(initialTab: 1),
+      'instagram_posts' => const InstagramScreen(initialTab: 2),
+      'instagram_auto' => const InstagramScreen(initialTab: 3),
+      'ig_chat' => ChatScreen(conversation: app.chatsOf('instagram').first),
+      'ig_chat_closed' => ChatScreen(conversation: app.chatsOf('instagram').last),
+      'shop_reports' => const ShopReportsScreen(currency: 'INR'),
       'knowledge' => const KnowledgeScreen(),
       'members' => const MembersScreen(),
       'website_settings' => const WebsiteSettingsScreen(),
@@ -235,8 +244,8 @@ class WamaApp extends StatelessWidget {
       'bill' => BillScreen(invoiceId: '${desk.invoices.firstWhere((i) => i['status'] == 'unpaid')['id']}'),
       'bill_paid' => BillScreen(invoiceId: '${desk.invoices.firstWhere((i) => i['status'] == 'paid')['id']}'),
       'chats' => const HomeShell(tab: 2),
-      'chat' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first)),
-      'chat_closed' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List)[4])),
+      'chat' => ChatScreen(conversation: app.chatsOf('whatsapp').first),
+      'chat_closed' => ChatScreen(conversation: app.chatsOf('whatsapp')[4]),
       'grow' => const GrowScreen(),
       'billing' => const BillingScreen(),
       'tickets' => const TicketsScreen(),
@@ -298,7 +307,9 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final unread = ((app.cached('conversations') ?? const {})['conversations'] as List? ?? const []).where((c) => ((c['unread_count'] as num?) ?? 0) > 0).length;
+    final unread = app.unreadIn('whatsapp');
+    final ig = app.instagramOn;
+    final igUnread = ig ? app.unreadIn('instagram') : 0;
     final desk = app.frontDeskOn;
     final store = !desk && app.storeOn;
     final requests = desk ? FrontDesk(app).requests.length : 0;
@@ -306,6 +317,7 @@ class _HomeShellState extends State<HomeShell> {
       if (desk) ...[FrontDeskScreen(initialTab: widget.deskTab), const BillsScreen()],
       if (store) const StoreScreen(asTab: true),
       const ChatsScreen(),
+      if (ig) const InstagramScreen(asTab: true),
       const MoreScreen(),
     ];
     final tab = _tab.clamp(0, pages.length - 1);
@@ -332,8 +344,14 @@ class _HomeShellState extends State<HomeShell> {
             NavigationDestination(
               icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline)),
               selectedIcon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble)),
-              label: 'Chats',
+              label: ig ? 'WhatsApp' : 'Chats',
             ),
+            if (ig)
+              NavigationDestination(
+                icon: Badge(isLabelVisible: igUnread > 0, label: Text('$igUnread'), backgroundColor: Brand.green, child: const Icon(Icons.camera_alt_outlined)),
+                selectedIcon: Badge(isLabelVisible: igUnread > 0, label: Text('$igUnread'), backgroundColor: Brand.green, child: const Icon(Icons.camera_alt)),
+                label: 'Instagram',
+              ),
             NavigationDestination(
               icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.more_horiz)),
               label: 'More',

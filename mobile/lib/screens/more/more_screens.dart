@@ -18,7 +18,7 @@ import '../campaigns/campaigns_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
-import '../store/shop_catchup.dart';
+import '../instagram/instagram_screen.dart';
 import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
 
@@ -86,7 +86,7 @@ class MoreScreen extends StatelessWidget {
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
                 if (app.can('campaigns')) _Row(icon: Icons.campaign_outlined, title: 'Campaigns', subtitle: 'Send a WhatsApp template to many customers', onTap: () => open(const CampaignsScreen())),
                 if (app.storeOn) _Row(icon: Icons.storefront_outlined, title: 'E-commerce', subtitle: 'Orders, products, payments and delivery', onTap: () => open(const StoreScreen())),
-                _Row(icon: Icons.camera_alt_outlined, title: 'Instagram', subtitle: 'Comments and posts (DMs are in Chats)', onTap: () => open(const InstagramScreen())),
+                _Row(icon: Icons.camera_alt_outlined, title: 'Instagram', subtitle: app.instagramOn ? 'Messages, comments, posts and auto replies' : 'Connect to see messages, comments and posts here', onTap: () => open(const InstagramScreen())),
                 const _Gap(),
                 const _Title('AI'),
                 _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
