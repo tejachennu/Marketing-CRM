@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
+import '../../data/format.dart' show showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'store_logic.dart';
@@ -249,8 +250,15 @@ class ShopReportsScreen extends StatefulWidget {
   State<ShopReportsScreen> createState() => _ShopReportsScreenState();
 }
 
+/// The same choices as the web report: a period, and where the orders came from.
+const _periods = [(1, 'Today'), (7, '7 days'), (30, '30 days'), (90, '90 days')];
+const _channels = [('', 'All'), ('website', 'Website'), ('in_chat', 'WhatsApp'), ('in_store', 'In the shop'), ('phone', 'Phone call')];
+
 class _ShopReportsScreenState extends State<ShopReportsScreen> {
   int _days = 30;
+  String _channel = '';
+  bool _showOrders = false;
+  int? _picked;
   Map? _report;
   String _error = '';
 
@@ -262,125 +270,413 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
 
   Future<void> _load() async {
     final app = AppScope.read(context);
-    setState(() { _report = null; _error = ''; });
+    setState(() {
+      _report = null;
+      _error = '';
+      _picked = null;
+    });
     try {
-      final d = await app.backend.get('/api/commerce/reports', {'organizationId': app.orgId, 'days': '$_days'});
+      final d = await app.backend.get('/api/commerce/reports', {'organizationId': app.orgId, 'days': '$_days', if (_channel.isNotEmpty) 'channel': _channel});
       if (mounted) setState(() => _report = d['report'] as Map?);
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
     }
   }
 
+  num _n(Object? v) => v is num ? v : num.tryParse('$v') ?? 0;
+
+  /// "▲ 20% vs the 7 days before"; null when there is nothing to compare.
+  (String, bool)? _change(num now, num before) {
+    final when = _days == 1 ? 'yesterday' : 'the $_days days before';
+    if (now == 0 && before == 0) return null;
+    if (before == 0) return ('New vs $when', false);
+    final pct = ((now - before) / before * 100).round();
+    if (pct == 0) return ('Same as $when', false);
+    return ('${pct > 0 ? '▲' : '▼'} ${pct.abs()}% vs $when', pct < 0);
+  }
+
+  String _dayLabel(String day, {bool short = false}) {
+    final d = DateTime.tryParse(day);
+    if (d == null) return day;
+    const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return short ? week[d.weekday - 1] : '${d.day} ${months[d.month - 1]}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = _report;
     String money(Object? n) => formatMoney(n, widget.currency);
-    Widget metric(String label, String value, String note) => Expanded(
-      child: Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
-          const SizedBox(height: 4),
-          FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20))),
-          Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.muted, fontSize: 11.5)),
-        ]),
-      ),
-    );
-    final daily = (r?['daily'] as List? ?? const []).cast<Map>();
-    final peak = daily.fold<num>(1, (m, d) => ((d['sales'] as num?) ?? 0) > m ? (d['sales'] as num) : m);
+    final website = _channel.isEmpty || _channel == 'website';
     return Scaffold(
+      backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('Shop reports')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+          padding: const EdgeInsets.only(bottom: 32),
           children: [
-            SegmentedButton<int>(
-              segments: const [ButtonSegment(value: 7, label: Text('7 days')), ButtonSegment(value: 30, label: Text('30 days')), ButtonSegment(value: 90, label: Text('90 days'))],
-              selected: {_days},
-              onSelectionChanged: (v) { setState(() => _days = v.first); _load(); },
-            ),
-            const SizedBox(height: 12),
-            if (_error.isNotEmpty) NoteBox(attention: true, icon: Icons.error_outline, text: _error),
-            if (r == null && _error.isEmpty) _loading(),
-            if (r != null) ...[
-              Row(children: [
-                metric('Store visits', '${r['visits']}', r['conversion'] == null ? 'Counted from now on' : '${r['conversion']}% of visits ordered'),
-                const SizedBox(width: 8),
-                metric('Orders', '${r['orders']}', ((r['cancelled'] as num?) ?? 0) > 0 ? '${r['cancelled']} cancelled (not counted)' : 'No cancelled orders'),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                metric('Sales', money(r['sales']), 'About ${money(r['averageOrder'])} per order'),
-                const SizedBox(width: 8),
-                metric('Customers', '${((r['newCustomers'] as num?) ?? 0) + ((r['returningCustomers'] as num?) ?? 0)}', '${r['newCustomers']} new · ${r['returningCustomers']} came back'),
-              ]),
-              const SizedBox(height: 10),
-              Panel(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _title('Sales each day'),
-                  SizedBox(
-                    height: 110,
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      for (final d in daily)
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 0.5),
-                            child: FractionallySizedBox(
-                              heightFactor: ((d['sales'] as num?) ?? 0) > 0 ? (((d['sales'] as num) / peak).clamp(0.04, 1.0)).toDouble() : 0.02,
-                              child: Container(decoration: BoxDecoration(color: ((d['sales'] as num?) ?? 0) > 0 ? Brand.blue : Brand.line, borderRadius: const BorderRadius.vertical(top: Radius.circular(2)))),
-                            ),
-                          ),
-                        ),
-                    ]),
+            Container(
+              color: Colors.white,
+              child: Column(
+                children: [
+                  FilterChips(
+                    children: [
+                      for (final (days, label) in _periods)
+                        ChoiceChip(label: Text(label), selected: _days == days, onSelected: (_) {
+                          setState(() => _days = days);
+                          _load();
+                        }),
+                    ],
                   ),
-                ]),
+                  FilterChips(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    children: [
+                      for (final (key, label) in _channels)
+                        ChoiceChip(label: Text(label), selected: _channel == key, onSelected: (_) {
+                          setState(() => _channel = key);
+                          _load();
+                        }),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              Panel(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _title('What sells'),
-                  if ((r['topProducts'] as List? ?? const []).isEmpty) const Text('No orders in this period yet.', style: TextStyle(color: Brand.muted)),
-                  for (final p in (r['topProducts'] as List? ?? const []).cast<Map>())
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
-                      Expanded(child: Text('${p['title']}', maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      Text('${p['quantity']} sold  ', style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
-                      Text(money(p['sales']), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ])),
-                ]),
-              ),
-              const SizedBox(height: 10),
-              Panel(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _title('Best customers'),
-                  if ((r['customers'] as List? ?? const []).isEmpty) const Text('No customers in this period yet.', style: TextStyle(color: Brand.muted)),
-                  for (final c in (r['customers'] as List? ?? const []).cast<Map>())
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
-                      Expanded(child: Text('${c['name']}\n${c['phone']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5))),
-                      Text('${c['orders']} orders  ', style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
-                      Text(money(c['spent']), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ])),
-                ]),
-              ),
-              const SizedBox(height: 10),
-              Panel(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _title('Where orders came from'),
-                  for (final c in (r['channels'] as List? ?? const []).cast<Map>())
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
-                      Expanded(child: Text('${c['label']}')),
-                      Text('${c['orders']} · ${money(c['sales'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ])),
-                  const Divider(height: 20),
-                  _title('Carts left at checkout'),
-                  Text('${(r['carts'] as Map?)?['left'] ?? 0} left · ${(r['carts'] as Map?)?['reminded'] ?? 0} reminded · ${(r['carts'] as Map?)?['cameBack'] ?? 0} came back'),
-                  if ((((r['carts'] as Map?)?['value'] as num?) ?? 0) > 0) _hint('${money((r['carts'] as Map)['value'])} still sitting in carts.'),
-                ]),
-              ),
-            ],
+            ),
+            if (_error.isNotEmpty) Padding(padding: const EdgeInsets.all(12), child: NoteBox(attention: true, icon: Icons.error_outline, text: _error)),
+            if (r == null && _error.isEmpty) _loading(),
+            if (r != null) ..._body(r, money, website),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _body(Map r, String Function(Object?) money, bool website) {
+    final sales = _n(r['sales']);
+    final received = _n(r['received']);
+    final before = (r['before'] as Map?) ?? const {};
+    final salesChange = _change(sales, _n(before['sales']));
+    final ordersChange = _change(_n(r['orders']), _n(before['orders']));
+    final daily = (r['daily'] as List? ?? const []).cast<Map>();
+    num value(Map d) => _showOrders ? _n(d['orders']) : _n(d['sales']);
+    final peak = daily.fold<num>(0, (m, d) => value(d) > m ? value(d) : m);
+    final channels = (r['channels'] as List? ?? const []).cast<Map>();
+    final channelTotal = channels.fold<num>(0, (s, c) => s + _n(c['sales']));
+    final products = (r['topProducts'] as List? ?? const []).cast<Map>();
+    final topQty = products.fold<num>(1, (m, p) => _n(p['quantity']) > m ? _n(p['quantity']) : m);
+    final carts = (r['carts'] as Map?) ?? const {};
+    final labelEvery = (daily.length / 7).ceil().clamp(1, 99);
+
+    Widget change((String, bool)? c) => c == null
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(c.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.$2 ? Brand.red : Brand.blue)),
+          );
+    Widget tile(String label, String value, String note, [(String, bool)? delta]) => Expanded(
+      child: Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
+            const SizedBox(height: 4),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22))),
+            Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.muted, fontSize: 11.5)),
+            change(delta),
+          ],
+        ),
+      ),
+    );
+
+    return [
+      // The money, first and big
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Sales', style: TextStyle(color: Brand.muted, fontSize: 13)),
+              const SizedBox(height: 2),
+              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(money(sales), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 30))),
+              change(salesChange),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(value: sales > 0 ? (received / sales).clamp(0, 1).toDouble() : 0, minHeight: 8, backgroundColor: Brand.line, color: Brand.blue),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(child: Text('${money(received)} received', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+                  Text('${money((sales - received).clamp(0, sales))} to collect', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: IntrinsicHeight(
+          child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            tile('Orders', '${r['orders'] ?? 0}', _n(r['orders']) > 0 ? 'About ${money(_n(r['averageOrder']).round())} each${_n(r['cancelled']) > 0 ? ' · ${r['cancelled']} cancelled' : ''}' : 'No orders yet', ordersChange),
+            const SizedBox(width: 8),
+            tile(
+              'Customers',
+              '${_n(r['newCustomers']) + _n(r['returningCustomers'])}',
+              '${r['newCustomers'] ?? 0} new · ${r['returningCustomers'] ?? 0} returning${_n(r['repeatCustomers']) > 0 ? ' · ${r['repeatCustomers']} ordered again' : ''}',
+            ),
+          ],
+        ),
+        ),
+      ),
+      if (website)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: IntrinsicHeight(
+            child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              tile('Store visits', '${r['visits'] ?? 0}', r['conversion'] == null ? 'Counted when people open your store page' : '${_n(r['conversion']).round()}% of visits ordered', _change(_n(r['visits']), _n(before['visits']))),
+              const SizedBox(width: 8),
+              tile('Product views', '${r['productViews'] ?? 0}', 'Product pages opened'),
+            ],
+          ),
+          ),
+        ),
+      // Each day
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _title(_showOrders ? 'Orders each day' : 'Sales each day')),
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    segments: const [ButtonSegment(value: false, label: Text('Sales')), ButtonSegment(value: true, label: Text('Orders'))],
+                    selected: {_showOrders},
+                    onSelectionChanged: (v) => setState(() => _showOrders = v.first),
+                  ),
+                ],
+              ),
+              if (_days == 1 && daily.isNotEmpty)
+                Text('Today: ${money(daily.last['sales'])} from ${daily.last['orders']} ${_n(daily.last['orders']) == 1 ? 'order' : 'orders'}.', style: const TextStyle(color: Brand.textSoft))
+              else if (daily.isNotEmpty) ...[
+                // What the tapped bar is (or the latest day)
+                Builder(builder: (context) {
+                  final d = daily[(_picked ?? daily.length - 1).clamp(0, daily.length - 1)];
+                  return Text(
+                    '${_picked == null ? 'Today' : _dayLabel('${d['day']}')}: ${money(d['sales'])} · ${d['orders']} ${_n(d['orders']) == 1 ? 'order' : 'orders'}${website ? ' · ${d['visits']} visits' : ''}',
+                    style: const TextStyle(fontSize: 12.5, color: Brand.textSoft),
+                  );
+                }),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 120,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      for (var i = 0; i < daily.length; i++)
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => _picked = _picked == i ? null : i),
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: daily.length > 40 ? 0.5 : 1.5),
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: FractionallySizedBox(
+                                  heightFactor: peak > 0 && value(daily[i]) > 0 ? (value(daily[i]) / peak).clamp(0.04, 1.0).toDouble() : 0.02,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: value(daily[i]) == 0 ? Brand.line : (_picked == i ? Brand.navy : Brand.blue),
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    for (var i = 0; i < daily.length; i++)
+                      Expanded(
+                        child: Text(
+                          i == daily.length - 1 ? '' : (daily.length - 1 - i) % labelEvery == 0 ? _dayLabel('${daily[i]['day']}', short: _days <= 7) : '',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                          softWrap: false,
+                          style: const TextStyle(fontSize: 10, color: Brand.muted),
+                        ),
+                      ),
+                  ],
+                ),
+                const Align(alignment: Alignment.centerRight, child: Text('Today', style: TextStyle(fontSize: 10, color: Brand.muted))),
+                _hint('Tap a bar to see that day.'),
+              ],
+            ],
+          ),
+        ),
+      ),
+      // What sells
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _title('What sells'),
+              if (products.isEmpty) const Text('No orders in this period yet.', style: TextStyle(color: Brand.muted)),
+              for (var i = 0; i < products.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(width: 22, child: Text('${i + 1}', style: const TextStyle(color: Brand.faint, fontWeight: FontWeight.w600))),
+                          Expanded(child: Text('${products[i]['title']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500))),
+                          const SizedBox(width: 8),
+                          Text(money(products[i]['sales']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 22, top: 3),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(99),
+                                child: LinearProgressIndicator(value: (_n(products[i]['quantity']) / topQty).clamp(0, 1).toDouble(), minHeight: 5, backgroundColor: Brand.lineSoft, color: Brand.blue),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('${products[i]['quantity']} sold', style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      // Best customers
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _title('Best customers'),
+              if ((r['customers'] as List? ?? const []).isEmpty) const Text('No customers in this period yet.', style: TextStyle(color: Brand.muted)),
+              for (final c in (r['customers'] as List? ?? const []).cast<Map>())
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      Avatar('${c['name']}', size: 36),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${c['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text('${'${c['phone'] ?? ''}'.isEmpty ? 'No phone' : showPhone(c['phone'])} · ${c['orders']} ${_n(c['orders']) == 1 ? 'order' : 'orders'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                      Text(money(c['spent']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      // Where orders came from (tap one to see only it)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _title('Where orders came from'),
+              if (channels.isEmpty) const Text('No orders in this period yet.', style: TextStyle(color: Brand.muted)),
+              for (final c in channels)
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    setState(() => _channel = _channel == '${c['channel']}' ? '' : '${c['channel']}');
+                    _load();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(child: Text('${c['label']}', style: TextStyle(fontWeight: FontWeight.w600, color: _channel == '${c['channel']}' ? Brand.blue : Brand.text))),
+                            Text('${c['orders']} · ${money(c['sales'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(99),
+                          child: LinearProgressIndicator(value: channelTotal > 0 ? (_n(c['sales']) / channelTotal).clamp(0.02, 1).toDouble() : 0, minHeight: 6, backgroundColor: Brand.lineSoft, color: Brand.blue),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (channels.isNotEmpty) _hint('Tap one to see only its numbers.'),
+            ],
+          ),
+        ),
+      ),
+      if (website)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _title('Carts left at checkout'),
+                Row(
+                  children: [
+                    for (final (label, key) in [('Left', 'left'), ('Reminded', 'reminded'), ('Came back', 'cameBack')])
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('${carts[key] ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                            Text(label, style: const TextStyle(fontSize: 12, color: Brand.muted)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                _hint('${_n(carts['value']) > 0 ? '${money(carts['value'])} still sitting in carts. ' : ''}People who typed their phone at checkout but did not order get one WhatsApp reminder an hour later.'),
+              ],
+            ),
+          ),
+        ),
+    ];
   }
 }
 

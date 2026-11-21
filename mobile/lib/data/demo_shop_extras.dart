@@ -31,36 +31,44 @@ class DemoShopExtras {
     {'id': 'r2', 'rating': 3, 'body': 'Size runs a little small.', 'photos': [], 'customer_name': 'Ravi K.', 'published': true, 'product': {'title': 'Denim jacket'}, 'order': {'order_number': 'W-1038'}},
   ];
 
-  Map<String, dynamic> _report(int days) {
+  Map<String, dynamic> _report(int days, String? channel) {
     final today = DateTime.now();
+    // A share of the numbers for one channel, so the filter visibly changes them
+    final share = switch (channel) { 'website' => 0.6, 'in_chat' => 0.3, 'in_store' => 0.07, 'phone' => 0.03, _ => 1.0 };
+    final scale = days == 1 ? 0.04 : days == 7 ? 0.25 : days == 90 ? 2.8 : 1.0;
+    int n(num v) => (v * share * scale).round();
+    final website = channel == null || channel == 'website';
     return {
-      'days': days, 'visits': 420, 'productViews': 1310, 'orders': 37, 'sales': 48650, 'averageOrder': 1314.86, 'conversion': 4.5, 'cancelled': 2,
+      'days': days, 'channel': channel, 'visits': website ? n(420 / share) : 0, 'productViews': website ? n(1310 / share) : 0,
+      'orders': n(37), 'sales': n(48650), 'received': n(31200), 'averageOrder': 1314.86, 'conversion': website ? 4.5 : null, 'cancelled': n(2),
+      'before': {'orders': n(31), 'sales': n(41200), 'visits': website ? n(380 / share) : 0},
       'daily': [
         for (var i = days - 1; i >= 0; i--)
-          {'day': today.subtract(Duration(days: i)).toIso8601String().substring(0, 10), 'visits': 10 + (i * 7) % 15, 'orders': (i * 3) % 4, 'sales': ((i * 37) % 9) * 450},
+          {'day': today.subtract(Duration(days: i)).toIso8601String().substring(0, 10), 'visits': website ? 10 + (i * 7) % 15 : 0, 'orders': ((i * 3) % 4 * share).round(), 'sales': (((i * 37) % 9) * 450 * share).round()},
       ],
       'channels': [
-        {'channel': 'website', 'label': 'Website', 'orders': 21, 'sales': 29800},
-        {'channel': 'in_chat', 'label': 'WhatsApp', 'orders': 13, 'sales': 15350},
-        {'channel': 'in_store', 'label': 'In the shop', 'orders': 3, 'sales': 3500},
+        {'channel': 'website', 'label': 'Website', 'orders': (21 * scale).round(), 'sales': (29800 * scale).round()},
+        {'channel': 'in_chat', 'label': 'WhatsApp', 'orders': (13 * scale).round(), 'sales': (15350 * scale).round()},
+        {'channel': 'in_store', 'label': 'In the shop', 'orders': (3 * scale).round(), 'sales': (3500 * scale).round()},
       ],
       'topProducts': [
-        {'productId': 'p1', 'title': 'Classic white linen shirt', 'quantity': 18, 'sales': 26982},
-        {'productId': 'p2', 'title': 'Denim jacket', 'quantity': 6, 'sales': 14394},
+        {'productId': 'p1', 'title': 'Classic white linen shirt', 'quantity': n(18), 'sales': n(26982)},
+        {'productId': 'p2', 'title': 'Denim jacket', 'quantity': n(6), 'sales': n(14394)},
+        {'productId': 'p3', 'title': 'Cotton kurta, indigo', 'quantity': n(5), 'sales': n(6495)},
       ],
-      'carts': {'left': 9, 'reminded': 7, 'cameBack': 3, 'value': 11200},
+      'carts': website ? {'left': 9, 'reminded': 7, 'cameBack': 3, 'value': 11200} : {'left': 0, 'reminded': 0, 'cameBack': 0, 'value': 0},
       'customers': [
-        {'name': 'Asha Reddy', 'phone': '+91 98765 43210', 'orders': 4, 'spent': 6120, 'last': today.toIso8601String()},
-        {'name': 'Ravi Kumar', 'phone': '+91 90000 00001', 'orders': 2, 'spent': 2998, 'last': today.toIso8601String()},
+        {'name': 'Asha Reddy', 'phone': '+919876543210', 'orders': 4, 'spent': 6120, 'last': today.toIso8601String()},
+        {'name': 'Ravi Kumar', 'phone': '+919000000001', 'orders': 2, 'spent': 2998, 'last': today.toIso8601String()},
       ],
-      'newCustomers': 22, 'returningCustomers': 9,
+      'newCustomers': n(22), 'returningCustomers': n(9), 'repeatCustomers': n(4),
     };
   }
 
   Map<String, dynamic>? get(String path, Map<String, String>? query) {
     switch (path) {
       case '/api/commerce/reports':
-        return {'report': _report(int.tryParse(query?['days'] ?? '') ?? 30)};
+        return {'report': _report(int.tryParse(query?['days'] ?? '') ?? 30, query?['channel'])};
       case '/api/commerce/reviews':
         return {'reviews': _reviews};
       case '/api/commerce/discounts':
