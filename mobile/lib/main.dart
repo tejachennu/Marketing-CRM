@@ -48,6 +48,10 @@ import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
 import 'ui/theme.dart';
+import 'screens/store/online_payments.dart';
+import 'screens/front_desk/website_settings_screen.dart';
+import 'screens/front_desk/members_screen.dart';
+import 'screens/ai/ai_tools.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -187,6 +191,12 @@ class WamaApp extends StatelessWidget {
       'signup_code' => const SignupScreen(demoCodeStep: true),
       'chat_ai' => ChatScreen(conversation: Map<String, dynamic>.from((app.cached('conversations')!['conversations'] as List).first), showSuggestions: true),
       'knowledge' => const KnowledgeScreen(),
+      'members' => const MembersScreen(),
+      'website_settings' => const WebsiteSettingsScreen(),
+      'online_payments' => const OnlinePaymentsScreen(),
+      'unanswered' => const UnansweredScreen(),
+      'sources' => const SourcesScreen(),
+      'reply_style' => const ReplyStyleScreen(),
       'article' => ArticleScreen(article: Map<String, dynamic>.from((app.cached('knowledge')!['articles'] as List)[2])),
       'assistant' => const AssistantScreen(demoQuestion: 'How much is a gold facial?'),
       'booking_flow' => const BookingFlowScreen(),

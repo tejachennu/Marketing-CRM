@@ -262,7 +262,10 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
     final days = <DateTime>[];
     for (var i = 0; i < widget.daysAhead && days.length < 10; i++) {
       final d = DateTime(today.year, today.month, today.day).add(Duration(days: i));
-      if (!closed.contains(d.weekday % 7)) days.add(d);
+      if (closed.contains(d.weekday % 7)) continue;
+      // Today only while a time is still open (the same rule as the time list below)
+      if (i == 0 && _openTimes(d).isEmpty) continue;
+      days.add(d);
     }
     String title(DateTime d) {
       final diff = d.difference(DateTime(today.year, today.month, today.day)).inDays;
@@ -274,11 +277,21 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
       _Msg.list(body, 'Choose a day', [for (final d in days) title(d)], (i) {
         _add(_Msg.mine(title(days[i])));
         _times(days[i], title(days[i]));
-      }, notes: [for (final d in days) title(d).startsWith('T') ? DateFormat('EEE, d MMM').format(d) : '']),
+      }, notes: [for (final d in days) title(d) == 'Today' || title(d) == 'Tomorrow' ? DateFormat('EEE, d MMM').format(d) : '']),
     );
   }
 
   void _times(DateTime day, String dayTitle) {
+    final times = _openTimes(day);
+    if (times.isEmpty) {
+      _say('Sorry, $dayTitle just filled up. Please choose another day.');
+      return _days('Which day suits you for $_names?');
+    }
+    _timesList(day, dayTitle, times);
+  }
+
+  /// The free start times on a day, from the opening hours and the length of the picked services.
+  List<String> _openTimes(DateTime day) {
     int minutes(String? hhmm, int fallback) {
       final p = (hhmm ?? '').split(':');
       return p.length < 2 ? fallback : (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
@@ -293,10 +306,10 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
       if (isToday && m <= now.hour * 60 + now.minute + 30) continue;
       times.add(DateFormat('h:mm a').format(DateTime(2000, 1, 1, m ~/ 60, m % 60)).toLowerCase());
     }
-    if (times.isEmpty) {
-      _say('Sorry, $dayTitle just filled up. Please choose another day.');
-      return _days('Which day suits you for $_names?');
-    }
+    return times;
+  }
+
+  void _timesList(DateTime day, String dayTitle, List<String> times) {
     _add(
       _Msg.list('$_names on $dayTitle: tap "Choose a time" to pick one.', 'Choose a time', times, (i) {
         _add(_Msg.mine(times[i]));

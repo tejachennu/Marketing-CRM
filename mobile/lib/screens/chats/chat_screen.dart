@@ -8,6 +8,7 @@ import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../templates/template_widgets.dart';
+import 'chat_parts.dart';
 import 'media.dart';
 
 /// One WhatsApp chat, with everything the web inbox has:
@@ -30,6 +31,8 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _text = TextEditingController();
+  final _scroll = ScrollController();
+  bool _showJump = false;
   String get _id => '${widget.conversation['id']}';
   String get _key => 'messages:$_id';
   Map<String, dynamic>? _replyTo;
@@ -44,6 +47,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _text.addListener(() => setState(() {}));
+    // "Jump to the latest message" shows once you scroll up a little (the list starts at the newest)
+    _scroll.addListener(() {
+      final show = _scroll.hasClients && _scroll.offset > 400;
+      if (show != _showJump) setState(() => _showJump = show);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.read(context);
       // No notifications for the chat on screen; new messages appear here live
@@ -63,6 +71,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     if (_app?.openChatId == _id) _app!.openChatId = null;
     _text.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -355,7 +364,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16.5)),
                     Text(
-                      '${conv['contact']?['phone_number'] ?? ''}',
+                      showPhone(conv['contact']?['phone_number']),
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Brand.muted),
                     ),
                   ],
@@ -418,15 +427,46 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: app.isLoading(_key) && messages.isEmpty
                 ? const SkeletonList(rows: 6, avatar: false)
-                : ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final m = messages[messages.length - 1 - index];
-                      return GestureDetector(
-                        onLongPress: () => _messageActions(m),
-                        child: _Bubble(message: m),
+                : Builder(
+                    builder: (context) {
+                      final entries = chatEntries(messages);
+                      return Stack(
+                        children: [
+                          ListView.builder(
+                            controller: _scroll,
+                            reverse: true,
+                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                            itemCount: entries.length,
+                            itemBuilder: (context, index) {
+                              final entry = entries[entries.length - 1 - index];
+                              if (entry.day != null) return ChatDayChip(entry.day!);
+                              final m = entry.message!;
+                              return SwipeToReply(
+                                enabled: open && m['_waiting'] != true,
+                                onReply: () => setState(() => _replyTo = m),
+                                child: GestureDetector(
+                                  onLongPress: () => _messageActions(m),
+                                  child: _Bubble(message: m, tail: entry.firstOfRun),
+                                ),
+                              );
+                            },
+                          ),
+                          if (_showJump)
+                            Positioned(
+                              right: 12,
+                              bottom: 12,
+                              child: Material(
+                                color: Colors.white,
+                                shape: const CircleBorder(),
+                                elevation: 2,
+                                child: IconButton(
+                                  tooltip: 'Latest messages',
+                                  onPressed: () => _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut),
+                                  icon: const Icon(Icons.keyboard_double_arrow_down, color: Brand.textSoft),
+                                ),
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),
@@ -480,62 +520,77 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
+          // WhatsApp's message box: a rounded field with the extras inside it, and a round send button
           SafeArea(
             top: false,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(6, 8, 8, 8),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  PopupMenuButton<String>(
-                    tooltip: 'More',
-                    icon: _uploading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_circle_outline, color: Brand.blue),
-                    onSelected: (choice) async {
-                      if (choice == 'file') return _attach(app);
-                      if (choice == 'template') {
-                        final picked = await pickTemplate(context, firstName: name.split(' ').first);
-                        if (picked != null && mounted) _send(app, template: picked);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      if (open)
-                        const PopupMenuItem(
-                          value: 'file',
-                          child: ListTile(leading: Icon(Icons.attach_file), title: Text('Photo or document'), contentPadding: EdgeInsets.zero),
-                        ),
-                      const PopupMenuItem(
-                        value: 'template',
-                        child: ListTile(leading: Icon(Icons.description_outlined), title: Text('Template'), contentPadding: EdgeInsets.zero),
-                      ),
-                    ],
-                  ),
-                  if (open)
-                    IconButton(
-                      tooltip: 'Suggest replies with AI',
-                      onPressed: _loadingSuggestions ? null : _suggest,
-                      icon: const Icon(Icons.auto_awesome, color: Brand.blue),
-                    ),
                   Expanded(
                     child: open
-                        ? TextField(
-                            controller: _text,
-                            minLines: 1,
-                            maxLines: 5,
-                            textCapitalization: TextCapitalization.sentences,
-                            decoration: InputDecoration(
-                              hintText: 'Message',
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              suffixIcon: typed
-                                  ? IconButton(
-                                      tooltip: 'Rephrase with AI',
-                                      onPressed: _rephrasing ? null : () => _rephrase(app),
-                                      icon: _rephrasing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.edit_note, color: Brand.blue),
-                                    )
-                                  : null,
+                        ? Container(
+                            constraints: const BoxConstraints(minHeight: 48),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 1, offset: Offset(0, 1))],
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Suggest replies with AI',
+                                  onPressed: _loadingSuggestions ? null : _suggest,
+                                  icon: _loadingSuggestions
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                      : const Icon(Icons.auto_awesome, color: Brand.muted),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _text,
+                                    minLines: 1,
+                                    maxLines: 6,
+                                    textCapitalization: TextCapitalization.sentences,
+                                    style: const TextStyle(fontSize: 16),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Message',
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      filled: false,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                    ),
+                                  ),
+                                ),
+                                if (typed)
+                                  IconButton(
+                                    tooltip: 'Rephrase with AI',
+                                    onPressed: _rephrasing ? null : () => _rephrase(app),
+                                    icon: _rephrasing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.edit_note, color: Brand.muted),
+                                  ),
+                                PopupMenuButton<String>(
+                                  tooltip: 'Attach',
+                                  icon: _uploading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.attach_file, color: Brand.muted),
+                                  onSelected: (choice) async {
+                                    if (choice == 'file') return _attach(app);
+                                    if (choice == 'template') {
+                                      final picked = await pickTemplate(context, firstName: name.split(' ').first);
+                                      if (picked != null && mounted) _send(app, template: picked);
+                                    }
+                                  },
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(value: 'file', child: ListTile(leading: Icon(Icons.photo_outlined), title: Text('Photo or document'), contentPadding: EdgeInsets.zero)),
+                                    PopupMenuItem(value: 'template', child: ListTile(leading: Icon(Icons.description_outlined), title: Text('Template'), contentPadding: EdgeInsets.zero)),
+                                  ],
+                                ),
+                              ],
                             ),
                           )
                         : FilledButton.icon(
+                            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: const StadiumBorder()),
                             onPressed: () async {
                               final picked = await pickTemplate(context, firstName: name.split(' ').first);
                               if (picked != null && mounted) _send(app, template: picked);
@@ -547,10 +602,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (open)
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
-                      child: IconButton.filled(
-                        style: IconButton.styleFrom(backgroundColor: Brand.blue, disabledBackgroundColor: Brand.border),
-                        onPressed: typed ? () => _send(app, text: _text.text.trim()) : null,
-                        icon: const Icon(Icons.send, color: Colors.white),
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: IconButton.filled(
+                          tooltip: 'Send',
+                          style: IconButton.styleFrom(backgroundColor: Brand.blue, disabledBackgroundColor: Brand.faint),
+                          onPressed: typed ? () => _send(app, text: _text.text.trim()) : null,
+                          icon: const Icon(Icons.send, color: Colors.white, size: 22),
+                        ),
                       ),
                     ),
                 ],
@@ -691,8 +751,10 @@ class _InfoLine extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message});
+  const _Bubble({required this.message, this.tail = true});
   final Map<String, dynamic> message;
+  /// The first bubble of a run from the same side: it gets the little corner, and space above it
+  final bool tail;
   @override
   Widget build(BuildContext context) {
     final mine = message['sender_type'] != 'contact';
@@ -704,8 +766,8 @@ class _Bubble extends StatelessWidget {
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.fromLTRB(12, 8, 10, 6),
+        margin: EdgeInsets.only(top: tail ? 6 : 1.5, bottom: 1.5),
+        padding: const EdgeInsets.fromLTRB(10, 7, 9, 5),
         decoration: BoxDecoration(
           color: failed
               ? Brand.redSoft
@@ -713,10 +775,10 @@ class _Bubble extends StatelessWidget {
               ? Brand.bubble
               : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(12),
-            topRight: const Radius.circular(12),
-            bottomLeft: Radius.circular(mine ? 12 : 2),
-            bottomRight: Radius.circular(mine ? 2 : 12),
+            topLeft: Radius.circular(!mine && tail ? 2 : 10),
+            topRight: Radius.circular(mine && tail ? 2 : 10),
+            bottomLeft: const Radius.circular(10),
+            bottomRight: const Radius.circular(10),
           ),
           boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 1, offset: Offset(0, 1))],
         ),
@@ -761,7 +823,7 @@ class _Bubble extends StatelessWidget {
             if ('${message['body'] ?? ''}'.isNotEmpty)
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text('${message['body']}', style: const TextStyle(fontSize: 15, height: 1.3)),
+                child: WaText('${message['body']}'),
               ),
             const SizedBox(height: 2),
             Row(
@@ -777,19 +839,7 @@ class _Bubble extends StatelessWidget {
                 ),
                 if (mine) ...[
                   const SizedBox(width: 4),
-                  Icon(
-                    failed
-                        ? Icons.error_outline
-                        : waiting
-                        ? Icons.schedule
-                        : Icons.done_all,
-                    size: 14,
-                    color: failed
-                        ? Brand.red
-                        : message['status'] == 'read'
-                        ? Brand.blue
-                        : Brand.faint,
-                  ),
+                  MessageTicks(failed ? 'failed' : waiting ? 'pending' : '${message['status'] ?? 'sent'}'),
                 ],
               ],
             ),

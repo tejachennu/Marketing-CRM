@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 
@@ -34,6 +35,10 @@ abstract class Backend {
 
   /// Send a file (a photo or document for a chat). Returns the server's reply ({ url, filename }).
   Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}});
+
+  /// Put a big file straight into storage with a one-time upload pass the server handed out
+  /// (/api/knowledge/upload-url), so it does not go through the server's size limit.
+  Future<void> uploadToStorage(String bucket, String path, String token, List<int> bytes, String contentType);
   Future<void> signIn(String email, String password);
 
   /// "Continue with Google": opens Google in the browser and waits until it comes back signed in.
@@ -101,6 +106,15 @@ class HttpBackend implements Backend {
       ..fields.addAll(fields)
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     return _read(request.send().then(http.Response.fromStream));
+  }
+
+  @override
+  Future<void> uploadToStorage(String bucket, String path, String token, List<int> bytes, String contentType) async {
+    try {
+      await client.storage.from(bucket).uploadBinaryToSignedUrl(path, token, Uint8List.fromList(bytes), FileOptions(contentType: contentType));
+    } catch (e) {
+      throw ApiException(400, 'The file could not be uploaded. Check the internet and try again.');
+    }
   }
 
   @override

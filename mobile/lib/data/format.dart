@@ -79,3 +79,13 @@ String contactName(Map? contact) {
 
 /// An Instagram customer (DMs; no phone number).
 bool isInstagramContact(Map? contact) => '${contact?['phone_number'] ?? ''}'.startsWith('ig:');
+
+/// A phone number the way people read it: "+91 99887 76655" (India), "+1 415 555 0199"; anything else as given.
+String showPhone(Object? raw) {
+  final text = '${raw ?? ''}'.trim();
+  final digits = text.replaceAll(RegExp(r'\D'), '');
+  if (digits.length == 12 && digits.startsWith('91')) return '+91 ${digits.substring(2, 7)} ${digits.substring(7)}';
+  if (digits.length == 10 && RegExp(r'^[6-9]').hasMatch(digits)) return '+91 ${digits.substring(0, 5)} ${digits.substring(5)}';
+  if (digits.length == 11 && digits.startsWith('1')) return '+1 ${digits.substring(1, 4)} ${digits.substring(4, 7)} ${digits.substring(7)}';
+  return text;
+}

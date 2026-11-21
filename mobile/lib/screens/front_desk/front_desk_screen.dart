@@ -507,6 +507,12 @@ class _AppointmentRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  // Paid online when booking (website / booking page), taken off the bill
+                  if (a['payment_status'] == 'paid' && ((a['payment_paid'] as num?) ?? num.tryParse('${a['payment_paid']}') ?? 0) > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('${formatRupees(a['payment_paid'])} paid online', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue)),
+                    ),
                   const SizedBox(height: 6),
                   Row(
                     children: [

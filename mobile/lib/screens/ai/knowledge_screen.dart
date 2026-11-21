@@ -6,6 +6,7 @@ import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
+import 'ai_tools.dart';
 
 /// The answers the AI chatbot and AI suggestions use: question-style titles with the answer.
 /// Kept on the phone; added, changed or removed offline and synced later. Managers change it.
@@ -74,6 +75,20 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 96),
                       children: [
+                        // The AI's other tools (as on the web): what it could not answer, more sources, how it replies
+                        for (final (icon, title, sub, screen) in [
+                          (Icons.help_outline, 'Questions the AI couldn\'t answer', 'Add the answer once; the AI answers it after', const UnansweredScreen() as Widget),
+                          (Icons.language, 'Website and documents', 'Your website, PDFs, Word files, pasted text', const SourcesScreen() as Widget),
+                          (Icons.tune, 'How the AI replies', 'Style, quick buttons, handing chats to your team', const ReplyStyleScreen() as Widget),
+                        ])
+                          ListTile(
+                            leading: Icon(icon, color: Brand.blue),
+                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(sub),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen)),
+                          ),
+                        const Divider(height: 1),
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 8, 16, 10),
                           child: Text(

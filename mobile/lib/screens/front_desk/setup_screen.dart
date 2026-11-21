@@ -9,6 +9,8 @@ import '../../ui/widgets.dart';
 import 'booking_flow_screen.dart';
 import 'catalog_history.dart';
 import 'setup_templates.dart';
+import 'members_screen.dart';
+import 'website_settings_screen.dart';
 
 /// Front Desk setup, as on the web: services and categories, the team, business details and
 /// logo, WhatsApp (assistant, hours, reminders, feedback), the booking flow and message
@@ -94,6 +96,10 @@ class SetupScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       tile(Icons.chat_outlined, 'WhatsApp', 'Assistant, opening hours, reminders, feedback', const WhatsAppSetup()),
+                      const Divider(indent: 56),
+                      tile(Icons.language, 'Website and booking', 'Your website, booking and paying online, AI chat', const WebsiteSettingsScreen()),
+                      const Divider(indent: 56),
+                      tile(Icons.card_membership_outlined, 'Memberships', 'Cards, plans, sell at the counter', const MembersScreen()),
                       const Divider(indent: 56),
                       tile(Icons.event_available_outlined, 'Booking flow', ((settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off', const BookingFlowScreen()),
                       const Divider(indent: 56),

@@ -9,6 +9,7 @@ import '../../ui/widgets.dart';
 import 'store_address.dart';
 import 'store_logic.dart';
 import 'store_screen.dart';
+import 'online_payments.dart';
 
 const _colours = [0xFF1D5BEA, 0xFF0E1B3D, 0xFF008069, 0xFFB45309, 0xFFBE185D, 0xFF6D28D9, 0xFF0F766E, 0xFFB91C1C];
 String _hex(int c) => '#${(c & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
@@ -656,6 +657,14 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 ),
                 gap(),
                 FilledButton(onPressed: _payBusy ? null : _connect, child: Text(_pay?['connected'] == true ? 'Save keys' : 'Connect Razorpay')),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnlinePaymentsScreen()));
+                    _load();
+                  },
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text('Stripe too, and which one customers pay with'),
+                ),
                 const SizedBox(height: 14),
                 const Text('Payment options on your website', style: TextStyle(fontWeight: FontWeight.w600)),
                 const Text('Customers see only the ones switched on. Keep at least one on.', style: TextStyle(color: Brand.muted, fontSize: 13)),
