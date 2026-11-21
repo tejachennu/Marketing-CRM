@@ -13,6 +13,9 @@ const NOW = new Date('2026-11-18T12:00:00+05:30')
 test('periods and India days', () => {
   assert.equal(R.readPeriod('7'), 7)
   assert.equal(R.readPeriod('365'), 30)
+  assert.equal(R.readPeriod('1'), 1)
+  assert.equal(R.readChannel('in_chat'), 'in_chat')
+  assert.equal(R.readChannel('x'), null)
   assert.equal(R.istDay('2026-11-17T20:00:00Z'), '2026-11-18')
   const days = R.periodDays(7, NOW)
   assert.equal(days.length, 7)
@@ -54,12 +57,47 @@ test('report: counts, sales, what sells, carts, customers', () => {
   assert.equal(r.customers[0].name, 'Asha')
   assert.equal(r.customers[0].orders, 2)
   assert.equal(r.customers[0].spent, 1500)
-  assert.equal(r.returningCustomers, 2) // Asha ordered twice; Ravi ordered before
-  assert.equal(r.newCustomers, 0)
+  // Ravi ordered before this week (returning); Asha's first order is this week (new), and she ordered twice (repeat)
+  assert.equal(r.returningCustomers, 1)
+  assert.equal(r.newCustomers, 1)
+  assert.equal(r.repeatCustomers, 1)
+  assert.equal(r.received, 0) // nothing marked paid in this list
+  assert.equal(r.channel, null)
   assert.equal(r.daily.find((d) => d.day === '2026-11-18').sales, 1000)
   const empty = R.buildShopReport({ days: 30, now: NOW, orders: [], items: [], checkouts: [], visits: [] })
   assert.equal(empty.conversion, null)
   assert.equal(empty.daily.length, 30)
+})
+
+test('report: one channel, money received, today, and the period before', () => {
+  const orders = [
+    { id: 'w1', status: 'delivered', payment_status: 'paid', total_amount: 400, created_at: '2026-11-18T05:00:00Z', checkout_type: 'website', shipping_address: { full_name: 'Asha', phone_number: '9876543210' } },
+    { id: 'c1', status: 'cod_confirmed', payment_status: 'pending', total_amount: 250, created_at: '2026-11-17T05:00:00Z', checkout_type: 'in_chat', contact: { first_name: 'Ravi', phone_number: '+919000000001' } },
+    // the 7 days before this week
+    { id: 'w0', status: 'delivered', payment_status: 'paid', total_amount: 100, created_at: '2026-11-08T05:00:00Z', checkout_type: 'website', shipping_address: { phone_number: '+91 98765 43210' } },
+    { id: 'c0', status: 'canceled', total_amount: 999, created_at: '2026-11-08T05:00:00Z', checkout_type: 'in_chat' },
+  ]
+  const visits = [{ day: '2026-11-18', visits: 20 }, { day: '2026-11-09', visits: 10 }]
+  const checkouts = [{ created_at: '2026-11-17T05:00:00Z', total: 300 }]
+  const all = R.buildShopReport({ days: 7, now: NOW, orders, items: [], checkouts, visits })
+  assert.equal(all.sales, 650)
+  assert.equal(all.received, 400)
+  assert.deepEqual(all.before, { orders: 1, sales: 100, visits: 10 })
+  assert.equal(all.returningCustomers, 1) // Asha's phone ordered last week (written differently)
+  const chat = R.buildShopReport({ days: 7, now: NOW, orders, items: [], checkouts, visits, channel: 'in_chat' })
+  assert.equal(chat.orders, 1)
+  assert.equal(chat.sales, 250)
+  assert.equal(chat.visits, 0) // visits and carts belong to the website
+  assert.equal(chat.conversion, null)
+  assert.equal(chat.carts.left, 0)
+  assert.equal(chat.customers[0].name, 'Ravi') // WhatsApp orders keep the phone on the contact
+  assert.deepEqual(chat.channels.map((c) => c.label), ['Website', 'WhatsApp']) // the split always shows every channel
+  const web = R.buildShopReport({ days: 7, now: NOW, orders, items: [], checkouts, visits, channel: 'website' })
+  assert.equal(web.conversion, 5)
+  const today = R.buildShopReport({ days: 1, now: NOW, orders, items: [], checkouts, visits })
+  assert.equal(today.orders, 1)
+  assert.equal(today.daily.length, 1)
+  assert.deepEqual(today.before, { orders: 1, sales: 250, visits: 0 }) // yesterday
 })
 
 test('visits are counted per day (without a direct database connection)', async () => {

@@ -4,7 +4,7 @@
 
 import { getPool } from '../campaign-stats'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
-import { buildShopReport, istDay, periodStart, type ShopReport } from './shop-reports'
+import { buildShopReport, istDay, periodStart, type ReportChannel, type ShopReport } from './shop-reports'
 
 /** supabase/migrations/20261130_shop_reports.sql word for word. */
 export const REPORTS_SQL = `-- Shop reports: store visits per day. Safe to run more than once. The app runs it on its own when first needed.
@@ -49,11 +49,11 @@ export async function countVisit(db: any, organizationId: string, kind: 'visit' 
   else await db.from('commerce_store_visits').insert({ organization_id: organizationId, day, visits: kind === 'visit' ? 1 : 0, product_views: kind === 'product' ? 1 : 0 })
 }
 
-/** The report for the last `days` days. */
-export async function loadShopReport(db: any, organizationId: string, days: number, now: Date = new Date()): Promise<ShopReport> {
-  const since = periodStart(days, now)
+/** The report for the last `days` days (one channel, or all), with the period before it to compare. */
+export async function loadShopReport(db: any, organizationId: string, days: number, now: Date = new Date(), channel: ReportChannel | null = null): Promise<ShopReport> {
+  const since = periodStart(days * 2, now)
   const { data: orders } = await db.from('commerce_orders')
-    .select('id, status, total_amount, created_at, checkout_type, contact_id, shipping_address, contact:contacts(first_name, last_name, phone_number)')
+    .select('id, status, payment_status, total_amount, created_at, checkout_type, contact_id, shipping_address, contact:contacts(first_name, last_name, phone_number)')
     .eq('organization_id', organizationId).gte('created_at', since).order('created_at', { ascending: false }).limit(5000)
   const ids = (orders || []).map((o: any) => o.id)
   const items: any[] = []
@@ -63,14 +63,14 @@ export async function loadShopReport(db: any, organizationId: string, days: numb
   }
   const { data: checkouts, error: cartError } = await db.from('commerce_checkouts').select('created_at, reminded_at, recovered_order_id, total').eq('organization_id', organizationId).gte('created_at', since).limit(5000)
   const { data: visits } = await withReportsSchema(() => db.from('commerce_store_visits').select('day, visits, product_views').eq('organization_id', organizationId).gte('day', istDay(since)))
-  // Phones that ordered before this period: those customers are coming back
-  const { data: earlier } = await db.from('commerce_orders').select('shipping_address').eq('organization_id', organizationId).lt('created_at', since).neq('status', 'canceled').order('created_at', { ascending: false }).limit(5000)
+  // Phones that ordered before these two periods: those customers are coming back (WhatsApp orders keep the phone on the contact)
+  const { data: earlier } = await db.from('commerce_orders').select('shipping_address, contact:contacts(phone_number)').eq('organization_id', organizationId).lt('created_at', since).neq('status', 'canceled').order('created_at', { ascending: false }).limit(5000)
   return buildShopReport({
-    days, now,
+    days, now, channel,
     orders: orders || [],
     items,
     checkouts: cartError ? [] : checkouts || [],
     visits: visits || [],
-    earlierPhones: (earlier || []).map((o: any) => o.shipping_address?.phone_number).filter(Boolean),
+    earlierPhones: (earlier || []).map((o: any) => o.shipping_address?.phone_number || o.contact?.phone_number).filter(Boolean),
   })
 }

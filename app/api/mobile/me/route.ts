@@ -5,6 +5,7 @@ import { billingLimits, getBilling } from '@/lib/billing'
 import { activeConnectors } from '@/lib/plans'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { can, canSeeAll, getRoleDisplay, isReadOnly } from '@/lib/rbac'
+import { accountFor } from '@/lib/instagram/store'
 
 export const runtime = 'nodejs'
 
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   const on = CONNECTORS.map((connector) => connector.key).filter((key) => isConnectorOn(organization, key))
   const billing = await getBilling(getSupabaseAdminClient(), organization.id).catch(() => null)
   const active = isConsularHelpdesk(organization) ? on.filter((key) => key === 'pipeline') : activeConnectors(billingLimits(billing), on)
+  // Instagram has its own section in the app (never mixed with WhatsApp chats)
+  const instagram = isConsularHelpdesk(organization) ? null : await accountFor(getSupabaseAdminClient(), organization.id).catch(() => null)
   return NextResponse.json({
     success: true,
     user: { id: user.id, name: user.full_name || null, email: user.email || null, role: getRoleDisplay(user.role).label },
@@ -32,5 +35,6 @@ export async function GET(request: NextRequest) {
       settings: can(user, 'settings.manage'),
     },
     connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
+    instagram: { connected: Boolean(instagram), username: instagram?.username || null },
   })
 }
