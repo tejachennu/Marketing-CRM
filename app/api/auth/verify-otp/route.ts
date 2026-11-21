@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkLoginCode, clearLoginCode } from '@/lib/auth/login-otp'
@@ -16,6 +17,8 @@ function getSupabaseAdminClient() {
 export async function POST(request: NextRequest) {
   try {
     const { email, password, otpCode } = await request.json()
+    const limited = tooManyAttempts(request, 'otp', email)
+    if (limited) return limited
     if (!email || !password || !otpCode) {
       return NextResponse.json({ error: 'Email, password, and verification code are required' }, { status: 400 })
     }

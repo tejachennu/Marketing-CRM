@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest) {
     const adminSupabase = getSupabaseAdminClient()
     
     const { email, password } = await request.json()
+    const limited = tooManyAttempts(request, 'login', email)
+    if (limited) return limited
 
     if (!email || !password) {
       return NextResponse.json(

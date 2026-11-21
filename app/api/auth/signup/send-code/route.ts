@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { isSuperAdminEmail } from '@/lib/api-auth-helper'
@@ -21,6 +22,8 @@ export async function POST(request: NextRequest) {
     const parsed = parseSignup(body)
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
     const { email, fullName } = parsed.value
+    const limited = tooManyAttempts(request, 'signup', email)
+    if (limited) return limited
     if (isSuperAdminEmail(email)) return NextResponse.json({ error: 'This email address cannot be used to sign up' }, { status: 403 })
 
     const db = admin()

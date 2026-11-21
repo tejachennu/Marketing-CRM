@@ -3448,9 +3448,10 @@ export default function CampaignsPage() {
                           {(() => {
                             const previewText = getPreviewMessage()
                             const hasHtml = /<[a-z][\s\S]*>/i.test(previewText)
-                            const formattedPreview = hasHtml ? previewText : previewText.replace(/\n/g, '<br/>')
+                            const formattedPreview = hasHtml ? previewText : previewText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
+                            // A sandboxed frame: the email's own HTML is shown, but no script in it can run in the dashboard
                             return (
-                              <div dangerouslySetInnerHTML={{ __html: formattedPreview }} />
+                              <iframe title="Email preview" sandbox="" srcDoc={`<!doctype html><meta charset="utf-8"><body style="margin:0;font:12px/1.5 system-ui,sans-serif;color:#111b21">${formattedPreview}</body>`} className="w-full min-h-[200px] border-0 bg-transparent" />
                             )
                           })()}
                         </div>

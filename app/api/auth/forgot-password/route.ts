@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
   if (!EMAIL_PATTERN.test(email)) {
     return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 })
   }
+  // Too many resets: the same quiet answer (says nothing about the account), and no more emails
+  const limited = tooManyAttempts(request, 'forgot', email)
+  if (limited) return limited.status === 429 && /email/.test(String((await limited.clone().json()).error)) ? NextResponse.json(GENERIC_REPLY) : limited
 
   try {
     const supabase = getSupabaseAdminClient()

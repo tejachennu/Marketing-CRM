@@ -1,3 +1,4 @@
+import { twilioCallAllowed } from '@/lib/twilio-signature'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -33,6 +34,9 @@ export async function POST(
 
     const body = await request.text()
     const paramsMap = new URLSearchParams(body)
+    // Only Twilio may report message statuses
+    const { data: tokenRow } = await getSupabaseClient().from('organizations').select('twilio_auth_token').eq('id', orgId).maybeSingle()
+    if (!twilioCallAllowed(request, String(tokenRow?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''), paramsMap, 'Status Webhook')) return NextResponse.json({ error: 'Not accepted' }, { status: 403 })
 
     const messageSid = paramsMap.get('MessageSid') || ''
     const messageStatus = paramsMap.get('MessageStatus') || ''

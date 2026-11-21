@@ -1,3 +1,4 @@
+import { twilioCallAllowed } from '@/lib/twilio-signature'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
@@ -217,6 +218,8 @@ export async function POST(request: NextRequest) {
         // Non-fatal, continue with defaults
       }
     }
+    // Only Twilio may post here (fake customer messages would also run the AI)
+    if (!twilioCallAllowed(request, orgTwilioAuthToken, params, 'Twilio Webhook')) return NextResponse.json({ error: 'Not accepted' }, { status: 403 })
 
     // Download Twilio media using org-scoped credentials if available
     if (mediaUrl && numMedia > 0) {

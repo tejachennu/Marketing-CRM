@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -15,6 +16,8 @@ function getSupabaseAdminClient() {
 export async function POST(request: NextRequest) {
   try {
     const { token, password } = await request.json()
+    const limited = tooManyAttempts(request, 'setPassword')
+    if (limited) return limited
 
     if (!token || !password) {
       return NextResponse.json(

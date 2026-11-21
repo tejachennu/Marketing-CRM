@@ -93,11 +93,11 @@ export default function IVRWorkflowsPage() {
 
       const { data: orgData } = await supabase
         .from('organizations')
-        .select('*')
+        .select('id, name')
         .eq('id', userData.organization_id)
         .single()
 
-      setOrganization(orgData)
+      setOrganization(orgData as Organization | null)
 
       if (typeof window !== 'undefined') {
         setWebhookUrl(`${window.location.origin}/api/webhooks/voice`)

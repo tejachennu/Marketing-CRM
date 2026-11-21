@@ -59,6 +59,11 @@ function getSuggestionChips(currentPage?: string): string[] {
   }
 }
 
+
+/** Text shown as HTML: <, >, &, quotes made harmless. */
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
 export function AssistantDrawer({
   isOpen,
   onClose,
@@ -335,7 +340,8 @@ export function AssistantDrawer({
                   <div className="text-[13px] leading-[18px] whitespace-pre-wrap break-words">
                     {/* Simple rendering logic */}
                     {msg.content.split('\n').map((line, i) => {
-                      let rendered = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                      // Escape first: AI text can repeat what a customer typed, and it must never run as HTML
+                      let rendered = escapeHtml(line).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                       
                       const isBullet = line.match(/^[\s]*[•\-\*]\s/)
                       if (isBullet) {

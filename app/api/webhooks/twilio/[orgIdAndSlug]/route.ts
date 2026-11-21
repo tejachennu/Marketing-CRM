@@ -1,3 +1,4 @@
+import { twilioCallAllowed } from '@/lib/twilio-signature'
 import { notifyTicketRaised } from '@/lib/push-events'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -155,6 +156,8 @@ export async function POST(
     // 3. Fallback check for credentials
     const twilioAccountSid = orgData.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID || ''
     const twilioAuthToken = orgData.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''
+    // Only Twilio may post here (fake customer messages would also run the AI)
+    if (!twilioCallAllowed(request, twilioAuthToken, paramsMap, 'Twilio Webhook')) return NextResponse.json({ error: 'Not accepted' }, { status: 403 })
     const openAiKey = orgData.openai_api_key || process.env.OPENAI_API_KEY || ''
     
     // Parse media attachments

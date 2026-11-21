@@ -1,3 +1,4 @@
+import { tooManyAttempts } from '@/lib/auth/attempts'
 import { createClient } from '@supabase/supabase-js'
 import { startPlan } from '@/lib/billing-service'
 import { NextRequest, NextResponse } from 'next/server'
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
     const { email, password, fullName, companyName } = parsed.value
+    const limited = tooManyAttempts(request, 'signup', email)
+    if (limited) return limited
 
     // These addresses are promoted to superadmin on
     // login. They must therefore never be registrable by whoever types them in first.

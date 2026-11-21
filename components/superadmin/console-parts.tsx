@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDownUp, BellRing, Building2, CheckCircle2, ChevronRight, CircleAlert, Clock, CreditCard, Download, Loader2, Search, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, ArrowDownUp, BellRing, ShieldCheck, Building2, CheckCircle2, ChevronRight, CircleAlert, Clock, CreditCard, Download, Loader2, Search, Trash2 } from 'lucide-react'
 import { SharedNumberPanel } from './shared-number'
 
 // ── What the server sends (lib/superadmin-workspaces.ts) ─────────────────────
@@ -417,6 +417,46 @@ function Check({ ok, title, detail }: { ok: boolean | null; title: string; detai
 }
 
 /** Is everything the product needs switched on? Payments, WAMA's WhatsApp number, pop-up notifications. */
+/** Database security: is every table locked (row level security), and a button that locks them. */
+function DatabaseSecurity({ api }: { api: (path: string, init?: RequestInit) => Promise<any> }) {
+  const [state, setState] = useState<{ connected: boolean; open?: string[]; total?: number; safe?: boolean; message?: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const load = () => api('/api/superadmin/security').then(setState).catch((e: any) => setError(e.message))
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  async function lockDown() {
+    if (!window.confirm('Lock the database now? Every table gets row level security: the public key reads nothing, and each person reads only their own business. Nothing is deleted.')) return
+    setBusy(true); setError('')
+    try {
+      const result = await api('/api/superadmin/security', { method: 'POST', body: '{}' })
+      setState((s) => ({ ...(s || { connected: true }), open: result.open, safe: result.safe }))
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const open = state?.open || []
+  return (
+    <section className={`${card} p-4 sm:p-5 ${state && state.connected && !state.safe ? 'border-[#b91c1c]' : ''}`}>
+      <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><ShieldCheck size={17} className={state?.safe ? 'text-[#1D5BEA]' : 'text-[#b91c1c]'} /> Database security</h2>
+      {!state ? <p className="mt-2 text-[13.5px] text-[#6B7894] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Checking…</p>
+        : !state.connected ? <p className="mt-2 text-[13.5px] text-[#4a5672]">{state.message}</p>
+        : state.safe ? <p className="mt-2 text-[13.5px] text-[#4a5672] flex items-center gap-2"><CheckCircle2 size={15} className="text-[#1D5BEA]" /> All {state.total} tables are locked. The public key reads nothing; each person reads only their own business.</p>
+        : (
+          <div className="mt-2 space-y-3">
+            <p className="rounded-lg bg-[#fdf0f0] p-3 text-[13.5px] font-semibold text-[#b91c1c]">{open.length} table{open.length === 1 ? ' is' : 's are'} open: anyone with the public key (it is in every browser) could read {open.length === 1 ? 'it' : 'them'}, with every business&apos;s data: {open.slice(0, 12).join(', ')}{open.length > 12 ? ` and ${open.length - 12} more` : ''}.</p>
+            <button type="button" onClick={lockDown} disabled={busy} className="h-10 px-4 rounded-lg bg-[#b91c1c] text-white text-[13.5px] font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={15} />} Lock the database now
+            </button>
+            <p className="text-[12.5px] text-[#6B7894]">Nothing is deleted or changed in your data. The server keeps full access; the dashboard and the app keep working.</p>
+          </div>
+        )}
+      {error && <p role="alert" className="mt-2 text-[13px] font-semibold text-[#b91c1c]">{error}</p>}
+    </section>
+  )
+}
+
 export function ConsoleSetup({ api, status, billingReady, canSwitchOnBilling, switchingOn, resetting, onSwitchOnBilling, onResetBilling }: {
   api: (path: string, init?: RequestInit) => Promise<any>
   status: SetupStatus
@@ -445,6 +485,7 @@ export function ConsoleSetup({ api, status, billingReady, canSwitchOnBilling, sw
 
   return (
     <div className="space-y-5">
+      <DatabaseSecurity api={api} />
       <section className={`${card} p-4 sm:p-5`}>
         <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={17} className="text-[#1D5BEA]" /> Payments</h2>
         <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 mt-1">
