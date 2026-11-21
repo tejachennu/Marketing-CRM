@@ -86,7 +86,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
               {salesChange && <p className={`mt-1 px-1 text-[11px] font-semibold ${salesChange.down ? 'text-[#b91c1c]' : 'text-slate-500'}`}>{salesChange.text}</p>}
             </div>
             <div>
-              <Metric label="Orders" value={report.orders.toLocaleString('en-IN')} note={`${report.orders ? `About ${money(report.averageOrder)} each` : 'No orders yet'}${report.cancelled ? ` · ${report.cancelled} cancelled` : ''}`} icon={Package} tone="text-[#1D5BEA]" />
+              <Metric label="Orders" value={report.orders.toLocaleString('en-IN')} note={`${report.orders ? `About ${money(Math.round(report.averageOrder))} each` : 'No orders yet'}${report.cancelled ? ` · ${report.cancelled} cancelled` : ''}`} icon={Package} tone="text-[#1D5BEA]" />
               {ordersChange && <p className={`mt-1 px-1 text-[11px] font-semibold ${ordersChange.down ? 'text-[#b91c1c]' : 'text-slate-500'}`}>{ordersChange.text}</p>}
             </div>
             {website ? (

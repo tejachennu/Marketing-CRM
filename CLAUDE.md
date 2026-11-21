@@ -118,6 +118,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: Instagram as its own section; chat redesign; shop reports fixed** (owner, 21 Nov 2026: "Instagram separate chat
+  window ... whatsapp tho merge avakudadu ... analytics correct ga ... filters ... chat design baledu"). App keeps two chat
+  lists (`AppState.chatLists`: `conversations` = `/api/conversations?channel=whatsapp`, `ig_conversations` = `channel=instagram`;
+  `chatsOf(channel)` re-checks with `isInstagramChat` so an old mixed copy never mixes; `findChat`, `unreadIn`, `loadChats`;
+  live updates and notices find the right list). `/api/mobile/me` returns `instagram {connected, username}`; bottom bar gets
+  an **Instagram** tab (and Chats is labelled WhatsApp) when connected. `screens/instagram/instagram_screen.dart`: Chats
+  (shared `ChatList` + sync `/api/instagram/messages?sync=1&list=0` on open and every 2 min, notes for messages off / slowed),
+  Comments (reply, message them, hide, delete, post thumbnail), Posts (grid + `NewIgPostScreen`: photos via
+  `/api/instagram/photos`, POST `/api/instagram/posts`), Auto replies (PUT `/api/instagram`). Chat window follows the chat's
+  channel (Instagram: 7-day window, no templates, "Instagram" under the name). `chats_screen.dart`: `ChatList` / `ChatRow`
+  (filters All, Unread, Waiting for reply, Mine, AI off; time aligned). Bubbles fit their text with the time inline.
+  **Shop reports** (`lib/commerce/shop-reports.ts`): new = first order in the period, returning = ordered before (also by the
+  contact's phone for WhatsApp orders), `repeatCustomers`, `received` (paid), `before` (the period just before), periods
+  1/7/30/90, `channel` filter (`readChannel`; visits and carts only for website/all; the channel split always shows all).
+  Web `reports-tab.tsx` and app `ShopReportsScreen` (shop_more.dart) have period + channel filters, received vs to collect,
+  change vs before, labelled bars (tap a bar in the app). Brand rename under discussion (owner does not want "WAMA CRM").
 - **Version 1 freeze: security, bug pass, app parity** (owner, 21 Nov 2026: "freeze this version ... security ni baga
   take care ... every web feature in the app ... chatting WhatsApp native feel"). Report at the top of
   `docs/TESTING-REPORT.md`. **Security**: the public anon key could read core tables in production →
