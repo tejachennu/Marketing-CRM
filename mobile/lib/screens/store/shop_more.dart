@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
-import '../../data/format.dart' show showPhone;
+import '../../data/format.dart' show istNow, showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'store_logic.dart';
@@ -256,6 +256,8 @@ const _channels = [('', 'All'), ('website', 'Website'), ('in_chat', 'WhatsApp'),
 
 class _ShopReportsScreenState extends State<ShopReportsScreen> {
   int _days = 30;
+  /// Dates the owner picked ("YYYY-MM-DD", both included); used instead of the ready periods when set.
+  DateTimeRange? _range;
   String _channel = '';
   bool _showOrders = false;
   int? _picked;
@@ -276,7 +278,12 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
       _picked = null;
     });
     try {
-      final d = await app.backend.get('/api/commerce/reports', {'organizationId': app.orgId, 'days': '$_days', if (_channel.isNotEmpty) 'channel': _channel});
+      final range = _range;
+      final d = await app.backend.get('/api/commerce/reports', {
+        'organizationId': app.orgId,
+        if (range == null) 'days': '$_days' else ...{'from': _ymd(range.start), 'to': _ymd(range.end)},
+        if (_channel.isNotEmpty) 'channel': _channel,
+      });
       if (mounted) setState(() => _report = d['report'] as Map?);
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
@@ -285,9 +292,36 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
 
   num _n(Object? v) => v is num ? v : num.tryParse('$v') ?? 0;
 
+  static String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// The phone's calendar: pick a from date and a to date (today at most, up to 366 days).
+  Future<void> _pickDates() async {
+    final today = istNow();
+    final last = DateTime(today.year, today.month, today.day);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: last.subtract(const Duration(days: 365 * 3)),
+      lastDate: last,
+      initialDateRange: _range ?? DateTimeRange(start: last.subtract(const Duration(days: 6)), end: last),
+      helpText: 'Pick the dates',
+      saveText: 'Show report',
+    );
+    if (picked == null) return;
+    if (picked.end.difference(picked.start).inDays + 1 > 366) {
+      if (mounted) toast(context, 'Pick at most 366 days.');
+      return;
+    }
+    setState(() => _range = picked);
+    _load();
+  }
+
+  /// "the 7 days before" / "the day before"
+  int get _shownDays => (_report?['daily'] as List?)?.length ?? _days;
+
   /// "▲ 20% vs the 7 days before"; null when there is nothing to compare.
   (String, bool)? _change(num now, num before) {
-    final when = _days == 1 ? 'yesterday' : 'the $_days days before';
+    final n = _shownDays;
+    final when = n == 1 ? 'the day before' : 'the $n days before';
     if (now == 0 && before == 0) return null;
     if (before == 0) return ('New vs $when', false);
     final pct = ((now - before) / before * 100).round();
@@ -323,10 +357,19 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                   FilterChips(
                     children: [
                       for (final (days, label) in _periods)
-                        ChoiceChip(label: Text(label), selected: _days == days, onSelected: (_) {
-                          setState(() => _days = days);
+                        ChoiceChip(label: Text(label), selected: _range == null && _days == days, onSelected: (_) {
+                          setState(() {
+                            _days = days;
+                            _range = null;
+                          });
                           _load();
                         }),
+                      ChoiceChip(
+                        avatar: Icon(Icons.date_range, size: 17, color: _range == null ? Brand.textSoft : Brand.blue),
+                        label: Text(_range == null ? 'Pick dates' : '${_dayLabel(_ymd(_range!.start))} – ${_dayLabel(_ymd(_range!.end))}'),
+                        selected: _range != null,
+                        onSelected: (_) => _pickDates(),
+                      ),
                     ],
                   ),
                   FilterChips(
@@ -366,6 +409,8 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
     final topQty = products.fold<num>(1, (m, p) => _n(p['quantity']) > m ? _n(p['quantity']) : m);
     final carts = (r['carts'] as Map?) ?? const {};
     final labelEvery = (daily.length / 7).ceil().clamp(1, 99);
+    // A picked period that ends before today has no "Today"
+    final endsToday = daily.isEmpty || '${daily.last['day']}' == _ymd(istNow());
 
     Widget change((String, bool)? c) => c == null
         ? const SizedBox.shrink()
@@ -466,14 +511,14 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                   ),
                 ],
               ),
-              if (_days == 1 && daily.isNotEmpty)
-                Text('Today: ${money(daily.last['sales'])} from ${daily.last['orders']} ${_n(daily.last['orders']) == 1 ? 'order' : 'orders'}.', style: const TextStyle(color: Brand.textSoft))
+              if (daily.length == 1)
+                Text('${endsToday ? 'Today' : _dayLabel('${daily.last['day']}')}: ${money(daily.last['sales'])} from ${daily.last['orders']} ${_n(daily.last['orders']) == 1 ? 'order' : 'orders'}.', style: const TextStyle(color: Brand.textSoft))
               else if (daily.isNotEmpty) ...[
                 // What the tapped bar is (or the latest day)
                 Builder(builder: (context) {
                   final d = daily[(_picked ?? daily.length - 1).clamp(0, daily.length - 1)];
                   return Text(
-                    '${_picked == null ? 'Today' : _dayLabel('${d['day']}')}: ${money(d['sales'])} · ${d['orders']} ${_n(d['orders']) == 1 ? 'order' : 'orders'}${website ? ' · ${d['visits']} visits' : ''}',
+                    '${_picked == null && endsToday ? 'Today' : _dayLabel('${d['day']}')}: ${money(d['sales'])} · ${d['orders']} ${_n(d['orders']) == 1 ? 'order' : 'orders'}${website ? ' · ${d['visits']} visits' : ''}',
                     style: const TextStyle(fontSize: 12.5, color: Brand.textSoft),
                   );
                 }),
@@ -514,7 +559,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                     for (var i = 0; i < daily.length; i++)
                       Expanded(
                         child: Text(
-                          i == daily.length - 1 ? '' : (daily.length - 1 - i) % labelEvery == 0 ? _dayLabel('${daily[i]['day']}', short: _days <= 7) : '',
+                          i == daily.length - 1 ? '' : (daily.length - 1 - i) % labelEvery == 0 ? _dayLabel('${daily[i]['day']}', short: daily.length <= 7) : '',
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.visible,
@@ -524,7 +569,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                       ),
                   ],
                 ),
-                const Align(alignment: Alignment.centerRight, child: Text('Today', style: TextStyle(fontSize: 10, color: Brand.muted))),
+                Align(alignment: Alignment.centerRight, child: Text(endsToday ? 'Today' : _dayLabel('${daily.last['day']}'), style: const TextStyle(fontSize: 10, color: Brand.muted))),
                 _hint('Tap a bar to see that day.'),
               ],
             ],

@@ -61,6 +61,7 @@ void main() {
       ('instagram_comments', ['Reply']),
       ('shop_reports', ['WhatsApp']),
       ('shop_reports', ['Today']),
+      ('shop_reports', ['Pick dates']),
       ('members', ['Plans']),
       ('online_payments', ['Connect']),
       ('unanswered', ['Write the answer']),

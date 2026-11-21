@@ -31,8 +31,8 @@ class DemoShopExtras {
     {'id': 'r2', 'rating': 3, 'body': 'Size runs a little small.', 'photos': [], 'customer_name': 'Ravi K.', 'published': true, 'product': {'title': 'Denim jacket'}, 'order': {'order_number': 'W-1038'}},
   ];
 
-  Map<String, dynamic> _report(int days, String? channel) {
-    final today = DateTime.now();
+  Map<String, dynamic> _report(int days, String? channel, {DateTime? end}) {
+    final today = end ?? DateTime.now();
     // A share of the numbers for one channel, so the filter visibly changes them
     final share = switch (channel) { 'website' => 0.6, 'in_chat' => 0.3, 'in_store' => 0.07, 'phone' => 0.03, _ => 1.0 };
     final scale = days == 1 ? 0.04 : days == 7 ? 0.25 : days == 90 ? 2.8 : 1.0;
@@ -68,7 +68,9 @@ class DemoShopExtras {
   Map<String, dynamic>? get(String path, Map<String, String>? query) {
     switch (path) {
       case '/api/commerce/reports':
-        return {'report': _report(int.tryParse(query?['days'] ?? '') ?? 30, query?['channel'])};
+        final from = DateTime.tryParse(query?['from'] ?? ''), to = DateTime.tryParse(query?['to'] ?? '');
+        final picked = from != null && to != null ? to.difference(from).inDays + 1 : null;
+        return {'report': _report(picked ?? int.tryParse(query?['days'] ?? '') ?? 30, query?['channel'], end: to)};
       case '/api/commerce/reviews':
         return {'reviews': _reviews};
       case '/api/commerce/discounts':
