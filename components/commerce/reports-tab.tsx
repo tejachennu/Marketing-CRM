@@ -10,7 +10,9 @@ import { Metric, cardClass, hintClass, sectionTitle } from './ui'
 const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const weekday = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' })
 const periodName = (d: number) => (d === 1 ? 'Today' : `${d} days`)
-const beforeName = (d: number) => (d === 1 ? 'yesterday' : `the ${d} days before`)
+const beforeName = (d: number) => (d === 1 ? 'the day before' : `the ${d} days before`)
+/** Today in India time, "YYYY-MM-DD" (the most a to date can be). */
+const istToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 
 /** "+20% vs the 7 days before" (null when there is nothing to compare with). */
 function change(now: number, before: number, days: number): { text: string; down: boolean } | null {
@@ -24,6 +26,10 @@ function change(now: number, before: number, days: number): { text: string; down
 /** Shop reports: visitors, orders, money received, what sells, carts left, best customers; by period and channel. */
 export function ReportsTab({ orgId, currency }: { orgId: string; currency: string }) {
   const [days, setDays] = useState<number>(30)
+  // Dates the owner picked (both set = used instead of the ready periods)
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null)
+  const [picking, setPicking] = useState(false)
+  const [draft, setDraft] = useState({ from: '', to: '' })
   const [channel, setChannel] = useState<ReportChannel | ''>('')
   const [show, setShow] = useState<'sales' | 'orders'>('sales')
   const [report, setReport] = useState<ShopReport | null>(null)
@@ -34,21 +40,30 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
     let live = true
     setLoading(true)
     setError('')
-    fetch(`/api/commerce/reports?organizationId=${orgId}&days=${days}${channel ? `&channel=${channel}` : ''}`)
+    const period = range ? `from=${range.from}&to=${range.to}` : `days=${days}`
+    fetch(`/api/commerce/reports?organizationId=${orgId}&${period}${channel ? `&channel=${channel}` : ''}`)
       .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Could not load the report.'); return d })
       .then((d) => { if (live) setReport(d.report) })
       .catch((e) => { if (live) setError(e.message) })
       .finally(() => { if (live) setLoading(false) })
     return () => { live = false }
-  }, [orgId, days, channel])
+  }, [orgId, days, channel, range])
 
   const money = (n: number) => formatMoney(n, currency)
   const value = (d: ShopReport['daily'][number]) => (show === 'sales' ? d.sales : d.orders)
   const peak = Math.max(1, ...(report?.daily || []).map(value))
   const website = !channel || channel === 'website'
   const channelTotal = (report?.channels || []).reduce((s, c) => s + c.sales, 0)
-  const salesChange = report ? change(report.sales, report.before?.sales || 0, days) : null
-  const ordersChange = report ? change(report.orders, report.before?.orders || 0, days) : null
+  const shownDays = report?.daily?.length || days
+  const salesChange = report ? change(report.sales, report.before?.sales || 0, shownDays) : null
+  const ordersChange = report ? change(report.orders, report.before?.orders || 0, shownDays) : null
+  const endsToday = !report?.to || report.to === istToday()
+  const draftProblem = !draft.from || !draft.to ? '' : draft.from > draft.to ? 'The from date must be on or before the to date.' : ''
+  const applyDates = () => {
+    if (!draft.from || !draft.to || draftProblem) return
+    setRange({ ...draft })
+    setPicking(false)
+  }
   const chip = (active: boolean) => `h-8 px-3 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap ${active ? 'bg-[#1D5BEA] text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`
   const group = 'inline-flex max-w-full overflow-x-auto p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800'
   const labelEvery = report ? Math.max(1, Math.ceil(report.daily.length / 7)) : 1
@@ -64,8 +79,11 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
         <div className="flex flex-wrap gap-2 min-w-0 max-w-full">
           <div role="group" aria-label="Period" className={group}>
             {REPORT_PERIODS.map((d) => (
-              <button key={d} type="button" onClick={() => setDays(d)} aria-pressed={days === d} className={chip(days === d)}>{periodName(d)}</button>
+              <button key={d} type="button" onClick={() => { setDays(d); setRange(null); setPicking(false) }} aria-pressed={!range && days === d} className={chip(!range && days === d)}>{periodName(d)}</button>
             ))}
+            <button type="button" onClick={() => { setDraft(range || { from: '', to: istToday() }); setPicking((p) => !p) }} aria-pressed={Boolean(range)} aria-expanded={picking} className={chip(Boolean(range))}>
+              {range ? `${dayLabel(range.from)} – ${dayLabel(range.to)}` : 'Pick dates'}
+            </button>
           </div>
           <div role="group" aria-label="Where orders came from" className={group}>
             <button type="button" onClick={() => setChannel('')} aria-pressed={!channel} className={chip(!channel)}>All</button>
@@ -75,6 +93,23 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
           </div>
         </div>
       </div>
+
+      {picking && (
+        <div className={`${cardClass} p-4 flex flex-wrap items-end gap-3`}>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            From
+            <input type="date" value={draft.from} max={draft.to || istToday()} onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))} className="mt-1 block h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111b21] px-3 text-sm text-slate-900 dark:text-white" />
+          </label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            To
+            <input type="date" value={draft.to} min={draft.from || undefined} max={istToday()} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} className="mt-1 block h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111b21] px-3 text-sm text-slate-900 dark:text-white" />
+          </label>
+          <button type="button" onClick={applyDates} disabled={!draft.from || !draft.to || Boolean(draftProblem)} className="h-10 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">Show report</button>
+          {range && <button type="button" onClick={() => { setRange(null); setPicking(false) }} className="h-10 px-3 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">Clear dates</button>}
+          {draftProblem && <p role="alert" className="w-full text-xs text-[#b91c1c]">{draftProblem}</p>}
+          <p className="w-full text-[11px] text-slate-500">Up to 366 days. Compared with the same number of days just before.</p>
+        </div>
+      )}
 
       {error && <p role="alert" className="p-3 rounded-xl bg-[#fdf0f0] text-[#b91c1c] text-sm">{error}</p>}
 
@@ -106,8 +141,8 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
                 ))}
               </div>
             </div>
-            {days === 1 ? (
-              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Today: <b>{money(report.daily[0]?.sales || 0)}</b> from <b>{report.daily[0]?.orders || 0}</b> {report.daily[0]?.orders === 1 ? 'order' : 'orders'}{website ? <> · <b>{report.daily[0]?.visits || 0}</b> visits</> : null}.</p>
+            {report.daily.length === 1 ? (
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{endsToday ? 'Today' : dayLabel(report.daily[0].day)}: <b>{money(report.daily[0]?.sales || 0)}</b> from <b>{report.daily[0]?.orders || 0}</b> {report.daily[0]?.orders === 1 ? 'order' : 'orders'}{website ? <> · <b>{report.daily[0]?.visits || 0}</b> visits</> : null}.</p>
             ) : (
               <>
                 <div className="mt-3 flex items-end gap-[2px] h-36" role="img" aria-label={`${show === 'sales' ? 'Sales' : 'Orders'} each day`}>
@@ -119,7 +154,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
                 </div>
                 <div className="mt-1 flex gap-[2px] text-[10px] text-slate-500">
                   {report.daily.map((d, i) => (
-                    <span key={d.day} className="flex-1 min-w-0 text-center truncate">{i === report.daily.length - 1 ? 'Today' : (report.daily.length - 1 - i) % labelEvery === 0 ? (days <= 7 ? weekday(d.day) : dayLabel(d.day)) : ''}</span>
+                    <span key={d.day} className="flex-1 min-w-0 text-center truncate">{i === report.daily.length - 1 ? (endsToday ? 'Today' : dayLabel(d.day)) : (report.daily.length - 1 - i) % labelEvery === 0 ? (report.daily.length <= 7 ? weekday(d.day) : dayLabel(d.day)) : ''}</span>
                   ))}
                 </div>
               </>

@@ -100,6 +100,28 @@ test('report: one channel, money received, today, and the period before', () => 
   assert.deepEqual(today.before, { orders: 1, sales: 250, visits: 0 }) // yesterday
 })
 
+test('report: dates the owner picks (from and to)', () => {
+  assert.deepEqual(R.readRange('2026-11-01', '2026-11-03', NOW).days, 3)
+  assert.equal(R.readRange('2026-11-03', '2026-11-01', NOW).error, 'The from date must be on or before the to date.')
+  assert.equal(R.readRange('2026-11-01', '2026-11-30', NOW).error, 'The to date cannot be after today.')
+  assert.equal(R.readRange('2025-01-01', '2026-11-18', NOW).error, 'Pick at most 366 days.')
+  assert.equal(R.readRange('', '2026-11-18', NOW).error, 'Pick a from date and a to date.')
+  assert.equal(R.readRange('2026-11-10', '2026-11-18', NOW).end, NOW) // ends today: counts back from now
+  const range = R.readRange('2026-11-08', '2026-11-10', NOW)
+  const orders = [
+    { id: 'in', status: 'delivered', total_amount: 100, created_at: '2026-11-09T05:00:00Z', checkout_type: 'website', shipping_address: { phone_number: '9876543210' } },
+    { id: 'after', status: 'delivered', total_amount: 999, created_at: '2026-11-12T05:00:00Z', checkout_type: 'website', shipping_address: {} },
+    { id: 'before', status: 'delivered', total_amount: 50, created_at: '2026-11-06T05:00:00Z', checkout_type: 'website', shipping_address: {} },
+  ]
+  const r = R.buildShopReport({ days: range.days, now: range.end, orders, items: [], checkouts: [], visits: [] })
+  assert.equal(r.from, '2026-11-08')
+  assert.equal(r.to, '2026-11-10')
+  assert.equal(r.orders, 1) // the order after the 10th is left out
+  assert.equal(r.sales, 100)
+  assert.deepEqual(r.before, { orders: 1, sales: 50, visits: 0 }) // 5–7 Nov
+  assert.deepEqual(r.daily.map((d) => d.day), ['2026-11-08', '2026-11-09', '2026-11-10'])
+})
+
 test('visits are counted per day (without a direct database connection)', async () => {
   const db = salonDb({ commerce_store_visits: [] })
   await RS.countVisit(db, ORG, 'visit', NOW, null)

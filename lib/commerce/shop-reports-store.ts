@@ -52,16 +52,18 @@ export async function countVisit(db: any, organizationId: string, kind: 'visit' 
 /** The report for the last `days` days (one channel, or all), with the period before it to compare. */
 export async function loadShopReport(db: any, organizationId: string, days: number, now: Date = new Date(), channel: ReportChannel | null = null): Promise<ShopReport> {
   const since = periodStart(days * 2, now)
+  // The end of the period's last day (India time): a period in the past leaves out later orders
+  const until = new Date(Date.parse(`${istDay(now)}T00:00:00Z`) + 86_400_000 - 330 * 60_000).toISOString()
   const { data: orders } = await db.from('commerce_orders')
     .select('id, status, payment_status, total_amount, created_at, checkout_type, contact_id, shipping_address, contact:contacts(first_name, last_name, phone_number)')
-    .eq('organization_id', organizationId).gte('created_at', since).order('created_at', { ascending: false }).limit(5000)
+    .eq('organization_id', organizationId).gte('created_at', since).lt('created_at', until).order('created_at', { ascending: false }).limit(5000)
   const ids = (orders || []).map((o: any) => o.id)
   const items: any[] = []
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await db.from('commerce_order_items').select('order_id, product_id, title, quantity, unit_price, total_price').in('order_id', ids.slice(i, i + 200))
     items.push(...(data || []))
   }
-  const { data: checkouts, error: cartError } = await db.from('commerce_checkouts').select('created_at, reminded_at, recovered_order_id, total').eq('organization_id', organizationId).gte('created_at', since).limit(5000)
+  const { data: checkouts, error: cartError } = await db.from('commerce_checkouts').select('created_at, reminded_at, recovered_order_id, total').eq('organization_id', organizationId).gte('created_at', since).lt('created_at', until).limit(5000)
   const { data: visits } = await withReportsSchema(() => db.from('commerce_store_visits').select('day, visits, product_views').eq('organization_id', organizationId).gte('day', istDay(since)))
   // Phones that ordered before these two periods: those customers are coming back (WhatsApp orders keep the phone on the contact)
   const { data: earlier } = await db.from('commerce_orders').select('shipping_address, contact:contacts(phone_number)').eq('organization_id', organizationId).lt('created_at', since).neq('status', 'canceled').order('created_at', { ascending: false }).limit(5000)

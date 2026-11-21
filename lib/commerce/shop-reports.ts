@@ -22,6 +22,25 @@ export function readPeriod(value: unknown): ReportPeriod {
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
+/**
+ * A period the owner picked: from and to as "YYYY-MM-DD" (India days, both included), never in the future, at most
+ * 366 days. Gives the number of days and a moment on the last day, which the report counts back from.
+ */
+export const MAX_RANGE_DAYS = 366
+export function readRange(from: unknown, to: unknown, now: Date = new Date()): { days: number; end: Date; from: string; to: string } | { error: string } {
+  const day = /^\d{4}-\d{2}-\d{2}$/
+  const a = String(from || '')
+  const b = String(to || '')
+  if (!day.test(a) || !day.test(b) || Number.isNaN(Date.parse(`${a}T00:00:00Z`)) || Number.isNaN(Date.parse(`${b}T00:00:00Z`))) return { error: 'Pick a from date and a to date.' }
+  if (a > b) return { error: 'The from date must be on or before the to date.' }
+  if (b > istDay(now)) return { error: 'The to date cannot be after today.' }
+  const days = Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1
+  if (days > MAX_RANGE_DAYS) return { error: `Pick at most ${MAX_RANGE_DAYS} days.` }
+  // Midday India time on the last day: today's report still counts back from "now"
+  const end = b === istDay(now) ? now : new Date(`${b}T12:00:00+05:30`)
+  return { days, end, from: a, to: b }
+}
+
 /** "2026-11-18" in India time. */
 export function istDay(at: Date | string | number): string {
   const time = new Date(at).getTime()
@@ -66,6 +85,9 @@ export interface ShopReport {
   conversion: number | null
   /** The channel looked at (null = all) */
   channel: ReportChannel | null
+  /** The first and last day of the period (India days) */
+  from: string
+  to: string
   cancelled: number
   daily: { day: string; visits: number; orders: number; sales: number }[]
   channels: { channel: string; label: string; orders: number; sales: number }[]
@@ -93,10 +115,12 @@ export function buildShopReport(input: {
 }): ShopReport {
   const dayList = periodDays(input.days, input.now)
   const start = dayList[0]
+  const end = dayList[dayList.length - 1]
   const beforeStart = periodDays(input.days * 2, input.now)[0]
   const channel = input.channel || null
   const onChannel = (o: any) => !channel || channelOf(o) === channel
-  const inPeriod = (at: unknown) => Boolean(at) && istDay(at as string) >= start
+  // A period that ends before today leaves out anything after its last day
+  const inPeriod = (at: unknown) => Boolean(at) && istDay(at as string) >= start && istDay(at as string) <= end
   const inBefore = (at: unknown) => Boolean(at) && istDay(at as string) >= beforeStart && istDay(at as string) < start
   const websiteToo = !channel || channel === 'website'
   const everyChannel = input.orders.filter((o) => inPeriod(o.created_at))
@@ -179,6 +203,8 @@ export function buildShopReport(input: {
     averageOrder: counted.length ? round2(sales / counted.length) : 0,
     conversion: websiteToo && visits > 0 ? round2((websiteOrders / visits) * 100) : null,
     channel,
+    from: start,
+    to: end,
     cancelled: all.filter((o) => o.status === 'canceled').length,
     daily: [...daily.values()],
     channels: [...channels.values()].sort((a, b) => b.sales - a.sales),
