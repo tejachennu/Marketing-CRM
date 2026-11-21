@@ -354,7 +354,12 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
               color: Colors.white,
               child: Column(
                 children: [
-                  FilterChips(
+                  // Wraps on small phones, so "Pick dates" is always in sight
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
                     children: [
                       for (final (days, label) in _periods)
                         ChoiceChip(label: Text(label), selected: _range == null && _days == days, onSelected: (_) {
@@ -371,6 +376,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                         onSelected: (_) => _pickDates(),
                       ),
                     ],
+                  ),
                   ),
                   FilterChips(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
