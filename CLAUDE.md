@@ -118,6 +118,15 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **One connector at a time; Connectors in the app; More redesigned** (owner, 22 Nov 2026: "only one connector enable
+  and disable no multiple connectors ... option to handle it from mobile ... enhance the mobile design"). `MAX_CONNECTORS = 1`
+  in `lib/plans.ts` for every plan (Pro too, exempt and old ₹3,000 workspaces; Pro features say "Any one connector, switch
+  any time"): `activeConnectors` keeps the first that is on (Front Desk, E-commerce, Sales Pipeline) until the owner picks;
+  `connectorSwitch` always switches every other one off (never a refusal, except Starter = Front Desk only); `/api/connectors`
+  reports only the one in use as enabled. Web Connectors page asks "Use X instead?" / "Switch X off?". The raw flags of older
+  workspaces stay until the owner switches (gates such as the pipeline API still read `isConnectorOn`). App: More →
+  **Connectors** (`screens/more/connectors_screen.dart`, admins switch, same API, reloads `/api/mobile/me` so the bottom bar
+  follows); More screen: profile card with business / role / connector chips, icons in soft tiles, chevrons.
 - **App: Instagram as its own section; chat redesign; shop reports fixed** (owner, 21 Nov 2026: "Instagram separate chat
   window ... whatsapp tho merge avakudadu ... analytics correct ga ... filters ... chat design baledu"). App keeps two chat
   lists (`AppState.chatLists`: `conversations` = `/api/conversations?channel=whatsapp`, `ig_conversations` = `channel=instagram`;

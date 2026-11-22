@@ -659,16 +659,20 @@ test('Plans: Starter has no inbox or campaigns and Front Desk only; Growth has o
   assert.equal(P.connectorBlockReason(starter, [], 'salon'), null)
   const growth = P.limitsOf('growth')
   assert.equal(P.planAllows(growth, 'campaigns'), true)
-  assert.equal(P.connectorBlockReason(growth, ['salon'], 'pipeline') !== null, true)
+  // Never a refusal: switching swaps (connectorSwitch switches the other off)
+  assert.equal(P.connectorBlockReason(growth, ['salon'], 'pipeline'), null)
   // E-commerce and Sales Pipeline start switched on: on Growth only the first one counts
   assert.deepEqual(P.activeConnectors(growth, ['ecommerce', 'pipeline']), ['ecommerce'])
   assert.deepEqual(P.activeConnectors(starter, ['salon', 'ecommerce', 'pipeline']), ['salon'])
-  assert.deepEqual(P.activeConnectors(P.limitsOf('pro_1'), ['salon', 'ecommerce', 'pipeline']), ['salon', 'ecommerce', 'pipeline'])
+  // One connector at a time on every plan (Pro too): the first that is on, until the owner picks
+  assert.deepEqual(P.activeConnectors(P.limitsOf('pro_1'), ['salon', 'ecommerce', 'pipeline']), ['salon'])
+  assert.equal(P.MAX_CONNECTORS, 1)
 })
 
 test('Plans: Super Admin overrides change one workspace\'s limits; bad values are ignored', () => {
   const limits = P.limitsOf('growth', { connectors: 3, team: 50, aiMonthly: 'lots', videos: -1 })
-  assert.deepEqual([limits.connectors, limits.team, limits.aiMonthly, limits.videos], [3, 50, 300, 0])
+  // More than one connector cannot be given any more (one at a time)
+  assert.deepEqual([limits.connectors, limits.team, limits.aiMonthly, limits.videos], [1, 50, 300, 0])
   assert.equal(P.limitsOf('pro_1', { team: null }).team, null)
   // A connector number opens Starter up to every connector
   assert.deepEqual(P.limitsOf('starter', { connectors: 2 }).connectorKeys, [])
@@ -885,25 +889,22 @@ test('Console: what needs attention on a workspace, most pressing first', () => 
   assert.deepEqual(kinds(org, row({ billing_exempt: true })), [])
 })
 
-test('Connectors: a one-connector plan offers to swap; Starter keeps Front Desk only', () => {
+test('Connectors: one at a time; switching one on switches the others off; Starter keeps Front Desk only', () => {
   const growth = P.limitsOf('growth')
-  // E-commerce and Sales Pipeline start switched on: turning on Front Desk asks to swap
-  const asked = P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'salon', false)
-  assert.deepEqual([asked.ok, asked.canSwap], [false, true])
-  assert.deepEqual(P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'salon', true), { ok: true, switchOff: ['ecommerce', 'pipeline'] })
-  // Making the locked one the active one
-  assert.deepEqual(P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'pipeline', true), { ok: true, switchOff: ['ecommerce'] })
-  // Room left: just on
-  assert.deepEqual(P.connectorSwitch(P.limitsOf('pro_1'), ['ecommerce', 'pipeline'], 'salon', false), { ok: true, switchOff: [] })
-  assert.deepEqual(P.connectorSwitch(growth, [], 'salon', false), { ok: true, switchOff: [] })
-  const starter = P.connectorSwitch(P.limitsOf('starter'), ['salon'], 'ecommerce', true)
-  assert.deepEqual([starter.ok, starter.canSwap], [false, false])
-  // Grandfathered workspaces (3 connectors) are never asked
-  assert.deepEqual(P.connectorSwitch(P.limitsOf('growth', { connectors: 3 }), ['ecommerce', 'pipeline'], 'salon', false), { ok: true, switchOff: [] })
+  // E-commerce and Sales Pipeline start switched on: turning on Front Desk switches both off
+  assert.deepEqual(P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'salon'), { ok: true, switchOff: ['ecommerce', 'pipeline'] })
+  assert.deepEqual(P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'pipeline'), { ok: true, switchOff: ['ecommerce'] })
+  // Pro and older workspaces too: never two at once
+  assert.deepEqual(P.connectorSwitch(P.limitsOf('pro_1'), ['ecommerce', 'pipeline'], 'salon'), { ok: true, switchOff: ['ecommerce', 'pipeline'] })
+  assert.deepEqual(P.connectorSwitch(P.limitsOf('growth', { connectors: 3 }), ['ecommerce'], 'salon'), { ok: true, switchOff: ['ecommerce'] })
+  assert.deepEqual(P.connectorSwitch(growth, [], 'salon'), { ok: true, switchOff: [] })
+  const starter = P.connectorSwitch(P.limitsOf('starter'), ['salon'], 'ecommerce')
+  assert.equal(starter.ok, false)
+  assert.match(starter.reason, /Front Desk only/)
 })
 
-test('Connectors: a workspace still on the old ₹3,000 plan keeps all of them', () => {
-  assert.equal(B.billingLimits(row({ plan: 'pro_monthly' })).connectors, 3)
+test('Connectors: one at a time for every workspace, old ₹3,000 plan and exempt ones too', () => {
+  assert.equal(B.billingLimits(row({ plan: 'pro_monthly' })).connectors, 1)
   assert.equal(B.billingLimits(row({ plan: 'growth' })).connectors, 1)
-  assert.equal(B.billingLimits(row({ billing_exempt: true })).connectors, 3)
+  assert.equal(B.billingLimits(row({ billing_exempt: true })).connectors, 1)
 })

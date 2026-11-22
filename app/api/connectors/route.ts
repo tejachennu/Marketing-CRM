@@ -5,21 +5,23 @@ import { withPipelineSchema } from '@/lib/pipeline/schema'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { billingLimits, getBilling } from '@/lib/billing'
-import { activeConnectors, connectorSwitch, type PlanLimits } from '@/lib/plans'
+import { MAX_CONNECTORS, activeConnectors, connectorSwitch, type PlanLimits } from '@/lib/plans'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-/** Each connector: switched on, and whether the plan lets it be used (`active`). */
+/**
+ * Each connector and whether it is the one in use. One connector at a time: an older workspace with more than
+ * one switched on uses the first (Front Desk, E-commerce, Sales Pipeline) until the owner picks another.
+ */
 function describe(organization: any, limits: PlanLimits) {
   const on = CONNECTORS.map((connector) => connector.key).filter((key) => isConnectorOn(organization, key))
   const active = activeConnectors(limits, on)
-  return CONNECTORS.map((connector) => ({ key: connector.key, enabled: on.includes(connector.key), active: active.includes(connector.key) }))
+  return CONNECTORS.map((connector) => ({ key: connector.key, enabled: active.includes(connector.key), active: active.includes(connector.key) }))
 }
 
 function planInfo(billing: any, limits: PlanLimits) {
-  if (!billing || billing.billing_exempt) return null
-  return { connectors: limits.connectors, only: limits.connectorKeys }
+  return { connectors: MAX_CONNECTORS, only: !billing || billing.billing_exempt ? [] : limits.connectorKeys }
 }
 
 async function loadOrganization(db: any, organizationId: string) {
@@ -41,8 +43,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ connectors: describe(organization, limits), plan: planInfo(billing, limits) })
 }
 
-// POST { organizationId, key, enabled, swap? }: switch a connector on or off (organization admins). On a
-// plan with room for fewer connectors, `swap: true` switches the others off to make room.
+// POST { organizationId, key, enabled }: switch a connector on or off (organization admins). One connector at a
+// time: switching one on switches every other one off (nothing is deleted).
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const organizationId = String(body?.organizationId || '')
@@ -63,8 +65,8 @@ export async function POST(request: NextRequest) {
   let switchOff: ConnectorKey[] = []
   if (enabled) {
     const on = CONNECTORS.map((connector) => connector.key).filter((k) => isConnectorOn(organization, k))
-    const decision = connectorSwitch(limits, on, key, body?.swap === true)
-    if (!decision.ok) return NextResponse.json({ error: decision.reason, upgrade: true, canSwap: decision.canSwap }, { status: 402 })
+    const decision = connectorSwitch(limits, on, key)
+    if (!decision.ok) return NextResponse.json({ error: decision.reason, upgrade: true, canSwap: false }, { status: 402 })
     switchOff = decision.switchOff
   }
   if (switchOff.length) {

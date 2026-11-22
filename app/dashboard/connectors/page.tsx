@@ -49,21 +49,27 @@ export default function ConnectorsPage() {
 
   async function toggle(key: ConnectorKey, enabled: boolean) {
     if (!workspace) return
-    // A plan with room for fewer connectors than are on: offer to swap instead of a refusal
-    let swap = false
+    // One connector at a time: switching another one on switches the current one off (ask first)
     const others = Object.keys(state || {}).filter((k) => k !== key && state?.[k] && !inactive[k])
-    if (enabled && plan && !plan.only.length && others.length >= plan.connectors) {
+    if (enabled && others.length) {
       const ok = await confirm({
         title: `Use ${nameOf(key)} instead?`,
-        message: `Your plan includes ${plan.connectors === 1 ? 'one connector' : `${plan.connectors} connectors`}. ${others.map(nameOf).join(' and ')} will be switched off. Nothing is deleted: switch it back on any time, or upgrade to Pro in Billing for all of them.`,
+        message: `You can use one connector at a time. ${others.map(nameOf).join(' and ')} will be switched off. Nothing is deleted: switch back any time and everything is still there.`,
         confirmLabel: `Use ${nameOf(key)}`,
       })
       if (!ok) return
-      swap = true
+    }
+    if (!enabled) {
+      const ok = await confirm({
+        title: `Switch ${nameOf(key)} off?`,
+        message: `It leaves your menu. Nothing is deleted: switch it back on any time.`,
+        confirmLabel: 'Switch off',
+      })
+      if (!ok) return
     }
     setBusy(key)
     try {
-      const data = await api('/api/connectors', { method: 'POST', body: JSON.stringify({ organizationId: workspace.orgId, key, enabled, swap }) })
+      const data = await api('/api/connectors', { method: 'POST', body: JSON.stringify({ organizationId: workspace.orgId, key, enabled }) })
       apply(data)
       // The menu picks up the change straight away
       window.dispatchEvent(new Event('organization-features-changed'))
@@ -84,17 +90,15 @@ export default function ConnectorsPage() {
           <span className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] flex items-center justify-center shadow-lg shadow-[#0E1B3D]/20"><Blocks size={24} /></span>
           <div>
             <h1 className="text-[26px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight">Connectors</h1>
-            <p className="text-[14.5px] sm:text-[15.5px] text-[#4a5672] dark:text-slate-400">Apps made for your kind of business. Switch one on and it appears in your menu.</p>
+            <p className="text-[14.5px] sm:text-[15.5px] text-[#4a5672] dark:text-slate-400">Apps made for your kind of business. Pick the one you use: it appears in your menu. One at a time; switch any time.</p>
           </div>
         </div>
 
         {error && <div className={`${card} p-5 text-[15px] text-[#b91c1c]`}>{error}</div>}
 
-        {plan && plan.connectors < 3 && (
+        {plan && plan.only.length > 0 && (
           <div className={`${card} p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between`}>
-            <p className="text-[14.5px] text-[#4a5672] dark:text-slate-300">
-              {plan.only.length ? 'Your plan includes Front Desk only.' : `Your plan includes ${plan.connectors === 1 ? 'one connector' : `${plan.connectors} connectors`}. Switching another one on swaps them.`}
-            </p>
+            <p className="text-[14.5px] text-[#4a5672] dark:text-slate-300">Your plan includes Front Desk only.</p>
             {canSwitch && <Link href="/dashboard/billing?change=1" className={`${secondaryButton} shrink-0`}>See plans</Link>}
           </div>
         )}
@@ -130,7 +134,7 @@ export default function ConnectorsPage() {
                     {canSwitch ? (
                       <label className="flex items-center gap-3 text-[15px] font-semibold text-[#0E1B3D] dark:text-white">
                         <Toggle checked={on && !outside} disabled={state === null || busy !== null} onChange={(value) => toggle(connector.key, value)} label={`${connector.name} on or off`} />
-                        {busy === connector.key ? 'Saving…' : outside ? 'Use this one' : on ? 'Switched on' : 'Switch on'}
+                        {busy === connector.key ? 'Saving…' : on && !outside ? 'In use' : Object.values(state || {}).some(Boolean) ? 'Use this instead' : 'Switch on'}
                       </label>
                     ) : (
                       <span className="text-[14px] text-[#6B7894]">An admin can switch this on or off.</span>

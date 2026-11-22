@@ -89,8 +89,8 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 2 video campaigns a month',
     amountPaise: 600_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 3, connectorKeys: [], team: 10, aiMonthly: 500, ads: true, videos: 2 },
-    features: [...MESSAGING_FEATURES, 'All connectors', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 10, aiMonthly: 500, ads: true, videos: 2 },
+    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
   },
   {
     id: 'pro_2',
@@ -98,8 +98,8 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 4 video campaigns a month',
     amountPaise: 900_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 3, connectorKeys: [], team: 20, aiMonthly: 1000, ads: true, videos: 4 },
-    features: [...MESSAGING_FEATURES, 'All connectors', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 20, aiMonthly: 1000, ads: true, videos: 4 },
+    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
   },
   {
     id: 'pro_3',
@@ -107,15 +107,21 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 8 video campaigns a month',
     amountPaise: 1_200_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 3, connectorKeys: [], team: null, aiMonthly: 1500, ads: true, videos: 8 },
-    features: [...MESSAGING_FEATURES, 'All connectors', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: null, aiMonthly: 1500, ads: true, videos: 8 },
+    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
   },
 ]
 
 export const DEFAULT_PLAN: PlanId = 'growth'
 
 /** No limits: exempt workspaces, and before billing is set up. */
-export const UNLIMITED: PlanLimits = { messaging: true, connectors: 3, connectorKeys: [], team: null, aiMonthly: 0, ads: false, videos: 0 }
+/**
+ * One connector at a time for every workspace and plan (owner, 22 Nov 2026: "only one connector ... no multiple
+ * connectors"). Switching another one on switches the one that was on off; nothing is deleted.
+ */
+export const MAX_CONNECTORS = 1
+
+export const UNLIMITED: PlanLimits = { messaging: true, connectors: MAX_CONNECTORS, connectorKeys: [], team: null, aiMonthly: 0, ads: false, videos: 0 }
 
 export function isPlanId(value: unknown): value is PlanId {
   return PLANS.some((plan) => plan.id === value)
@@ -139,7 +145,7 @@ export function limitsOf(planId: unknown, overrides?: Record<string, unknown> | 
   if (typeof o.ads === 'boolean') limits.ads = o.ads
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null)
   if (whole(o.connectors) !== null) {
-    limits.connectors = Math.min(3, whole(o.connectors)!)
+    limits.connectors = Math.min(MAX_CONNECTORS, whole(o.connectors)!)
     // A connector number from Super Admin opens every connector up to it
     limits.connectorKeys = []
   }
@@ -186,13 +192,9 @@ export function connectorBlockReason(limits: PlanLimits, alreadyOn: ConnectorKey
   if (limits.connectorKeys.length && !limits.connectorKeys.includes(key)) {
     return 'Your plan includes Front Desk only. Upgrade to Growth or Pro in Billing to add this connector.'
   }
-  // Connectors that start switched on but the plan has no room for do not count
-  const others = activeConnectors(limits, alreadyOn).filter((on) => on !== key)
-  if (others.length >= limits.connectors) {
-    return limits.connectors === 1
-      ? 'Your plan includes one connector. Switch the other one off first, or upgrade to Pro in Billing for all of them.'
-      : `Your plan includes ${limits.connectors} connectors. Upgrade in Billing to add more.`
-  }
+  if (limits.connectors < 1) return 'Your plan has no connectors. Choose a plan in Billing to add one.'
+  // One connector at a time: switching this one on switches the other off (connectorSwitch), never a refusal
+  void alreadyOn
   return null
 }
 
@@ -236,22 +238,17 @@ const CONNECTOR_PRIORITY: ConnectorKey[] = ['salon', 'ecommerce', 'pipeline']
  */
 export function activeConnectors(limits: PlanLimits, on: ConnectorKey[]): ConnectorKey[] {
   const allowed = CONNECTOR_PRIORITY.filter((key) => on.includes(key) && (!limits.connectorKeys.length || limits.connectorKeys.includes(key)))
-  return allowed.slice(0, Math.max(0, limits.connectors))
+  return allowed.slice(0, Math.max(0, Math.min(MAX_CONNECTORS, limits.connectors)))
 }
 
 /**
- * Switching a connector on under the plan's limit. With room: just on. On a plan with fewer connectors
- * than are on: the others that are on are switched off to make room (`switchOff`), when the person
- * agreed to swap. A connector the plan does not include at all (Starter: Front Desk only) is refused.
+ * Switching a connector on: one at a time, so every other connector that is on is switched off (`switchOff`).
+ * A connector the plan does not include at all (Starter: Front Desk only) is refused.
  */
-export function connectorSwitch(limits: PlanLimits, alreadyOn: ConnectorKey[], key: ConnectorKey, swap: boolean): { ok: true; switchOff: ConnectorKey[] } | { ok: false; reason: string; canSwap: boolean } {
-  if (limits.connectorKeys.length && !limits.connectorKeys.includes(key)) {
-    return { ok: false, reason: 'Your plan includes Front Desk only. Upgrade to Growth or Pro in Billing to add this connector.', canSwap: false }
-  }
+export function connectorSwitch(limits: PlanLimits, alreadyOn: ConnectorKey[], key: ConnectorKey, swap?: boolean): { ok: true; switchOff: ConnectorKey[] } | { ok: false; reason: string; canSwap: boolean } {
+  void swap // kept for older callers: switching is always a swap now
   const blocked = connectorBlockReason(limits, alreadyOn, key)
-  if (!blocked) return { ok: true, switchOff: [] }
-  if (!swap) return { ok: false, reason: blocked, canSwap: limits.connectors >= 1 }
-  // Keep the newest choice, plus as many of the others as the plan allows (in their usual order)
-  const keep = activeConnectors({ ...limits, connectors: Math.max(0, limits.connectors - 1) }, alreadyOn.filter((on) => on !== key))
-  return { ok: true, switchOff: alreadyOn.filter((on) => on !== key && !keep.includes(on)) }
+  if (blocked) return { ok: false, reason: blocked, canSwap: false }
+  // One connector at a time: every other one that is on is switched off
+  return { ok: true, switchOff: alreadyOn.filter((on) => on !== key) }
 }
