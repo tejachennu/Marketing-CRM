@@ -88,7 +88,7 @@ void main() {
       ('setup_templates', ['Booking confirmed', 'Use suggested']),
       ('new_bill', ['Haircut (Men)', 'Gold facial']),
       ('new_booking', ['Haircut (Men)']),
-      ('checkout', ['Lakshmi']),
+      ('checkout', ['Ravi', 'Lakshmi']),
       ('bill_paid', ['Cancel this bill']),
       ('appointment', ['Done · make the bill']),
       ('reviews', ['To call back · 1']),

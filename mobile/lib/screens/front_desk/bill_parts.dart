@@ -201,11 +201,14 @@ class BillBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 22), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label, style: const TextStyle(fontSize: 16)),
+          // Shrinks its words on small phones or with large text, never pushing past the edge
+          Flexible(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: FittedBox(fit: BoxFit.scaleDown, child: Text(label, style: const TextStyle(fontSize: 16))),
+            ),
           ),
         ],
       ),
@@ -220,9 +223,12 @@ class WhatsAppSwitch extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final String note;
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Brand.line)),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Material(
+    color: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Brand.line)),
+    clipBehavior: Clip.antiAlias,
     child: SwitchListTile(
       value: value,
       onChanged: onChanged,
@@ -236,6 +242,7 @@ class WhatsAppSwitch extends StatelessWidget {
       ),
       title: const Text('Send the bill on WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
       subtitle: Text(note, style: const TextStyle(fontSize: 12.5)),
+    ),
     ),
   );
 }
