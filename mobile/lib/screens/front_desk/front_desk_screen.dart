@@ -146,15 +146,27 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                FloatingActionButton.extended(
-                  heroTag: 'fab-book',
-                  backgroundColor: Colors.white,
-                  foregroundColor: Brand.navy,
-                  elevation: 2,
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBookingScreen())),
-                  icon: const Icon(Icons.event_available_outlined),
-                  label: const Text('Book'),
-                ),
+                // Small phones or large text: "Book" as a round button, so both fit side by side
+                if (MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(10) > 11)
+                  FloatingActionButton(
+                    heroTag: 'fab-book',
+                    tooltip: 'Book',
+                    backgroundColor: Colors.white,
+                    foregroundColor: Brand.navy,
+                    elevation: 2,
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBookingScreen())),
+                    child: const Icon(Icons.event_available_outlined),
+                  )
+                else
+                  FloatingActionButton.extended(
+                    heroTag: 'fab-book',
+                    backgroundColor: Colors.white,
+                    foregroundColor: Brand.navy,
+                    elevation: 2,
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBookingScreen())),
+                    icon: const Icon(Icons.event_available_outlined),
+                    label: const Text('Book'),
+                  ),
                 const SizedBox(width: 10),
                 FloatingActionButton.extended(
                   heroTag: 'fab-bill',
