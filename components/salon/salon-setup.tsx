@@ -16,6 +16,7 @@ import { WhatsAppSettings } from './salon-whatsapp-settings'
 import { BookingFlowSettingsSection } from './salon-booking-flow'
 import { SalonTemplates } from './salon-templates'
 import { CatalogPicker, ChangeHistory, ItemThumb } from './salon-catalog'
+import { sampleMatches } from '@/lib/salon/sample'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
@@ -251,12 +252,46 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
 
   const type = businessType(settings.business_type)
   const addKit = (kind: BusinessType) => run(`kit-${kind}`, async () => {
+    const kit = BUSINESS_TYPES[kind].kit
+    // Ask first: the starter list is sample data (owner: "why all this test data is showing")
+    if (kit) {
+      const ok = await confirm({
+        title: `Add sample services for ${BUSINESS_TYPES[kind].label}?`,
+        message: `${kit.services.length} sample services (${kit.services.slice(0, 3).map((x) => x.name).join(', ')}…) and ${kit.staff.length} sample team members (${kit.staff.map((m) => m.name).join(', ')}) are added for you to change. Choose "Start empty" to add only your own.`,
+        confirmLabel: 'Add the samples',
+        cancelLabel: 'Start empty',
+      })
+      if (!ok) {
+        const saved = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, business_type: kind }) })
+        onChange({ ...setup, settings: { ...setup.settings, ...saved.settings } })
+        setSettings((current) => ({ ...current, business_type: kind }))
+        flash('success', 'Saved. Add your own services below.')
+        setServiceForm({ category: BUSINESS_TYPES[kind].categories[0], duration_minutes: 30, tax_rate: kit.taxRate, active: true })
+        setSection('services')
+        return
+      }
+    }
     const data = await api('/api/salon/sample', { method: 'POST', body: JSON.stringify({ organizationId: orgId, business_type: kind }) })
     onChange({ settings: data.settings, services: data.services, staff: data.staff })
     setSettings((current) => ({ ...current, business_type: kind }))
     if (BUSINESS_TYPES[kind].kit) flash('success', `Added ${data.added.services} services and ${data.added.staff} team members. Change any of them below.`)
     else { flash('success', 'Saved. Add your services below.'); setServiceForm({ category: BUSINESS_TYPES[kind].categories[0], duration_minutes: 30, tax_rate: 18, active: true }) }
     setSection('services')
+  })
+  const samples = useMemo(() => sampleMatches(setup.services, setup.staff), [setup.services, setup.staff])
+  const removeSampleData = () => run('samples', async () => {
+    const ok = await confirm({
+      title: 'Remove the sample services and team?',
+      message: `${[samples.services.length ? `Services: ${samples.services.map((x) => x.name).join(', ')}.` : '', samples.staff.length ? `Team: ${samples.staff.map((m) => m.name).join(', ')}.` : ''].filter(Boolean).join(' ')} Your own services and team are not touched. A sample already used on a booking or bill is only switched off.`,
+      confirmLabel: 'Remove samples',
+      destructive: true,
+    })
+    if (!ok) return
+    const data = await api('/api/salon/sample', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action: 'remove' }) })
+    onChange({ settings: data.settings, services: data.services, staff: data.staff })
+    const gone = data.removed.services + data.removed.staff
+    const off = data.switchedOff.services + data.switchedOff.staff
+    flash('success', `Removed ${gone} sample${gone === 1 ? '' : 's'}${off ? `; ${off} used on bookings or bills switched off` : ''}.`)
   })
   const saveType = (kind: BusinessType) => run('type', async () => {
     const data = await api('/api/salon/settings', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, business_type: kind }) })
@@ -348,6 +383,14 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       {/* Services */}
       {section === 'services' && setup.services.length === 0 && (
         <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>, <button type="button" onClick={() => setCatalogOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">pick from your catalog</button>, or <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">create categories</button> first.</div>
+      )}
+      {(section === 'services' || section === 'team') && samples.services.length + samples.staff.length > 0 && (
+        <div className={`${card} p-4 flex flex-col @xl:flex-row @xl:items-center gap-3 justify-between`}>
+          <p className="text-[14.5px] text-[#4a5672] dark:text-slate-300">
+            <b className="text-[#0E1B3D] dark:text-white">Sample data from the starter list:</b> {samples.services.length} service{samples.services.length === 1 ? '' : 's'} and {samples.staff.length} team member{samples.staff.length === 1 ? '' : 's'}. Keep and change them, or remove them all at once.
+          </p>
+          <button type="button" onClick={removeSampleData} disabled={busy !== null} className={`${secondaryButton} shrink-0`}>{busy === 'samples' ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />} Remove samples</button>
+        </div>
       )}
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>

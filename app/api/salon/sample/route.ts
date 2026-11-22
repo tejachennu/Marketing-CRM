@@ -3,15 +3,31 @@ import { loadSalonSetup, salonAccess, serverError } from '@/lib/salon/server'
 import { BUSINESS_TYPES, businessType } from '@/lib/salon/business'
 import { normalizeName } from '@/lib/salon/spoken'
 import { withSalonSchema } from '@/lib/salon/schema'
+import { removeSamples, sampleMatches } from '@/lib/salon/sample'
 
 export const runtime = 'nodejs'
 
 // POST { organizationId, business_type }: add that business type's starter services and team (skips any that already exist by name) and remember the type
+// POST { organizationId, action: 'preview' }: the sample services and team still in the workspace (names)
+// POST { organizationId, action: 'remove' }: take them out (unused ones deleted, used ones switched off)
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const access = await salonAccess(request, body?.organizationId, 'automation.manage')
   if (!access.ok) return access.response
   const { db, organizationId } = access.ctx
+  if (body?.action === 'preview' || body?.action === 'remove') {
+    try {
+      const setup = await loadSalonSetup(db, organizationId)
+      if (body.action === 'preview') {
+        const found = sampleMatches(setup.services, setup.staff)
+        return NextResponse.json({ services: found.services.map((s: any) => s.name), staff: found.staff.map((m: any) => m.name) })
+      }
+      const result = await removeSamples(db, organizationId, setup)
+      return NextResponse.json({ success: true, ...result, ...(await loadSalonSetup(db, organizationId)) })
+    } catch (error) {
+      return serverError('sample', error)
+    }
+  }
   const type = businessType(body?.business_type)
   const kit = BUSINESS_TYPES[type].kit
   try {
@@ -20,7 +36,7 @@ export async function POST(request: NextRequest) {
     const existing = await loadSalonSetup(db, organizationId)
     const haveServices = new Set(existing.services.map((service: any) => normalizeName(service.name)))
     const newServices = kit.services.filter((service) => !haveServices.has(normalizeName(service.name)))
-      .map((service, index) => ({ ...service, organization_id: organizationId, tax_rate: kit.taxRate, active: true, position: existing.services.length + index }))
+      .map((service, index) => ({ ...service, organization_id: organizationId, tax_rate: kit.taxRate, active: true, position: existing.services.length + index, source: 'sample' }))
     if (newServices.length) {
       const { error } = await db.from('salon_services').insert(newServices)
       if (error) throw error
