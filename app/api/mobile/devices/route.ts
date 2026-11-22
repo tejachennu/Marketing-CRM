@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser, getSupabaseAdminClient } from '@/lib/api-auth-helper'
-import { withPushSchema } from '@/lib/push'
+import { firebaseAppConfig, serviceAccount, withPushSchema } from '@/lib/push'
 
 export const runtime = 'nodejs'
 
@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString()
   const { error } = await withPushSchema(() => db.from('device_tokens').upsert({ token, user_id: user.id, organization_id: user.organization_id, platform, last_seen_at: now }, { onConflict: 'token' }))
   if (error) return NextResponse.json({ error: 'That phone could not be registered.' }, { status: 500 })
-  return NextResponse.json({ success: true })
+  // pushReady: the server can send pop-ups (Firebase settings and its secret are set). Until then the phone keeps
+  // showing its own notifications from the live updates, so nothing is missed.
+  return NextResponse.json({ success: true, pushReady: Boolean(firebaseAppConfig() && serviceAccount()) })
 }
 
 /** DELETE { token }: stop notifications on this phone (sign out). */

@@ -20,6 +20,13 @@ class Push {
 
   bool _started = false;
   String? _token;
+
+  /// Why pop-ups do or do not reach this phone, in plain words (shown in More → Test notifications).
+  String status = 'Checking…';
+
+  /// The server can send pop-ups to this phone (registered, and Firebase fully set up on the server).
+  bool get ready => _ready;
+  bool _ready = false;
   StreamSubscription<String>? _refresh;
   StreamSubscription<RemoteMessage>? _opened;
   StreamSubscription<RemoteMessage>? _foreground;
@@ -41,12 +48,22 @@ class Push {
 
   /// Start once someone is signed in. [config] is the `firebase` part of the server's answer.
   Future<void> start(Backend backend, Map? config) async {
-    if (kIsWeb || backend is! HttpBackend || config == null) return;
+    if (kIsWeb || backend is! HttpBackend) return;
+    if (config == null) {
+      status = 'Pop-ups are not set up on the server yet.';
+      return;
+    }
     try {
       if (!_started) {
-        if (!await ensureFirebase(config)) return;
+        if (!await ensureFirebase(config)) {
+          status = 'Pop-ups are not set up on the server yet.';
+          return;
+        }
         final messaging = FirebaseMessaging.instance;
-        await messaging.requestPermission();
+        final allowed = await messaging.requestPermission();
+        if (allowed.authorizationStatus == AuthorizationStatus.denied) {
+          status = 'Notifications are blocked for this app. Allow them in the phone\'s Settings → Apps → WAMA CRM → Notifications.';
+        }
         // A notification was tapped: open what it is about
         _opened = FirebaseMessaging.onMessageOpenedApp.listen(_open);
         // With the app open, Android shows nothing for a push: show it as the banner at the top.
@@ -63,13 +80,16 @@ class Push {
         // ignore: deprecated_member_use
         _refresh = messaging.onTokenRefresh.listen((token) => unawaited(_register(backend, token)));
         _started = true;
-        // From here the phone shows background notifications itself (no second, local one)
-        Notifier.instance.pushOn = true;
       }
       // ignore: deprecated_member_use
       final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) await _register(backend, token);
+      if (token == null) {
+        status = 'This phone could not get a notification address from Google. Check the internet and Google Play services.';
+      } else {
+        await _register(backend, token);
+      }
     } catch (e) {
+      status = 'Pop-ups could not start on this phone: $e';
       debugPrint('Push notifications are not available: $e');
     }
   }
@@ -83,8 +103,21 @@ class Push {
     if (!backend.signedIn) return;
     _token = token;
     try {
-      await backend.send('POST', '/api/mobile/devices', {'token': token, 'platform': !kIsWeb && Platform.isIOS ? 'ios' : 'android'});
+      final answer = await backend.send('POST', '/api/mobile/devices', {'token': token, 'platform': !kIsWeb && Platform.isIOS ? 'ios' : 'android'});
+      // Only when the server says it can send pop-ups does the phone stop its own notifications (else nothing would come)
+      _ready = answer['pushReady'] == true;
+      Notifier.instance.pushOn = _ready;
+      if (_ready) {
+        if (!status.startsWith('Notifications are blocked')) status = 'On: pop-ups come even when the app is closed.';
+      } else {
+        status = answer['pushReady'] == false
+            ? 'Pop-ups are not set up on the server yet (Firebase secret missing). The app still notifies you while it runs.'
+            : 'This phone is registered. Tap Test notifications to check pop-ups reach it.';
+      }
     } catch (e) {
+      _ready = false;
+      Notifier.instance.pushOn = false;
+      status = 'This phone could not be registered for pop-ups: $e';
       debugPrint('This phone could not be registered for notifications: $e');
     }
   }

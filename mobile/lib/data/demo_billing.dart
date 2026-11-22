@@ -77,7 +77,7 @@ class DemoBilling {
       'price': 6000,
       'interval': 'monthly',
       'whatsapp': 'own',
-      'features': [..._messaging, 'All connectors', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
+      'features': [..._messaging, 'Any one connector, switch any time', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
     },
     {
       'id': 'pro_2',
@@ -86,7 +86,7 @@ class DemoBilling {
       'price': 9000,
       'interval': 'monthly',
       'whatsapp': 'own',
-      'features': [..._messaging, 'All connectors', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
+      'features': [..._messaging, 'Any one connector, switch any time', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
     },
     {
       'id': 'pro_3',
@@ -95,7 +95,7 @@ class DemoBilling {
       'price': 12000,
       'interval': 'monthly',
       'whatsapp': 'own',
-      'features': [..._messaging, 'All connectors', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
+      'features': [..._messaging, 'Any one connector, switch any time', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
     },
   ];
 

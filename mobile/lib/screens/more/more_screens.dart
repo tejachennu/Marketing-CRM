@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../data/local_store.dart';
+import '../../data/push.dart';
 import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
@@ -21,6 +22,7 @@ import '../front_desk/setup_screen.dart';
 import '../instagram/instagram_screen.dart';
 import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
+import 'connectors_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -41,27 +43,43 @@ class MoreScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
-                // You, as in WhatsApp's settings
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  child: Row(
+                // You and your business, with the connector in use
+                Container(
+                  margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(18)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Avatar('${user['name'] ?? user['email'] ?? 'You'}', size: 64),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${user['name'] ?? 'You'}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 2),
-                            Text('${user['email'] ?? ''}', style: const TextStyle(color: Brand.muted, fontSize: 14)),
-                            const SizedBox(height: 2),
-                            Text(
-                              [app.orgName, '${user['role'] ?? ''}'.replaceAll('_', ' ')].where((x) => x.trim().isNotEmpty).join(' · '),
-                              style: const TextStyle(color: Brand.textSoft, fontSize: 13.5, fontWeight: FontWeight.w600),
+                      Row(
+                        children: [
+                          Avatar('${user['name'] ?? user['email'] ?? 'You'}', size: 58),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${user['name'] ?? 'You'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 2),
+                                Text('${user['email'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.textSoft, fontSize: 13.5)),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _Chip(icon: Icons.business_outlined, text: app.orgName),
+                          if ('${user['role'] ?? ''}'.trim().isNotEmpty) _Chip(icon: Icons.badge_outlined, text: '${user['role']}'.replaceAll('_', ' ')),
+                          _Chip(
+                            icon: Icons.extension_outlined,
+                            text: connectorName(app) ?? 'No connector yet',
+                            onTap: app.can('settings') ? () => open(const ConnectorsScreen()) : null,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -117,19 +135,19 @@ class MoreScreen extends StatelessWidget {
                   subtitle: 'Messages Meta has approved, for campaigns and replies',
                   onTap: () => Navigator.pushNamed(context, '/templates'),
                 ),
-                if (!app.frontDeskOn)
-                  const _Row(
-                    leading: FrontDeskIcon(size: 24, color: Brand.textSoft),
-                    title: 'Front Desk',
-                    subtitle: 'Off · an admin can switch it on in Connectors on the web',
-                  ),
+                _Row(
+                  icon: Icons.extension_outlined,
+                  title: 'Connectors',
+                  subtitle: '${connectorName(app) == null ? 'None in use' : 'In use: ${connectorName(app)}'} · one at a time',
+                  onTap: () => open(const ConnectorsScreen()),
+                ),
                 if (app.can('settings'))
                   _Row(icon: Icons.forum_outlined, title: 'Chat and tickets', subtitle: 'AI replies, chatbot instructions, ticket emails', onTap: () => open(const ChatTicketsScreen())),
                 _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
                 _Row(
                   icon: Icons.notifications_active_outlined,
                   title: 'Test notifications',
-                  subtitle: 'Send a pop-up to this phone to check it works',
+                  subtitle: Push.instance.status == 'Checking…' ? 'Send a pop-up to this phone to check it works' : Push.instance.status,
                   onTap: () async {
                     toast(context, 'Sending a test…');
                     try {
@@ -141,7 +159,7 @@ class MoreScreen extends StatelessWidget {
                     }
                   },
                 ),
-                const _Row(icon: Icons.language, title: 'Team members and connectors', subtitle: 'On the web at wamacrm.magnetora.in'),
+                const _Row(icon: Icons.language, title: 'Team members', subtitle: 'Invite and manage on the web'),
                 const _Gap(),
                 _Row(
                   icon: Icons.logout,
@@ -181,6 +199,46 @@ class MoreScreen extends StatelessWidget {
   }
 }
 
+/// The connector in use, by name (one at a time).
+String? connectorName(AppState app) {
+  final c = app.me?['connectors'] as Map?;
+  if (c?['frontDesk'] == true) return 'Front Desk';
+  if (c?['ecommerce'] == true) return 'E-commerce';
+  if (c?['pipeline'] == true) return 'Sales Pipeline';
+  return null;
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.icon, required this.text, this.onTap});
+  final IconData icon;
+  final String text;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(99),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(99),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: Brand.blue),
+            const SizedBox(width: 5),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Brand.text)),
+            ),
+            if (onTap != null) const Padding(padding: EdgeInsets.only(left: 2), child: Icon(Icons.chevron_right, size: 16, color: Brand.muted)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// The light grey strip between groups.
 class _Gap extends StatelessWidget {
   const _Gap();
@@ -215,11 +273,18 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
         children: [
-          SizedBox(width: 26, child: leading ?? Icon(icon, color: iconColor, size: 24)),
-          const SizedBox(width: 22),
+          // A soft tile behind the icon (red rows stay red)
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: iconColor == Brand.red ? Brand.redSoft : Brand.blueSoft, borderRadius: BorderRadius.circular(11)),
+            alignment: Alignment.center,
+            child: leading ?? Icon(icon, color: iconColor == Brand.textSoft ? Brand.blue : iconColor, size: 21),
+          ),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,6 +297,7 @@ class _Row extends StatelessWidget {
               ],
             ),
           ),
+          if (onTap != null && titleColor == null) const Icon(Icons.chevron_right, color: Brand.faint, size: 22),
         ],
       ),
     ),

@@ -602,6 +602,13 @@ class DemoBackend implements Backend {
   @override
   Future<void> signInWithGoogle() async => _signedIn = true;
 
+  /// One connector at a time (Front Desk in the demo until switched)
+  String? _connectorOn = 'salon';
+  Map<String, dynamic> _connectorsAnswer() => {
+    'connectors': [for (final k in ['salon', 'ecommerce', 'pipeline']) {'key': k, 'enabled': _connectorOn == k, 'active': _connectorOn == k}],
+    'plan': {'connectors': 1, 'only': <String>[]},
+  };
+
   late final DemoCampaigns _camp = DemoCampaigns(campaigns: _campaigns, contacts: _contacts, conversations: _conversations);
   late final DemoTemplates _tpl = DemoTemplates(templates: _templates, id: _id);
   final DemoBilling _billing = DemoBilling();
@@ -619,12 +626,14 @@ class DemoBackend implements Backend {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
     }
     switch (path) {
+      case '/api/connectors':
+        return _connectorsAnswer();
       case '/api/mobile/me':
         return {
           'user': {'id': 'u1', 'name': 'Teja', 'email': 'owner@glowsalon.in', 'role': 'Admin'},
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
           'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true, 'settings': true},
-          'connectors': {'frontDesk': true, 'ecommerce': true, 'pipeline': true},
+          'connectors': {'frontDesk': _connectorOn == 'salon', 'ecommerce': _connectorOn == 'ecommerce', 'pipeline': _connectorOn == 'pipeline'},
           'instagram': {'connected': true, 'username': 'glowstore', 'replyHours': 24},
         };
       case '/api/salon/setup':
@@ -712,6 +721,12 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
+    if (path == '/api/connectors') {
+      final key = '${body['key']}';
+      final off = body['enabled'] == true && _connectorOn != null && _connectorOn != key ? [_connectorOn] : const [];
+      _connectorOn = body['enabled'] == true ? key : (_connectorOn == key ? null : _connectorOn);
+      return {'success': true, 'switchedOff': off, ..._connectorsAnswer()};
+    }
     final desk = _launch.send(method, path, body) ?? _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {

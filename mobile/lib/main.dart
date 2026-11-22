@@ -31,6 +31,7 @@ import 'screens/front_desk/new_booking_screen.dart';
 import 'screens/more/billing_screen.dart';
 import 'screens/more/grow_screen.dart';
 import 'screens/instagram/instagram_screen.dart';
+import 'screens/more/connectors_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/store/new_order_screen.dart';
 import 'screens/store/shop_more.dart' show ShopReportsScreen;
@@ -191,6 +192,8 @@ class WamaApp extends StatelessWidget {
       'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),
+      'connectors' => const ConnectorsScreen(),
+      'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
       'instagram' => const InstagramScreen(),
       'instagram_comments' => const InstagramScreen(initialTab: 1),
@@ -273,7 +276,6 @@ class WamaApp extends StatelessWidget {
       'choose_people' => const ChoosePeopleScreen(picked: null, filter: AudienceFilter()),
       'templates' => const TemplatesScreen(),
       'template' => TemplateScreen(template: Map<String, dynamic>.from((app.cached('templates')!['templates'] as List)[3])),
-      'more' => const HomeShell(tab: 3),
       'sync' => const SyncScreen(),
       _ => const HomeShell(),
     };
