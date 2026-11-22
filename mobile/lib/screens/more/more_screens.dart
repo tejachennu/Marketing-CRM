@@ -10,6 +10,7 @@ import '../../data/push.dart';
 import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
+import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
 import '../ai/assistant_screen.dart';
 import '../ai/knowledge_screen.dart';
@@ -84,6 +85,15 @@ class MoreScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (!app.whatsappOn) ...[
+                  _Row(
+                    icon: Icons.lock_outline,
+                    iconColor: Brand.red,
+                    title: 'Connect your WhatsApp',
+                    subtitle: 'Chats, campaigns and templates are locked until it is connected. Tap to contact us.',
+                    onTap: () => open(const WhatsAppLockedScreen(feature: 'WhatsApp')),
+                  ),
+                ],
                 const _Gap(),
                 _Row(
                   icon: app.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
@@ -102,7 +112,13 @@ class MoreScreen extends StatelessWidget {
                 ),
                 const _Gap(),
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
-                if (app.can('campaigns')) _Row(icon: Icons.campaign_outlined, title: 'Campaigns', subtitle: 'Send a WhatsApp template to many customers', onTap: () => open(const CampaignsScreen())),
+                if (app.can('campaigns'))
+                  _Row(
+                    icon: app.whatsappOn ? Icons.campaign_outlined : Icons.lock_outline,
+                    title: 'Campaigns',
+                    subtitle: app.whatsappOn ? 'Send a WhatsApp template to many customers' : 'Locked · connect WhatsApp first',
+                    onTap: () => open(app.whatsappOn ? const CampaignsScreen() : const WhatsAppLockedScreen(feature: 'Campaigns')),
+                  ),
                 if (app.storeOn) _Row(icon: Icons.storefront_outlined, title: 'E-commerce', subtitle: 'Orders, products, payments and delivery', onTap: () => open(const StoreScreen())),
                 _Row(icon: Icons.camera_alt_outlined, title: 'Instagram', subtitle: app.instagramOn ? 'Messages, comments, posts and auto replies' : 'Connect to see messages, comments and posts here', onTap: () => open(const InstagramScreen())),
                 const _Gap(),
@@ -121,19 +137,23 @@ class MoreScreen extends StatelessWidget {
                     onTap: () => open(const SetupScreen()),
                   ),
                   _Row(
-                    icon: Icons.event_available_outlined,
+                    icon: app.whatsappOn ? Icons.event_available_outlined : Icons.lock_outline,
                     title: 'Booking flow on WhatsApp',
-                    subtitle: ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off · set it up',
-                    onTap: () => open(const BookingFlowScreen()),
+                    subtitle: !app.whatsappOn
+                        ? 'Locked · connect WhatsApp first'
+                        : ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true)
+                        ? 'On · customers book in taps'
+                        : 'Off · set it up',
+                    onTap: () => open(app.whatsappOn ? const BookingFlowScreen() : const WhatsAppLockedScreen(feature: 'Booking flow on WhatsApp')),
                   ),
                 ],
                 const _Gap(),
                 const _Title('Workspace'),
                 _Row(
-                  icon: Icons.description_outlined,
+                  icon: app.whatsappOn ? Icons.description_outlined : Icons.lock_outline,
                   title: 'WhatsApp templates',
-                  subtitle: 'Messages Meta has approved, for campaigns and replies',
-                  onTap: () => Navigator.pushNamed(context, '/templates'),
+                  subtitle: app.whatsappOn ? 'Messages Meta has approved, for campaigns and replies' : 'Locked · connect WhatsApp first',
+                  onTap: () => app.whatsappOn ? Navigator.pushNamed(context, '/templates') : open(const WhatsAppLockedScreen(feature: 'WhatsApp templates')),
                 ),
                 _Row(
                   icon: Icons.extension_outlined,
@@ -142,7 +162,12 @@ class MoreScreen extends StatelessWidget {
                   onTap: () => open(const ConnectorsScreen()),
                 ),
                 if (app.can('settings'))
-                  _Row(icon: Icons.forum_outlined, title: 'Chat and tickets', subtitle: 'AI replies, chatbot instructions, ticket emails', onTap: () => open(const ChatTicketsScreen())),
+                  _Row(
+                    icon: app.whatsappOn ? Icons.forum_outlined : Icons.lock_outline,
+                    title: 'Chat and tickets',
+                    subtitle: app.whatsappOn ? 'AI replies, chatbot instructions, ticket emails' : 'Locked · connect WhatsApp first',
+                    onTap: () => open(app.whatsappOn ? const ChatTicketsScreen() : const WhatsAppLockedScreen(feature: 'Chat and tickets')),
+                  ),
                 _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
                 _Row(
                   icon: Icons.notifications_active_outlined,

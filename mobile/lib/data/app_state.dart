@@ -200,6 +200,13 @@ class AppState extends ChangeNotifier {
   bool get frontDeskOn => me?['connectors']?['frontDesk'] == true;
   bool get storeOn => me?['connectors']?['ecommerce'] == true;
 
+  /// The business's WhatsApp number is connected. Until it is, chats, campaigns, templates, tickets and the
+  /// booking flow are locked (an older server that does not say counts as connected).
+  bool get whatsappOn => me?['whatsapp']?['connected'] != false;
+
+  /// Starter sends bookings, bills and reminders through WAMA's own number (no own number needed for those).
+  bool get sharedWhatsApp => me?['whatsapp']?['mode'] == 'shared';
+
   // ── Chats: WhatsApp and Instagram are two lists, never mixed (owner's rule) ──
 
   /// The phone's copy of each channel's chat list.

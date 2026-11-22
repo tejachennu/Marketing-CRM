@@ -56,6 +56,7 @@ void main() {
       'ig_chat_closed',
       'shop_reports',
       'connectors',
+      'whatsapp_locked',
     ],
     flows: [
       ('members', ['Priya Sharma']),

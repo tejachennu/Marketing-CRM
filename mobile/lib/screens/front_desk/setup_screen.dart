@@ -5,6 +5,7 @@ import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
+import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
 import 'booking_flow_screen.dart';
 import 'catalog_history.dart';
@@ -95,21 +96,30 @@ class SetupScreen extends StatelessWidget {
                 Card(
                   child: Column(
                     children: [
-                      tile(Icons.chat_outlined, 'WhatsApp', 'Assistant, opening hours, reminders, feedback', const WhatsAppSetup()),
+                      if (app.whatsappOn || app.sharedWhatsApp)
+                        tile(Icons.chat_outlined, 'WhatsApp', 'Assistant, opening hours, reminders, feedback', const WhatsAppSetup())
+                      else
+                        tile(Icons.lock_outline, 'WhatsApp', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'WhatsApp')),
                       const Divider(indent: 56),
                       tile(Icons.language, 'Website and booking', 'Your website, booking and paying online, AI chat', const WebsiteSettingsScreen()),
                       const Divider(indent: 56),
                       tile(Icons.card_membership_outlined, 'Memberships', 'Cards, plans, sell at the counter', const MembersScreen()),
                       const Divider(indent: 56),
-                      tile(Icons.event_available_outlined, 'Booking flow', ((settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off', const BookingFlowScreen()),
+                      if (app.whatsappOn)
+                        tile(Icons.event_available_outlined, 'Booking flow', ((settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off', const BookingFlowScreen())
+                      else
+                        tile(Icons.lock_outline, 'Booking flow', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Booking flow')),
                       const Divider(indent: 56),
-                      tile(
-                        Icons.description_outlined,
-                        'Message templates',
-                        templates == 4 ? 'All 4 set up' : '$templates of 4 set up · needed after 24 hours',
-                        const TemplatesSetup(),
-                        attention: templates < 4,
-                      ),
+                      if (app.whatsappOn)
+                        tile(
+                          Icons.description_outlined,
+                          'Message templates',
+                          templates == 4 ? 'All 4 set up' : '$templates of 4 set up · needed after 24 hours',
+                          const TemplatesSetup(),
+                          attention: templates < 4,
+                        )
+                      else
+                        tile(Icons.lock_outline, 'Message templates', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Message templates')),
                     ],
                   ),
                 ),

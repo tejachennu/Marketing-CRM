@@ -4,6 +4,7 @@ import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
+import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
 import 'chat_screen.dart';
 import 'tickets_screen.dart';
@@ -15,6 +16,9 @@ class ChatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    if (!app.whatsappOn) {
+      return Scaffold(backgroundColor: Brand.page, appBar: AppBar(title: const Text('Chats')), body: const WhatsAppLocked(feature: 'Chats'));
+    }
     final openTickets = ((app.cached('tickets') ?? const {})['tickets'] as List? ?? const []).where((t) => t['status'] == 'open').length;
     return Scaffold(
       backgroundColor: Colors.white,

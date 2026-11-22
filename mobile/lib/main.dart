@@ -51,6 +51,7 @@ import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
 import 'ui/theme.dart';
+import 'ui/whatsapp_lock.dart';
 import 'screens/store/online_payments.dart';
 import 'screens/front_desk/website_settings_screen.dart';
 import 'screens/front_desk/members_screen.dart';
@@ -193,6 +194,7 @@ class WamaApp extends StatelessWidget {
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),
       'connectors' => const ConnectorsScreen(),
+      'whatsapp_locked' => const WhatsAppLockedScreen(feature: 'Chats'),
       'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
       'instagram' => const InstagramScreen(),
@@ -344,8 +346,12 @@ class _HomeShellState extends State<HomeShell> {
             ],
             if (store) const NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Store'),
             NavigationDestination(
-              icon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline)),
-              selectedIcon: Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble)),
+              icon: app.whatsappOn
+                  ? Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble_outline))
+                  : const Badge(label: Icon(Icons.lock, size: 10, color: Colors.white), backgroundColor: Brand.textSoft, child: Icon(Icons.chat_bubble_outline)),
+              selectedIcon: app.whatsappOn
+                  ? Badge(isLabelVisible: unread > 0, label: Text('$unread'), backgroundColor: Brand.green, child: const Icon(Icons.chat_bubble))
+                  : const Badge(label: Icon(Icons.lock, size: 10, color: Colors.white), backgroundColor: Brand.textSoft, child: Icon(Icons.chat_bubble)),
               label: ig ? 'WhatsApp' : 'Chats',
             ),
             if (ig)
