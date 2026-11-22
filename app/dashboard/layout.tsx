@@ -1474,6 +1474,16 @@ export default function DashboardLayout({
                   {can(currentUser, 'settings.manage') && (
                     <Link href="/dashboard/settings?tab=general#whatsapp" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Connect WhatsApp</Link>
                   )}
+                  {/* Our team connects it for them, usually the same day */}
+                  <a
+                    href={`https://wa.me/918367629608?text=${encodeURIComponent(`Hi, please connect WhatsApp for ${orgName || 'my business'} on WAMA CRM.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center justify-center w-full px-4 py-3 border border-[#d5ddeb] dark:border-slate-700 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 text-[#0E1B3D] dark:text-white rounded-xl text-sm font-bold"
+                  >
+                    Or WhatsApp us: we connect it for you
+                  </a>
+                  <p className="mt-2 text-xs text-[#6B7894]">+91 83676 29608 · usually the same day</p>
                 </div>
               </div>
             ) : pageAccess === 'plan' ? (

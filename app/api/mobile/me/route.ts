@@ -7,6 +7,7 @@ import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { can, canSeeAll, getRoleDisplay, isReadOnly } from '@/lib/rbac'
 import { accountFor } from '@/lib/instagram/store'
 import { igReplyHours } from '@/lib/instagram/rules'
+import { getOrganizationCredentials } from '@/lib/organization-access'
 
 export const runtime = 'nodejs'
 
@@ -37,5 +38,7 @@ export async function GET(request: NextRequest) {
     },
     connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
     instagram: { connected: Boolean(instagram), username: instagram?.username || null, replyHours: igReplyHours() },
+    // WhatsApp sender connected (Meta or Twilio): until then the app locks chats, campaigns, templates and tickets
+    whatsapp: { connected: getOrganizationCredentials(organization).messaging, mode: billing?.whatsapp_mode || 'own' },
   })
 }
