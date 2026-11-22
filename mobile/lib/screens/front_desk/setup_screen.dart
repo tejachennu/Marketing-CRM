@@ -134,6 +134,128 @@ class SetupScreen extends StatelessWidget {
   }
 }
 
+/// A business type was picked: ask whether to add the sample list (owner: "why all this test data is showing"), or start empty.
+Future<void> _pickType(BuildContext context, String type, String label) async {
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Add sample services for $label?'),
+      content: const Text('We can add a sample list of services, prices and a small sample team for you to change. Or start empty and add only your own.', style: TextStyle(height: 1.4)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, 'empty'), child: const Text('Start empty')),
+        FilledButton(onPressed: () => Navigator.pop(context, 'samples'), child: const Text('Add the samples')),
+      ],
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  if (choice == 'samples') {
+    await saveSetup(context, (app) => app.ask('/api/salon/sample', {'business_type': type}), done: 'Added a sample list. Change or remove anything below.');
+  } else {
+    await saveSetup(context, (app) => app.ask('/api/salon/settings', {'business_type': type}, method: 'PATCH'), done: 'Saved. Add your own services below.');
+  }
+}
+
+/// Sample services and team from a starter list are still here: say so, with one tap to remove them all.
+class _SampleNotice extends StatefulWidget {
+  const _SampleNotice();
+  @override
+  State<_SampleNotice> createState() => _SampleNoticeState();
+}
+
+class _SampleNoticeState extends State<_SampleNotice> {
+  List<String> _services = const [];
+  List<String> _staff = const [];
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  Future<void> _check() async {
+    final app = AppScope.read(context);
+    if (!app.can('manage') || !app.online) return;
+    try {
+      final data = await app.ask('/api/salon/sample', {'action': 'preview'});
+      if (!mounted) return;
+      setState(() {
+        _services = [for (final n in (data['services'] as List? ?? const [])) '$n'];
+        _staff = [for (final n in (data['staff'] as List? ?? const [])) '$n'];
+      });
+    } catch (_) {
+      // An older server: no notice
+    }
+  }
+
+  Future<void> _remove() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove the sample services and team?'),
+        content: Text(
+          [
+            if (_services.isNotEmpty) 'Services: ${_services.join(', ')}.',
+            if (_staff.isNotEmpty) 'Team: ${_staff.join(', ')}.',
+            'Your own services and team are not touched. A sample already used on a booking or bill is only switched off.',
+          ].join('\n\n'),
+          style: const TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Brand.red), onPressed: () => Navigator.pop(context, true), child: const Text('Remove samples')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    final done = await saveSetup(context, (app) => app.ask('/api/salon/sample', {'action': 'remove'}), done: 'Sample services and team removed.');
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (done) {
+        _services = const [];
+        _staff = const [];
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_services.isEmpty && _staff.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFFFFF6D6), borderRadius: BorderRadius.circular(14)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: Color(0xFF6B5200)),
+                SizedBox(width: 8),
+                Expanded(child: Text('Sample data from the starter list', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF6B5200)))),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${_services.length} sample service${_services.length == 1 ? '' : 's'} and ${_staff.length} sample team member${_staff.length == 1 ? '' : 's'}. Keep and change them, or remove them all at once.',
+              style: const TextStyle(fontSize: 13.5, height: 1.35, color: Color(0xFF5C4600)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _remove,
+              icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Remove samples'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StarterKit extends StatelessWidget {
   const _StarterKit();
   @override
@@ -153,7 +275,7 @@ class _StarterKit extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.all(12)),
-                  onPressed: () => saveSetup(context, (app) => app.ask('/api/salon/sample', {'business_type': e.key}), done: 'Added a starter list. Change anything below.'),
+                  onPressed: () => _pickType(context, e.key, e.value.$1),
                   child: Row(
                     children: [
                       Icon(e.value.$3, color: Brand.blue),
@@ -220,6 +342,7 @@ class ServicesSetup extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
+          const _SampleNotice(),
           if (services.isEmpty)
             EmptyState(
               icon: Icons.content_cut,
@@ -649,6 +772,7 @@ class StaffSetup extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
+          const _SampleNotice(),
           if (staff.isEmpty) const EmptyState(icon: Icons.groups_outlined, title: 'No team yet', text: 'Add the people who serve customers. Bills and bookings can then say who did the work.'),
           for (final m in staff) ...[
             Panel(

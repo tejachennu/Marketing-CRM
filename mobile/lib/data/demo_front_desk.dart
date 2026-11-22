@@ -3,6 +3,8 @@ import 'format.dart';
 /// The demo's answers for the rest of the Front Desk (setup, reviews, team, templates, customers),
 /// working on the demo's own lists so changes show straight away.
 class DemoFrontDesk {
+  bool _demoSamplesGone = false;
+
   DemoFrontDesk({required this.setup, required this.invoices, required this.contacts, required this.templates, required this.id}) {
     choices; // seeds the saved choices so Setup counts them
     // Lists that can take any row the app sends
@@ -419,6 +421,11 @@ class DemoFrontDesk {
       case '/api/salon/tick':
         return {'success': true, 'feedbackSent': 0, 'remindersSent': 0};
       case '/api/salon/sample':
+        if (body['action'] == 'preview') return {'services': _demoSamplesGone ? <String>[] : ['Beard trim', 'Head massage'], 'staff': <String>[]};
+        if (body['action'] == 'remove') {
+          _demoSamplesGone = true;
+          return {'success': true, 'removed': {'services': 2, 'staff': 0}, 'switchedOff': {'services': 0, 'staff': 0}, ...setup};
+        }
         settings['business_type'] = body['business_type'];
         return {
           'success': true,
