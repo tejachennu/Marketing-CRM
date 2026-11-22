@@ -6,6 +6,7 @@ import { activeConnectors } from '@/lib/plans'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
 import { can, canSeeAll, getRoleDisplay, isReadOnly } from '@/lib/rbac'
 import { accountFor } from '@/lib/instagram/store'
+import { igReplyHours } from '@/lib/instagram/rules'
 
 export const runtime = 'nodejs'
 
@@ -35,6 +36,6 @@ export async function GET(request: NextRequest) {
       settings: can(user, 'settings.manage'),
     },
     connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
-    instagram: { connected: Boolean(instagram), username: instagram?.username || null },
+    instagram: { connected: Boolean(instagram), username: instagram?.username || null, replyHours: igReplyHours() },
   })
 }

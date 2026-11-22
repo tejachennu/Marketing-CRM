@@ -170,6 +170,8 @@ export function dmBody(recipientId: string, input: { text?: string; imageUrl?: s
 
 /** Meta's file errors in plain words. */
 export function igSendError(message: string): string {
+  // Meta refuses the Human Agent tag until the app is approved for it: say what it means for the shop
+  if (/human agent/i.test(message)) return IG_WINDOW_CLOSED
   if (/upload attachment|attachment.*(fail|invalid)|2534|file.*(large|size)/i.test(message)) return `Instagram could not take this file. ${IG_SEND_HELP}`
   return message
 }
@@ -213,14 +215,31 @@ export function apiAttachments(x: any): { type: string; url: string }[] {
 }
 
 /**
- * Instagram's reply window: 24 hours after the customer's last message, or up to 7 days with the Human
- * Agent tag (a person, not the AI, answering). Returns how this reply may go out, or why it cannot.
+ * Meta allows a person to reply up to 7 days after the customer's last message (the Human Agent tag) only once it
+ * has approved the app for Human Agent in App Review. Until then Meta refuses those messages (#10), so the window
+ * is 24 hours. Turn the 7 days on with NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT=on after Meta approves (the inbox reads it too).
  */
-export function replyWindow(lastCustomerAt: string | null | undefined, now: number = Date.now()): { ok: true; humanAgent: boolean } | { ok: false; reason: string } {
+export function humanAgentOn(): boolean {
+  return process.env.NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT === 'on'
+}
+
+/** How many hours after the customer's last message a reply can go out: 24, or 168 with Human Agent approved. */
+export function igReplyHours(humanAgent: boolean = humanAgentOn()): number {
+  return humanAgent ? 24 * 7 : 24
+}
+
+export const IG_WINDOW_CLOSED = 'It is more than 24 hours since this customer last wrote. Instagram lets a business reply only within 24 hours of the customer\'s last message. You can answer as soon as they write again.'
+
+/**
+ * Instagram's reply window: 24 hours after the customer's last message, or up to 7 days with the Human
+ * Agent tag (a person, not the AI, answering) when Meta has approved it. Returns how this reply may go out, or why it cannot.
+ */
+export function replyWindow(lastCustomerAt: string | null | undefined, now: number = Date.now(), humanAgent: boolean = humanAgentOn()): { ok: true; humanAgent: boolean } | { ok: false; reason: string } {
   const last = lastCustomerAt ? Date.parse(lastCustomerAt) : NaN
   if (!Number.isFinite(last)) return { ok: false, reason: 'Instagram lets you reply only after the customer writes to you.' }
   const hours = (now - last) / 3_600_000
   if (hours <= 24) return { ok: true, humanAgent: false }
+  if (!humanAgent) return { ok: false, reason: IG_WINDOW_CLOSED }
   if (hours <= 24 * 7) return { ok: true, humanAgent: true }
   return { ok: false, reason: 'It is more than 7 days since this customer last wrote. Instagram does not allow a reply until they write again.' }
 }

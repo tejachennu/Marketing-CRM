@@ -115,7 +115,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return t == null ? null : Map<String, dynamic>.from(t);
   }
 
-  bool _windowOpen(List<Map<String, dynamic>> messages) {
+  /// Instagram: 24 hours, or 7 days once Meta has approved the app for Human Agent (the server says which).
+  int _igHours(AppState app) => ((app.me?['instagram'] as Map?)?['replyHours'] as num?)?.toInt() ?? 24;
+
+  bool _windowOpen(AppState app, List<Map<String, dynamic>> messages) {
     DateTime? last;
     for (final m in messages.reversed) {
       if (m['sender_type'] == 'contact') {
@@ -125,8 +128,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final lastMessage = widget.conversation['last_message'] as Map?;
     if (last == null && lastMessage?['sender_type'] == 'contact') last = DateTime.tryParse('${lastMessage?['created_at']}');
-    // WhatsApp: 24 hours for free messages. Instagram: 7 days (a person may answer up to then).
-    return last != null && DateTime.now().difference(last).inHours < (_ig ? 24 * 7 : 24);
+    // WhatsApp: 24 hours for free messages. Instagram: 24 hours (7 days when Meta allows Human Agent).
+    return last != null && DateTime.now().difference(last).inMinutes < (_ig ? _igHours(app) : 24) * 60;
   }
 
   // ── Sending ──
@@ -351,7 +354,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final app = AppScope.of(context);
     final conv = _conversation(app);
     final messages = _messages(app);
-    final open = _windowOpen(messages);
+    final open = _windowOpen(app, messages);
     final name = contactName(conv['contact']);
     final aiOn = conv['auto_reply_enabled'] != false;
     final ticket = _openTicket(app);
@@ -530,7 +533,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Expanded(
                     child: Text(
                       _ig
-                          ? 'Instagram lets you reply only within 7 days of the customer\'s last message. You can answer again when they write to you.'
+                          ? 'Instagram lets you reply only within ${_igHours(app) > 24 ? '7 days' : '24 hours'} of the customer\'s last message. You can answer again as soon as they write to you.'
                           : 'More than 24 hours since this customer wrote. WhatsApp only delivers an approved template now.',
                       style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF5C4600)),
                     ),

@@ -134,6 +134,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   1/7/30/90, `channel` filter (`readChannel`; visits and carts only for website/all; the channel split always shows all).
   Web `reports-tab.tsx` and app `ShopReportsScreen` (shop_more.dart) have period + channel filters, received vs to collect,
   change vs before, labelled bars (tap a bar in the app). Brand rename under discussion (owner does not want "WAMA CRM").
+  **Instagram reply window = 24 hours** (22 Nov 2026: Meta refused a reply with "(#10) To use 'Human Agent' ... must be
+  reviewed"): the 7-day Human Agent window is used only with `NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT=on` (set it after Meta
+  approves Human Agent in App Review). `humanAgentOn`, `igReplyHours`, `IG_WINDOW_CLOSED`, `replyWindow(…, humanAgent)` in
+  `lib/instagram/rules.ts`; `igSendError` turns a Human Agent refusal into plain words; web inbox and app (`/api/mobile/me`
+  `instagram.replyHours`) follow the same setting. Shop reports also take `from` / `to` (`readRange`, ≤366 days).
 - **Version 1 freeze: security, bug pass, app parity** (owner, 21 Nov 2026: "freeze this version ... security ni baga
   take care ... every web feature in the app ... chatting WhatsApp native feel"). Report at the top of
   `docs/TESTING-REPORT.md`. **Security**: the public anon key could read core tables in production →

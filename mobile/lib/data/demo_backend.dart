@@ -625,7 +625,7 @@ class DemoBackend implements Backend {
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
           'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true, 'settings': true},
           'connectors': {'frontDesk': true, 'ecommerce': true, 'pipeline': true},
-          'instagram': {'connected': true, 'username': 'glowstore'},
+          'instagram': {'connected': true, 'username': 'glowstore', 'replyHours': 24},
         };
       case '/api/salon/setup':
         return {'success': true, ..._setup};

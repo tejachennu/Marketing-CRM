@@ -24,7 +24,9 @@ import { collectProductRefs, parseCommerceMessage, type ChatOrderCard, type Chat
 import { ConversationRow } from '@/components/chat/conversation-row'
 
 export type InboxChannel = 'whatsapp' | 'instagram'
-const INSTAGRAM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+// 24 hours; 7 days only once Meta has approved the app for Human Agent (same setting as lib/instagram/rules.ts)
+const IG_HUMAN_AGENT = process.env.NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT === 'on'
+const INSTAGRAM_WINDOW_MS = (IG_HUMAN_AGENT ? 7 * 24 : 24) * 60 * 60 * 1000
 
 function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
   const isIg = channel === 'instagram'
@@ -1884,7 +1886,7 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
                   {!loadingMessages && !messagesError && (
                     serviceWindow.state === 'open' ? (
                       <span
-                        title={isIg ? 'Instagram lets you reply for 24 hours after the customer\'s last message, and up to 7 days when a person answers' : "WhatsApp lets you reply freely for 24 hours after the customer's last message"}
+                        title={isIg ? (IG_HUMAN_AGENT ? 'Instagram lets you reply for 24 hours after the customer\'s last message, and up to 7 days when a person answers' : 'Instagram lets you reply for 24 hours after the customer\'s last message') : "WhatsApp lets you reply freely for 24 hours after the customer's last message"}
                         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
                           serviceWindow.closingSoon
                             ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/60 dark:border-amber-900/50'
@@ -1896,7 +1898,7 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
                       </span>
                     ) : (
                       <span
-                        title={isIg ? 'More than 7 days since the customer last wrote. Instagram allows a reply only after they write again.' : 'More than 24 hours since the customer last wrote. Only an approved template can be sent until they reply.'}
+                        title={isIg ? `More than ${IG_HUMAN_AGENT ? '7 days' : '24 hours'} since the customer last wrote. Instagram allows a reply only after they write again.` : 'More than 24 hours since the customer last wrote. Only an approved template can be sent until they reply.'}
                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/50"
                       >
                         <Clock size={10} />
@@ -2259,7 +2261,7 @@ function ConversationsPageContent({ channel }: { channel: InboxChannel }) {
                       {isIg
                         ? serviceWindow.state === 'none'
                           ? 'This person has not written to you yet. Instagram lets you reply only after they send a message.'
-                          : 'It is more than 7 days since this customer last wrote. Instagram allows a reply only after they write again.'
+                          : `It is more than ${IG_HUMAN_AGENT ? '7 days' : '24 hours'} since this customer last wrote. Instagram allows a reply only after they write again.`
                         : serviceWindow.state === 'none'
                           ? 'This customer has not written yet. WhatsApp only delivers an approved template as the first message.'
                           : 'It is more than 24 hours since this customer last wrote. WhatsApp only delivers an approved template until they reply.'}

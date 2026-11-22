@@ -44,7 +44,13 @@ test('reply bodies and the reply window', () => {
   assert.equal(R.dmBody('901', { imageUrl: 'https://a/b.jpg' }).message.attachment.type, 'image')
   const now = Date.parse('2026-11-19T12:00:00Z')
   assert.deepEqual(R.replyWindow('2026-11-19T01:00:00Z', now), { ok: true, humanAgent: false })
-  assert.deepEqual(R.replyWindow('2026-11-16T12:00:00Z', now), { ok: true, humanAgent: true })
+  assert.deepEqual(R.replyWindow('2026-11-16T12:00:00Z', now, true), { ok: true, humanAgent: true })
+  // Until Meta approves Human Agent: 24 hours only, in plain words
+  assert.deepEqual(R.replyWindow('2026-11-16T12:00:00Z', now, false), { ok: false, reason: R.IG_WINDOW_CLOSED })
+  assert.equal(R.replyWindow('2026-11-16T12:00:00Z', now).ok, false) // the setting is off by default
+  assert.equal(R.igReplyHours(false), 24)
+  assert.equal(R.igReplyHours(true), 168)
+  assert.equal(R.igSendError("(#10) To use 'Human Agent', your use of this endpoint must be reviewed and approved by Facebook."), R.IG_WINDOW_CLOSED)
   assert.equal(R.replyWindow('2026-11-01T12:00:00Z', now).ok, false)
   assert.equal(R.replyWindow(null, now).ok, false)
 })
@@ -108,11 +114,20 @@ test('DMs: saved once into an Instagram chat; replies honour the window; AI cann
   const sent = await S.sendDm(db, ORG, saved.conversation, { text: 'Yes, in stock', byPerson: true }, fetcher)
   assert.deepEqual(sent, { ok: true, mid: 'out1', mids: ['out1'] })
   assert.deepEqual(calls.at(-1).body, { recipient: { id: '901' }, message: { text: 'Yes, in stock' } })
-  // Three days later only a person may answer (Human Agent tag)
+  // Three days later: closed until Meta approves Human Agent (nothing is sent, the reason is plain)
   db.tables.messages[0].created_at = new Date(Date.now() - 3 * 86_400_000).toISOString()
-  assert.equal((await S.sendDm(db, ORG, saved.conversation, { text: 'Hi', byPerson: false }, fetcher)).ok, false)
-  await S.sendDm(db, ORG, saved.conversation, { text: 'Hi', byPerson: true }, fetcher)
-  assert.equal(calls.at(-1).body.tag, 'HUMAN_AGENT')
+  const before = calls.length
+  assert.deepEqual(await S.sendDm(db, ORG, saved.conversation, { text: 'Hi', byPerson: true }, fetcher), { ok: false, error: R.IG_WINDOW_CLOSED })
+  assert.equal(calls.length, before)
+  // With Human Agent approved (NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT=on) only a person may answer, with the tag
+  process.env.NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT = 'on'
+  try {
+    assert.equal((await S.sendDm(db, ORG, saved.conversation, { text: 'Hi', byPerson: false }, fetcher)).ok, false)
+    await S.sendDm(db, ORG, saved.conversation, { text: 'Hi', byPerson: true }, fetcher)
+    assert.equal(calls.at(-1).body.tag, 'HUMAN_AGENT')
+  } finally {
+    delete process.env.NEXT_PUBLIC_INSTAGRAM_HUMAN_AGENT
+  }
 })
 
 test('comments: saved, own replies skipped, reply / private reply once / hide / delete', async () => {
