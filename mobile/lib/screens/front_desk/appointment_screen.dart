@@ -73,7 +73,7 @@ class AppointmentScreen extends StatelessWidget {
                           children: [
                             Text('${a['customer_name']}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 2),
-                            Text('${a['customer_phone'] ?? 'No mobile number'}', style: const TextStyle(color: Brand.muted)),
+                            Text('${a['customer_phone'] ?? ''}'.isEmpty ? 'No mobile number' : showPhone(a['customer_phone']), style: const TextStyle(color: Brand.muted)),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 6,

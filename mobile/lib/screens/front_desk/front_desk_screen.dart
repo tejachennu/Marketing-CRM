@@ -85,11 +85,6 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
               icon: const Icon(Icons.tune),
             ),
-          IconButton(
-            tooltip: 'Sync now',
-            onPressed: () => app.syncNow(),
-            icon: app.syncing || app.refreshing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
-          ),
         ],
         // Two clear tabs, as WhatsApp's tabs: a green line under the open one
         bottom: TabBar(
@@ -148,9 +143,8 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
       ),
       // The two counter actions, as WhatsApp's buttons in the corner
       floatingActionButton: app.can('write') && _tabs.index == 0
-          ? Column(
+          ? Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 FloatingActionButton.extended(
                   heroTag: 'fab-book',
@@ -161,7 +155,7 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
                   icon: const Icon(Icons.event_available_outlined),
                   label: const Text('Book'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(width: 10),
                 FloatingActionButton.extended(
                   heroTag: 'fab-bill',
                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBillScreen())),

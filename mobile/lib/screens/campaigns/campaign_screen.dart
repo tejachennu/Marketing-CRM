@@ -307,7 +307,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                     leading: Avatar(contactName(contact), size: 42),
                     title: Text(contactName(contact), style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text(
-                      last == null ? '${contact['phone_number'] ?? ''}' : '${last['sender_type'] == 'user' ? 'You: ' : ''}${last['body'] ?? 'File'}',
+                      last == null ? showPhone(contact['phone_number']) : '${last['sender_type'] == 'user' ? 'You: ' : ''}${last['body'] ?? 'File'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -412,7 +412,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                     return ListTile(
                       title: Text(contactName(contact), style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(
-                        s == 'FAILED' && '${p['error_message'] ?? ''}'.isNotEmpty ? '${p['error_message']}' : '${p['phone_number'] ?? contact['phone_number'] ?? ''}',
+                        s == 'FAILED' && '${p['error_message'] ?? ''}'.isNotEmpty ? '${p['error_message']}' : showPhone(p['phone_number'] ?? contact['phone_number']),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: s == 'FAILED' ? Brand.red : Brand.muted, fontSize: 13),

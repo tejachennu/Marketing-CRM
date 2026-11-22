@@ -97,7 +97,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                             leading: Avatar(contactName(c), size: 42),
                             title: Text(contactName(c), style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text('${c['phone_number'] ?? 'No number'}', style: const TextStyle(color: Brand.muted)),
+                            subtitle: Text('${c['phone_number'] ?? ''}'.isEmpty ? 'No number' : showPhone(c['phone_number']), style: const TextStyle(color: Brand.muted)),
                             trailing: c['_waiting'] == true
                                 ? WaitingPill(failed: c['_failed'] == true)
                                 : tags.isEmpty

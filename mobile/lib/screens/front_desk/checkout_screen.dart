@@ -4,6 +4,7 @@ import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'bill_parts.dart';
 import 'logic.dart';
 import 'pickers.dart';
 
@@ -72,123 +73,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Navigator.pop(context, true);
   }
 
-  Widget _whoChips(FrontDesk desk, String? serviceId, String? value, ValueChanged<String?> onChanged) {
-    final people = desk.staff.where((m) {
-      final ids = (m['service_ids'] as List? ?? const []);
-      return serviceId == null || ids.isEmpty || ids.contains(serviceId) || m['id'] == value;
-    });
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        ChoiceChip(label: const Text('Anyone'), selected: value == null, onSelected: (_) => onChanged(null)),
-        for (final m in people) ChoiceChip(label: Text('${m['name']}'), selected: value == m['id'], onSelected: (_) => onChanged('${m['id']}')),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final desk = FrontDesk(app, date: widget.date);
     final a = widget.appointment;
+    final lines = _lines(desk);
+    final who = [..._bookedWho, for (final id in _extra) if (desk.service(id) != null) _extraWho[id]];
+    final total = _total(desk);
+    final team = desk.staff.isNotEmpty;
+    var step = 0;
     return Scaffold(
-      appBar: AppBar(title: Text('Bill · ${a['customer_name']}')),
+      backgroundColor: Brand.page,
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Make the bill'),
+            Text('${a['customer_name'] ?? 'Customer'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted)),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           const SyncBanner(),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: [
-                FormSection(
+                BillStep(
+                  number: ++step,
                   title: 'Booked',
+                  hint: team ? 'Tap a name to change who did it.' : null,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (var i = 0; i < _booked.length; i++) ...[
+                        if (i > 0) const Divider(height: 16),
                         Row(
                           children: [
                             Expanded(
-                              child: Text('${_booked[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${_booked[i]['name']}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                                  Text(formatRupees(_booked[i]['price']), style: const TextStyle(fontSize: 13, color: Brand.muted)),
+                                ],
+                              ),
                             ),
-                            Text(formatRupees(_booked[i]['price']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            if (team)
+                              PersonPill(
+                                desk: desk,
+                                people: [
+                                  for (final m in desk.staff)
+                                    if ((m['service_ids'] as List? ?? const []).isEmpty || (m['service_ids'] as List).contains(_booked[i]['service_id']) || m['id'] == _bookedWho[i]) Map<String, dynamic>.from(m),
+                                ],
+                                value: _bookedWho[i],
+                                onChanged: (v) => setState(() => _bookedWho[i] = v),
+                              ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        if (desk.staff.isNotEmpty) _whoChips(desk, _booked[i]['service_id'] as String?, _bookedWho[i], (v) => setState(() => _bookedWho[i] = v)),
-                        const SizedBox(height: 12),
                       ],
                     ],
                   ),
                 ),
-                FormSection(
+                BillStep(
+                  number: ++step,
                   title: 'Anything extra?',
-                  hint: 'Add services they had on top of the booking.',
+                  hint: 'Services they had on top of the booking.',
+                  trailing: _extra.isEmpty ? null : Pill('${_extra.length} added', tone: PillTone.blue),
                   child: ServicePicker(forBill: true, desk: desk, selected: _extra, onChanged: (v) => setState(() => _extra = v)),
                 ),
-                if (_extra.isNotEmpty && desk.staff.isNotEmpty)
-                  FormSection(
+                if (_extra.isNotEmpty && team)
+                  BillStep(
+                    number: ++step,
                     title: 'Who did the extras',
                     child: WhoDidIt(desk: desk, serviceIds: _extra, value: _extraWho, onChanged: (v) => setState(() => _extraWho = v)),
                   ),
-                FormSection(
+                BillStep(
+                  number: ++step,
                   title: 'Discount',
                   child: DiscountPicker(value: _discount, max: _subtotal(desk), onChanged: (v) => setState(() => _discount = v)),
                 ),
-                FormSection(
+                BillStep(
+                  number: ++step,
                   title: 'Paid by',
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final m in ['cash', 'upi', 'card']) ChoiceChip(label: Text(paymentLabels[m]!), selected: _payment == m, onSelected: (_) => setState(() => _payment = m)),
-                      ChoiceChip(label: const Text('Pay later'), selected: _payment == null, onSelected: (_) => setState(() => _payment = null)),
-                    ],
-                  ),
+                  child: PaymentTiles(value: _payment, onChanged: (v) => setState(() => _payment = v)),
                 ),
-                Card(
-                  child: SwitchListTile(
-                    value: _whatsapp,
-                    onChanged: (v) => setState(() => _whatsapp = v),
-                    activeThumbColor: Colors.white,
-                    activeTrackColor: Brand.blue,
-                    title: const Text('Send the bill on WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    subtitle: const Text('After 24 hours without a reply from them, your bill template is used.'),
-                  ),
+                WhatsAppSwitch(
+                  value: _whatsapp,
+                  onChanged: (v) => setState(() => _whatsapp = v),
+                  note: 'After 24 hours without a reply from them, your bill template is used.',
                 ),
+                BillSummary(desk: desk, lines: lines, who: who, discount: _discount, total: total),
               ],
             ),
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_booked.length + _extra.length} service${_booked.length + _extra.length == 1 ? '' : 's'}${desk.hasGst ? (desk.pricesIncludeTax ? ' · incl. GST' : ' · + GST') : ''}',
-                      style: const TextStyle(fontSize: 12.5, color: Brand.muted),
-                    ),
-                    Text(formatRupees(_total(desk)), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
-                  ],
-                ),
-              ),
-              FilledButton.icon(onPressed: () => _save(desk), icon: const Icon(Icons.receipt_long), label: const Text('Make the bill')),
-            ],
-          ),
-        ),
-      ),
+      bottomNavigationBar: BillBar(count: lines.length, total: total, label: 'Make the bill', onPressed: () => _save(desk)),
     );
   }
 }

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_state.dart';
-import '../../data/format.dart' show formatWhen;
+import '../../data/format.dart' show formatWhen, showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../chats/chat_screen.dart';
@@ -904,7 +904,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 if (hasAddress) ...[
                   Text('${address['full_name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
                   Text(formatAddress(address)),
-                  if ('${address['phone_number'] ?? ''}'.isNotEmpty) Text('${address['phone_number']}'),
+                  if ('${address['phone_number'] ?? ''}'.isNotEmpty) Text(showPhone(address['phone_number'])),
                   Text(
                     '${'${address['delivery_speed'] ?? 'standard'}'[0].toUpperCase()}${'${address['delivery_speed'] ?? 'standard'}'.substring(1)} delivery',
                     style: const TextStyle(color: Brand.muted),

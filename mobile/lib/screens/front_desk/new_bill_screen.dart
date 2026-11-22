@@ -5,6 +5,7 @@ import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
+import 'bill_parts.dart';
 import 'logic.dart';
 import 'pickers.dart';
 
@@ -79,15 +80,17 @@ class _NewBillScreenState extends State<NewBillScreen> {
     final total = _total(desk);
     final subtotal = desk.estimate(_services);
     return Scaffold(
+      backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('New bill')),
       body: Column(
         children: [
           const SyncBanner(),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
               children: [
-                FormSection(
+                BillStep(
+                  number: 1,
                   title: 'Customer',
                   hint: 'Leave empty for a walk-in. Numbers from any country work.',
                   child: CustomerPicker(
@@ -100,71 +103,52 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     }),
                   ),
                 ),
-                FormSection(
+                BillStep(
+                  number: 2,
                   title: 'Services',
+                  trailing: _services.isEmpty ? null : Pill('${_services.length} picked', tone: PillTone.blue),
                   child: ServicePicker(forBill: true, desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v)),
                 ),
-                FormSection(
-                  title: 'Who did it',
-                  hint: _services.length > 1 ? 'Picks for each service; it counts for their commission.' : null,
-                  child: WhoDidIt(desk: desk, serviceIds: _services, value: _who, onChanged: (v) => setState(() => _who = v)),
-                ),
-                FormSection(
+                if (_services.isNotEmpty && desk.staff.isNotEmpty)
+                  BillStep(
+                    number: 3,
+                    title: 'Who did it',
+                    hint: 'It counts for their commission.',
+                    child: WhoDidIt(desk: desk, serviceIds: _services, value: _who, onChanged: (v) => setState(() => _who = v)),
+                  ),
+                BillStep(
+                  number: _services.isNotEmpty && desk.staff.isNotEmpty ? 4 : 3,
                   title: 'Discount',
                   child: DiscountPicker(value: _discount, max: subtotal, onChanged: (v) => setState(() => _discount = v)),
                 ),
-                FormSection(
+                BillStep(
+                  number: _services.isNotEmpty && desk.staff.isNotEmpty ? 5 : 4,
                   title: 'Paid by',
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final m in ['cash', 'upi', 'card']) ChoiceChip(label: Text(paymentLabels[m]!), selected: _payment == m, onSelected: (_) => setState(() => _payment = m)),
-                      ChoiceChip(label: const Text('Pay later'), selected: _payment == null, onSelected: (_) => setState(() => _payment = null)),
-                    ],
-                  ),
+                  child: PaymentTiles(value: _payment, onChanged: (v) => setState(() => _payment = v)),
                 ),
-                Card(
-                  child: SwitchListTile(
-                    value: _whatsapp,
-                    onChanged: (v) => setState(() => _whatsapp = v),
-                    activeThumbColor: Colors.white,
-                    activeTrackColor: Brand.blue,
-                    title: const Text('Send the bill on WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    subtitle: const Text('Goes when the bill syncs. After 24 hours without a reply from them, your bill template is used.'),
-                  ),
+                WhatsAppSwitch(
+                  value: _whatsapp,
+                  onChanged: (v) => setState(() => _whatsapp = v),
+                  note: 'Goes when the bill syncs. After 24 hours without a reply from them, your bill template is used.',
+                ),
+                BillSummary(
+                  desk: desk,
+                  lines: [for (final id in _services) ?desk.service(id)],
+                  who: [for (final id in _services) if (desk.service(id) != null) _who[id]],
+                  discount: _discount,
+                  total: total,
                 ),
               ],
             ),
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_services.length} service${_services.length == 1 ? '' : 's'}${desk.hasGst ? (desk.pricesIncludeTax ? ' · incl. GST' : ' · + GST') : ''}',
-                      style: const TextStyle(fontSize: 12.5, color: Brand.muted),
-                    ),
-                    Text(formatRupees(total), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
-                  ],
-                ),
-              ),
-              FilledButton.icon(onPressed: _saving || _services.isEmpty ? null : () => _save(desk), icon: const Icon(Icons.check), label: const Text('Save bill')),
-            ],
-          ),
-        ),
+      bottomNavigationBar: BillBar(
+        count: _services.length,
+        total: total,
+        label: 'Save bill',
+        icon: Icons.check,
+        onPressed: _saving || _services.isEmpty ? null : () => _save(desk),
       ),
     );
   }

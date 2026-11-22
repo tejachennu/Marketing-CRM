@@ -92,7 +92,8 @@ class Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg) = switch (tone) {
       PillTone.blue => (Brand.blueSoft, Brand.blue),
-      PillTone.navy => (Brand.navy, Colors.white),
+      // Waiting for someone: soft amber (was a black chip)
+      PillTone.navy => (const Color(0xFFFFF3CD), const Color(0xFF6B5200)),
       PillTone.red => (Brand.redSoft, Brand.red),
       PillTone.grey => (Brand.page, Brand.textSoft),
     };
@@ -376,7 +377,9 @@ class SearchField extends StatelessWidget {
   final EdgeInsets padding;
   @override
   Widget build(BuildContext context) {
-    const pill = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(999)), borderSide: BorderSide.none);
+    // White with an outline, so it stands out on white and on grey pages alike
+    const pill = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(999)), borderSide: BorderSide(color: Brand.border));
+    const focused = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(999)), borderSide: BorderSide(color: Brand.blue, width: 1.6));
     return Padding(
       padding: padding,
       child: TextField(
@@ -387,12 +390,12 @@ class SearchField extends StatelessWidget {
           hintText: hint,
           prefixIcon: const Icon(Icons.search, color: Brand.muted),
           filled: true,
-          fillColor: Brand.lineSoft,
+          fillColor: Colors.white,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
           border: pill,
           enabledBorder: pill,
-          focusedBorder: pill,
+          focusedBorder: focused,
         ),
       ),
     );

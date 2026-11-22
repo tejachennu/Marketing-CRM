@@ -6,6 +6,7 @@ import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'bill_parts.dart';
 import 'logic.dart';
 
 /// Who the customer is: mobile with country code and a name. Matches come from the server (with
@@ -171,7 +172,7 @@ class _CustomerPickerState extends State<CustomerPicker> {
                     dense: true,
                     leading: Avatar('${c['name']}', size: 34),
                     title: Text('${c['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('${c['phone'] ?? 'No number'}${c['last_visit'] != null ? ' · last ${formatDay(DateTime.parse('${c['last_visit']['date']}'))}' : ''}'),
+                    subtitle: Text('${'${c['phone'] ?? ''}'.isEmpty ? 'No number' : showPhone(c['phone'])}${c['last_visit'] != null ? ' · last ${formatDay(DateTime.parse('${c['last_visit']['date']}'))}' : ''}'),
                     trailing: (c['visits'] as num?) != null && (c['visits'] as num) > 0
                         ? Pill('${c['visits']} visit${c['visits'] == 1 ? '' : 's'}', tone: PillTone.blue)
                         : const Text(
@@ -336,42 +337,41 @@ class WhoDidIt extends StatelessWidget {
   Widget build(BuildContext context) {
     if (desk.staff.isEmpty) return const Text('Add your team in Setup to say who did the work.', style: TextStyle(color: Brand.muted));
     if (serviceIds.isEmpty) return const Text('Choose services first.', style: TextStyle(color: Brand.muted));
-    Widget chips(String serviceId) => Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        ChoiceChip(label: const Text('Anyone'), selected: value[serviceId] == null, onSelected: (_) => onChanged({...value, serviceId: null})),
-        for (final m in desk.staff.where((m) => _does(m, serviceId)))
-          ChoiceChip(
-            label: Text('${m['name']}'),
-            selected: value[serviceId] == m['id'],
-            onSelected: (_) {
-              final next = {...value, serviceId: '${m['id']}'};
-              // Fill their other services that nobody is on yet
-              for (final other in serviceIds) {
-                if (other != serviceId && next[other] == null && _does(m, other)) next[other] = '${m['id']}';
-              }
-              onChanged(next);
-            },
-          ),
-      ],
-    );
-    if (serviceIds.length == 1) return chips(serviceIds.first);
+    void pick(String serviceId, String? id) {
+      final next = {...value, serviceId: id};
+      // Fill their other services that nobody is on yet
+      if (id != null) {
+        final m = desk.staff.firstWhere((m) => m['id'] == id, orElse: () => const {});
+        for (final other in serviceIds) {
+          if (other != serviceId && next[other] == null && m.isNotEmpty && _does(m, other)) next[other] = id;
+        }
+      }
+      onChanged(next);
+    }
+
+    // One neat row per service: its name, and who did it (tap to choose)
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final id in serviceIds) ...[
-          Text('${desk.service(id)?['name'] ?? 'Service'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-          const SizedBox(height: 4),
-          chips(id),
-          const SizedBox(height: 10),
+        for (var i = 0; i < serviceIds.length; i++) ...[
+          if (i > 0) const Divider(height: 16),
+          Row(
+            children: [
+              Expanded(child: Text('${desk.service(serviceIds[i])?['name'] ?? 'Service'}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+              const SizedBox(width: 8),
+              PersonPill(
+                desk: desk,
+                people: [for (final m in desk.staff.where((m) => _does(m, serviceIds[i]))) Map<String, dynamic>.from(m)],
+                value: value[serviceIds[i]],
+                onChanged: (id) => pick(serviceIds[i], id),
+              ),
+            ],
+          ),
         ],
       ],
     );
   }
 }
 
-/// A discount: none, a percent, or rupees off.
 class DiscountPicker extends StatelessWidget {
   const DiscountPicker({super.key, required this.value, required this.onChanged, this.max});
 

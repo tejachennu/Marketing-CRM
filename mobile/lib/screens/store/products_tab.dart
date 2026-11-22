@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/format.dart' show showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../campaigns/audience.dart' show phoneDigits;
@@ -1061,7 +1062,7 @@ class _ShareScreenState extends State<ShareScreen> {
                     for (final c in _matches)
                       ListTile(
                         title: Text([c['first_name'], c['last_name']].where((x) => '${x ?? ''}'.isNotEmpty).join(' ').ifEmpty('${c['phone_number'] ?? 'Contact'}')),
-                        subtitle: Text('${c['phone_number'] ?? 'No phone number'}'),
+                        subtitle: Text('${c['phone_number'] ?? ''}'.isEmpty ? 'No phone number' : showPhone(c['phone_number'])),
                         onTap: () => setState(
                           () => _to = (contactId: '${c['id']}', phone: null, label: [c['first_name'], c['last_name']].where((x) => '${x ?? ''}'.isNotEmpty).join(' ').ifEmpty('${c['phone_number']}')),
                         ),

@@ -135,11 +135,13 @@ ThemeData buildTheme() {
       focusedBorder: box(Brand.blue, 2),
       errorBorder: box(Brand.red),
     ),
-    // WhatsApp-style chips: soft grey, the picked one light blue with a blue edge
+    // Chips: white with a clear outline (they showed nothing on grey pages before); the picked one light green with a green edge
     chipTheme: base.chipTheme.copyWith(
-      backgroundColor: Brand.lineSoft,
+      backgroundColor: Colors.white,
       selectedColor: Brand.bubble,
-      side: const BorderSide(color: Colors.transparent),
+      side: WidgetStateBorderSide.resolveWith(
+        (states) => BorderSide(color: states.contains(WidgetState.selected) ? Brand.blue : Brand.border, width: states.contains(WidgetState.selected) ? 1.4 : 1),
+      ),
       // A real colour for each state (a chip with no text colour shows nothing on some phones)
       labelStyle: TextStyle(
         color: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.selected) ? const Color(0xFF15603E) : (states.contains(WidgetState.disabled) ? Brand.faint : Brand.textSoft)),

@@ -389,7 +389,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${_name(tickets[i])} · ${(tickets[i]['contacts'] as Map?)?['phone_number'] ?? ''}',
+                              '${_name(tickets[i])} · ${showPhone((tickets[i]['contacts'] as Map?)?['phone_number'])}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 13.5, color: Brand.textSoft),

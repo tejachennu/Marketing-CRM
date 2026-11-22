@@ -234,7 +234,7 @@ class BillScreen extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
                                   ),
-                                  Text(phone.isEmpty ? 'No phone number' : phone, style: const TextStyle(fontSize: 13, color: Brand.muted)),
+                                  Text(phone.isEmpty ? 'No phone number' : showPhone(phone), style: const TextStyle(fontSize: 13, color: Brand.muted)),
                                 ],
                               ),
                             ),
