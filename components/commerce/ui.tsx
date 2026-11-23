@@ -8,13 +8,13 @@ import { ORDER_STATUS_LABELS, needsRefund, type OrderStatus } from '@/lib/commer
 // ── Shared styles for the store screens ──────────────────────────────────────
 export const cardClass = 'bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]'
 export const inputClass =
-  'w-full h-9 px-3 text-[13px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60'
+  'w-full h-9 px-3 text-[13px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20 disabled:opacity-60'
 export const textareaClass = inputClass.replace('h-9 ', '') + ' py-2 resize-y'
 export const labelClass = 'block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1'
 export const hintClass = 'text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 mt-1'
 export const sectionTitle = 'text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5'
 export const primaryButton =
-  'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d59] text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
+  'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
 export const secondaryButton =
   'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
 export const dangerButton =
@@ -31,8 +31,8 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
   cart_submitted: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   awaiting_address: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
   payment_pending: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-  paid: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
-  cod_confirmed: 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300',
+  paid: 'bg-[#dfe8fd] text-[#163d9c] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
+  cod_confirmed: 'bg-[#dfe8fd] text-[#163d9c] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
   shipped: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300',
   delivered: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300',
   canceled: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',

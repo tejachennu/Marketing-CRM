@@ -510,9 +510,9 @@ export default function TicketsPage() {
         <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-[#e9edef] dark:border-[#202d36] p-5 shadow-xs flex items-center justify-between transition-all duration-300 hover:shadow-md">
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider">Resolved Tickets</span>
-            <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 leading-none">{stats.resolved}</h3>
+            <h3 className="text-2xl font-extrabold text-[#1D5BEA] dark:text-[#5f86ee] leading-none">{stats.resolved}</h3>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-xl bg-[#1D5BEA]/10 dark:bg-[#1D5BEA]/20 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center">
             <CheckCircle2 size={20} />
           </div>
         </div>
@@ -533,7 +533,7 @@ export default function TicketsPage() {
                 onClick={() => { setActiveTab('active'); setCurrentPage(1) }}
                 className={`px-4 py-2 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'active'
-                    ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+                    ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                     : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
                 }`}
               >
@@ -544,7 +544,7 @@ export default function TicketsPage() {
                 onClick={() => { setActiveTab('closed'); setCurrentPage(1) }}
                 className={`px-4 py-2 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
                   activeTab === 'closed'
-                    ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+                    ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                     : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
                 }`}
               >
@@ -596,7 +596,7 @@ export default function TicketsPage() {
                 value={searchTerm}
                 onChange={handleSearchChange}
                 placeholder="Search by subject or contact name..."
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
               />
             </div>
 
@@ -609,7 +609,7 @@ export default function TicketsPage() {
                 type="date"
                 value={fromDate}
                 onChange={(e) => { setFromDate(e.target.value); setCurrentPage(1) }}
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
                 placeholder="From Date"
               />
             </div>
@@ -623,7 +623,7 @@ export default function TicketsPage() {
                 type="date"
                 value={toDate}
                 onChange={(e) => { setToDate(e.target.value); setCurrentPage(1) }}
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
                 placeholder="To Date"
               />
             </div>
@@ -635,7 +635,7 @@ export default function TicketsPage() {
         {/* Tickets List Area */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="animate-spin text-[#00a884]" size={30} />
+            <Loader2 className="animate-spin text-[#1D5BEA]" size={30} />
             <p className="text-xs text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">Fetching Inquiries...</p>
           </div>
         ) : tickets.length === 0 ? (
@@ -699,7 +699,7 @@ export default function TicketsPage() {
                             value={ticket.assigned_to || ''}
                             onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}
                             disabled={assignLoading === ticket.id}
-                            className="px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#00a884] disabled:opacity-50"
+                            className="px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-xl text-xs font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#1D5BEA] disabled:opacity-50"
                           >
                             <option value="">Unassigned</option>
                             {orgUsers.map(u => (
@@ -720,9 +720,9 @@ export default function TicketsPage() {
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
                           ticket.status === 'open'
                             ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
-                            : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30'
+                            : 'bg-[#eef3fe] dark:bg-[#0E1B3D]/15 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/40 dark:border-[#0E1B3D]/30'
                         }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${ticket.status === 'open' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${ticket.status === 'open' ? 'bg-amber-500' : 'bg-[#1D5BEA]'}`} />
                           <span>{ticket.status === 'open' ? 'Active' : 'Resolved'}</span>
                         </span>
                       </td>
@@ -735,7 +735,7 @@ export default function TicketsPage() {
                           <button
                             onClick={() => router.push(`/dashboard?conversationId=${ticket.conversation_id}`)}
                             title="Open Conversation"
-                            className="p-1.5 hover:bg-[#00a884]/10 text-slate-400 hover:text-[#00a884] rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 hover:bg-[#1D5BEA]/10 text-slate-400 hover:text-[#1D5BEA] rounded-lg transition-colors cursor-pointer"
                           >
                             <MessageSquare size={14} />
                           </button>
@@ -757,10 +757,10 @@ export default function TicketsPage() {
                               onClick={() => handleResolveTicket(ticket.id)}
                               disabled={actionLoading === ticket.id}
                               title="Mark Resolved"
-                              className="p-1.5 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-500 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                              className="p-1.5 hover:bg-[#1D5BEA]/10 text-slate-400 hover:text-[#1D5BEA] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                             >
                               {actionLoading === ticket.id ? (
-                                <Loader2 size={14} className="animate-spin text-emerald-500" />
+                                <Loader2 size={14} className="animate-spin text-[#1D5BEA]" />
                               ) : (
                                 <CheckCircle2 size={14} />
                               )}
@@ -796,7 +796,7 @@ export default function TicketsPage() {
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border shrink-0 ${
                       ticket.status === 'open'
                         ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200/40 dark:border-amber-900/30'
-                        : 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-700 dark:text-emerald-400 border-emerald-200/40 dark:border-emerald-900/30'
+                        : 'bg-[#eef3fe] dark:bg-[#0E1B3D]/15 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/40 dark:border-[#0E1B3D]/30'
                     }`}>
                       <span>{ticket.status === 'open' ? 'Active' : 'Resolved'}</span>
                     </span>
@@ -821,7 +821,7 @@ export default function TicketsPage() {
                           value={ticket.assigned_to || ''}
                           onChange={(e) => handleAssignTicket(ticket.id, e.target.value || null)}
                           disabled={assignLoading === ticket.id}
-                          className="px-2 py-1 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#00a884] disabled:opacity-50"
+                          className="px-2 py-1 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] rounded-lg text-[10px] font-semibold text-[#111b21] dark:text-white focus:outline-none focus:border-[#1D5BEA] disabled:opacity-50"
                         >
                           <option value="">Unassigned</option>
                           {orgUsers.map(u => (
@@ -844,7 +844,7 @@ export default function TicketsPage() {
                     {/* Open Chat */}
                     <button
                       onClick={() => router.push(`/dashboard?conversationId=${ticket.conversation_id}`)}
-                      className="p-2 hover:bg-[#00a884]/10 text-slate-500 hover:text-[#00a884] dark:hover:text-[#00e676] rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                      className="p-2 hover:bg-[#1D5BEA]/10 text-slate-500 hover:text-[#1D5BEA] dark:hover:text-[#1D5BEA] rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
                     >
                       <MessageSquare size={13} />
                       <span>Chat</span>
@@ -866,10 +866,10 @@ export default function TicketsPage() {
                       <button
                         onClick={() => handleResolveTicket(ticket.id)}
                         disabled={actionLoading === ticket.id}
-                        className="p-2 hover:bg-emerald-500/10 text-slate-500 hover:text-emerald-500 rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1 text-[10px] font-bold"
+                        className="p-2 hover:bg-[#1D5BEA]/10 text-slate-500 hover:text-[#1D5BEA] rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1 text-[10px] font-bold"
                       >
                         {actionLoading === ticket.id ? (
-                          <Loader2 size={13} className="animate-spin text-emerald-500" />
+                          <Loader2 size={13} className="animate-spin text-[#1D5BEA]" />
                         ) : (
                           <CheckCircle2 size={13} />
                         )}
@@ -947,7 +947,7 @@ export default function TicketsPage() {
                   value={leadForm.title}
                   onChange={(e) => setLeadForm({ ...leadForm, title: e.target.value })}
                   placeholder="e.g. Upgrade to Pro Package"
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
                 />
               </div>
 
@@ -963,7 +963,7 @@ export default function TicketsPage() {
                     value={leadForm.value}
                     onChange={(e) => setLeadForm({ ...leadForm, value: e.target.value })}
                     placeholder="e.g. 500"
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
                   />
                 </div>
                 <div>
@@ -973,7 +973,7 @@ export default function TicketsPage() {
                   <select
                     value={leadForm.priority}
                     onChange={(e) => setLeadForm({ ...leadForm, priority: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
                   >
                     <option value="low">Cold (Low)</option>
                     <option value="medium">Warm (Medium)</option>
@@ -990,7 +990,7 @@ export default function TicketsPage() {
                   <select
                     value={leadForm.stageId}
                     onChange={(e) => setLeadForm({ ...leadForm, stageId: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
                   >
                     {stages.length === 0 ? (
                       <option value="">No stages config</option>
@@ -1006,7 +1006,7 @@ export default function TicketsPage() {
                   <select
                     value={leadForm.assignedTo}
                     onChange={(e) => setLeadForm({ ...leadForm, assignedTo: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none font-semibold text-[#111b21] dark:text-white"
                   >
                     <option value="">Select teammate</option>
                     {orgUsers.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
@@ -1020,7 +1020,7 @@ export default function TicketsPage() {
                   id="resolveTicket"
                   checked={leadForm.resolveTicket}
                   onChange={(e) => setLeadForm({ ...leadForm, resolveTicket: e.target.checked })}
-                  className="w-3.5 h-3.5 rounded text-[#00a884] focus:ring-[#00a884] border-slate-300 bg-slate-50 cursor-pointer"
+                  className="w-3.5 h-3.5 rounded text-[#1D5BEA] focus:ring-[#1D5BEA] border-slate-300 bg-slate-50 cursor-pointer"
                 />
                 <label htmlFor="resolveTicket" className="font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                   Automatically mark this support ticket as resolved.
@@ -1039,7 +1039,7 @@ export default function TicketsPage() {
                 <button
                   type="submit"
                   disabled={modalLoading}
-                  className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white rounded-xl font-bold shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white rounded-xl font-bold shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   {modalLoading && <Loader2 size={13} className="animate-spin" />}
                   <span>Convert to Lead</span>

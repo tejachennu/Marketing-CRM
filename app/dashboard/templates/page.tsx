@@ -25,14 +25,14 @@ const secondary = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 roun
 const select = 'h-9 px-3 text-[14px] rounded-lg bg-white dark:bg-slate-900 border border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-white focus:outline-none focus:border-[#0064e0]'
 
 const TONES: Record<string, string> = {
-  green: 'bg-[#e6f4ea] text-[#1e7e34] dark:bg-emerald-950/60 dark:text-emerald-300',
+  green: 'bg-[#e6f4ea] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
   yellow: 'bg-[#fef4d6] text-[#8a6100] dark:bg-amber-950/60 dark:text-amber-300',
   red: 'bg-[#fde8ea] text-[#c11231] dark:bg-rose-950/60 dark:text-rose-300',
   gray: 'bg-[#eceef1] text-[#4b4f56] dark:bg-slate-800 dark:text-slate-300',
   blue: 'bg-[#e7f0fd] text-[#0064e0] dark:bg-blue-950/60 dark:text-blue-300',
 }
 const QUALITY: Record<string, { label: string; dot: string }> = {
-  GREEN: { label: 'High quality', dot: 'bg-[#31a24c]' },
+  GREEN: { label: 'High quality', dot: 'bg-[#1D5BEA]' },
   YELLOW: { label: 'Medium quality', dot: 'bg-[#f7b928]' },
   RED: { label: 'Low quality', dot: 'bg-[#e41e3f]' },
 }
@@ -485,7 +485,7 @@ export default function TemplatesPage() {
           <ul className="space-y-1">
             {updates.map((update) => (
               <li key={`${update.id}-${update.at}`} className="text-[13px] text-[#1c2b33] dark:text-slate-200">
-                <strong>{update.name}</strong> ({languageLabel(update.language)}): {STATUS_INFO[update.from]?.label || update.from} → <span className={update.to === 'APPROVED' ? 'text-[#1e7e34] font-semibold' : update.to === 'REJECTED' || update.to === 'DISABLED' ? 'text-[#c11231] font-semibold' : 'font-semibold'}>{STATUS_INFO[update.to]?.label || update.to}</span>
+                <strong>{update.name}</strong> ({languageLabel(update.language)}): {STATUS_INFO[update.from]?.label || update.from} → <span className={update.to === 'APPROVED' ? 'text-[#174bc4] font-semibold' : update.to === 'REJECTED' || update.to === 'DISABLED' ? 'text-[#c11231] font-semibold' : 'font-semibold'}>{STATUS_INFO[update.to]?.label || update.to}</span>
                 <span className="text-[#8a8d91]"> · {new Date(update.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
               </li>
             ))}
@@ -638,7 +638,7 @@ function MenuItem({ icon: Icon, label, onClick, danger }: { icon: any; label: st
 function Toast({ toast, onClose }: { toast: { kind: 'success' | 'error'; text: string }; onClose: () => void }) {
   return (
     <div role={toast.kind === 'error' ? 'alert' : 'status'} className={`fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-md flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-2xl text-[13.5px] font-medium ${toast.kind === 'error' ? 'bg-[#e41e3f] text-white' : 'bg-[#1c2b33] text-white'}`}>
-      {toast.kind === 'error' ? <AlertCircle size={17} className="shrink-0 mt-px" /> : <CheckCircle2 size={17} className="shrink-0 mt-px text-[#31a24c]" />}
+      {toast.kind === 'error' ? <AlertCircle size={17} className="shrink-0 mt-px" /> : <CheckCircle2 size={17} className="shrink-0 mt-px text-[#1D5BEA]" />}
       <span className="flex-1">{toast.text}</span>
       <button type="button" aria-label="Dismiss" onClick={onClose} className="cursor-pointer"><X size={15} /></button>
     </div>

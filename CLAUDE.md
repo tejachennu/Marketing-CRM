@@ -118,6 +118,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Simple colours on the whole dashboard; WhatsApp lock; sample lists** (owner, 22–23 Nov 2026: "do whatever changes
+  you feel are needed"). Old emerald / teal / WhatsApp-green accents and every gradient on the dashboard pages, auth pages
+  and shared components moved to navy / one blue / greys (44 files; the sidebar and phone bottom bar active item is now
+  blue, which answers the old "navy or green?" question; the owner can still say otherwise). **Kept on purpose**: the
+  inbox (`components/chat/*`, WhatsApp look), the landing page `app/page.tsx` (redone with the new brand), public store /
+  booking / website pages (the business's own colour), WhatsApp previews, the Google logo, chart colours and the store
+  colour choices. App: WhatsApp features locked until WhatsApp is connected (`ui/whatsapp_lock.dart`, `/api/mobile/me`
+  `whatsapp.connected`), "Add sample services?" before a starter list, and **Remove samples** (`lib/salon/sample.ts`
+  `sampleMatches` / `removeSamples`: unused samples deleted, used ones switched off; `salon_services.source = 'sample'`).
+  Brand rename pending (owner does not want "WAMA CRM"; names shortlisted in chat, none chosen yet).
 - **One connector at a time; Connectors in the app; More redesigned** (owner, 22 Nov 2026: "only one connector enable
   and disable no multiple connectors ... option to handle it from mobile ... enhance the mobile design"). `MAX_CONNECTORS = 1`
   in `lib/plans.ts` for every plan (Pro too, exempt and old ₹3,000 workspaces; Pro features say "Any one connector, switch
@@ -974,10 +984,8 @@ of pop-up notifications. Previous production commit: `cf4c324` (10 Nov 2026).
   number, Google/Apple sign-in, Firebase notifications, E-commerce in the app, Play Store and App Store).
   Read it first and update its Progress table.
 
-- **Waiting on the owner**: should the active item in the phone bottom bar be navy instead of the
-  current green? (The whole bottom bar and sidebar still use emerald for "active".)
-- Older pages (inbox, commerce, settings) still use emerald/teal accents and some gradients; the owner
-  prefers the simple palette above. Change them only when asked or when touching that page.
+- The inbox keeps WhatsApp's green look and the landing page still has green and gradients (to be redone with the
+  new brand name).
 - Ideas not yet done: WhatsApp message to a deal straight from the pipeline with a template; a deal
   created automatically from a new WhatsApp chat; the AI summary uses its older endpoint
   (`/api/ai/summarize`) and could be moved into the pipeline API.

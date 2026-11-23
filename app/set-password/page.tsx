@@ -93,7 +93,7 @@ function SetPasswordContent() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0b141a] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Ambient background glows */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#00a884]/5 dark:bg-[#00a884]/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#1D5BEA]/5 dark:bg-[#1D5BEA]/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Container */}
@@ -109,14 +109,14 @@ function SetPasswordContent() {
           
           {success ? (
             <div className="text-center py-6 space-y-4 animate-in zoom-in-95 duration-300">
-              <div className="w-16 h-16 bg-[#e7f7f4] dark:bg-[#0d2318]/50 text-[#00a884] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#00a884]/10">
+              <div className="w-16 h-16 bg-[#e7f7f4] dark:bg-[#0E1B3D]/50 text-[#1D5BEA] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1D5BEA]/10">
                 <ShieldCheck size={36} />
               </div>
               <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Password Secured</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold leading-relaxed">
                 Your password has been successfully configured. We are redirecting you to the login screen...
               </p>
-              <Loader2 className="animate-spin text-[#00a884] mx-auto mt-4" size={20} />
+              <Loader2 className="animate-spin text-[#1D5BEA] mx-auto mt-4" size={20} />
             </div>
           ) : (
             <>
@@ -149,7 +149,7 @@ function SetPasswordContent() {
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
+                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
                         placeholder="••••••••"
                         required
                         minLength={6}
@@ -162,7 +162,7 @@ function SetPasswordContent() {
                         <div className="flex justify-between text-[10px] font-bold">
                           <span className="text-[#8696a0]">Strength:</span>
                           <span className={
-                            strength === 'strong' ? 'text-[#00a884]' :
+                            strength === 'strong' ? 'text-[#1D5BEA]' :
                             strength === 'medium' ? 'text-amber-500' : 'text-rose-500'
                           }>
                             {strength.toUpperCase()}
@@ -170,7 +170,7 @@ function SetPasswordContent() {
                         </div>
                         <div className="h-1 w-full bg-slate-200 dark:bg-[#2a3942] rounded-full overflow-hidden">
                           <div className={`h-full rounded-full transition-all duration-300 ${
-                            strength === 'strong' ? 'w-full bg-[#00a884]' :
+                            strength === 'strong' ? 'w-full bg-[#1D5BEA]' :
                             strength === 'medium' ? 'w-2/3 bg-amber-500' : 'w-1/3 bg-rose-500'
                           }`} />
                         </div>
@@ -190,7 +190,7 @@ function SetPasswordContent() {
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#00a884] rounded-xl focus:outline-none text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
+                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
                         placeholder="••••••••"
                         required
                         minLength={6}
@@ -201,7 +201,7 @@ function SetPasswordContent() {
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-[#00a884] to-[#008069] text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 text-xs flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
+                    className="w-full bg-[#1D5BEA] text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 text-xs flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
                   >
                     {loading ? (
                       <>
@@ -227,7 +227,7 @@ export default function SetPasswordPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-slate-50 dark:bg-[#0b141a] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#00a884]" size={24} />
+        <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
       </div>
     }>
       <SetPasswordContent />

@@ -60,11 +60,11 @@ const USE_CASE_ICONS: Record<string, LucideIcon> = {
 }
 const TINTS = [
   'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
-  'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300',
+  'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]',
   'bg-[#fdeef3] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300',
   'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300',
   'bg-[#f1ecfe] text-[#6d28d9] dark:bg-violet-950/40 dark:text-violet-300',
-  'bg-[#e6f6fb] text-[#0e7490] dark:bg-cyan-950/40 dark:text-cyan-300',
+  'bg-[#e6f6fb] text-[#1D5BEA] dark:bg-cyan-950/40 dark:text-cyan-300',
 ]
 const AI_USES = ['WhatsApp AI replies', 'Shopping assistant', 'Reply suggestions', 'Lead scoring', 'Writing help']
 
@@ -136,8 +136,8 @@ function statusView(billing: Billing): StatusView {
 }
 
 const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title: string; body: string }> = {
-  brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#7CF0A8]', eyebrow: 'bg-white/10 text-[#7CF0A8]', title: 'text-white', body: 'text-white/75' },
-  green: { panel: 'bg-white dark:bg-[#111b21] border-[#cfeee2] dark:border-emerald-900/60', icon: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/50 dark:text-emerald-300', eyebrow: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/50 dark:text-emerald-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
+  brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#9db5ef]', eyebrow: 'bg-white/10 text-[#9db5ef]', title: 'text-white', body: 'text-white/75' },
+  green: { panel: 'bg-white dark:bg-[#111b21] border-[#cfeee2] dark:border-[#0E1B3D]/60', icon: 'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', eyebrow: 'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   amber: { panel: 'bg-[#fffbf3] dark:bg-amber-950/20 border-[#f6e1b5] dark:border-amber-900/60', icon: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', eyebrow: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   red: { panel: 'bg-[#fff8f8] dark:bg-red-950/20 border-[#f5cccc] dark:border-red-900/60', icon: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', eyebrow: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   neutral: { panel: 'bg-white dark:bg-[#111b21] border-[#e3e8f2] dark:border-slate-800', icon: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300', eyebrow: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
@@ -148,7 +148,7 @@ const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title:
 function CreditRing({ percent, paused }: { percent: number; paused: boolean }) {
   const radius = 52
   const circumference = 2 * Math.PI * radius
-  const color = paused ? '#E5484D' : percent <= 20 ? '#F59E0B' : '#00A884'
+  const color = paused ? '#E5484D' : percent <= 20 ? '#F59E0B' : '#1D5BEA'
   return (
     <div className="relative h-32 w-32 shrink-0">
       <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden="true">
@@ -398,7 +398,7 @@ export default function BillingPage() {
           <p className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-[#6B7894]"><Lock size={14} /> Payments secured by Razorpay</p>
         </div>
 
-        {notice && <div role="status" className="rounded-xl bg-[#e8f7f1] dark:bg-emerald-950/40 text-[#047857] dark:text-emerald-300 px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><CheckCircle2 size={18} className="shrink-0" /> {notice}</div>}
+        {notice && <div role="status" className="rounded-xl bg-[#e8f7f1] dark:bg-[#0E1B3D]/40 text-[#174bc4] dark:text-[#9db5ef] px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><CheckCircle2 size={18} className="shrink-0" /> {notice}</div>}
         {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 text-[#b91c1c] dark:text-red-300 px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><AlertCircle size={18} className="shrink-0" /> {error}</div>}
 
         {/* Where the workspace stands, and the one thing to do next */}
@@ -412,7 +412,7 @@ export default function BillingPage() {
                 <p className={`text-[15px] leading-relaxed mt-1.5 max-w-2xl ${tone.body}`}>{view.body}</p>
                 {view.progress !== undefined && (
                   <div className="mt-4 max-w-md">
-                    <div className="h-2 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-[#7CF0A8]" style={{ width: `${view.progress}%` }} /></div>
+                    <div className="h-2 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-[#9db5ef]" style={{ width: `${view.progress}%` }} /></div>
                     <div className="flex justify-between text-[12.5px] text-white/60 mt-1.5"><span>Trial started</span><span>Ends {formatDate(billing.accessUntil)}</span></div>
                   </div>
                 )}
@@ -488,9 +488,9 @@ export default function BillingPage() {
             </ul>
 
             <div className="border-t border-[#eef1f6] dark:border-slate-800 px-5 sm:px-6 py-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] text-[#4a5672] dark:text-slate-400">
-              <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#00A884]" /> UPI, cards and net banking</span>
-              <span className="inline-flex items-center gap-1.5"><RotateCcw size={15} className="text-[#00A884]" /> Stop any time</span>
-              <span className="inline-flex items-center gap-1.5"><Mail size={15} className="text-[#00A884]" /> Receipt emailed for every payment</span>
+              <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#1D5BEA]" /> UPI, cards and net banking</span>
+              <span className="inline-flex items-center gap-1.5"><RotateCcw size={15} className="text-[#1D5BEA]" /> Stop any time</span>
+              <span className="inline-flex items-center gap-1.5"><Mail size={15} className="text-[#1D5BEA]" /> Receipt emailed for every payment</span>
             </div>
           </section>
           </div>
@@ -503,7 +503,7 @@ export default function BillingPage() {
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#1D5BEA]" /> AI credit</h2>
               {aiTracked && (
-                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused ? 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : percent <= 20 ? 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300' : 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/50 dark:text-emerald-300'}`}>
+                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused ? 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : percent <= 20 ? 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300' : 'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]'}`}>
                   {billing.aiPaused ? 'Paused' : percent <= 20 ? 'Running low' : 'Running'}
                 </span>
               )}
@@ -618,7 +618,7 @@ export default function BillingPage() {
                     const isPlan = payment.purpose === 'subscription'
                     return (
                       <li key={`${payment.date}-${index}`} className="px-5 sm:px-6 py-3.5 flex items-center gap-3">
-                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]'}`}>
                           {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
                         </span>
                         <span className="flex-1 min-w-0">
@@ -627,7 +627,7 @@ export default function BillingPage() {
                         </span>
                         <span className="text-right">
                           <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{rupees(payment.amount)}</span>
-                          <span className="block text-[12.5px] font-semibold text-[#047857] dark:text-emerald-300">Paid</span>
+                          <span className="block text-[12.5px] font-semibold text-[#174bc4] dark:text-[#9db5ef]">Paid</span>
                         </span>
                       </li>
                     )

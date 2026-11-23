@@ -358,7 +358,7 @@ export default function SuperAdminConsole() {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#047857]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <AlertTriangle size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>
@@ -565,7 +565,7 @@ export default function SuperAdminConsole() {
                 {details.workspace.billing.configured && !details.workspace.billing.exempt && (
                   <section className={`${card} p-4 space-y-3`}>
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={16} className="text-[#00A884]" /> AI credit</h3>
+                      <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={16} className="text-[#1D5BEA]" /> AI credit</h3>
                       <CreditBar billing={details.workspace.billing} />
                     </div>
                     <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
@@ -615,7 +615,7 @@ export default function SuperAdminConsole() {
                 {/* Payments */}
                 {details.payments.length > 0 && (
                   <section className={`${card} p-4 space-y-2`}>
-                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><IndianRupee size={16} className="text-[#047857]" /> Payments</h3>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><IndianRupee size={16} className="text-[#174bc4]" /> Payments</h3>
                     {details.payments.map((payment) => (
                       <div key={payment.razorpay_payment_id} className="flex justify-between text-[13.5px] py-1">
                         <span className="text-[#4a5672] dark:text-slate-300">{payment.purpose === 'ai_topup' ? 'AI credit' : 'Plan'} · {formatDate(payment.created_at)}</span>

@@ -124,7 +124,7 @@ function ToggleSwitch({ checked, onChange, label, description }: ToggleProps) {
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-5.5 w-10.5 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-          checked ? 'bg-[#00a884] shadow-[0_0_8px_rgba(0,168,132,0.3)]' : 'bg-neutral-200 dark:bg-neutral-700'
+          checked ? 'bg-[#1D5BEA] shadow-[0_0_8px_rgba(0,168,132,0.3)]' : 'bg-neutral-200 dark:bg-neutral-700'
         }`}
       >
         <span
@@ -932,17 +932,17 @@ export default function SuperAdminAdvancedPage() {
   })
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-gradient-to-br from-neutral-50 via-neutral-100 to-amber-50/10 dark:from-[#0b141a] dark:via-[#0c1317] dark:to-[#080d10] p-6 space-y-6 transition-all duration-300">
+    <div className="h-full w-full overflow-y-auto bg-neutral-50 dark:bg-[#0b141a] p-6 space-y-6 transition-all duration-300">
       
       {/* Alert banner */}
       {alert && (
         <div className={`fixed top-16 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-4 duration-300 ${
           alert.type === 'success' 
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
+            ? 'bg-[#1D5BEA]/10 border-[#1D5BEA]/30 text-[#1D5BEA] dark:text-[#5f86ee]' 
             : 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
         }`}>
           {alert.type === 'success' ? (
-            <div className="h-6 w-6 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
+            <div className="h-6 w-6 rounded-full bg-[#1D5BEA]/20 flex items-center justify-center text-[#1D5BEA]">
               <Check size={14} />
             </div>
           ) : (
@@ -1026,7 +1026,7 @@ export default function SuperAdminAdvancedPage() {
               })
               setShowOrgModal(true)
             }}
-            className="flex items-center gap-1.5 h-10 px-4 bg-gradient-to-r from-[#00a884] to-teal-600 hover:from-[#009070] hover:to-teal-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md hover:shadow-teal-500/10 active:scale-95"
+            className="flex items-center gap-1.5 h-10 px-4 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md hover:shadow-[#1D5BEA]/10 active:scale-95"
           >
             <Plus size={14} />
             <span>Add Organization</span>
@@ -1088,10 +1088,10 @@ export default function SuperAdminAdvancedPage() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             
             {/* Organizations count */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#00a884]/30 dark:hover:border-emerald-500/30">
+            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#1D5BEA]/30 dark:hover:border-[#1D5BEA]/30">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
-                <div className="h-8 w-8 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="h-8 w-8 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Building size={15} />
                 </div>
               </div>
@@ -1136,10 +1136,10 @@ export default function SuperAdminAdvancedPage() {
             </div>
 
             {/* Messages sent/received */}
-            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-emerald-500/30 dark:hover:border-emerald-500/30">
+            <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#1D5BEA]/30 dark:hover:border-[#1D5BEA]/30">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
-                <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="h-8 w-8 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center group-hover:scale-110 transition-transform">
                   <MessageSquare size={15} />
                 </div>
               </div>
@@ -1189,7 +1189,7 @@ export default function SuperAdminAdvancedPage() {
           <div className="bg-white/90 dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-5 select-none">
               <div className="flex items-center gap-2">
-                <Database size={16} className="text-[#00a884]" />
+                <Database size={16} className="text-[#1D5BEA]" />
                 <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
                   Tenant Resource Allocation & Metrics
                 </h3>
@@ -1198,7 +1198,7 @@ export default function SuperAdminAdvancedPage() {
             
             {loadingStats ? (
               <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                <Loader2 className="animate-spin text-[#00a884]" size={24} />
+                <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
                 <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Analyzing database tables...</span>
               </div>
             ) : orgStatsList.length === 0 ? (
@@ -1228,7 +1228,7 @@ export default function SuperAdminAdvancedPage() {
                         <td className="py-3.5 px-4 text-center font-bold text-neutral-700 dark:text-neutral-200">{org.usersCount}</td>
                         <td className="py-3.5 px-4 text-center font-bold text-blue-500">{org.contactsCount}</td>
                         <td className="py-3.5 px-4 text-center font-bold text-rose-500">{org.campaignsCount}</td>
-                        <td className="py-3.5 px-4 text-center font-bold text-emerald-500">{org.messagesCount}</td>
+                        <td className="py-3.5 px-4 text-center font-bold text-[#1D5BEA]">{org.messagesCount}</td>
                         <td className="py-3.5 px-4 text-center font-bold text-amber-500">${(org.aiCost || 0).toFixed(4)}</td>
                         <td className="py-3.5 px-4 text-right text-neutral-400 dark:text-[#8696a0] font-semibold">
                           {new Date(org.created_at).toLocaleDateString()}
@@ -1256,7 +1256,7 @@ export default function SuperAdminAdvancedPage() {
                 placeholder="Search organizations by name or slug..."
                 value={orgSearch}
                 onChange={(e) => setOrgSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] dark:focus:border-[#00a884] text-neutral-800 dark:text-white"
+                className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] dark:focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
               />
             </div>
           </div>
@@ -1264,7 +1264,7 @@ export default function SuperAdminAdvancedPage() {
           {/* List */}
           {loadingOrgs ? (
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
-              <Loader2 className="animate-spin text-[#00a884]" size={24} />
+              <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
               <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Fetching organizations...</span>
             </div>
           ) : filteredOrgs.length === 0 ? (
@@ -1317,8 +1317,8 @@ export default function SuperAdminAdvancedPage() {
                             )}
                             
                             {org.enable_messages !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-emerald-500" /> Chat
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef3fe] dark:bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] font-extrabold text-[10px]">
+                                <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> Chat
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
@@ -1401,7 +1401,7 @@ export default function SuperAdminAdvancedPage() {
               onClick={() => setSettingsActiveTab('general')}
               className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 ${
                 settingsActiveTab === 'general'
-                  ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+                  ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                   : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
               }`}
             >
@@ -1412,7 +1412,7 @@ export default function SuperAdminAdvancedPage() {
                 onClick={() => setSettingsActiveTab('knowledge')}
                 className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
                   settingsActiveTab === 'knowledge'
-                    ? 'border-[#00a884] text-[#008069] dark:text-[#00e676]'
+                    ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                     : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
                 }`}
               >
@@ -1430,7 +1430,7 @@ export default function SuperAdminAdvancedPage() {
                 
                 {/* Card: Organization Details & Contact Info */}
                 <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#00a884] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
                     <Building size={14} />
                     <span>Organization Info</span>
                   </h3>
@@ -1444,7 +1444,7 @@ export default function SuperAdminAdvancedPage() {
                         type="text"
                         value={orgName}
                         onChange={(e) => setOrgName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                       />
                     </div>
                     
@@ -1456,7 +1456,7 @@ export default function SuperAdminAdvancedPage() {
                         type="text"
                         value={orgSlug}
                         onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, ''))}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                       />
                     </div>
                   </div>
@@ -1471,7 +1471,7 @@ export default function SuperAdminAdvancedPage() {
                         placeholder="John Doe"
                         value={contactName}
                         onChange={(e) => setContactName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                       />
                     </div>
                     
@@ -1484,7 +1484,7 @@ export default function SuperAdminAdvancedPage() {
                         placeholder="+1..."
                         value={contactPhone}
                         onChange={(e) => setContactPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                        className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                       />
                     </div>
                   </div>
@@ -1498,7 +1498,7 @@ export default function SuperAdminAdvancedPage() {
                       placeholder="info@org.com"
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                     />
                   </div>
 
@@ -1511,14 +1511,14 @@ export default function SuperAdminAdvancedPage() {
                       placeholder="123 Main St, City"
                       value={contactAddress}
                       onChange={(e) => setContactAddress(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884]"
+                      className="w-full px-3.5 py-2.5 border border-[#e9edef] dark:border-[#202d36] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA]"
                     />
                   </div>
                 </div>
 
                 {/* Card: Feature Gateways */}
                 <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#00a884] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
                     <Sliders size={14} />
                     <span>Global Features Configuration</span>
                   </h3>
@@ -1537,7 +1537,7 @@ export default function SuperAdminAdvancedPage() {
                         type="button"
                         onClick={() => handleToggleFeature('enable_ai', selectedOrgSettings.enable_ai !== false ? false : true)}
                         className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_ai !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                          selectedOrgSettings.enable_ai !== false ? 'bg-[#1D5BEA]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                         }`}
                       >
                         <span
@@ -1558,7 +1558,7 @@ export default function SuperAdminAdvancedPage() {
                         type="button"
                         onClick={() => handleToggleFeature('enable_messages', selectedOrgSettings.enable_messages !== false ? false : true)}
                         className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_messages !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                          selectedOrgSettings.enable_messages !== false ? 'bg-[#1D5BEA]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                         }`}
                       >
                         <span
@@ -1579,7 +1579,7 @@ export default function SuperAdminAdvancedPage() {
                         type="button"
                         onClick={() => handleToggleFeature('enable_email', selectedOrgSettings.enable_email !== false ? false : true)}
                         className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_email !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                          selectedOrgSettings.enable_email !== false ? 'bg-[#1D5BEA]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                         }`}
                       >
                         <span
@@ -1600,7 +1600,7 @@ export default function SuperAdminAdvancedPage() {
                         type="button"
                         onClick={() => handleToggleFeature('enable_phone_calls', selectedOrgSettings.enable_phone_calls !== false ? false : true)}
                         className={`w-11 h-6 rounded-full transition-colors duration-200 relative focus:outline-none cursor-pointer select-none flex-shrink-0 ${
-                          selectedOrgSettings.enable_phone_calls !== false ? 'bg-[#00a884]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
+                          selectedOrgSettings.enable_phone_calls !== false ? 'bg-[#1D5BEA]' : 'bg-[#e9edef] dark:bg-[#2a3942]'
                         }`}
                       >
                         <span
@@ -1616,7 +1616,7 @@ export default function SuperAdminAdvancedPage() {
                 {/* Card: Webhooks */}
                 <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
                   <h3 className="text-xs font-bold text-neutral-800 dark:text-white flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
-                    <Database size={14} className="text-[#00a884]" />
+                    <Database size={14} className="text-[#1D5BEA]" />
                     <span>Dynamic Webhook Configurations</span>
                   </h3>
                   <p className="text-[10px] text-neutral-500 dark:text-[#8696a0] leading-relaxed font-semibold">
@@ -1630,7 +1630,7 @@ export default function SuperAdminAdvancedPage() {
                           Incoming Message Webhook (Twilio)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
+                          <code className="text-xs text-[#1D5BEA] font-mono">{webhookUrl || 'Loading dynamic webhook...'}</code>
                         </div>
                       </div>
 
@@ -1639,7 +1639,7 @@ export default function SuperAdminAdvancedPage() {
                           Status Callback Webhook (Twilio)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">
+                          <code className="text-xs text-[#1D5BEA] font-mono">
                             {webhookUrl ? `${webhookUrl}/status` : 'Loading status callback...'}
                           </code>
                         </div>
@@ -1652,7 +1652,7 @@ export default function SuperAdminAdvancedPage() {
                           Callback URL (Facebook Webhook)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
+                          <code className="text-xs text-[#1D5BEA] font-mono">{facebookWebhookUrl || 'Loading facebook webhook...'}</code>
                         </div>
                       </div>
 
@@ -1661,7 +1661,7 @@ export default function SuperAdminAdvancedPage() {
                           Verify Token (Facebook Webhook Verification)
                         </span>
                         <div className="bg-[#f0f2f5] dark:bg-[#0c1317] px-3 py-2 rounded-lg border border-[#e9edef] dark:border-[#2a3942] select-all break-all">
-                          <code className="text-xs text-[#00e676] font-mono">{selectedOrgSettings.id}</code>
+                          <code className="text-xs text-[#1D5BEA] font-mono">{selectedOrgSettings.id}</code>
                         </div>
                       </div>
                     </div>
@@ -1675,13 +1675,13 @@ export default function SuperAdminAdvancedPage() {
                 
                 <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 select-none">
                   <div className="flex items-center gap-2">
-                    <Key size={16} className="text-[#00a884]" />
+                    <Key size={16} className="text-[#1D5BEA]" />
                     <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">Credentials & Integrations</h3>
                   </div>
                   <button
                     onClick={handleSaveCredentials}
                     disabled={savingCredentials}
-                    className="px-4 py-2 bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
                     <span>Save Configuration</span>
@@ -1694,7 +1694,7 @@ export default function SuperAdminAdvancedPage() {
 
                 {/* WhatsApp Gateway Settings */}
                 <div className="space-y-4 pt-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp Gateway</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">WhatsApp Gateway</h4>
                   
                   <div className="flex flex-col gap-2">
                     <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
@@ -1708,7 +1708,7 @@ export default function SuperAdminAdvancedPage() {
                           value="twilio"
                           checked={whatsappProvider === 'twilio'}
                           onChange={() => setWhatsappProvider('twilio')}
-                          className="accent-[#00a884]"
+                          className="accent-[#1D5BEA]"
                         />
                         Twilio Gateway
                       </label>
@@ -1719,7 +1719,7 @@ export default function SuperAdminAdvancedPage() {
                           value="facebook"
                           checked={whatsappProvider === 'facebook'}
                           onChange={() => setWhatsappProvider('facebook')}
-                          className="accent-[#00a884]"
+                          className="accent-[#1D5BEA]"
                         />
                         Direct Facebook API
                       </label>
@@ -1737,7 +1737,7 @@ export default function SuperAdminAdvancedPage() {
                           value={twilioAccountSid}
                           onChange={(e) => setTwilioAccountSid(e.target.value)}
                           placeholder="Twilio Account SID"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                         />
                       </div>
 
@@ -1751,7 +1751,7 @@ export default function SuperAdminAdvancedPage() {
                             value={twilioAuthToken}
                             onChange={(e) => setTwilioAuthToken(e.target.value)}
                             placeholder="Twilio Auth Token"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                           <button
                             type="button"
@@ -1772,7 +1772,7 @@ export default function SuperAdminAdvancedPage() {
                           value={twilioWhatsappNumber}
                           onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
                           placeholder="whatsapp:+14155238886"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                         />
                       </div>
                     </div>
@@ -1788,7 +1788,7 @@ export default function SuperAdminAdvancedPage() {
                             value={whatsappApiToken}
                             onChange={(e) => setWhatsappApiToken(e.target.value)}
                             placeholder="EAAG..."
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                           <button
                             type="button"
@@ -1810,7 +1810,7 @@ export default function SuperAdminAdvancedPage() {
                             value={whatsappPhoneNumberId}
                             onChange={(e) => setWhatsappPhoneNumberId(e.target.value)}
                             placeholder="Phone Number ID"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                         <div>
@@ -1822,7 +1822,7 @@ export default function SuperAdminAdvancedPage() {
                             value={whatsappBusinessAccountId}
                             onChange={(e) => setWhatsappBusinessAccountId(e.target.value)}
                             placeholder="WABA ID"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                       </div>
@@ -1837,7 +1837,7 @@ export default function SuperAdminAdvancedPage() {
                             value={whatsappDefaultPhone}
                             onChange={(e) => setWhatsappDefaultPhone(e.target.value)}
                             placeholder="+1..."
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                         <div>
@@ -1849,7 +1849,7 @@ export default function SuperAdminAdvancedPage() {
                             value={whatsappGraphApiVersion}
                             onChange={(e) => setWhatsappGraphApiVersion(e.target.value)}
                             placeholder="v25.0"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                       </div>
@@ -1858,7 +1858,7 @@ export default function SuperAdminAdvancedPage() {
                 </div>
 
                 <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">SMS Gateway</h4>
                   
                   {whatsappProvider === 'facebook' && (
                     <div className="space-y-3">
@@ -1871,7 +1871,7 @@ export default function SuperAdminAdvancedPage() {
                           value={twilioAccountSid}
                           onChange={(e) => setTwilioAccountSid(e.target.value)}
                           placeholder="Twilio Account SID"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                         />
                       </div>
 
@@ -1885,7 +1885,7 @@ export default function SuperAdminAdvancedPage() {
                             value={twilioAuthToken}
                             onChange={(e) => setTwilioAuthToken(e.target.value)}
                             placeholder="Twilio Auth Token"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                           <button
                             type="button"
@@ -1908,14 +1908,14 @@ export default function SuperAdminAdvancedPage() {
                       value={twilioWhatsappNumber}
                       onChange={(e) => setTwilioWhatsappNumber(e.target.value)}
                       placeholder="e.g. +14155238886"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                     />
                   </div>
                 </div>
 
                 {/* Email Broadcast Settings */}
                 <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">Email Broadcast Engine</h4>
                   
                   <div className="flex flex-col gap-2">
                     <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
@@ -1929,7 +1929,7 @@ export default function SuperAdminAdvancedPage() {
                           value="sendgrid"
                           checked={emailProvider === 'sendgrid'}
                           onChange={() => setEmailProvider('sendgrid')}
-                          className="accent-[#00a884]"
+                          className="accent-[#1D5BEA]"
                         />
                         SendGrid API
                       </label>
@@ -1940,7 +1940,7 @@ export default function SuperAdminAdvancedPage() {
                           value="smtp"
                           checked={emailProvider === 'smtp'}
                           onChange={() => setEmailProvider('smtp')}
-                          className="accent-[#00a884]"
+                          className="accent-[#1D5BEA]"
                         />
                         Custom SMTP
                       </label>
@@ -1959,7 +1959,7 @@ export default function SuperAdminAdvancedPage() {
                             value={sendgridApiKey}
                             onChange={(e) => setSendgridApiKey(e.target.value)}
                             placeholder="SG..."
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                           <button
                             type="button"
@@ -1980,7 +1980,7 @@ export default function SuperAdminAdvancedPage() {
                           value={sendgridFromEmail}
                           onChange={(e) => setSendgridFromEmail(e.target.value)}
                           placeholder="info@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                         />
                       </div>
                     </div>
@@ -1996,7 +1996,7 @@ export default function SuperAdminAdvancedPage() {
                             value={smtpHost}
                             onChange={(e) => setSmtpHost(e.target.value)}
                             placeholder="smtp.gmail.com"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                         <div>
@@ -2008,7 +2008,7 @@ export default function SuperAdminAdvancedPage() {
                             value={smtpPort}
                             onChange={(e) => setSmtpPort(e.target.value)}
                             placeholder="465"
-                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                         </div>
                       </div>
@@ -2022,7 +2022,7 @@ export default function SuperAdminAdvancedPage() {
                           value={smtpEmail}
                           onChange={(e) => setSmtpEmail(e.target.value)}
                           placeholder="user@yourdomain.com"
-                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                         />
                       </div>
 
@@ -2036,7 +2036,7 @@ export default function SuperAdminAdvancedPage() {
                             value={smtpPassword}
                             onChange={(e) => setSmtpPassword(e.target.value)}
                             placeholder="Password"
-                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                            className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                           />
                           <button
                             type="button"
@@ -2053,7 +2053,7 @@ export default function SuperAdminAdvancedPage() {
 
                 {/* AI Assistant Settings */}
                 <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">AI Assistant Engine</h4>
                   
                   <div>
                     <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1">
@@ -2065,7 +2065,7 @@ export default function SuperAdminAdvancedPage() {
                         value={openaiApiKey}
                         onChange={(e) => setOpenaiApiKey(e.target.value)}
                         placeholder="sk-proj-..."
-                        className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                        className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                       />
                       <button
                         type="button"
@@ -2086,7 +2086,7 @@ export default function SuperAdminAdvancedPage() {
                       value={chatbotBasePrompt}
                       onChange={(e) => setChatbotBasePrompt(e.target.value)}
                       placeholder="You are a helpful customer support agent representing our company..."
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
                     />
                   </div>
                 </div>
@@ -2102,7 +2102,7 @@ export default function SuperAdminAdvancedPage() {
               {/* Add FAQ panel */}
               <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
-                  <FileText size={20} className="text-[#00a884]" />
+                  <FileText size={20} className="text-[#1D5BEA]" />
                   <h2 className="text-base font-bold text-neutral-900 dark:text-white">Add Manual FAQ / Policy</h2>
                 </div>
 
@@ -2116,7 +2116,7 @@ export default function SuperAdminAdvancedPage() {
                       value={manualTitle}
                       onChange={e => setManualTitle(e.target.value)}
                       placeholder="e.g. What is the fee for passport renewal?"
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white"
                     />
                   </div>
 
@@ -2129,7 +2129,7 @@ export default function SuperAdminAdvancedPage() {
                       value={manualContent}
                       onChange={e => setManualContent(e.target.value)}
                       placeholder="e.g. The standard passport renewal fee is $130..."
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white resize-y"
                     />
                   </div>
 
@@ -2137,7 +2137,7 @@ export default function SuperAdminAdvancedPage() {
                     <button
                       onClick={handleAddManual}
                       disabled={actionLoading || !manualTitle.trim() || !manualContent.trim()}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Plus size={13} />
                       <span>Add FAQ Item</span>
@@ -2166,7 +2166,7 @@ export default function SuperAdminAdvancedPage() {
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={importProgress !== null || loadingArticles}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Upload size={12} />
                       <span>Import Excel</span>
@@ -2176,7 +2176,7 @@ export default function SuperAdminAdvancedPage() {
 
                 {loadingArticles ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 size={24} className="animate-spin text-[#00a884]" />
+                    <Loader2 size={24} className="animate-spin text-[#1D5BEA]" />
                   </div>
                 ) : articles.length === 0 ? (
                   <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
@@ -2274,7 +2274,7 @@ export default function SuperAdminAdvancedPage() {
                   placeholder="Search system users by name or email..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                  className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                 />
               </div>
 
@@ -2298,7 +2298,7 @@ export default function SuperAdminAdvancedPage() {
           {/* User profiles Table */}
           {loadingUsers ? (
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
-              <Loader2 className="animate-spin text-[#00a884]" size={24} />
+              <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
               <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Retrieving users database...</span>
             </div>
           ) : filteredUsers.length === 0 ? (
@@ -2404,7 +2404,7 @@ export default function SuperAdminAdvancedPage() {
                     placeholder="e.g. Acme Corporation"
                     value={orgForm.name}
                     onChange={(e) => handleOrgNameChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                   />
                 </div>
 
@@ -2418,7 +2418,7 @@ export default function SuperAdminAdvancedPage() {
                     placeholder="acme-corp"
                     value={orgForm.slug}
                     onChange={(e) => setOrgForm({ ...orgForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                   />
                 </div>
               </div>
@@ -2434,7 +2434,7 @@ export default function SuperAdminAdvancedPage() {
                     placeholder="John Doe"
                     value={orgForm.contact_name}
                     onChange={(e) => setOrgForm({ ...orgForm, contact_name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                   />
                 </div>
 
@@ -2447,7 +2447,7 @@ export default function SuperAdminAdvancedPage() {
                     placeholder="+1..."
                     value={orgForm.contact_phone}
                     onChange={(e) => setOrgForm({ ...orgForm, contact_phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                   />
                 </div>
               </div>
@@ -2462,7 +2462,7 @@ export default function SuperAdminAdvancedPage() {
                   placeholder="contact@acme.com"
                   value={orgForm.contact_email}
                   onChange={(e) => setOrgForm({ ...orgForm, contact_email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                 />
               </div>
 
@@ -2476,7 +2476,7 @@ export default function SuperAdminAdvancedPage() {
                   placeholder="123 Corporate Way, Suite 100"
                   value={orgForm.contact_address}
                   onChange={(e) => setOrgForm({ ...orgForm, contact_address: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
                 />
               </div>
 
@@ -2484,7 +2484,7 @@ export default function SuperAdminAdvancedPage() {
                 <button
                   type="submit"
                   disabled={submittingOrg || !orgForm.name || !orgForm.slug}
-                  className="px-5 py-2.5 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-500/10 active:scale-[0.98]"
+                  className="px-5 py-2.5 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-[#1D5BEA]/10 active:scale-[0.98]"
                 >
                   {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                   <span>Save & Create Org</span>
@@ -2522,7 +2522,7 @@ export default function SuperAdminAdvancedPage() {
                   required
                   value={editingOrg.name}
                   onChange={(e) => setEditingOrg({ ...editingOrg, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
@@ -2535,14 +2535,14 @@ export default function SuperAdminAdvancedPage() {
                   required
                   value={editingOrg.slug}
                   onChange={(e) => setEditingOrg({ ...editingOrg, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submittingOrg}
-                className="w-full mt-2 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Save Changes</span>
@@ -2596,7 +2596,7 @@ export default function SuperAdminAdvancedPage() {
                   placeholder="e.g. Sarah Jenkins"
                   value={userForm.fullName}
                   onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
@@ -2610,7 +2610,7 @@ export default function SuperAdminAdvancedPage() {
                   placeholder="name@organization.com"
                   value={userForm.email}
                   onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
@@ -2625,7 +2625,7 @@ export default function SuperAdminAdvancedPage() {
                     placeholder="••••••••"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                   />
                   <button
                     type="button"
@@ -2656,7 +2656,7 @@ export default function SuperAdminAdvancedPage() {
               <button
                 type="submit"
                 disabled={submittingUser}
-                className="w-full mt-3 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-3 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Create User Profile</span>
@@ -2708,7 +2708,7 @@ export default function SuperAdminAdvancedPage() {
                   required
                   value={editingUser.full_name || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, full_name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
@@ -2721,7 +2721,7 @@ export default function SuperAdminAdvancedPage() {
                   required
                   value={editingUser.email}
                   onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#00a884] text-neutral-800 dark:text-white shadow-sm"
+                  className="w-full px-3.5 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-white dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] text-neutral-800 dark:text-white shadow-sm"
                 />
               </div>
 
@@ -2746,7 +2746,7 @@ export default function SuperAdminAdvancedPage() {
               <button
                 type="submit"
                 disabled={submittingUser}
-                className="w-full mt-2 py-3 bg-[#00a884] hover:bg-[#008069] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Save Changes</span>

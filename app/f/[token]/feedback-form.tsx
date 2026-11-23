@@ -85,7 +85,7 @@ export function FeedbackForm({ token, business, logo, customerName, services, bi
   if (done) {
     return (
       <div className="max-w-md mx-auto bg-white rounded-3xl border border-[#e3e8f2] p-6 sm:p-8 shadow-sm text-center">
-        <span className="mx-auto h-16 w-16 rounded-full bg-[#00A884] text-white flex items-center justify-center shadow-lg shadow-[#00A884]/30"><Check size={32} strokeWidth={3} /></span>
+        <span className="mx-auto h-16 w-16 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center shadow-lg shadow-[#1D5BEA]/30"><Check size={32} strokeWidth={3} /></span>
         <h1 className="mt-4 text-[24px] font-extrabold tracking-tight">Thank you{customerName ? `, ${customerName}` : ''}!</h1>
         <p className="mt-2 text-[15.5px] text-[#4a5672]">
           {done.rating >= 4 ? `We are so glad you enjoyed your visit to ${business}.` : done.rating === 3 ? 'Thank you for telling us. We will keep getting better.' : `We are sorry your visit was not good. The ${business} team will call you to make it right.`}
@@ -159,7 +159,7 @@ export function FeedbackForm({ token, business, logo, customerName, services, bi
 
       {error && <p role="alert" className="mt-4 rounded-xl bg-[#fdf0f0] text-[#b91c1c] px-4 py-3 text-[14.5px]">{error}</p>}
 
-      <button type="button" onClick={send} disabled={!rating || sending} className="mt-6 w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[16px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+      <button type="button" onClick={send} disabled={!rating || sending} className="mt-6 w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-[16px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
         {sending && <Loader2 size={18} className="animate-spin" />} {existing ? 'Update feedback' : 'Send feedback'}
       </button>
     </div>

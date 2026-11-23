@@ -94,11 +94,11 @@ export function ApiKeysPanel({ orgId, cardClass }: { orgId: string; cardClass: s
         {notice && <p className="mt-4 rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-4 py-3 text-[14px]">{notice}</p>}
 
         {created && (
-          <div className="mt-5 rounded-2xl border-2 border-[#00A884] bg-[#e8f7f1]/60 dark:bg-emerald-950/20 p-4 space-y-3">
-            <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Check size={18} className="text-[#00A884]" /> “{created.name}” is ready. Copy the key now: it is not shown again.</p>
+          <div className="mt-5 rounded-2xl border-2 border-[#1D5BEA] bg-[#e8f7f1]/60 dark:bg-[#0E1B3D]/20 p-4 space-y-3">
+            <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Check size={18} className="text-[#1D5BEA]" /> “{created.name}” is ready. Copy the key now: it is not shown again.</p>
             <div className="flex flex-col sm:flex-row gap-2 min-w-0">
               <code className="flex-1 min-w-0 rounded-xl bg-[#0E1B3D] text-white px-3.5 py-3 text-[13.5px] font-semibold [overflow-wrap:anywhere] select-all">{created.key}</code>
-              <button type="button" onClick={() => navigator.clipboard?.writeText(created.key).then(() => setCopied(true)).catch(() => {})} className="inline-flex items-center justify-center gap-2 h-11 sm:h-auto px-4 rounded-xl bg-[#00A884] hover:bg-[#008f70] text-white text-[15px] font-bold cursor-pointer">{copied ? <Check size={17} /> : <Copy size={17} />} {copied ? 'Copied' : 'Copy key'}</button>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(created.key).then(() => setCopied(true)).catch(() => {})} className="inline-flex items-center justify-center gap-2 h-11 sm:h-auto px-4 rounded-xl bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-[15px] font-bold cursor-pointer">{copied ? <Check size={17} /> : <Copy size={17} />} {copied ? 'Copied' : 'Copy key'}</button>
             </div>
             <p className="text-[13px] text-[#4a5672] dark:text-slate-300 flex items-start gap-1.5"><AlertTriangle size={15} className="shrink-0 mt-0.5 text-[#b45309]" /> Keep it on your server. Never put it in a web page or mobile app.</p>
             <button type="button" onClick={() => setCreated(null)} className="text-[14px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:underline cursor-pointer">I have saved it</button>

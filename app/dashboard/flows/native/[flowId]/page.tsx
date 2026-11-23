@@ -308,7 +308,7 @@ export default function NativeFlowDesignerPage() {
           <Smartphone className="w-10 h-10 mx-auto text-slate-400" />
           <h1 className="text-base font-bold text-slate-900 dark:text-white">This form could not be opened</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">It may have been deleted, or you may not have access to it.</p>
-          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d59] text-white text-xs font-bold">
+          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-bold">
             <ArrowLeft className="w-3.5 h-3.5" /> Back to flows
           </Link>
         </div>
@@ -367,8 +367,8 @@ export default function NativeFlowDesignerPage() {
 
         <div className="flex items-center gap-3">
           {isPublished ? (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold shadow-2xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1D5BEA]/15 text-[#174bc4] dark:text-[#9db5ef] border border-[#1D5BEA]/30 text-xs font-bold shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#1D5BEA] dark:text-[#5f86ee]" />
               <span>Published on WhatsApp</span>
             </div>
           ) : nativeFlow?.flow_id_meta ? (
@@ -406,7 +406,7 @@ export default function NativeFlowDesignerPage() {
           <button
             onClick={() => saveFlow()}
             disabled={saving || isPublished || !dirty}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#008069] hover:bg-[#00705c] text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer disabled:cursor-default"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer disabled:cursor-default"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             <span>{saving ? 'Saving…' : 'Save draft'}</span>
@@ -416,14 +416,14 @@ export default function NativeFlowDesignerPage() {
 
       {/* Meta Approval & Status Banner */}
       {isPublished && !saveError && !feedback && (
-        <div className="px-5 py-2.5 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border-b border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+        <div className="px-5 py-2.5 text-xs bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#163d9c] dark:text-[#c5d5fa] border-b border-[#c5d5fa] dark:border-[#163d9c]/60 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-[#1D5BEA] dark:text-[#5f86ee] shrink-0" />
             <span className="font-bold">Published.</span>
             <span>This form is live and can no longer be edited. To change it, create a new form.</span>
           </div>
           {nativeFlow?.flow_id_meta && (
-            <span className="font-mono text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 shrink-0 ml-3">
+            <span className="font-mono text-[11px] text-[#174bc4] dark:text-[#9db5ef] bg-[#dfe8fd]/70 dark:bg-[#0E1B3D]/60 px-2 py-0.5 rounded border border-[#9db5ef] dark:border-[#174bc4] shrink-0 ml-3">
               Meta Flow ID: {nativeFlow.flow_id_meta}
             </span>
           )}
@@ -491,7 +491,7 @@ export default function NativeFlowDesignerPage() {
 
                     <div className="flex items-center gap-1">
                       {idx === screens.length - 1 && (
-                        <span title="The last screen shows the Submit button" className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold">
+                        <span title="The last screen shows the Submit button" className="text-[10px] px-1.5 py-0.5 rounded bg-[#1D5BEA]/20 text-[#174bc4] dark:text-[#9db5ef] font-semibold">
                           Submit
                         </span>
                       )}
@@ -779,7 +779,7 @@ export default function NativeFlowDesignerPage() {
                   {!DISPLAY_ONLY_TYPES.includes(field.type) && field.type !== 'OptIn' && (
                     <label className="text-[11px] font-medium text-slate-300 flex items-center justify-between">
                       <span>{field.label}</span>
-                      {field.required && <span className="text-emerald-400 text-[10px]">*</span>}
+                      {field.required && <span className="text-[#5f86ee] text-[10px]">*</span>}
                     </label>
                   )}
 
@@ -789,7 +789,7 @@ export default function NativeFlowDesignerPage() {
                       placeholder={field.helper_text || 'Enter answer...'}
                       value={previewValues[field.name] || ''}
                       onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.value })}
-                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#00a884]"
+                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#1D5BEA]"
                     />
                   )}
 
@@ -799,7 +799,7 @@ export default function NativeFlowDesignerPage() {
                       placeholder={field.helper_text || 'Enter details...'}
                       value={previewValues[field.name] || ''}
                       onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.value })}
-                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#00a884]"
+                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-[#1D5BEA]"
                     />
                   )}
 
@@ -807,7 +807,7 @@ export default function NativeFlowDesignerPage() {
                     <select
                       value={previewValues[field.name] || ''}
                       onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.value })}
-                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#00a884]"
+                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#1D5BEA]"
                     >
                       <option value="">Select an option...</option>
                       {(field.options || []).map((o) => (
@@ -830,7 +830,7 @@ export default function NativeFlowDesignerPage() {
                               onChange={(e) =>
                                 setPreviewValues({ ...previewValues, [field.name]: e.target.checked ? [...selected, o.id] : selected.filter((id) => id !== o.id) })
                               }
-                              className="accent-[#00a884]"
+                              className="accent-[#1D5BEA]"
                             />
                             <span className="text-slate-200">{o.title}</span>
                           </label>
@@ -843,7 +843,7 @@ export default function NativeFlowDesignerPage() {
                     <select
                       value={previewValues[field.name] || ''}
                       onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.value })}
-                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#00a884]"
+                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#1D5BEA]"
                     >
                       <option value="">Select a time...</option>
                       {((field.options?.length ? field.options.map((o) => o.title) : ['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00'])).map((time) => (
@@ -867,7 +867,7 @@ export default function NativeFlowDesignerPage() {
                             value={o.id}
                             checked={previewValues[field.name] === o.id}
                             onChange={() => setPreviewValues({ ...previewValues, [field.name]: o.id })}
-                            className="accent-[#00a884]"
+                            className="accent-[#1D5BEA]"
                           />
                           <span className="text-slate-200">{o.title}</span>
                         </label>
@@ -880,7 +880,7 @@ export default function NativeFlowDesignerPage() {
                       type="date"
                       value={previewValues[field.name] || ''}
                       onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.value })}
-                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#00a884]"
+                      className="w-full p-2.5 text-xs rounded-xl bg-[#202c33] border border-slate-700 text-white focus:outline-none focus:border-[#1D5BEA]"
                     />
                   )}
 
@@ -890,7 +890,7 @@ export default function NativeFlowDesignerPage() {
                         type="checkbox"
                         checked={Boolean(previewValues[field.name])}
                         onChange={(e) => setPreviewValues({ ...previewValues, [field.name]: e.target.checked })}
-                        className="mt-0.5 rounded accent-[#00a884]"
+                        className="mt-0.5 rounded accent-[#1D5BEA]"
                       />
                       <span>{field.label}</span>
                     </label>
@@ -903,7 +903,7 @@ export default function NativeFlowDesignerPage() {
               ))}
 
               {previewSubmittedData && (
-                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-[11px] text-emerald-300 font-mono space-y-1">
+                <div className="p-3 rounded-xl bg-[#0E1B3D]/40 border border-[#1D5BEA]/40 text-[11px] text-[#9db5ef] font-mono space-y-1">
                   <span className="font-bold">What your flow receives:</span>
                   <pre className="text-[10px] overflow-x-auto whitespace-pre-wrap">
                     {JSON.stringify(previewSubmittedData, null, 2)}
@@ -922,7 +922,7 @@ export default function NativeFlowDesignerPage() {
                     setPreviewSubmittedData({ ...previewValues, submitted_at: new Date().toISOString() })
                   }
                 }}
-                className="w-full py-2.5 rounded-xl bg-[#00a884] hover:bg-[#008f70] text-slate-900 font-bold text-xs shadow-md transition-colors"
+                className="w-full py-2.5 rounded-xl bg-[#1D5BEA] hover:bg-[#1D5BEA] text-slate-900 font-bold text-xs shadow-md transition-colors"
               >
                 {activeScreenIndex < screens.length - 1 ? 'Continue' : 'Submit'}
               </button>
@@ -949,7 +949,7 @@ export default function NativeFlowDesignerPage() {
 This is generated from the screens above (Flow JSON version 7.3). You do not need to edit it.
             </p>
 
-            <pre className="p-4 rounded-xl bg-slate-50 dark:bg-[#080d10] border border-slate-200 dark:border-slate-800 text-xs font-mono text-emerald-700 dark:text-emerald-400 max-h-96 overflow-y-auto whitespace-pre-wrap">
+            <pre className="p-4 rounded-xl bg-slate-50 dark:bg-[#080d10] border border-slate-200 dark:border-slate-800 text-xs font-mono text-[#174bc4] dark:text-[#5f86ee] max-h-96 overflow-y-auto whitespace-pre-wrap">
               {JSON.stringify(getCompiledJson(), null, 2)}
             </pre>
 
@@ -966,7 +966,7 @@ This is generated from the screens above (Flow JSON version 7.3). You do not nee
                   setCopiedJson(true)
                   setTimeout(() => setCopiedJson(false), 2000)
                 }}
-                className="px-4 py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#00705c] flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] flex items-center gap-1.5"
               >
                 {copiedJson ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>

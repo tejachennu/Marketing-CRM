@@ -122,7 +122,7 @@ export default function CommercePage() {
     return (
       <div className="h-full flex items-center justify-center bg-slate-50 dark:bg-[#0b141a]">
         <div className="flex items-center gap-2.5 text-sm font-medium text-slate-600 dark:text-slate-300">
-          <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#1D5BEA]" />
           Loading your store…
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function CommercePage() {
   }
 
   const setupSteps = [
-    { done: setup.whatsappConnected, label: 'Connect WhatsApp', detail: 'Needed to receive orders and message customers.', action: <Link href="/dashboard/settings" className="font-semibold text-emerald-700 dark:text-emerald-400 hover:underline">Open Settings</Link> },
+    { done: setup.whatsappConnected, label: 'Connect WhatsApp', detail: 'Needed to receive orders and message customers.', action: <Link href="/dashboard/settings" className="font-semibold text-[#174bc4] dark:text-[#5f86ee] hover:underline">Open Settings</Link> },
     { done: setup.catalogLinked, label: 'Link your Meta catalog', detail: 'Lets customers add products to a cart in WhatsApp.', action: null },
     { done: setup.paymentGateway || setup.cashOnDelivery, label: 'Choose how customers pay', detail: 'An in-chat payment gateway, Cash on Delivery, or both.', action: null },
     { done: setup.addressFlow, label: 'Collect delivery addresses (optional)', detail: 'Sends an address form after each order.', action: null },
@@ -156,7 +156,7 @@ export default function CommercePage() {
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 shrink-0 rounded-2xl bg-gradient-to-tr from-[#008069] to-[#00a884] flex items-center justify-center text-white shadow-sm">
+            <div className="h-11 w-11 shrink-0 rounded-2xl bg-[#1D5BEA] flex items-center justify-center text-white shadow-sm">
               <ShoppingBag size={20} />
             </div>
             <div>
@@ -175,7 +175,7 @@ export default function CommercePage() {
                 aria-selected={activeTab === id}
                 onClick={() => setActiveTab(id)}
                 className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                  activeTab === id ? 'bg-[#008069] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                  activeTab === id ? 'bg-[#1D5BEA] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 <Icon size={14} />
@@ -226,7 +226,7 @@ export default function CommercePage() {
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {setupSteps.map((step) => (
                 <li key={step.label} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
-                  {step.done ? <CheckCircle2 size={18} className="shrink-0 mt-px text-emerald-500" /> : <Circle size={18} className="shrink-0 mt-px text-slate-300 dark:text-slate-600" />}
+                  {step.done ? <CheckCircle2 size={18} className="shrink-0 mt-px text-[#1D5BEA]" /> : <Circle size={18} className="shrink-0 mt-px text-slate-300 dark:text-slate-600" />}
                   <div className="min-w-0 text-xs">
                     <p className={`font-semibold ${step.done ? 'text-slate-500 dark:text-slate-400 line-through decoration-slate-300' : 'text-slate-900 dark:text-white'}`}>{step.label}</p>
                     {!step.done && (
@@ -248,7 +248,7 @@ export default function CommercePage() {
             value={summary ? formatMoney(revenue[0]?.amount || 0, revenue[0]?.currency || currency) : '—'}
             note={revenue.length > 1 ? `Also ${revenue.slice(1).map((item) => formatMoney(item.amount, item.currency)).join(', ')}` : 'Paid orders, excluding canceled'}
             icon={Wallet}
-            tone="text-emerald-500"
+            tone="text-[#1D5BEA]"
           />
           <Metric label="Orders" value={summary ? summary.total.toLocaleString() : '—'} note="WhatsApp, shop and phone orders" icon={Package} tone="text-blue-500" />
           <Metric label="Awaiting customer" value={summary ? summary.awaiting.toLocaleString() : '—'} note="Address or payment not completed" icon={Clock} tone="text-amber-500" />
@@ -352,7 +352,7 @@ export default function CommercePage() {
             toast.kind === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
           }`}
         >
-          {toast.kind === 'error' ? <AlertCircle size={16} className="shrink-0 mt-px" /> : <CheckCircle2 size={16} className="shrink-0 mt-px text-emerald-400 dark:text-emerald-600" />}
+          {toast.kind === 'error' ? <AlertCircle size={16} className="shrink-0 mt-px" /> : <CheckCircle2 size={16} className="shrink-0 mt-px text-[#5f86ee] dark:text-[#1D5BEA]" />}
           <span className="flex-1 leading-relaxed">{toast.text}</span>
           <button type="button" aria-label="Dismiss" onClick={() => setToast(null)} className="p-0.5 rounded hover:bg-white/15 dark:hover:bg-slate-900/10 cursor-pointer">
             <X size={14} />

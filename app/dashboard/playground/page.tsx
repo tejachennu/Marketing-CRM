@@ -403,7 +403,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
             <button
               onClick={createNewChat}
               title="New Chat"
-              className="flex items-center gap-1 px-2 py-1 bg-[#00a884] hover:bg-[#008069] rounded-lg transition-colors text-white text-[11px] font-bold cursor-pointer shadow-xs"
+              className="flex items-center gap-1 px-2 py-1 bg-[#1D5BEA] hover:bg-[#1D5BEA] rounded-lg transition-colors text-white text-[11px] font-bold cursor-pointer shadow-xs"
             >
               <Plus size={13} />
               <span>New</span>
@@ -422,7 +422,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
         <div className="flex-1 overflow-y-auto">
           {loadingSessions ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-400">
-              <Loader2 size={20} className="animate-spin text-[#00a884]" />
+              <Loader2 size={20} className="animate-spin text-[#1D5BEA]" />
               <span className="text-xs">Loading sessions...</span>
             </div>
           ) : errorMessage ? (
@@ -431,7 +431,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
               <p className="text-xs text-slate-600 dark:text-slate-400">{errorMessage}</p>
               <button
                 onClick={loadSessions}
-                className="mt-3 text-xs text-[#00a884] hover:underline font-semibold"
+                className="mt-3 text-xs text-[#1D5BEA] hover:underline font-semibold"
               >
                 Retry
               </button>
@@ -443,7 +443,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Start a conversation to test your chatbot</p>
               <button 
                 onClick={createNewChat} 
-                className="mt-4 px-3 py-1.5 bg-[#00a884]/10 hover:bg-[#00a884]/20 text-[#00a884] rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                className="mt-4 px-3 py-1.5 bg-[#1D5BEA]/10 hover:bg-[#1D5BEA]/20 text-[#1D5BEA] rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 + Start New Chat
               </button>
@@ -455,12 +455,12 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                   key={session.id}
                   className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer border-l-2 transition-all ${
                     activeSessionId === session.id
-                      ? 'bg-[#00a884]/10 dark:bg-[#00a884]/10 border-l-[#00a884] text-slate-900 dark:text-slate-100 font-semibold'
+                      ? 'bg-[#1D5BEA]/10 dark:bg-[#1D5BEA]/10 border-l-[#1D5BEA] text-slate-900 dark:text-slate-100 font-semibold'
                       : 'border-l-transparent hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400'
                   }`}
                   onClick={() => loadSession(session.id)}
                 >
-                  <MessageSquare size={14} className={`flex-shrink-0 ${activeSessionId === session.id ? 'text-[#00a884]' : 'opacity-60'}`} />
+                  <MessageSquare size={14} className={`flex-shrink-0 ${activeSessionId === session.id ? 'text-[#1D5BEA]' : 'opacity-60'}`} />
                   <div className="flex-1 min-w-0">
                     {editingSessionId === session.id ? (
                       <div className="flex items-center gap-1">
@@ -472,10 +472,10 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                             if (e.key === 'Enter') renameSession(session.id, editTitle)
                             if (e.key === 'Escape') setEditingSessionId(null)
                           }}
-                          className="text-[11px] bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 w-full focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+                          className="text-[11px] bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 w-full focus:outline-none focus:ring-1 focus:ring-[#1D5BEA]"
                           onClick={e => e.stopPropagation()}
                         />
-                        <button onClick={e => { e.stopPropagation(); renameSession(session.id, editTitle) }} className="text-[#00a884] p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"><Check size={12} /></button>
+                        <button onClick={e => { e.stopPropagation(); renameSession(session.id, editTitle) }} className="text-[#1D5BEA] p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"><Check size={12} /></button>
                         <button onClick={e => { e.stopPropagation(); setEditingSessionId(null) }} className="text-slate-400 p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"><X size={12} /></button>
                       </div>
                     ) : (
@@ -522,7 +522,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
             >
               <Menu size={16} />
             </button>
-            <div className="h-8 w-8 bg-[#00a884]/10 rounded-full flex items-center justify-center text-[#00a884] flex-shrink-0">
+            <div className="h-8 w-8 bg-[#1D5BEA]/10 rounded-full flex items-center justify-center text-[#1D5BEA] flex-shrink-0">
               <MessageCircle size={16} />
             </div>
             <div className="min-w-0">
@@ -568,8 +568,8 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
         >
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-8">
-              <div className="h-14 w-14 bg-[#00a884]/10 dark:bg-[#00a884]/10 rounded-full flex items-center justify-center mb-3">
-                <MessageCircle size={28} className="text-[#00a884]" />
+              <div className="h-14 w-14 bg-[#1D5BEA]/10 dark:bg-[#1D5BEA]/10 rounded-full flex items-center justify-center mb-3">
+                <MessageCircle size={28} className="text-[#1D5BEA]" />
               </div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">Interactive AI Playground</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-6 leading-relaxed">
@@ -580,10 +580,10 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                   <button
                     key={i}
                     onClick={() => sendMessage(q)}
-                    className="text-left p-3 bg-white dark:bg-[#1f2c34] rounded-xl border border-slate-200/80 dark:border-slate-700/80 hover:border-[#00a884] dark:hover:border-[#00a884] text-slate-700 dark:text-slate-300 hover:text-[#00a884] dark:hover:text-[#00a884] transition-all text-[11px] font-medium leading-snug shadow-2xs group cursor-pointer"
+                    className="text-left p-3 bg-white dark:bg-[#1f2c34] rounded-xl border border-slate-200/80 dark:border-slate-700/80 hover:border-[#1D5BEA] dark:hover:border-[#1D5BEA] text-slate-700 dark:text-slate-300 hover:text-[#1D5BEA] dark:hover:text-[#1D5BEA] transition-all text-[11px] font-medium leading-snug shadow-2xs group cursor-pointer"
                   >
                     <span className="line-clamp-2">{q}</span>
-                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-[#00a884] opacity-0 group-hover:opacity-100 transition-opacity font-bold">
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-[#1D5BEA] opacity-0 group-hover:opacity-100 transition-opacity font-bold">
                       <span>Send prompt</span>
                       <ArrowRight size={10} />
                     </div>
@@ -597,7 +597,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] md:max-w-[75%] relative group px-3.5 py-2.5 rounded-xl shadow-[0_1px_0.5px_rgba(11,20,26,.13)] text-xs leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] rounded-tr-none'
+                      ? 'bg-[#d9fdd3] dark:bg-[#174bc4] text-[#111b21] dark:text-[#e9edef] rounded-tr-none'
                       : msg.isError
                         ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-300 rounded-tl-none'
                         : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none'
@@ -644,7 +644,7 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
                         </span>
                       )}
                       {msg.matchedFaqs !== undefined && msg.matchedFaqs > 0 && (
-                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-medium">
+                        <span className="text-[10px] bg-[#dfe8fd] dark:bg-[#0E1B3D]/50 text-[#174bc4] dark:text-[#9db5ef] px-1.5 py-0.2 rounded font-medium">
                           {msg.matchedFaqs} FAQ{msg.matchedFaqs > 1 ? 's' : ''}
                         </span>
                       )}
@@ -660,9 +660,9 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
               {sending && (
                 <div className="flex justify-start">
                   <div className="bg-white dark:bg-[#202c33] px-4 py-3 rounded-xl rounded-tl-none shadow-[0_1px_0.5px_rgba(11,20,26,.13)] flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-[#00a884] rounded-full animate-bounce [animation-delay:0ms]" />
-                    <div className="w-2 h-2 bg-[#00a884] rounded-full animate-bounce [animation-delay:150ms]" />
-                    <div className="w-2 h-2 bg-[#00a884] rounded-full animate-bounce [animation-delay:300ms]" />
+                    <div className="w-2 h-2 bg-[#1D5BEA] rounded-full animate-bounce [animation-delay:0ms]" />
+                    <div className="w-2 h-2 bg-[#1D5BEA] rounded-full animate-bounce [animation-delay:150ms]" />
+                    <div className="w-2 h-2 bg-[#1D5BEA] rounded-full animate-bounce [animation-delay:300ms]" />
                   </div>
                 </div>
               )}
@@ -686,13 +686,13 @@ function ChatMode({ orgId, isStandalone }: { orgId: string | null; isStandalone?
               }}
               placeholder="Type message to test chatbot... (Enter to send, Shift+Enter for new line)"
               rows={1}
-              className="flex-1 px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#2a3942] rounded-xl border border-slate-200 dark:border-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#00a884] resize-none leading-relaxed max-h-28"
+              className="flex-1 px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#2a3942] rounded-xl border border-slate-200 dark:border-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] resize-none leading-relaxed max-h-28"
               style={{ minHeight: '40px' }}
             />
             <button
               onClick={() => sendMessage()}
               disabled={!input.trim() || sending}
-              className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-[#00a884] hover:bg-[#008069] disabled:opacity-40 rounded-xl text-white transition-colors cursor-pointer shadow-xs"
+              className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:opacity-40 rounded-xl text-white transition-colors cursor-pointer shadow-xs"
               title="Send message"
             >
               {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -789,13 +789,13 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g. Can I apply for PR extension?"
               rows={3}
-              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-[#2a3942] rounded-lg border border-slate-200 dark:border-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 resize-none leading-relaxed"
+              className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-[#2a3942] rounded-lg border border-slate-200 dark:border-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] focus:border-[#1D5BEA] resize-none leading-relaxed"
             />
           </div>
           <button
             onClick={() => handleTest(query)}
             disabled={loading || !query.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#00a884] hover:bg-[#008069] disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
           >
             {loading ? (<><Loader2 size={14} className="animate-spin" /><span>Searching...</span></>) : (<><Play size={12} fill="white" /><span>Run Diagnostic Test</span></>)}
           </button>
@@ -816,7 +816,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
                 key={i}
                 onClick={() => { setQuery(q); handleTest(q); }}
                 disabled={loading}
-                className="w-full text-left p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg text-[11px] text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800/40 hover:border-slate-200 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all font-medium truncate cursor-pointer"
+                className="w-full text-left p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg text-[11px] text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800/40 hover:border-slate-200 hover:text-[#1D5BEA] dark:hover:text-[#5f86ee] transition-all font-medium truncate cursor-pointer"
               >
                 {q}
               </button>
@@ -843,7 +843,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
 
         {loading && (
           <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs p-12 text-center flex flex-col items-center justify-center space-y-4 min-h-[400px]">
-            <Loader2 size={32} className="animate-spin text-[#00a884]" />
+            <Loader2 size={32} className="animate-spin text-[#1D5BEA]" />
             <div>
               <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Evaluating Knowledge Retrieval</h3>
               <p className="text-xs text-slate-400 mt-1">Expanding synonyms, computing embeddings, and querying vector space...</p>
@@ -857,7 +857,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
             <div className="bg-white dark:bg-[#1f2c34] p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <span className="h-5 w-5 rounded-full bg-emerald-500/10 text-[#00a884] flex items-center justify-center text-[10px]">1</span>
+                  <span className="h-5 w-5 rounded-full bg-[#1D5BEA]/10 text-[#1D5BEA] flex items-center justify-center text-[10px]">1</span>
                   Query Expansion & Synonym Mapping
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -875,7 +875,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-semibold block mb-1">Expanded Vector Query:</span>
-                  <p className="p-2.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg text-emerald-800 dark:text-emerald-300 font-mono text-[11px]">{result.expandedQuery || result.query}</p>
+                  <p className="p-2.5 bg-[#eef3fe]/50 dark:bg-[#0E1B3D]/20 rounded-lg text-[#163d9c] dark:text-[#9db5ef] font-mono text-[11px]">{result.expandedQuery || result.query}</p>
                 </div>
               </div>
             </div>
@@ -884,7 +884,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
             <div className="bg-white dark:bg-[#1f2c34] p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <span className="h-5 w-5 rounded-full bg-emerald-500/10 text-[#00a884] flex items-center justify-center text-[10px]">2</span>
+                  <span className="h-5 w-5 rounded-full bg-[#1D5BEA]/10 text-[#1D5BEA] flex items-center justify-center text-[10px]">2</span>
                   Vector Matches (match_faqs RPC)
                 </span>
                 <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-bold">
@@ -898,7 +898,7 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-800 dark:text-slate-200">{faq.title}</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          faq.similarity >= 0.65 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-[#00a884]' : 'bg-amber-100 dark:bg-amber-950/50 text-amber-600'
+                          faq.similarity >= 0.65 ? 'bg-[#dfe8fd] dark:bg-[#0E1B3D]/50 text-[#1D5BEA]' : 'bg-amber-100 dark:bg-amber-950/50 text-amber-600'
                         }`}>
                           {(faq.similarity * 100).toFixed(1)}% match
                         </span>
@@ -916,13 +916,13 @@ function DiagnosticMode({ orgId }: { orgId: string | null }) {
             <div className="bg-white dark:bg-[#1f2c34] p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <span className="h-5 w-5 rounded-full bg-emerald-500/10 text-[#00a884] flex items-center justify-center text-[10px]">3</span>
+                  <span className="h-5 w-5 rounded-full bg-[#1D5BEA]/10 text-[#1D5BEA] flex items-center justify-center text-[10px]">3</span>
                   Simulated Chatbot Response
                 </span>
                 <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                   result.isRiseTicket
                     ? 'bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400'
-                    : 'bg-emerald-100 dark:bg-emerald-950/40 text-[#00a884]'
+                    : 'bg-[#dfe8fd] dark:bg-[#0E1B3D]/40 text-[#1D5BEA]'
                 }`}>
                   {result.isRiseTicket ? '🎟️ Ticket Escalation' : '✅ Direct FAQ Reply'}
                 </span>
@@ -994,13 +994,13 @@ export default function PlaygroundPage() {
         {/* Compact Header for Standalone Window */}
         <div className="flex items-center justify-between gap-3 bg-white dark:bg-[#1f2c34] px-4 py-2.5 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs mb-2 flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 bg-emerald-500/10 rounded-full flex items-center justify-center text-[#00a884]">
+            <div className="h-8 w-8 bg-[#1D5BEA]/10 rounded-full flex items-center justify-center text-[#1D5BEA]">
               <Sparkles size={16} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100">AI Playground</h1>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#00a884]/10 text-[#00a884]">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#1D5BEA]/10 text-[#1D5BEA]">
                   Popup Window
                 </span>
               </div>
@@ -1016,7 +1016,7 @@ export default function PlaygroundPage() {
               onClick={() => setMode('chat')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                 mode === 'chat'
-                  ? 'bg-white dark:bg-[#1f2c34] text-[#00a884] shadow-sm'
+                  ? 'bg-white dark:bg-[#1f2c34] text-[#1D5BEA] shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
@@ -1027,7 +1027,7 @@ export default function PlaygroundPage() {
               onClick={() => setMode('diagnostic')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
                 mode === 'diagnostic'
-                  ? 'bg-white dark:bg-[#1f2c34] text-[#00a884] shadow-sm'
+                  ? 'bg-white dark:bg-[#1f2c34] text-[#1D5BEA] shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
@@ -1056,13 +1056,13 @@ export default function PlaygroundPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#1f2c34] p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs flex-shrink-0 mb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-emerald-500/10 rounded-full flex items-center justify-center text-[#00a884]">
+          <div className="h-10 w-10 bg-[#1D5BEA]/10 rounded-full flex items-center justify-center text-[#1D5BEA]">
             <Sparkles size={20} />
           </div>
           <div>
             <h1 className="text-base font-bold text-slate-800 dark:text-slate-100">AI Playground</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Test and debug automated chatbot for <span className="font-semibold text-[#00a884]">{orgName || 'your organization'}</span>
+              Test and debug automated chatbot for <span className="font-semibold text-[#1D5BEA]">{orgName || 'your organization'}</span>
             </p>
           </div>
         </div>
@@ -1073,7 +1073,7 @@ export default function PlaygroundPage() {
             onClick={() => setMode('chat')}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               mode === 'chat'
-                ? 'bg-white dark:bg-[#1f2c34] text-[#00a884] shadow-sm'
+                ? 'bg-white dark:bg-[#1f2c34] text-[#1D5BEA] shadow-sm'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
@@ -1084,7 +1084,7 @@ export default function PlaygroundPage() {
             onClick={() => setMode('diagnostic')}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               mode === 'diagnostic'
-                ? 'bg-white dark:bg-[#1f2c34] text-[#00a884] shadow-sm'
+                ? 'bg-white dark:bg-[#1f2c34] text-[#1D5BEA] shadow-sm'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >

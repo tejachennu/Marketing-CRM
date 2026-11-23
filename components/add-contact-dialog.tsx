@@ -119,7 +119,7 @@ export function AddContactDialog({
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 placeholder="John"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA] focus:border-transparent text-xs font-semibold"
               />
             </div>
 
@@ -133,7 +133,7 @@ export function AddContactDialog({
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                 placeholder="Doe"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA] focus:border-transparent text-xs font-semibold"
               />
             </div>
           </div>
@@ -163,7 +163,7 @@ export function AddContactDialog({
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="john@example.com"
-              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-xs font-semibold"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA] focus:border-transparent text-xs font-semibold"
             />
           </div>
 
@@ -173,13 +173,13 @@ export function AddContactDialog({
               <span>Tags</span>
               <span className="text-xs font-normal text-slate-400">press enter or comma to add</span>
             </label>
-            <div className="flex flex-wrap items-center gap-1.5 p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg min-h-[42px] focus-within:ring-2 focus-within:ring-emerald-500">
+            <div className="flex flex-wrap items-center gap-1.5 p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg min-h-[42px] focus-within:ring-2 focus-within:ring-[#1D5BEA]">
               {formData.tags.map((t) => (
                 <span
                   key={t}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef] border border-[#c5d5fa] dark:border-[#163d9c]"
                 >
-                  <Tag size={11} className="text-emerald-600 dark:text-emerald-400" />
+                  <Tag size={11} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
                   <span>{t}</span>
                   <button
                     type="button"
@@ -222,7 +222,7 @@ export function AddContactDialog({
 
           {/* Success Message */}
           {success && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 px-3 py-2 rounded-lg text-sm font-semibold">
+            <div className="bg-[#1D5BEA]/10 border border-[#1D5BEA]/20 text-[#1D5BEA] px-3 py-2 rounded-lg text-sm font-semibold">
               Contact added successfully!
             </div>
           )}
@@ -231,7 +231,7 @@ export function AddContactDialog({
           <Button
             onClick={handleAddContact}
             disabled={loading || !formData.firstName.trim() || !formData.phoneNumber.trim()}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            className="w-full bg-[#1D5BEA] hover:bg-[#174bc4] text-white font-bold"
           >
             {loading ? 'Adding...' : 'Add Contact'}
           </Button>

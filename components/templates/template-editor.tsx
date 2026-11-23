@@ -61,7 +61,7 @@ function MediaUpload({ orgId, accept, handle, preview, onUploaded }: { orgId: st
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className={smallButton}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {handle ? 'Choose another file' : 'Choose file'}
         </button>
-        {handle && !busy && <span className="text-[12.5px] text-[#31a24c] font-semibold">Sample uploaded to Meta</span>}
+        {handle && !busy && <span className="text-[12.5px] text-[#1D5BEA] font-semibold">Sample uploaded to Meta</span>}
         {preview && !handle && <span className="text-[12.5px] text-[#65676b]">Current sample on Meta</span>}
       </div>
       {error && <p className="mt-1.5 text-[12.5px] text-[#e41e3f]">{error}</p>}

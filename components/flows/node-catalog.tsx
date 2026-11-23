@@ -30,14 +30,14 @@ export type NodeTone = 'emerald' | 'teal' | 'indigo' | 'violet' | 'amber' | 'sky
 /** Full class names per tone (Tailwind only generates classes it can see written out). */
 export const TONE_CLASSES: Record<NodeTone, { chip: string; header: string; port: string }> = {
   emerald: {
-    chip: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    header: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/70 dark:border-emerald-900/50',
-    port: 'bg-emerald-500',
+    chip: 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee]',
+    header: 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 border-[#c5d5fa]/70 dark:border-[#0E1B3D]/50',
+    port: 'bg-[#1D5BEA]',
   },
   teal: {
-    chip: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
-    header: 'bg-teal-50 dark:bg-teal-950/40 border-teal-200/70 dark:border-teal-900/50',
-    port: 'bg-teal-500',
+    chip: 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee]',
+    header: 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 border-[#c5d5fa]/70 dark:border-[#0E1B3D]/50',
+    port: 'bg-[#1D5BEA]',
   },
   indigo: {
     chip: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',

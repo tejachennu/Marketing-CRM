@@ -78,7 +78,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             <p className="text-[20px] font-extrabold mt-1">{invoice.number}</p>
             <p className="text-[13.5px] text-[#4a5672] mt-1">{formatDate(invoice.issued_at)}, {formatIstTime(invoice.issued_at)}</p>
             {invoice.status !== 'unpaid' && (
-              <span className={`inline-block mt-2 px-3 py-1 rounded-md border-2 text-[13px] font-extrabold tracking-[0.2em] ${invoice.status === 'paid' ? 'border-[#00A884] text-[#047857]' : 'border-[#b91c1c] text-[#b91c1c]'}`}>{invoice.status === 'paid' ? 'PAID' : 'VOID'}</span>
+              <span className={`inline-block mt-2 px-3 py-1 rounded-md border-2 text-[13px] font-extrabold tracking-[0.2em] ${invoice.status === 'paid' ? 'border-[#1D5BEA] text-[#174bc4]' : 'border-[#b91c1c] text-[#b91c1c]'}`}>{invoice.status === 'paid' ? 'PAID' : 'VOID'}</span>
             )}
           </div>
         </header>

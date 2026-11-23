@@ -56,7 +56,7 @@ function itemSummary(order: CommerceOrder): string {
 
 function paymentLabel(order: CommerceOrder): { text: string; tone: string } {
   if (needsRefund(order)) return { text: 'Paid, then canceled: refund due', tone: 'text-rose-600 dark:text-rose-400' }
-  if (order.payment_status === 'paid') return { text: 'Paid', tone: 'text-emerald-600 dark:text-emerald-400' }
+  if (order.payment_status === 'paid') return { text: 'Paid', tone: 'text-[#1D5BEA] dark:text-[#5f86ee]' }
   if (order.payment_status === 'refunded') return { text: 'Refunded', tone: 'text-slate-700 dark:text-slate-200' }
   if (order.payment_status === 'failed') return { text: 'Last payment attempt failed', tone: 'text-rose-600 dark:text-rose-400' }
   if (order.payment_method === 'cod') return { text: 'To be collected on delivery', tone: 'text-slate-900 dark:text-white' }
@@ -321,7 +321,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 aria-pressed={active}
                 onClick={() => setView(item.id)}
                 className={`shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                  active ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  active ? 'bg-[#1D5BEA]/10 text-[#174bc4] dark:text-[#9db5ef] ring-1 ring-[#1D5BEA]/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 {item.label}
@@ -353,7 +353,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
 
       {loading ? (
         <div className={`${cardClass} py-16 flex items-center justify-center gap-2 text-sm text-slate-500`}>
-          <Loader2 size={18} className="animate-spin text-emerald-500" /> Loading orders…
+          <Loader2 size={18} className="animate-spin text-[#1D5BEA]" /> Loading orders…
         </div>
       ) : error ? (
         <div role="alert" className={`${cardClass} py-12 px-6 text-center`}>
@@ -372,7 +372,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
             {filtered ? 'Try a different filter or search term.' : 'When a customer sends a cart from your WhatsApp catalog, the order appears here automatically.'}
           </p>
           {filtered && (
-            <button type="button" onClick={() => { setView('all'); setSearch('') }} className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">
+            <button type="button" onClick={() => { setView('all'); setSearch('') }} className="mt-3 text-xs font-bold text-[#174bc4] dark:text-[#5f86ee] hover:underline cursor-pointer">
               Show all orders
             </button>
           )}
@@ -423,7 +423,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-[180px]">
                       {order.shipping_address?.address_line_1 ? (
                         <span className="flex items-center gap-1">
-                          <MapPin size={12} className="text-emerald-500 shrink-0" />
+                          <MapPin size={12} className="text-[#1D5BEA] shrink-0" />
                           <span className="truncate">{[order.shipping_address.city, order.shipping_address.pincode].filter(Boolean).join(', ') || order.shipping_address.address_line_1}</span>
                         </span>
                       ) : (
@@ -598,7 +598,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 <div className="flex items-center justify-between">
                   <h4 className={sectionTitle}>Deliver to</h4>
                   {selected.shipping_address?.address_line_1 && (
-                    <button type="button" onClick={() => copyAddress(selected)} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer mb-1.5">
+                    <button type="button" onClick={() => copyAddress(selected)} className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#174bc4] dark:text-[#5f86ee] hover:underline cursor-pointer mb-1.5">
                       {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? 'Copied' : 'Copy address'}
                     </button>
                   )}
@@ -672,7 +672,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   )}
 
                   <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={notifyCustomer} onChange={(event) => setNotifyCustomer(event.target.checked)} className="h-4 w-4 rounded accent-[#00a884]" />
+                    <input type="checkbox" checked={notifyCustomer} onChange={(event) => setNotifyCustomer(event.target.checked)} className="h-4 w-4 rounded accent-[#1D5BEA]" />
                     Tell the customer on WhatsApp when the status changes
                   </label>
 

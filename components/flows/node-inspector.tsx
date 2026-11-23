@@ -14,7 +14,7 @@ export interface InspectorForm {
 }
 
 const fieldClass =
-  'w-full mt-1 px-2.5 py-2 text-[13px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20'
+  'w-full mt-1 px-2.5 py-2 text-[13px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20'
 
 function Field({
   label,
@@ -58,7 +58,7 @@ function VariableChips({ variables, onInsert }: { variables: string[]; onInsert:
             key={variable}
             type="button"
             onClick={() => onInsert(`{{${variable}}}`)}
-            className="px-1.5 py-0.5 rounded-md text-[11px] font-mono bg-slate-100 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+            className="px-1.5 py-0.5 rounded-md text-[11px] font-mono bg-slate-100 dark:bg-slate-800 text-[#174bc4] dark:text-[#5f86ee] border border-slate-200 dark:border-slate-700 hover:bg-[#eef3fe] dark:hover:bg-[#0E1B3D]/40 cursor-pointer"
           >
             {variable}
           </button>
@@ -249,7 +249,7 @@ export function NodeInspector({
                 <button
                   type="button"
                   onClick={() => onChange({ buttons: [...buttons, { id: `btn_${uid()}`, title: `Option ${buttons.length + 1}` }] })}
-                  className="w-full py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-700 hover:border-emerald-500 flex items-center justify-center gap-1 cursor-pointer"
+                  className="w-full py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-[#174bc4] hover:border-[#1D5BEA] flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add button
                 </button>
@@ -298,7 +298,7 @@ export function NodeInspector({
                   <button
                     type="button"
                     onClick={() => setRows([...rows, { id: `row_${uid()}`, title: `Choice ${rows.length + 1}` }])}
-                    className="w-full py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-700 hover:border-emerald-500 flex items-center justify-center gap-1 cursor-pointer"
+                    className="w-full py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-[#174bc4] hover:border-[#1D5BEA] flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add choice
                   </button>

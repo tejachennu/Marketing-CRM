@@ -33,7 +33,7 @@ type ProductForm = typeof EMPTY_FORM
 type CatalogFilter = 'all' | 'attention' | 'not_sent'
 
 const CATALOG_CHIP: Record<CatalogState, string> = {
-  in_catalog: 'bg-white/90 text-emerald-700',
+  in_catalog: 'bg-white/90 text-[#174bc4]',
   in_review: 'bg-amber-100 text-amber-800',
   rejected: 'bg-rose-600 text-white',
   sending: 'bg-sky-100 text-sky-800',
@@ -490,7 +490,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
             <button type="button" onClick={() => setPicked(new Map())} className="h-8 px-3 rounded-lg text-xs font-semibold hover:bg-white/10 dark:hover:bg-slate-900/10 cursor-pointer">
               Clear
             </button>
-            <button type="button" onClick={() => setShare({ kind: 'collection', products: [...picked.values()] })} className="h-8 px-3 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
+            <button type="button" onClick={() => setShare({ kind: 'collection', products: [...picked.values()] })} className="h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
               <Send size={12} /> Send as a collection
             </button>
           </div>
@@ -499,7 +499,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
 
       {loading ? (
         <div className={`${cardClass} py-16 flex items-center justify-center gap-2 text-sm text-slate-500`}>
-          <Loader2 size={18} className="animate-spin text-emerald-500" /> Loading products…
+          <Loader2 size={18} className="animate-spin text-[#1D5BEA]" /> Loading products…
         </div>
       ) : error ? (
         <div role="alert" className={`${cardClass} py-12 px-6 text-center`}>
@@ -522,7 +522,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                 : 'Link your Meta catalog in Store settings to sell in WhatsApp, or add a product to share as a website link.'}
           </p>
           {filtered && (
-            <button type="button" onClick={() => { setSearch(''); setAvailability('all'); setCatalogFilter('all') }} className="mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer">
+            <button type="button" onClick={() => { setSearch(''); setAvailability('all'); setCatalogFilter('all') }} className="mt-3 text-xs font-bold text-[#174bc4] dark:text-[#5f86ee] hover:underline cursor-pointer">
               Show all products
             </button>
           )}
@@ -539,7 +539,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               // Only items that are in the Meta catalog can go into a WhatsApp cart
               const canCollect = canEdit && catalogLinked && available
               return (
-                <div key={product.id} className={`${cardClass} overflow-hidden flex flex-col transition-shadow ${isPicked ? 'ring-2 ring-[#00a884]' : ''}`}>
+                <div key={product.id} className={`${cardClass} overflow-hidden flex flex-col transition-shadow ${isPicked ? 'ring-2 ring-[#1D5BEA]' : ''}`}>
                   <div className="relative h-40 bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                     {product.image_url ? (
                       // Catalog images live on arbitrary CDNs, so a plain img is used rather than next/image
@@ -556,7 +556,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                     </div>
                     {canCollect && (
                       <label className="absolute top-2 right-2 h-7 px-2 rounded-full bg-white/95 dark:bg-slate-900/90 shadow-sm inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none" title="Select several products to send them in one message">
-                        <input type="checkbox" checked={isPicked} onChange={() => togglePicked(product)} className="h-3.5 w-3.5 rounded accent-[#00a884] cursor-pointer" />
+                        <input type="checkbox" checked={isPicked} onChange={() => togglePicked(product)} className="h-3.5 w-3.5 rounded accent-[#1D5BEA] cursor-pointer" />
                         {isPicked ? 'Selected' : 'Select'}
                       </label>
                     )}
@@ -768,7 +768,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                 </div>
               </div>
               <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                <input type="checkbox" checked={form.is_service} onChange={(event) => setForm({ ...form, is_service: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#00a884]" />
+                <input type="checkbox" checked={form.is_service} onChange={(event) => setForm({ ...form, is_service: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#1D5BEA]" />
                 <span>
                   This is a service or a digital item
                   <span className="block text-slate-500 dark:text-slate-400">No country of origin is needed for it.</span>
@@ -799,7 +799,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               )}
             </fieldset>
             <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-              <input type="checkbox" checked={form.is_available} onChange={(event) => setForm({ ...form, is_available: event.target.checked })} className="h-4 w-4 rounded accent-[#00a884]" />
+              <input type="checkbox" checked={form.is_available} onChange={(event) => setForm({ ...form, is_available: event.target.checked })} className="h-4 w-4 rounded accent-[#1D5BEA]" />
               Available to sell
             </label>
             <div className="flex flex-wrap justify-end gap-2 pt-1">
@@ -963,9 +963,9 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
         <div>
           <label htmlFor="share-recipient" className={labelClass}>Send to</label>
           {recipient ? (
-            <div className="flex items-center justify-between gap-2 h-9 pl-3 pr-1 rounded-lg border border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 text-[13px]">
+            <div className="flex items-center justify-between gap-2 h-9 pl-3 pr-1 rounded-lg border border-[#1D5BEA] bg-[#eef3fe]/60 dark:bg-[#0E1B3D]/30 text-[13px]">
               <span className="flex items-center gap-2 min-w-0 text-slate-900 dark:text-white">
-                <User size={13} className="shrink-0 text-emerald-600" />
+                <User size={13} className="shrink-0 text-[#1D5BEA]" />
                 <span className="truncate font-medium">{recipient.label}</span>
               </span>
               <button type="button" aria-label="Choose someone else" onClick={() => { setRecipient(null); setQuery('') }} className={iconButton}>
@@ -1017,7 +1017,7 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
                 <label
                   key={option.id}
                   className={`p-3 rounded-xl border text-xs transition-colors ${option.disabledReason ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${
-                    mode === option.id && !option.disabledReason ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30' : 'border-slate-200 dark:border-slate-700'
+                    mode === option.id && !option.disabledReason ? 'border-[#1D5BEA] bg-[#eef3fe]/60 dark:bg-[#0E1B3D]/30' : 'border-slate-200 dark:border-slate-700'
                   }`}
                 >
                   <input type="radio" name="share-type" className="sr-only" disabled={Boolean(option.disabledReason)} checked={mode === option.id} onChange={() => setMode(option.id)} />

@@ -32,10 +32,10 @@ const labelInlineClass =
   'block text-[11px] font-semibold text-[#54656f] dark:text-[#8696a0] uppercase tracking-wide'
 const labelClass = `${labelInlineClass} mb-1.5`
 const inputClass =
-  'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#d1d7db] dark:border-[#2a3942] rounded-lg text-[13px] font-medium text-[#111b21] dark:text-white placeholder:text-[#8696a0] transition-shadow focus:outline-none focus:border-[#00a884] focus:ring-2 focus:ring-[#00a884]/20'
+  'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#d1d7db] dark:border-[#2a3942] rounded-lg text-[13px] font-medium text-[#111b21] dark:text-white placeholder:text-[#8696a0] transition-shadow focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20'
 const secretInputClass = `${inputClass} pr-10`
 const primaryButtonClass =
-  'inline-flex items-center justify-center gap-1.5 h-9 px-4 bg-[#008069] hover:bg-[#006d59] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer whitespace-nowrap'
+  'inline-flex items-center justify-center gap-1.5 h-9 px-4 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer whitespace-nowrap'
 const secondaryButtonClass =
   'inline-flex items-center justify-center gap-1.5 h-9 px-4 bg-white dark:bg-[#1f2c34] hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] border border-[#d1d7db] dark:border-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap'
 
@@ -54,7 +54,7 @@ function SectionHeader({
   return (
     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
       <div className="flex items-start gap-3 min-w-0">
-        <div className="h-9 w-9 shrink-0 rounded-xl bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] flex items-center justify-center">
+        <div className="h-9 w-9 shrink-0 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#1D5BEA] flex items-center justify-center">
           <Icon size={18} />
         </div>
         <div className="min-w-0">
@@ -77,8 +77,8 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () =
       aria-checked={checked}
       aria-label={label}
       onClick={onChange}
-      className={`relative w-11 h-6 shrink-0 rounded-full transition-colors duration-200 cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00a884] ${
-        checked ? 'bg-[#00a884]' : 'bg-[#d1d7db] dark:bg-[#2a3942]'
+      className={`relative w-11 h-6 shrink-0 rounded-full transition-colors duration-200 cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D5BEA] ${
+        checked ? 'bg-[#1D5BEA]' : 'bg-[#d1d7db] dark:bg-[#2a3942]'
       }`}
     >
       <span
@@ -109,7 +109,7 @@ function FeatureRow({
       <div
         className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center transition-colors ${
           checked
-            ? 'bg-[#00a884]/10 text-[#008069] dark:text-[#00e676]'
+            ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#1D5BEA]'
             : 'bg-[#e9edef] dark:bg-[#2a3942] text-[#8696a0]'
         }`}
       >
@@ -912,7 +912,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00a884]"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1D5BEA]"></div>
       </div>
     )
   }
@@ -933,7 +933,7 @@ export default function SettingsPage() {
   return (
     <div className="p-4 pb-20 md:pb-6 md:p-6 font-sans h-full bg-[#f0f2f5] dark:bg-[#0b141a] text-[#111b21] dark:text-[#e9edef] overflow-y-auto space-y-5 relative">
       {notification && (
-        <div role="status" aria-live="polite" className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-[calc(100%-2rem)]" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#00a884' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
+        <div role="status" aria-live="polite" className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-[calc(100%-2rem)]" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#1D5BEA' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
           <div className="flex-1 min-w-0">
             {notification.title && (
               <h4 className="text-xs font-bold text-[#111b21] dark:text-white mb-1">{notification.title}</h4>
@@ -953,7 +953,7 @@ export default function SettingsPage() {
         </div>
       )}
       <div className="select-none flex items-center gap-3 w-full max-w-6xl mx-auto">
-        <div className="h-11 w-11 shrink-0 rounded-2xl bg-gradient-to-tr from-[#008069] to-[#00a884] text-white flex items-center justify-center shadow-sm">
+        <div className="h-11 w-11 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm">
           <SettingsIcon size={20} />
         </div>
         <div className="min-w-0">
@@ -981,7 +981,7 @@ export default function SettingsPage() {
                   onClick={() => setActiveTab(id)}
                   className={`flex-shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-[#008069] text-white shadow-sm'
+                      ? 'bg-[#1D5BEA] text-white shadow-sm'
                       : 'text-[#54656f] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white hover:bg-[#f0f2f5] dark:hover:bg-[#1f2c34]'
                   }`}
                 >
@@ -1168,7 +1168,7 @@ export default function SettingsPage() {
                                   setTicketEmailRecipients(ticketEmailRecipients.filter(id => id !== member.id))
                                 }
                               }}
-                              className="rounded border-[#e9edef] dark:border-[#2a3942] text-[#00a884] focus:ring-[#00a884] accent-[#00a884] h-4 w-4"
+                              className="rounded border-[#e9edef] dark:border-[#2a3942] text-[#1D5BEA] focus:ring-[#1D5BEA] accent-[#1D5BEA] h-4 w-4"
                             />
                             <div className="flex flex-col">
                               <span className="font-bold">{member.full_name || 'Unnamed Teammate'}</span>
@@ -1211,21 +1211,21 @@ export default function SettingsPage() {
 
                 {/* WHATSAPP GATEWAY SECTION */}
                 <div className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">WhatsApp Gateway</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">WhatsApp Gateway</h3>
 
                   {/* Visual Mockup - Chat Inbox */}
                   <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
                     <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                       <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 Active Chat Session</span>
-                      <span className="bg-emerald-500/20 text-[#00a884] px-1.5 py-0.5 rounded font-bold">Live Status</span>
+                      <span className="bg-[#1D5BEA]/20 text-[#1D5BEA] px-1.5 py-0.5 rounded font-bold">Live Status</span>
                     </div>
                     <div className="space-y-1.5 max-h-16 overflow-hidden flex flex-col">
                       <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded-lg rounded-tl-none text-[10px] text-[#111b21] dark:text-slate-300 max-w-[85%] self-start border border-[#e9edef] dark:border-slate-800 leading-normal">
                         I want to set up automatic responses
                       </div>
-                      <div className="bg-[#d9fdd3] dark:bg-[#005c4b] p-1.5 rounded-lg rounded-tr-none text-[10px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#005c4b] text-right leading-normal">
+                      <div className="bg-[#d9fdd3] dark:bg-[#174bc4] p-1.5 rounded-lg rounded-tr-none text-[10px] text-[#111b21] dark:text-white max-w-[85%] ml-auto border border-[#d9fdd3] dark:border-[#174bc4] text-right leading-normal">
                         Input your Account details and your gateway starts routing chats instantly!
-                        <span className="text-emerald-600 dark:text-emerald-300 text-[10px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
+                        <span className="text-[#1D5BEA] dark:text-[#9db5ef] text-[10px] block mt-0.5 font-bold">10:15 AM ● ✓✓</span>
                       </div>
                     </div>
                   </div>
@@ -1243,7 +1243,7 @@ export default function SettingsPage() {
                             value="twilio"
                             checked={whatsappProvider === 'twilio'}
                             onChange={() => setWhatsappProvider('twilio')}
-                            className="accent-[#00a884]"
+                            className="accent-[#1D5BEA]"
                           />
                           Twilio Gateway
                         </label>
@@ -1254,7 +1254,7 @@ export default function SettingsPage() {
                             value="facebook"
                             checked={whatsappProvider === 'facebook'}
                             onChange={() => setWhatsappProvider('facebook')}
-                            className="accent-[#00a884]"
+                            className="accent-[#1D5BEA]"
                           />
                           Direct Facebook API
                         </label>
@@ -1344,8 +1344,8 @@ export default function SettingsPage() {
                         <details className="group border border-[#e9edef] dark:border-[#2a3942] rounded-lg p-3 bg-white dark:bg-[#111b21]/40">
                           <summary className="text-[11px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider cursor-pointer list-none flex items-center justify-between select-none">
                             <span>Manual API Credentials & Advanced Settings</span>
-                            <span className="text-[10px] text-[#00a884] font-semibold group-open:hidden">Show ▼</span>
-                            <span className="text-[10px] text-[#00a884] font-semibold hidden group-open:inline">Hide ▲</span>
+                            <span className="text-[10px] text-[#1D5BEA] font-semibold group-open:hidden">Show ▼</span>
+                            <span className="text-[10px] text-[#1D5BEA] font-semibold hidden group-open:inline">Hide ▲</span>
                           </summary>
 
                           <div className="space-y-4 pt-3.5 mt-2 border-t border-[#e9edef] dark:border-[#2a3942]">
@@ -1446,7 +1446,7 @@ export default function SettingsPage() {
                     {/* SMS GATEWAY SECTION */}
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">SMS Gateway</h3>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">SMS Gateway</h3>
 
                         {/* Toggle switch: only render if Twilio is configured */}
                         {twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== '' ? (
@@ -1467,7 +1467,7 @@ export default function SettingsPage() {
                         <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                           <span className="text-[#111b21] dark:text-white flex items-center gap-1">💬 SMS Gateway Connection</span>
                           <span className={`${organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
-                              ? 'bg-emerald-500/20 text-[#00a884]'
+                              ? 'bg-[#1D5BEA]/20 text-[#1D5BEA]'
                               : 'bg-gray-500/20 text-gray-500'
                             } px-1.5 py-0.5 rounded font-bold`}>
                             {organization?.enable_sms !== false && twilioAccountSid.trim() !== '' && twilioAuthToken.trim() !== ''
@@ -1565,13 +1565,13 @@ export default function SettingsPage() {
                 <div className="space-y-6">
                   {/* Email Broadcast Engine */}
                   <div className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">Email Broadcast Engine</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">Email Broadcast Engine</h3>
 
                     {/* Visual Mockup - Email Dispatch */}
                     <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
                       <div className="flex items-center justify-between border-b border-[#e9edef] dark:border-slate-800 pb-1.5 text-[10px] text-[#667781] dark:text-slate-400 font-bold">
                         <span className="text-[#111b21] dark:text-white flex items-center gap-1">📧 Marketing Campaign Wizard</span>
-                        <span className="text-[#00a884] font-bold">99.8% Sent</span>
+                        <span className="text-[#1D5BEA] font-bold">99.8% Sent</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-700 dark:text-slate-300">
                         <div className="bg-white dark:bg-[#1f2c34] p-1.5 rounded border border-[#e9edef] dark:border-slate-800 font-semibold">
@@ -1597,7 +1597,7 @@ export default function SettingsPage() {
                             value="sendgrid"
                             checked={emailProvider === 'sendgrid'}
                             onChange={() => setEmailProvider('sendgrid')}
-                            className="accent-[#00a884]"
+                            className="accent-[#1D5BEA]"
                           />
                           SendGrid API
                         </label>
@@ -1608,7 +1608,7 @@ export default function SettingsPage() {
                             value="smtp"
                             checked={emailProvider === 'smtp'}
                             onChange={() => setEmailProvider('smtp')}
-                            className="accent-[#00a884]"
+                            className="accent-[#1D5BEA]"
                           />
                           Custom SMTP (Nodemailer)
                         </label>
@@ -1721,7 +1721,7 @@ export default function SettingsPage() {
 
                   {/* AI Assistant Engine */}
                   <div className="space-y-4 border-t border-[#e9edef] dark:border-[#202d36] pt-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#00a884]">AI Assistant Engine</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA]">AI Assistant Engine</h3>
 
                     {/* Visual Mockup - AI suggestions */}
                     <div className="bg-[#f0f2f5] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#e9edef] dark:border-[#202d36] select-none text-[10px] space-y-2">
@@ -1730,7 +1730,7 @@ export default function SettingsPage() {
                         <span className="text-blue-600 dark:text-blue-400 font-bold">Copilot Active</span>
                       </div>
                       <div className="flex gap-1.5 overflow-x-auto py-0.5">
-                        <div className="bg-[#00a884]/15 border border-[#00a884]/25 text-[#00a884] text-[10px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
+                        <div className="bg-[#1D5BEA]/15 border border-[#1D5BEA]/25 text-[#1D5BEA] text-[10px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
                           🤖 AI: Book Consultation Call
                         </div>
                         <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[10px] px-2 py-1 rounded-full whitespace-nowrap font-bold">
@@ -1762,13 +1762,13 @@ export default function SettingsPage() {
             <div className={cardClass}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-[#00a884]/10 dark:bg-[#00a884]/20 flex items-center justify-center text-[#00a884]">
+                  <div className="w-8 h-8 rounded-lg bg-[#1D5BEA]/10 dark:bg-[#1D5BEA]/20 flex items-center justify-center text-[#1D5BEA]">
                     <Server size={18} />
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-[#111b21] dark:text-white flex items-center gap-2">
                       Export Environment Variables (.env)
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00a884]">
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#dfe8fd] dark:bg-[#0E1B3D]/60 text-[#1D5BEA]">
                         Cloud Backup
                       </span>
                     </h2>
@@ -1794,7 +1794,7 @@ export default function SettingsPage() {
                     className="px-3 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
                     title="Copy .env content to clipboard"
                   >
-                    {copiedEnv ? <Check size={14} className="text-[#00a884]" /> : <Copy size={14} />}
+                    {copiedEnv ? <Check size={14} className="text-[#1D5BEA]" /> : <Copy size={14} />}
                     {copiedEnv ? 'Copied!' : 'Copy to Clipboard'}
                   </button>
                 </div>
@@ -1812,7 +1812,7 @@ export default function SettingsPage() {
                         value={exportEnvEmail}
                         onChange={(e) => setExportEnvEmail(e.target.value)}
                         placeholder="tejachennu17@gmail.com"
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold text-[#111b21] dark:text-white"
                       />
                       <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8696a0]" />
                     </div>
@@ -1822,7 +1822,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={handleExportEnvEmail}
                     disabled={isExportingEnv}
-                    className="w-full sm:w-auto px-5 py-2 bg-[#00a884] hover:bg-[#008069] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
+                    className="w-full sm:w-auto px-5 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap"
                   >
                     {isExportingEnv ? (
                       <>
@@ -1843,7 +1843,7 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-[#111b21] dark:text-white flex items-center gap-1.5">
                         {exportEnvResult.emailed ? (
-                          <span className="text-[#00a884]">● Email Delivered</span>
+                          <span className="text-[#1D5BEA]">● Email Delivered</span>
                         ) : (
                           <span className="text-amber-500">● Variables Retrieved</span>
                         )}
@@ -1854,7 +1854,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => setShowEnvPreview(!showEnvPreview)}
-                        className="text-[#00a884] hover:underline font-semibold text-[11px]"
+                        className="text-[#1D5BEA] hover:underline font-semibold text-[11px]"
                       >
                         {showEnvPreview ? 'Hide Preview' : 'Show Masked Preview'}
                       </button>
@@ -1866,7 +1866,7 @@ export default function SettingsPage() {
 
                     {showEnvPreview && exportEnvResult.envText && (
                       <div className="relative mt-2">
-                        <pre className="p-3 bg-[#f0f2f5] dark:bg-[#0c1317] rounded-lg text-[11px] font-mono text-[#111b21] dark:text-[#00e676] overflow-x-auto max-h-56 border border-[#e9edef] dark:border-[#202d36]">
+                        <pre className="p-3 bg-[#f0f2f5] dark:bg-[#0c1317] rounded-lg text-[11px] font-mono text-[#111b21] dark:text-[#1D5BEA] overflow-x-auto max-h-56 border border-[#e9edef] dark:border-[#202d36]">
                           {exportEnvResult.envText}
                         </pre>
                       </div>
@@ -1954,7 +1954,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleAddManual}
                   disabled={actionLoading || !manualTitle.trim() || !manualContent.trim()}
-                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <Plus size={13} />
                   <span>Add FAQ Item</span>
@@ -1980,7 +1980,7 @@ export default function SettingsPage() {
                     value={ragSearchQuery}
                     onChange={e => setRagSearchQuery(e.target.value)}
                     placeholder="Search FAQs & policies..."
-                    className="w-full pl-9 pr-3.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#00a884] rounded-lg focus:outline-none text-[11px] font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
+                    className="w-full pl-9 pr-3.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-[11px] font-semibold placeholder-[#667781] dark:placeholder-[#8696a0] text-[#111b21] dark:text-white"
                   />
                 </div>
 
@@ -1994,7 +1994,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={importProgress !== null || loadingArticles}
-                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   <Upload size={12} />
                   <span>Import</span>
@@ -2004,7 +2004,7 @@ export default function SettingsPage() {
 
             {loadingArticles ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 size={24} className="animate-spin text-[#00a884]" />
+                <Loader2 size={24} className="animate-spin text-[#1D5BEA]" />
               </div>
             ) : filteredArticles.length === 0 ? (
               <div className="p-12 text-center text-[#667781] dark:text-[#8696a0]">
@@ -2047,7 +2047,7 @@ export default function SettingsPage() {
                                 setEditContent(art.content || '')
                                 setEditMedia(Array.isArray(art.media) ? art.media : [])
                               }}
-                              className="p-1 text-[#008069] dark:text-emerald-400 hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
+                              className="p-1 text-[#1D5BEA] dark:text-[#5f86ee] hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] rounded transition-colors cursor-pointer"
                               title="Edit"
                             >
                               <Edit2 size={14} />
@@ -2114,12 +2114,12 @@ export default function SettingsPage() {
 
             {loadingSynonyms ? (
               <div className="flex items-center justify-center py-10">
-                <Loader2 size={20} className="animate-spin text-[#00a884]" />
+                <Loader2 size={20} className="animate-spin text-[#1D5BEA]" />
               </div>
             ) : synonymGroups.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[#e9edef] dark:border-[#2a3942] p-8 flex flex-col items-center justify-center text-center">
-                <div className="w-10 h-10 rounded-full bg-[#00a884]/10 flex items-center justify-center mb-2">
-                  <Tags size={18} className="text-[#00a884]" />
+                <div className="w-10 h-10 rounded-full bg-[#1D5BEA]/10 flex items-center justify-center mb-2">
+                  <Tags size={18} className="text-[#1D5BEA]" />
                 </div>
                 <h3 className="text-xs font-bold text-[#111b21] dark:text-white mb-1">No service synonym groups yet</h3>
                 <p className="text-[11px] text-[#667781] dark:text-[#8696a0] font-semibold max-w-sm">
@@ -2127,7 +2127,7 @@ export default function SettingsPage() {
                 </p>
                 <button
                   onClick={openAddSynonymModal}
-                  className="mt-3 h-8 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                  className="mt-3 h-8 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
                 >
                   <Plus size={12} />
                   Create First Group
@@ -2141,14 +2141,14 @@ export default function SettingsPage() {
                     className="bg-slate-50/50 dark:bg-[#1f2c34]/20 rounded-xl border border-[#e9edef] dark:border-[#202d36] p-4 shadow-xs hover:shadow-sm transition-shadow group relative"
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] text-[10px] font-bold border border-[#00a884]/20">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#1D5BEA] text-[10px] font-bold border border-[#1D5BEA]/20">
                         <Tags size={11} />
                         Category: {group.canonical}
                       </span>
                       <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
                         <button
                           onClick={() => openEditSynonymModal(idx)}
-                          className="p-1 rounded hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#008069] dark:hover:text-[#00e676] transition-colors cursor-pointer"
+                          className="p-1 rounded hover:bg-[#e9edef] dark:hover:bg-[#2a3942] text-[#667781] dark:text-[#8696a0] hover:text-[#1D5BEA] dark:hover:text-[#1D5BEA] transition-colors cursor-pointer"
                           title="Edit"
                         >
                           <Pencil size={12} />
@@ -2188,7 +2188,7 @@ export default function SettingsPage() {
       {importProgress && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center space-y-4">
-            <Loader2 size={32} className="animate-spin text-[#00a884] mx-auto" />
+            <Loader2 size={32} className="animate-spin text-[#1D5BEA] mx-auto" />
             <div>
               <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Importing FAQ Items</h3>
               <p className="text-xs text-[#667781] dark:text-[#8696a0] mt-1 font-semibold leading-relaxed">
@@ -2197,7 +2197,7 @@ export default function SettingsPage() {
             </div>
             <div className="bg-[#f0f2f5] dark:bg-[#111b21] h-2 w-full rounded-full overflow-hidden">
               <div
-                className="bg-[#00a884] h-full transition-all duration-300"
+                className="bg-[#1D5BEA] h-full transition-all duration-300"
                 style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
               />
             </div>
@@ -2226,8 +2226,8 @@ export default function SettingsPage() {
                 aria-pressed={theme === 'light'}
                 onClick={() => toggleTheme('light')}
                 className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all cursor-pointer ${theme === 'light'
-                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]'
-                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
+                    ? 'border-[#1D5BEA] bg-[#f0f2f5] dark:bg-[#0c1317]'
+                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#1D5BEA]/50'
                   }`}
               >
                 <Sun size={32} className={theme === 'light' ? 'text-amber-500' : 'text-[#667781] dark:text-[#8696a0]'} />
@@ -2239,8 +2239,8 @@ export default function SettingsPage() {
                 aria-pressed={theme === 'dark'}
                 onClick={() => toggleTheme('dark')}
                 className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl border-2 transition-all cursor-pointer ${theme === 'dark'
-                    ? 'border-[#00a884] bg-[#f0f2f5] dark:bg-[#0c1317]'
-                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#00a884]/50'
+                    ? 'border-[#1D5BEA] bg-[#f0f2f5] dark:bg-[#0c1317]'
+                    : 'border-[#e9edef] dark:border-[#202d36] hover:border-[#1D5BEA]/50'
                   }`}
               >
                 <Moon size={32} className={theme === 'dark' ? 'text-indigo-400' : 'text-[#667781] dark:text-[#8696a0]'} />
@@ -2259,7 +2259,7 @@ export default function SettingsPage() {
           <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 text-[#111b21] dark:text-white">
             <div className="p-6 border-b border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#111b21] dark:text-white flex items-center gap-2">
-                <Tags size={16} className="text-[#00a884]" />
+                <Tags size={16} className="text-[#1D5BEA]" />
                 {editingSynonymIndex !== null ? 'Edit Synonym Group' : 'Add Synonym Group'}
               </h3>
               <button
@@ -2287,11 +2287,11 @@ export default function SettingsPage() {
                 <label className="block text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider mb-1.5">
                   Aliases
                 </label>
-                <div className="flex flex-wrap gap-1.5 p-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus-within:border-[#00a884] rounded-lg transition-colors min-h-[42px]">
+                <div className="flex flex-wrap gap-1.5 p-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus-within:border-[#1D5BEA] rounded-lg transition-colors min-h-[42px]">
                   {synonymFormAliases.map((alias, aIdx) => (
                     <span
                       key={aIdx}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#00a884]/10 text-[#008069] dark:text-[#00e676] text-[11px] font-bold border border-[#00a884]/20"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#1D5BEA] text-[11px] font-bold border border-[#1D5BEA]/20"
                     >
                       {alias}
                       <button
@@ -2327,7 +2327,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={handleSaveSynonymForm}
                 disabled={savingSynonyms || !synonymFormCanonical.trim()}
-                className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
                 {savingSynonyms && <Loader2 size={13} className="animate-spin" />}
                 <span>{editingSynonymIndex !== null ? 'Save Changes' : 'Add Group'}</span>
@@ -2383,7 +2383,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={actionLoading || !editTitle.trim() || !editContent.trim()}
-                className="h-9 px-4 rounded-lg bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
                 {actionLoading && <Loader2 size={13} className="animate-spin" />}
                 <span>Save Changes</span>

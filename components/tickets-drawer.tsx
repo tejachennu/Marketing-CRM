@@ -153,7 +153,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
         {/* Header */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center animate-pulse">
+            <div className="h-8 w-8 rounded-lg bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center animate-pulse">
               <Ticket size={16} />
             </div>
             <div>
@@ -180,7 +180,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                 placeholder="Search tickets by subject or name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 font-semibold shadow-xs transition-all"
+                className="w-full pl-8 pr-8 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] text-slate-800 dark:text-slate-100 font-semibold shadow-xs transition-all"
               />
               <Search size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
               {searchTerm && (
@@ -199,12 +199,12 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
         <div className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4 space-y-3">
           {isLoading && tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-              <Loader2 size={24} className="animate-spin text-emerald-500 mb-2" />
+              <Loader2 size={24} className="animate-spin text-[#1D5BEA] mb-2" />
               <span className="text-xs font-semibold animate-pulse">Loading active tickets...</span>
             </div>
           ) : tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center p-4">
-              <div className="h-12 w-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-3 animate-pulse">
+              <div className="h-12 w-12 rounded-full bg-[#eef3fe] dark:bg-[#1D5BEA]/10 flex items-center justify-center text-[#1D5BEA] mb-3 animate-pulse">
                 <CheckCircle2 size={24} />
               </div>
               <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1 animate-bounce">All Caught Up!</h4>
@@ -227,7 +227,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                 <div
                   key={ticket.id}
                   onClick={() => handleSelectTicket(ticket.conversation_id)}
-                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-emerald-500/30 dark:hover:border-emerald-500/20 hover:shadow-lg rounded-2xl p-4 transition-all duration-200 cursor-pointer group relative flex flex-col gap-3 active:scale-[0.99]"
+                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-[#1D5BEA]/30 dark:hover:border-[#1D5BEA]/20 hover:shadow-lg rounded-2xl p-4 transition-all duration-200 cursor-pointer group relative flex flex-col gap-3 active:scale-[0.99]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1.5">
@@ -237,7 +237,7 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                           AI Fallback
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white leading-normal group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white leading-normal group-hover:text-[#1D5BEA] dark:group-hover:text-[#5f86ee] transition-colors">
                         {ticket.subject}
                       </span>
                     </div>
@@ -245,10 +245,10 @@ export function TicketsDrawer({ isOpen, onClose, orgId }: TicketsDrawerProps) {
                       onClick={(e) => handleResolveTicket(e, ticket.id)}
                       disabled={resolvingId === ticket.id}
                       title="Mark as Resolved"
-                      className="flex-shrink-0 h-7 w-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400 hover:text-emerald-600 hover:border-emerald-500/30 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/10 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                      className="flex-shrink-0 h-7 w-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400 hover:text-[#1D5BEA] hover:border-[#1D5BEA]/30 hover:bg-[#eef3fe]/50 dark:hover:bg-[#1D5BEA]/10 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
                     >
                       {resolvingId === ticket.id ? (
-                        <Loader2 size={12} className="animate-spin text-emerald-500" />
+                        <Loader2 size={12} className="animate-spin text-[#1D5BEA]" />
                       ) : (
                         <Check size={14} />
                       )}

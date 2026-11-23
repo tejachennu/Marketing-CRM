@@ -245,7 +245,7 @@ export function SendMessageDialog({
 
           {/* Success Message */}
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+            <div className="bg-[#eef3fe] border border-[#c5d5fa] text-[#174bc4] px-3 py-2 rounded-lg text-sm">
               Message sent successfully!
             </div>
           )}

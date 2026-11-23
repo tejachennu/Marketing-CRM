@@ -14,7 +14,7 @@ const ICONS: Record<ConnectorKey, LucideIcon> = { salon: FrontDeskIcon, ecommerc
 
 const LOOKS: Record<ConnectorKey, { band: string; icon: string; tags: string[]; tick: string }> = {
   salon: { band: 'bg-[#eef3fe] dark:bg-blue-950/30', icon: 'bg-[#1D5BEA]', tags: ['Bookings', 'Billing', 'Reviews'], tick: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' },
-  ecommerce: { band: 'bg-[#e8f7f1] dark:bg-emerald-950/30', icon: 'bg-[#00A884]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#e8f7f1] text-[#047857] dark:bg-emerald-950/40 dark:text-emerald-300' },
+  ecommerce: { band: 'bg-[#e8f7f1] dark:bg-[#0E1B3D]/30', icon: 'bg-[#1D5BEA]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#e8f7f1] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]' },
   pipeline: { band: 'bg-[#f4f6fa] dark:bg-slate-800/40', icon: 'bg-[#0E1B3D] dark:bg-slate-700', tags: ['Deals', 'Follow-ups', 'Reports'], tick: 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' },
 }
 

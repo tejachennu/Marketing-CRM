@@ -243,7 +243,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#047857]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <X size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>
@@ -347,7 +347,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                         </>
                       ) : (
                         <span className="flex items-center gap-1.5">
-                          {isViewer(member) ? <Eye size={15} className="text-[#6B7894]" /> : <ShieldCheck size={15} className="text-[#00A884]" />}
+                          {isViewer(member) ? <Eye size={15} className="text-[#6B7894]" /> : <ShieldCheck size={15} className="text-[#1D5BEA]" />}
                           {getRoleDisplay(member.role).description}
                         </span>
                       )}
@@ -413,7 +413,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                       const optional = !allowed && role.label === 'Agent' && can({ ...role.subject, see_all: true }, capability.permission)
                       return (
                         <td key={role.label} className="px-3 py-3 text-center">
-                          {allowed ? <Check size={18} className="inline text-[#00A884]" aria-label="Yes" />
+                          {allowed ? <Check size={18} className="inline text-[#1D5BEA]" aria-label="Yes" />
                             : optional ? <span className="text-[12px] font-semibold text-[#1D5BEA]">If allowed</span>
                             : <span className="text-[#c3cad8]" aria-label="No">—</span>}
                         </td>

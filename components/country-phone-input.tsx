@@ -218,7 +218,7 @@ export function CountryPhoneInput({
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      <div className="flex items-center rounded-xl border border-slate-200 dark:border-[#2a3942] bg-white dark:bg-[#111b21] shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 focus-within:border-[#00a884] focus-within:ring-2 focus-within:ring-[#00a884]/20 transition-all overflow-visible">
+      <div className="flex items-center rounded-xl border border-slate-200 dark:border-[#2a3942] bg-white dark:bg-[#111b21] shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 focus-within:border-[#1D5BEA] focus-within:ring-2 focus-within:ring-[#1D5BEA]/20 transition-all overflow-visible">
         {/* Country Code Trigger Button */}
         <button
           type="button"
@@ -234,7 +234,7 @@ export function CountryPhoneInput({
           <ChevronDown
             size={13}
             className={`text-slate-400 dark:text-slate-400 transition-transform duration-200 ${
-              isDropdownOpen ? 'rotate-180 text-[#00a884]' : ''
+              isDropdownOpen ? 'rotate-180 text-[#1D5BEA]' : ''
             }`}
           />
         </button>
@@ -269,7 +269,7 @@ export function CountryPhoneInput({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search country or code (e.g. India, 91)..."
-                className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:border-[#00a884] focus:outline-hidden transition-all"
+                className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:border-[#1D5BEA] focus:outline-hidden transition-all"
               />
               {searchQuery && (
                 <button
@@ -299,7 +299,7 @@ export function CountryPhoneInput({
                     onClick={() => handleSelectCountry(country)}
                     className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs text-left transition-colors cursor-pointer ${
                       isSelected
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-400 font-bold'
+                        ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#5f86ee] font-bold'
                         : 'hover:bg-slate-50 dark:hover:bg-[#2a3942]/50 text-slate-800 dark:text-slate-200 font-medium'
                     }`}
                   >
@@ -315,7 +315,7 @@ export function CountryPhoneInput({
                       <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
                         {country.dialCode}
                       </span>
-                      {isSelected && <Check size={14} className="text-[#008069] dark:text-emerald-400" />}
+                      {isSelected && <Check size={14} className="text-[#1D5BEA] dark:text-[#5f86ee]" />}
                     </div>
                   </button>
                 )

@@ -596,7 +596,7 @@ export default function FlowCanvasBuilderPage() {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0c1317]">
         <div className="flex items-center gap-2.5 text-sm font-medium text-slate-600 dark:text-slate-300">
-          <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#1D5BEA]" />
           Loading the flow…
         </div>
       </div>
@@ -610,7 +610,7 @@ export default function FlowCanvasBuilderPage() {
           <Workflow className="w-10 h-10 mx-auto text-slate-400" />
           <h1 className="text-base font-bold text-slate-900 dark:text-white">This flow could not be opened</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">It may have been deleted, or you may not have access to it.</p>
-          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d59] text-white text-xs font-bold">
+          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-bold">
             <ArrowLeft className="w-3.5 h-3.5" /> Back to flows
           </Link>
         </div>
@@ -632,7 +632,7 @@ export default function FlowCanvasBuilderPage() {
           <Workflow className="w-10 h-10 mx-auto text-slate-400" />
           <h1 className="text-base font-bold text-slate-900 dark:text-white">Open this on a larger screen</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">The flow builder uses a drag-and-drop canvas that needs a tablet or computer.</p>
-          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] text-white text-xs font-bold">
+          <Link href="/dashboard/flows" className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] text-white text-xs font-bold">
             <ArrowLeft className="w-3.5 h-3.5" /> Back to flows
           </Link>
         </div>
@@ -659,14 +659,14 @@ export default function FlowCanvasBuilderPage() {
                 setFlowName(event.target.value)
                 markDirty()
               }}
-              className="min-w-0 w-64 bg-transparent font-bold text-sm text-slate-900 dark:text-white px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/60 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              className="min-w-0 w-64 bg-transparent font-bold text-sm text-slate-900 dark:text-white px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/60 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/30"
             />
             <span
               className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-bold ${
-                isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                isActive ? 'bg-[#1D5BEA]/15 text-[#174bc4] dark:text-[#9db5ef]' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-[#1D5BEA]' : 'bg-slate-400'}`} />
               {isActive ? 'Live' : 'Paused'}
             </span>
           </div>
@@ -683,7 +683,7 @@ export default function FlowCanvasBuilderPage() {
               className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold border cursor-pointer ${
                 issueCount
                   ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-950/60'
-                  : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50'
+                  : 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#174bc4] dark:text-[#9db5ef] border-[#c5d5fa] dark:border-[#0E1B3D]/50'
               }`}
             >
               {issueCount ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -716,7 +716,7 @@ export default function FlowCanvasBuilderPage() {
               disabled={saving || (!isActive && graphIssues.length > 0)}
               title={!isActive && graphIssues.length > 0 ? 'Fix the problems listed under “to fix” before going live' : undefined}
               className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-bold shadow-sm disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed ${
-                isActive ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#008069] hover:bg-[#006d59] text-white'
+                isActive ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#1D5BEA] hover:bg-[#174bc4] text-white'
               }`}
             >
               {isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -884,7 +884,7 @@ export default function FlowCanvasBuilderPage() {
                     <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
                   </marker>
                   <marker id="flow-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#1D5BEA" />
                   </marker>
                 </defs>
 
@@ -907,7 +907,7 @@ export default function FlowCanvasBuilderPage() {
                         d={path}
                         fill="none"
                         strokeWidth={2}
-                        stroke={active ? '#10b981' : '#94a3b8'}
+                        stroke={active ? '#1D5BEA' : '#94a3b8'}
                         markerEnd={active ? 'url(#flow-arrow-active)' : 'url(#flow-arrow)'}
                         className="group-hover:stroke-rose-500"
                       />
@@ -941,7 +941,7 @@ export default function FlowCanvasBuilderPage() {
                     <path
                       d={edgePath(source.position.x + out.x, source.position.y + out.y, pointer.x, pointer.y)}
                       fill="none"
-                      stroke="#10b981"
+                      stroke="#1D5BEA"
                       strokeWidth={2}
                       strokeDasharray="6 4"
                     />
@@ -971,11 +971,11 @@ export default function FlowCanvasBuilderPage() {
                       isDragging && isSelected ? 'cursor-grabbing shadow-xl' : canReceive ? 'cursor-pointer' : 'cursor-grab'
                     } ${
                       isSelected
-                        ? 'border-emerald-500 ring-2 ring-emerald-500/30 shadow-lg'
+                        ? 'border-[#1D5BEA] ring-2 ring-[#1D5BEA]/30 shadow-lg'
                         : isSimulated
-                        ? 'border-emerald-500 ring-4 ring-emerald-400/30'
+                        ? 'border-[#1D5BEA] ring-4 ring-[#5f86ee]/30'
                         : canReceive
-                        ? 'border-emerald-400 border-dashed hover:ring-2 hover:ring-emerald-400/40'
+                        ? 'border-[#5f86ee] border-dashed hover:ring-2 hover:ring-[#5f86ee]/40'
                         : nodeIssues.length
                         ? 'border-amber-400 dark:border-amber-500/70'
                         : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
@@ -1024,7 +1024,7 @@ export default function FlowCanvasBuilderPage() {
                                   }}
                                   style={{ width: PORT_SIZE, height: PORT_SIZE, right: -(BODY_PADDING + PORT_SIZE / 2 + 1) }}
                                   className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-[#161f26] cursor-crosshair transition-transform hover:scale-125 ${
-                                    isConnectingSource(output.id) ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : connected ? tone.port : 'bg-slate-300 dark:bg-slate-600'
+                                    isConnectingSource(output.id) ? 'bg-[#1D5BEA] ring-4 ring-[#1D5BEA]/30' : connected ? tone.port : 'bg-slate-300 dark:bg-slate-600'
                                   }`}
                                 />
                               </div>
@@ -1043,7 +1043,7 @@ export default function FlowCanvasBuilderPage() {
                       <span
                         aria-hidden="true"
                         style={{ width: PORT_SIZE, height: PORT_SIZE, left: -(PORT_SIZE / 2 + 1), top: HEADER_HEIGHT / 2 - PORT_SIZE / 2 }}
-                        className={`absolute rounded-full border-2 border-white dark:border-[#161f26] ${canReceive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                        className={`absolute rounded-full border-2 border-white dark:border-[#161f26] ${canReceive ? 'bg-[#1D5BEA]' : 'bg-slate-300 dark:bg-slate-600'}`}
                       />
                     )}
 
@@ -1059,7 +1059,7 @@ export default function FlowCanvasBuilderPage() {
                         }}
                         style={{ width: PORT_SIZE, height: PORT_SIZE, right: -(PORT_SIZE / 2 + 1), top: HEADER_HEIGHT / 2 - PORT_SIZE / 2 }}
                         className={`absolute rounded-full border-2 border-white dark:border-[#161f26] cursor-crosshair transition-transform hover:scale-125 ${
-                          isConnectingSource() ? 'bg-emerald-500 ring-4 ring-emerald-500/30' : connectedOutputs.has(`${node.id}::`) ? tone.port : 'bg-slate-300 dark:bg-slate-600'
+                          isConnectingSource() ? 'bg-[#1D5BEA] ring-4 ring-[#1D5BEA]/30' : connectedOutputs.has(`${node.id}::`) ? tone.port : 'bg-slate-300 dark:bg-slate-600'
                         }`}
                       />
                     )}
@@ -1098,7 +1098,7 @@ export default function FlowCanvasBuilderPage() {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {issueCount === 0 && (
-                  <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs leading-relaxed text-emerald-800 dark:text-emerald-200">
+                  <div className="p-4 rounded-xl bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#c5d5fa] dark:border-[#0E1B3D]/50 text-xs leading-relaxed text-[#163d9c] dark:text-[#c5d5fa]">
                     <CheckCircle2 className="w-5 h-5 mb-1.5" />
                     No problems found. Use <strong>Test</strong> to try the conversation, then <strong>Go live</strong>.
                   </div>

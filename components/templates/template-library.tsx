@@ -135,7 +135,7 @@ export function TemplateLibrary({ orgId, existingNames, onCreated, onCancel }: {
       <div className="lg:sticky lg:top-4 space-y-3">
         {!selected || !preview ? (
           <div className="rounded-xl border border-dashed border-[#ced0d4] dark:border-slate-700 p-6 text-center text-[13.5px] text-[#65676b] dark:text-slate-400">
-            <BadgeCheck size={26} className="mx-auto mb-2 text-[#31a24c]" />
+            <BadgeCheck size={26} className="mx-auto mb-2 text-[#1D5BEA]" />
             Templates from Meta's library are pre-approved: you can send them as soon as they're created. Choose one to preview it.
           </div>
         ) : (

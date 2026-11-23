@@ -380,7 +380,7 @@ export default function IVRWorkflowsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00a884]"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1D5BEA]"></div>
       </div>
     )
   }
@@ -388,7 +388,7 @@ export default function IVRWorkflowsPage() {
   return (
     <div className="p-4 md:p-6 font-sans h-full overflow-y-auto space-y-6 relative">
       {notification && (
-        <div className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white p-4 rounded-xl border border-[#e9edef] shadow-xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#00a884' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
+        <div className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white p-4 rounded-xl border border-[#e9edef] shadow-xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-full select-none" style={{ borderLeft: `4px solid ${notification.type === 'success' ? '#1D5BEA' : notification.type === 'error' ? '#ef4444' : '#3b82f6'}` }}>
           <div className="flex-1 min-w-0">
             {notification.title && (
               <h4 className="text-xs font-bold text-[#111b21] mb-1">{notification.title}</h4>
@@ -419,7 +419,7 @@ export default function IVRWorkflowsPage() {
           onClick={() => setVoiceTab('workflows')}
           className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 ${
             voiceTab === 'workflows'
-              ? 'border-[#00a884] text-[#008069]'
+              ? 'border-[#1D5BEA] text-[#1D5BEA]'
               : 'border-transparent text-[#8696a0] hover:text-[#54656f]'
           }`}
         >
@@ -429,7 +429,7 @@ export default function IVRWorkflowsPage() {
           onClick={() => setVoiceTab('ai_agent')}
           className={`px-4 py-2 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
             voiceTab === 'ai_agent'
-              ? 'border-[#00a884] text-[#008069]'
+              ? 'border-[#1D5BEA] text-[#1D5BEA]'
               : 'border-transparent text-[#8696a0] hover:text-[#54656f]'
           }`}
         >
@@ -443,7 +443,7 @@ export default function IVRWorkflowsPage() {
           <div className="bg-white rounded-lg border border-[#e9edef] p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Phone size={20} className="text-[#00a884]" />
+                <Phone size={20} className="text-[#1D5BEA]" />
                 <h2 className="text-base font-bold text-[#111b21]">Workflows Dashboard</h2>
               </div>
               {!selectedWorkflow && (
@@ -453,7 +453,7 @@ export default function IVRWorkflowsPage() {
                     setNewWorkflowDescription('')
                     setShowAddWorkflowModal(true)
                   }}
-                  className="bg-[#00a884] hover:bg-[#008069] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <Plus size={13} />
                   <span>Create Workflow</span>
@@ -461,14 +461,14 @@ export default function IVRWorkflowsPage() {
               )}
             </div>
 
-            <div className="bg-[#e7f7f4] border border-[#00a884]/20 rounded-lg p-4 mb-4 select-none">
-              <p className="text-xs text-[#008069] font-bold">
+            <div className="bg-[#e7f7f4] border border-[#1D5BEA]/20 rounded-lg p-4 mb-4 select-none">
+              <p className="text-xs text-[#1D5BEA] font-bold">
                 Voice Call Setup Instructions:
               </p>
-              <p className="text-[11px] text-[#008069] mt-1.5 leading-relaxed font-semibold">
+              <p className="text-[11px] text-[#1D5BEA] mt-1.5 leading-relaxed font-semibold">
                 Configure incoming calls to your gateway voice number to point to the following webhook URL. Only <strong>one active workflow</strong> is allowed at a time. Active calls will dynamically follow the active tree.
               </p>
-              <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#00a884]/10 select-all break-all text-[#54656f] font-semibold">
+              <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#1D5BEA]/10 select-all break-all text-[#54656f] font-semibold">
                 {webhookUrl || 'loading...'}
               </div>
             </div>
@@ -478,7 +478,7 @@ export default function IVRWorkflowsPage() {
               <div>
                 {loadingWorkflows ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 size={24} className="animate-spin text-[#00a884]" />
+                    <Loader2 size={24} className="animate-spin text-[#1D5BEA]" />
                   </div>
                 ) : workflows.length === 0 ? (
                   <div className="p-12 text-center text-[#667781] border border-dashed border-[#e9edef] rounded-lg bg-[#f8f9fa] mt-4">
@@ -519,7 +519,7 @@ export default function IVRWorkflowsPage() {
                                 <button
                                   onClick={() => handleToggleActive(wf.id, wf.is_active)}
                                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    wf.is_active ? 'bg-[#00a884]' : 'bg-[#e9edef]'
+                                    wf.is_active ? 'bg-[#1D5BEA]' : 'bg-[#e9edef]'
                                   }`}
                                 >
                                   <span
@@ -528,7 +528,7 @@ export default function IVRWorkflowsPage() {
                                     }`}
                                   />
                                 </button>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider ${wf.is_active ? 'text-[#008069]' : 'text-[#8696a0]'}`}>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${wf.is_active ? 'text-[#1D5BEA]' : 'text-[#8696a0]'}`}>
                                   {wf.is_active ? 'Active' : 'Inactive'}
                                 </span>
                               </div>
@@ -543,7 +543,7 @@ export default function IVRWorkflowsPage() {
                                     setSelectedWorkflow(wf)
                                     setEditWorkflowSteps(wf.steps || [])
                                   }}
-                                  className="px-2.5 py-1 border border-[#e9edef] text-[#008069] hover:bg-[#e7f7f4] hover:border-[#00a884] rounded text-[10px] font-bold transition-all cursor-pointer shrink-0"
+                                  className="px-2.5 py-1 border border-[#e9edef] text-[#1D5BEA] hover:bg-[#e7f7f4] hover:border-[#1D5BEA] rounded text-[10px] font-bold transition-all cursor-pointer shrink-0"
                                 >
                                   Edit Flow
                                 </button>
@@ -580,7 +580,7 @@ export default function IVRWorkflowsPage() {
                         <h3 className="text-sm font-bold text-[#111b21]">{selectedWorkflow.name}</h3>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                           selectedWorkflow.is_active 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                            ? 'bg-[#eef3fe] text-[#174bc4] border-[#dfe8fd]' 
                             : 'bg-gray-50 text-gray-500 border-gray-100'
                         }`}>
                           {selectedWorkflow.is_active ? 'Active' : 'Inactive'}
@@ -601,7 +601,7 @@ export default function IVRWorkflowsPage() {
                     <button
                       onClick={handleSaveWorkflowSteps}
                       disabled={savingWorkflow}
-                      className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       {savingWorkflow ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       <span>Save Changes</span>
@@ -612,19 +612,19 @@ export default function IVRWorkflowsPage() {
                 {/* Add Step Action Bar */}
                 <div className="flex flex-wrap items-center gap-2.5 p-3.5 bg-[#f8f9fa] rounded-lg border border-[#e9edef] select-none">
                   <span className="text-[10px] font-black text-[#54656f] uppercase tracking-wider mr-1.5">Add step:</span>
-                  <button onClick={() => handleAddStep('say')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#00a884] text-[#008069] hover:bg-emerald-50 rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
+                  <button onClick={() => handleAddStep('say')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#eef3fe] rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
                     + Say Prompt (TTS)
                   </button>
-                  <button onClick={() => handleAddStep('gather')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#00a884] text-[#008069] hover:bg-emerald-50 rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
+                  <button onClick={() => handleAddStep('gather')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#eef3fe] rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
                     + Interactive Menu (Gather)
                   </button>
-                  <button onClick={() => handleAddStep('dial')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#00a884] text-[#008069] hover:bg-emerald-50 rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
+                  <button onClick={() => handleAddStep('dial')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#eef3fe] rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
                     + Forward Call (Dial)
                   </button>
-                  <button onClick={() => handleAddStep('record')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#00a884] text-[#008069] hover:bg-emerald-50 rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
+                  <button onClick={() => handleAddStep('record')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#eef3fe] rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
                     + Voicemail (Record)
                   </button>
-                  <button onClick={() => handleAddStep('hangup')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#00a884] text-[#008069] hover:bg-emerald-50 rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
+                  <button onClick={() => handleAddStep('hangup')} className="px-2.5 py-1.5 bg-white border border-[#e9edef] hover:border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#eef3fe] rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm">
                     + Hang Up
                   </button>
                 </div>
@@ -640,7 +640,7 @@ export default function IVRWorkflowsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between px-1 select-none">
                       <span className="text-[10px] text-[#8696a0] font-black uppercase tracking-wider">Configure steps</span>
-                      <span className="text-[10px] text-[#008069] bg-[#e7f7f4] border border-[#00a884]/15 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] text-[#1D5BEA] bg-[#e7f7f4] border border-[#1D5BEA]/15 px-2 py-0.5 rounded-full font-bold">
                         Note: The call always starts at step with ID: <code className="font-mono text-rose-600 font-bold px-0.5">start</code>
                       </span>
                     </div>
@@ -662,7 +662,7 @@ export default function IVRWorkflowsPage() {
                                 value={step.id}
                                 onChange={e => handleUpdateStepField(idx, 'id', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                                 placeholder="step_id"
-                                className="px-2 py-1 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-[11px] font-bold flex-1"
+                                className="px-2 py-1 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-[11px] font-bold flex-1"
                               />
                             </div>
 
@@ -679,7 +679,7 @@ export default function IVRWorkflowsPage() {
 
                             {/* Info text if it's the start step */}
                             {step.id === 'start' && (
-                              <span className="text-[10px] text-[#008069] font-bold bg-[#e7f7f4] border border-[#00a884]/20 px-2 py-0.5 rounded-full select-none">
+                              <span className="text-[10px] text-[#1D5BEA] font-bold bg-[#e7f7f4] border border-[#1D5BEA]/20 px-2 py-0.5 rounded-full select-none">
                                 Entry Point
                               </span>
                             )}
@@ -709,7 +709,7 @@ export default function IVRWorkflowsPage() {
                                   value={step.text || ''}
                                   onChange={e => handleUpdateStepField(idx, 'text', e.target.value)}
                                   placeholder="e.g. Welcome to our support hotline."
-                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
                                 />
                               </div>
                               <div>
@@ -719,7 +719,7 @@ export default function IVRWorkflowsPage() {
                                 <select
                                   value={step.next_step || ''}
                                   onChange={e => handleUpdateStepField(idx, 'next_step', e.target.value || null)}
-                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold text-[#54656f] cursor-pointer"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold text-[#54656f] cursor-pointer"
                                 >
                                   <option value="">Hang Up (None)</option>
                                   {editWorkflowSteps.map((otherStep) => (
@@ -745,7 +745,7 @@ export default function IVRWorkflowsPage() {
                                 value={step.phoneNumber || ''}
                                 onChange={e => handleUpdateStepField(idx, 'phoneNumber', e.target.value.trim())}
                                 placeholder="e.g. +1234567890"
-                                className="w-full max-w-sm px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0]"
+                                className="w-full max-w-sm px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0]"
                               />
                               <p className="text-[10px] text-[#667781] mt-1.5 font-medium">Include country code prefix (e.g. +1 for USA, +44 for UK).</p>
                             </div>
@@ -762,7 +762,7 @@ export default function IVRWorkflowsPage() {
                                   value={step.text || ''}
                                   onChange={e => handleUpdateStepField(idx, 'text', e.target.value)}
                                   placeholder="e.g. Please leave your message after the tone. Press pound when finished."
-                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
                                 />
                               </div>
                               <div>
@@ -772,7 +772,7 @@ export default function IVRWorkflowsPage() {
                                 <select
                                   value={step.next_step || ''}
                                   onChange={e => handleUpdateStepField(idx, 'next_step', e.target.value || null)}
-                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold text-[#54656f] cursor-pointer"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold text-[#54656f] cursor-pointer"
                                 >
                                   <option value="">Hang Up (None)</option>
                                   {editWorkflowSteps.map((otherStep) => (
@@ -800,7 +800,7 @@ export default function IVRWorkflowsPage() {
                                     value={step.prompt || ''}
                                     onChange={e => handleUpdateStepField(idx, 'prompt', e.target.value)}
                                     placeholder="e.g. Press 1 for Sales, or press 2 for Support."
-                                    className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
+                                    className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold placeholder-[#8696a0] resize-none"
                                   />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
@@ -814,7 +814,7 @@ export default function IVRWorkflowsPage() {
                                       max={10}
                                       value={step.numDigits || 1}
                                       onChange={e => handleUpdateStepField(idx, 'numDigits', e.target.value)}
-                                      className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold"
+                                      className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold"
                                     />
                                   </div>
                                   <div>
@@ -827,7 +827,7 @@ export default function IVRWorkflowsPage() {
                                       max={30}
                                       value={step.timeout || 5}
                                       onChange={e => handleUpdateStepField(idx, 'timeout', e.target.value)}
-                                      className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-xs font-semibold"
+                                      className="w-full px-2.5 py-1.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-xs font-semibold"
                                     />
                                   </div>
                                 </div>
@@ -847,14 +847,14 @@ export default function IVRWorkflowsPage() {
                                     <div className="space-y-2">
                                       {Object.entries(step.routes || {}).map(([digit, targetStepId]: [string, any]) => (
                                         <div key={digit} className="flex items-center gap-2 bg-[#f8f9fa] p-2 rounded-lg border border-[#e9edef] animate-in zoom-in-95 duration-200">
-                                          <span className="font-mono text-xs font-black text-[#008069] bg-white px-2.5 py-0.5 rounded border border-[#e9edef] select-none">
+                                          <span className="font-mono text-xs font-black text-[#1D5BEA] bg-white px-2.5 py-0.5 rounded border border-[#e9edef] select-none">
                                             Key {digit}
                                           </span>
                                           <span className="text-[10px] text-[#8696a0] font-bold select-none">routes to</span>
                                           <select
                                             value={targetStepId || ''}
                                             onChange={e => handleUpdateGatherRoute(idx, digit, e.target.value)}
-                                            className="px-2.5 py-1 bg-white border border-[#e9edef] focus:border-[#00a884] focus:outline-none rounded text-[11px] font-semibold text-[#54656f] flex-1 max-w-[220px] cursor-pointer"
+                                            className="px-2.5 py-1 bg-white border border-[#e9edef] focus:border-[#1D5BEA] focus:outline-none rounded text-[11px] font-semibold text-[#54656f] flex-1 max-w-[220px] cursor-pointer"
                                           >
                                             <option value="">Select target step...</option>
                                             {editWorkflowSteps.map((otherStep) => (
@@ -917,7 +917,7 @@ export default function IVRWorkflowsPage() {
                                           showNotification('error', 'Please select a target step to route to.', 'Error Adding Route')
                                         }
                                       }}
-                                      className="px-3 py-1 bg-[#00a884] hover:bg-[#008069] text-white rounded text-[10px] font-bold transition-colors cursor-pointer shadow-xs"
+                                      className="px-3 py-1 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded text-[10px] font-bold transition-colors cursor-pointer shadow-xs"
                                     >
                                       Add Route
                                     </button>
@@ -959,7 +959,7 @@ export default function IVRWorkflowsPage() {
                       value={newWorkflowName}
                       onChange={e => setNewWorkflowName(e.target.value)}
                       placeholder="e.g. Standard IVR Greeting"
-                      className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0]"
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0]"
                     />
                   </div>
                   <div>
@@ -971,7 +971,7 @@ export default function IVRWorkflowsPage() {
                       value={newWorkflowDescription}
                       onChange={e => setNewWorkflowDescription(e.target.value)}
                       placeholder="e.g. Greeting menu with support redirect and voicemail options."
-                      className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] resize-none"
+                      className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] resize-none"
                     />
                   </div>
                 </div>
@@ -985,7 +985,7 @@ export default function IVRWorkflowsPage() {
                   <button
                     onClick={handleCreateWorkflow}
                     disabled={actionLoading || !newWorkflowName.trim()}
-                    className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                    className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     {actionLoading && <Loader2 size={13} className="animate-spin" />}
                     <span>Create</span>
@@ -1001,18 +1001,18 @@ export default function IVRWorkflowsPage() {
         <div className="space-y-6 max-w-4xl animate-in fade-in duration-300">
           
           {/* Webhook Instruction Banner */}
-          <div className="bg-[#e7f7f4] border border-[#00a884]/20 rounded-lg p-4 select-none">
-            <p className="text-xs text-[#008069] font-bold">
+          <div className="bg-[#e7f7f4] border border-[#1D5BEA]/20 rounded-lg p-4 select-none">
+            <p className="text-xs text-[#1D5BEA] font-bold">
               AI Realtime Voice Assistant Integration Instructions:
             </p>
-            <p className="text-[11px] text-[#008069] mt-1.5 leading-relaxed font-semibold">
+            <p className="text-[11px] text-[#1D5BEA] mt-1.5 leading-relaxed font-semibold">
               To route calls through our AI real-time voice assistant, configure your voice number voice webhook to point to the following URL (exposing port 5050 locally via ngrok):
             </p>
-            <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#00a884]/10 select-all break-all text-[#54656f] font-semibold">
+            <div className="font-mono text-[10px] bg-white p-2.5 rounded-lg mt-2.5 border border-[#1D5BEA]/10 select-all break-all text-[#54656f] font-semibold">
               {webhookUrl ? webhookUrl.replace('/api/webhooks/voice', ':5050/incoming-call') : 'http://localhost:5050/incoming-call'}
             </div>
-            <p className="text-[10px] text-[#008069] mt-2 font-medium">
-              Start the WebSocket proxy server locally: <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-[#00a884]/10 text-rose-600 font-bold select-all">node scripts/live-stream-server.js</code>
+            <p className="text-[10px] text-[#1D5BEA] mt-2 font-medium">
+              Start the WebSocket proxy server locally: <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-[#1D5BEA]/10 text-rose-600 font-bold select-all">node scripts/live-stream-server.js</code>
             </p>
           </div>
 
@@ -1029,7 +1029,7 @@ export default function IVRWorkflowsPage() {
                   value={aiPrompt}
                   onChange={e => setAiPrompt(e.target.value)}
                   placeholder="e.g. You are a helpful booking assistant. Be concise. Ask the caller for their full name, email, and the service they wish to book. Once collected, invoke the save_variables function to finish."
-                  className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] resize-y"
+                  className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] resize-y"
                 />
                 <p className="text-[10px] text-[#667781] mt-1.5 font-medium select-none">
                   This custom prompt acts as the system instructions for the GPT-4o Realtime voice assistant model.
@@ -1045,7 +1045,7 @@ export default function IVRWorkflowsPage() {
                   value={aiVariables}
                   onChange={e => setAiVariables(e.target.value)}
                   placeholder="e.g. name, email, booking_date, service_type"
-                  className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#00a884] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0]"
+                  className="w-full px-3.5 py-2.5 bg-white border border-[#e9edef] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0]"
                 />
                 <p className="text-[10px] text-[#667781] mt-1.5 font-medium select-none">
                   Define what variables the AI assistant should gather from the call conversation (the model will submit these in JSON via tool choice function calls).
@@ -1056,7 +1056,7 @@ export default function IVRWorkflowsPage() {
                 <button
                   onClick={handleSaveAiSettings}
                   disabled={savingAiSettings || !aiPrompt.trim()}
-                  className="bg-[#00a884] hover:bg-[#008069] disabled:bg-[#a5e1d5] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   {savingAiSettings ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                   <span>Save AI Settings</span>
@@ -1072,7 +1072,7 @@ export default function IVRWorkflowsPage() {
               <button
                 onClick={() => user?.organization_id && loadAiCalls(user.organization_id)}
                 disabled={loadingAiCalls}
-                className="text-[10px] font-bold text-[#008069] hover:underline cursor-pointer flex items-center gap-1.5"
+                className="text-[10px] font-bold text-[#1D5BEA] hover:underline cursor-pointer flex items-center gap-1.5"
               >
                 {loadingAiCalls && <Loader2 size={10} className="animate-spin" />}
                 Refresh Logs
@@ -1081,7 +1081,7 @@ export default function IVRWorkflowsPage() {
 
             {loadingAiCalls ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 size={24} className="animate-spin text-[#00a884]" />
+                <Loader2 size={24} className="animate-spin text-[#1D5BEA]" />
               </div>
             ) : aiCalls.length === 0 ? (
               <div className="p-12 text-center text-[#667781]">
@@ -1112,7 +1112,7 @@ export default function IVRWorkflowsPage() {
                         </td>
                         <td className="px-6 py-3.5 select-none">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            call.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                            call.status === 'completed' ? 'bg-[#eef3fe] text-[#174bc4] border-[#dfe8fd]' :
                             call.status === 'active' ? 'bg-blue-50 text-blue-700 border-blue-100 animate-pulse' :
                             call.status === 'ended' ? 'bg-slate-50 text-slate-600 border-slate-200' :
                             'bg-gray-50 text-gray-500 border-gray-100'
@@ -1126,7 +1126,7 @@ export default function IVRWorkflowsPage() {
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
                               {Object.entries(call.extracted_variables || {}).map(([key, val]) => (
-                                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#e7f7f4] text-[#008069] border border-[#00a884]/15 font-bold text-[10px]">
+                                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#e7f7f4] text-[#1D5BEA] border border-[#1D5BEA]/15 font-bold text-[10px]">
                                   <span className="opacity-60 mr-1">{key}:</span>{String(val)}
                                 </span>
                               ))}
