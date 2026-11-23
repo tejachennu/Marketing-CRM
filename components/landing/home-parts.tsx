@@ -15,11 +15,11 @@ export function LightMode() {
 }
 
 const NAV = [
-  ['#use-cases', 'Use cases'],
-  ['#features', 'Features'],
-  ['#how', 'How it works'],
+  ['#services', 'Services'],
+  ['#how', 'How we work'],
+  ['#industries', 'Industries'],
+  ['#platform', 'AI platform'],
   ['#pricing', 'Pricing'],
-  ['#faq', 'Questions'],
 ] as const
 
 /** Phone menu: the page links, Log in and Start free */
@@ -281,7 +281,7 @@ export function UseCases() {
           </ul>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link href="/signup" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] px-5 font-semibold text-white">Start free for 14 days <ArrowRight size={17} /></Link>
-            <a href={whatsappUs(`Hi, I run a business (${item.label}). I want to know more about ${BRAND.name}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center rounded-lg border border-[#d5ddeb] bg-white px-5 font-semibold text-[#0E1B3D] hover:border-[#1D5BEA]">Ask us on WhatsApp</a>
+            <a href={whatsappUs(`Hi, I run a business (${item.label}). I want to grow my business with ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center rounded-lg border border-[#d5ddeb] bg-white px-5 font-semibold text-[#0E1B3D] hover:border-[#1D5BEA]">Ask us on WhatsApp</a>
           </div>
         </div>
         <PhoneChat name={sampleName(item.key)} lines={item.chat} />
@@ -294,7 +294,7 @@ function sampleName(key: string) {
   return ({ salon: 'Glow Salon', clinic: 'Smile Dental Clinic', shop: 'Sri Lakshmi Fashions', gym: 'FitZone Gym', food: 'Cafe Mocha', service: 'Speed Auto Service', tutor: 'Bright Academy', sales: 'Green Heights' } as Record<string, string>)[key] || BRAND.name
 }
 
-const GOALS = ['Bookings and bills (Front Desk)', 'Selling online and on WhatsApp', 'Leads and follow-ups', 'AI replies on WhatsApp and Instagram', 'Campaigns to my customers', 'Not sure yet, help me choose']
+const GOALS = ['A growth plan for my business', 'Running ads (Instagram, Facebook, Google)', 'Videos, reels and photos', 'WhatsApp automation and AI replies', 'Bookings, store or leads software', 'All of it: a full marketing partner']
 
 /** "Book a free demo": saved as a lead for our team (/api/public/demo-request) */
 export function DemoForm() {
@@ -337,7 +337,7 @@ export function DemoForm() {
       <div className="rounded-2xl border border-[#d5ddeb] bg-white p-8 text-center">
         <span className="mx-auto h-11 w-11 rounded-full bg-[#1D5BEA] text-white inline-flex items-center justify-center"><Check size={22} /></span>
         <h3 className="mt-3 text-[18px] font-bold text-[#0E1B3D]">Thank you! We will call you soon.</h3>
-        <p className="mt-1 text-[14.5px] text-[#4a5672]">Usually within a few working hours. In a hurry? <a className="font-semibold text-[#1D5BEA]" href={whatsappUs(`Hi, I just asked for a demo of ${BRAND.name}.`)} target="_blank" rel="noopener noreferrer">WhatsApp us</a>.</p>
+        <p className="mt-1 text-[14.5px] text-[#4a5672]">Usually within a few working hours. In a hurry? <a className="font-semibold text-[#1D5BEA]" href={whatsappUs(`Hi, I just asked for a free growth plan from ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer">WhatsApp us</a>.</p>
       </div>
     )
   }
@@ -366,9 +366,9 @@ export function DemoForm() {
       <input type="text" name="website" value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
       {error && <p role="alert" className="rounded-lg bg-[#fdf0f0] px-3 py-2 text-[14px] font-semibold text-[#b91c1c]">{error}</p>}
       <button type="submit" disabled={busy} className="w-full h-12 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-[15.5px] font-bold text-white inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60">
-        {busy ? <Loader2 size={18} className="animate-spin" /> : null} Book my free demo
+        {busy ? <Loader2 size={18} className="animate-spin" /> : null} Get my free growth plan
       </button>
-      <p className="text-center text-[12.5px] text-[#6B7894]">20 minutes on a call or video. We set up WhatsApp with you, free.</p>
+      <p className="text-center text-[12.5px] text-[#6B7894]">A 20-minute call. We look at your business and tell you what to do first, free.</p>
     </form>
   )
 }

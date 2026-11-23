@@ -118,6 +118,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Home page = Magnetora AI as a digital marketing and AI solutions partner** (owner, 23 Nov 2026: "business ki
+  strategies ... grow chestham, workflow automations, ads run chestam, video editing, images editing ... a digital
+  marketing AI solutions partner"). `app/page.tsx` now leads with the company (`BRAND.company`): hero "We grow your
+  business", the 4-step loop (found → messages → bookings → back), six services (growth strategy, ads, video editing and
+  reels, photos and design, workflow automation, AI assistants), how we work (understand, plan, make and run, measure),
+  industries (`UseCases`), the platform (`BRAND.name`) as the software behind it, platform plans + "Want us to run your
+  marketing?" custom package, FAQ, and "Free growth plan" (`DemoForm`, new goals). Service prices and what each package
+  includes are **not** on the page: the owner should confirm them before any are added.
 - **New home page, side menu, Super Admin** (owner, 23 Nov 2026: "100% production ready ... side bar loading issue ...
   super admin not good ... web front page total redesign ... lot of use cases"). Home page `app/page.tsx` (server) +
   `components/landing/home-parts.tsx` (client: `UseCases` with 8 kinds of business, each with the problem, what changes,
