@@ -1630,7 +1630,7 @@ export default function CampaignsPage() {
               const chan = c.channel || 'whatsapp'
               if (chan === 'email') return 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-100 dark:border-blue-900/30'
               if (chan === 'sms') return 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 border-amber-100 dark:border-amber-900/30'
-              return 'bg-[#e7f7f4] dark:bg-[#0E1B3D]/20 text-[#1D5BEA] border-[#1D5BEA]/20'
+              return 'bg-[#eef3fe] dark:bg-[#0E1B3D]/20 text-[#1D5BEA] border-[#1D5BEA]/20'
             })()
 
             return (
@@ -2318,7 +2318,7 @@ export default function CampaignsPage() {
                   {selectedCampaignLogs.length > 0 && (
                     <button
                       onClick={handleDownloadLogsReport}
-                      className="h-7 px-2.5 rounded border border-[#c5d5fa] dark:border-[#0E1B3D]/40 bg-[#eef3fe] dark:bg-[#0E1B3D]/25 hover:bg-[#e7f7f4] dark:hover:bg-[#1D5BEA]/10 text-[10px] md:text-[10px] font-bold text-[#1D5BEA] dark:text-[#5f86ee] flex items-center gap-1 cursor-pointer transition-colors"
+                      className="h-7 px-2.5 rounded border border-[#c5d5fa] dark:border-[#0E1B3D]/40 bg-[#eef3fe] dark:bg-[#0E1B3D]/25 hover:bg-[#eef3fe] dark:hover:bg-[#1D5BEA]/10 text-[10px] md:text-[10px] font-bold text-[#1D5BEA] dark:text-[#5f86ee] flex items-center gap-1 cursor-pointer transition-colors"
                       title="Export logs to Excel"
                     >
                       <FileSpreadsheet size={11} />
@@ -2364,7 +2364,7 @@ export default function CampaignsPage() {
                               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-black text-[10px] border ${
                                 log.status === 'READ' ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 border-blue-200/50' :
                                 log.status === 'DELIVERED' ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/20 text-[#1D5BEA] border-[#c5d5fa]/50' :
-                                log.status === 'SENT' ? 'bg-[#e7f7f4] dark:bg-[#0E1B3D]/20 text-[#1D5BEA] border-[#1D5BEA]/20' :
+                                log.status === 'SENT' ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/20 text-[#1D5BEA] border-[#1D5BEA]/20' :
                                 log.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 border-amber-200/50' :
                                 'bg-red-50 dark:bg-red-950/20 text-red-600 border-red-200/50'
                               }`}>
@@ -2583,7 +2583,7 @@ export default function CampaignsPage() {
                             onClick={() => setChannel('whatsapp')}
                             className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                               channel === 'whatsapp'
-                                ? 'bg-[#e7f7f4] border-[#1D5BEA] text-[#1D5BEA]'
+                                ? 'bg-[#eef3fe] border-[#1D5BEA] text-[#1D5BEA]'
                                 : 'bg-white border-[#e9edef] hover:bg-[#f8f9fa] text-[#54656f] dark:text-[#8696a0]'
                             }`}
                           >
@@ -3405,7 +3405,7 @@ export default function CampaignsPage() {
               {wizardStep === 4 && (
                 <div className="space-y-5">
                   {reviewRecipientCount > 0 ? (
-                    <div className="p-4 bg-[#e7f7f4] dark:bg-[#0E1B3D]/30 border border-[#1D5BEA]/20 rounded-xl flex items-start gap-3">
+                    <div className="p-4 bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#1D5BEA]/20 rounded-xl flex items-start gap-3">
                       <CheckCircle size={18} className="text-[#1D5BEA] dark:text-[#5f86ee] mt-0.5 flex-shrink-0" />
                       <div>
                         <h4 className="font-bold text-sm text-[#1D5BEA] dark:text-[#9db5ef] tabular-nums">
@@ -3613,7 +3613,7 @@ export default function CampaignsPage() {
                         onClick={() => setDispatchTiming('immediate')}
                         className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
                           dispatchTiming === 'immediate'
-                            ? 'border-[#1D5BEA] bg-[#e7f7f4]/40 text-[#1D5BEA]'
+                            ? 'border-[#1D5BEA] bg-[#eef3fe]/40 text-[#1D5BEA]'
                             : 'border-[#e9edef] dark:border-[#2a3942] bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
                         }`}
                       >

@@ -55,7 +55,7 @@ function FlowStep({ icon: Icon, title, note, off, children, last }: { icon: Luci
   return (
     <li className="relative pl-12">
       {!last && <span className="absolute left-[19px] top-10 bottom-0 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />}
-      <span className={`absolute left-0 top-0 h-10 w-10 rounded-xl flex items-center justify-center ${off ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : 'bg-[#e7f6ea] text-[#1D5BEA] dark:bg-[#0E1B3D]/50 dark:text-[#5f86ee]'}`}>
+      <span className={`absolute left-0 top-0 h-10 w-10 rounded-xl flex items-center justify-center ${off ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/50 dark:text-[#5f86ee]'}`}>
         <Icon size={18} />
       </span>
       <div className="pb-6">

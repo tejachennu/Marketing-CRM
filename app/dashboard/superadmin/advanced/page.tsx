@@ -957,12 +957,12 @@ export default function SuperAdminAdvancedPage() {
       {/* Header Dashboard section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 select-none pb-2">
         <div>
-          <a href="/dashboard/superadmin" className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#1D5BEA] hover:underline">← Back to the console</a>
-          <h1 className="text-2xl font-black tracking-tight text-neutral-800 dark:text-white mt-2 leading-none">
-            Advanced settings
+          <a href="/dashboard/superadmin" className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#1D5BEA] hover:underline">← Back to Super Admin</a>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-800 dark:text-white mt-2 leading-none">
+            Workspace keys and AI
           </h1>
           <p className="text-xs text-neutral-500 dark:text-[#8696a0] font-semibold mt-2.5">
-            Channel keys, AI prompts and knowledge for each workspace.
+            Pick a workspace to see its WhatsApp, email and AI keys, its AI instructions and what is switched on. Plans, people and email are on the main Super Admin pages.
           </p>
         </div>
         
@@ -981,101 +981,7 @@ export default function SuperAdminAdvancedPage() {
             <RefreshCw size={15} />
           </button>
           
-          <button
-            onClick={() => {
-              if (organizations.length === 0) {
-                triggerAlert('error', 'Please load organizations first.')
-                return
-              }
-              setUserForm({
-                fullName: '',
-                email: '',
-                password: '',
-                role: 'org_manager',
-                organizationId: organizations[0]?.id || ''
-              })
-              setShowUserModal(true)
-            }}
-            className="flex items-center gap-1.5 h-10 px-4 bg-neutral-800 hover:bg-neutral-900 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-800 rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md active:scale-95"
-          >
-            <Plus size={14} />
-            <span>Add User</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setOrgForm({
-                name: '',
-                slug: '',
-                contact_name: '',
-                contact_email: '',
-                contact_phone: '',
-                contact_address: '',
-                enable_ai: true,
-                enable_email: true,
-                enable_messages: true,
-                enable_phone_calls: true,
-                enable_sms: true,
-                twilio_account_sid: '',
-                twilio_auth_token: '',
-                twilio_whatsapp_number: '',
-                sendgrid_api_key: '',
-                sendgrid_from_email: '',
-                openai_api_key: '',
-                chatbot_base_prompt: '',
-              })
-              setShowOrgModal(true)
-            }}
-            className="flex items-center gap-1.5 h-10 px-4 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm hover:shadow-md hover:shadow-[#1D5BEA]/10 active:scale-95"
-          >
-            <Plus size={14} />
-            <span>Add Organization</span>
-          </button>
         </div>
-      </div>
-
-      {/* Tabs navigation */}
-      <div className="bg-white/80 dark:bg-[#111b21]/80 backdrop-blur-md border border-neutral-200/60 dark:border-neutral-800/60 p-1.5 rounded-2xl flex items-center gap-1.5 select-none w-fit shadow-sm">
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'analytics' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Analytics Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('organizations')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'organizations' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Organizations ({organizations.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'users' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Users & Managers ({users.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('email')}
-          className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-            activeTab === 'email' 
-              ? 'bg-neutral-800 dark:bg-white text-white dark:text-neutral-800 shadow-sm' 
-              : 'text-neutral-500 dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
-          }`}
-        >
-          Platform Email
-        </button>
       </div>
 
       {/* TAB CONTENT: PLATFORM EMAIL */}
@@ -1090,96 +996,96 @@ export default function SuperAdminAdvancedPage() {
             {/* Organizations count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#1D5BEA]/30 dark:hover:border-[#1D5BEA]/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Organizations</span>
                 <div className="h-8 w-8 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Building size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.organizations}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">active</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">active</span>
               </div>
             </div>
 
             {/* Users count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-blue-500/30 dark:hover:border-blue-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Users</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Users</span>
                 <div className="h-8 w-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Users size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.users}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">system</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">system</span>
               </div>
             </div>
 
             {/* Contacts count */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-indigo-500/30 dark:hover:border-indigo-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Contacts</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Total Contacts</span>
                 <div className="h-8 w-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <UserCheck size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.contacts}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">records</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">records</span>
               </div>
             </div>
 
             {/* Messages sent/received */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-[#1D5BEA]/30 dark:hover:border-[#1D5BEA]/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Messages Log</span>
                 <div className="h-8 w-8 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center group-hover:scale-110 transition-transform">
                   <MessageSquare size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.messages}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">sent/recv</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">sent/recv</span>
               </div>
             </div>
 
             {/* Campaigns sent */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-rose-500/30 dark:hover:border-rose-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Campaigns</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]">Campaigns</span>
                 <div className="h-8 w-8 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Megaphone size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : stats.campaigns}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">dispatched</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">dispatched</span>
               </div>
             </div>
 
             {/* AI Costing */}
             <div className="bg-white dark:bg-[#111b21] border border-neutral-200/60 dark:border-neutral-800/80 rounded-2xl p-5 hover:shadow-md transition-all group select-none hover:border-amber-500/30 dark:hover:border-amber-500/30">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]" title="Estimated from message and campaign volume. AI usage is not metered yet.">Est. AI Costing</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-[#8696a0]" title="Estimated from message and campaign volume. AI usage is not metered yet.">Est. AI Costing</span>
                 <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Sparkles size={15} />
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black text-neutral-800 dark:text-white tracking-tight">
+                <span className="text-2xl font-bold text-neutral-800 dark:text-white tracking-tight">
                   {loadingStats ? <Loader2 size={18} className="animate-spin text-neutral-400" /> : `$${stats.totalAiCost.toFixed(4)}`}
                 </span>
-                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-black uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
+                <span className="text-[10px] text-[#667781] dark:text-[#8696a0] font-bold uppercase tracking-wider">({(stats.totalAiTokens / 1000).toFixed(1)}k tokens)</span>
               </div>
             </div>
 
@@ -1190,7 +1096,7 @@ export default function SuperAdminAdvancedPage() {
             <div className="flex items-center justify-between mb-5 select-none">
               <div className="flex items-center gap-2">
                 <Database size={16} className="text-[#1D5BEA]" />
-                <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
+                <h3 className="text-xs font-bold text-neutral-800 dark:text-white uppercase tracking-wider">
                   Tenant Resource Allocation & Metrics
                 </h3>
               </div>
@@ -1210,8 +1116,8 @@ export default function SuperAdminAdvancedPage() {
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
-                      <th className="py-3 px-4">Organization Name</th>
-                      <th className="py-3 px-4">Slug Identifier</th>
+                      <th className="py-3 px-4">Workspace</th>
+                      <th className="py-3 px-4">Web address</th>
                       <th className="py-3 px-4 text-center">Users</th>
                       <th className="py-3 px-4 text-center">Contacts</th>
                       <th className="py-3 px-4 text-center">Campaigns</th>
@@ -1253,7 +1159,7 @@ export default function SuperAdminAdvancedPage() {
               <Search size={14} className="absolute left-3.5 top-3 text-neutral-400 dark:text-[#8696a0]" />
               <input
                 type="text"
-                placeholder="Search organizations by name or slug..."
+                placeholder="Search workspaces by name or web address"
                 value={orgSearch}
                 onChange={(e) => setOrgSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 dark:border-[#202d36] bg-[#f0f2f5] dark:bg-[#0c1317] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#1D5BEA] dark:focus:border-[#1D5BEA] text-neutral-800 dark:text-white"
@@ -1265,20 +1171,20 @@ export default function SuperAdminAdvancedPage() {
           {loadingOrgs ? (
             <div className="flex flex-col items-center justify-center py-16 space-y-3">
               <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
-              <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Fetching organizations...</span>
+              <span className="text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">Loading workspaces…</span>
             </div>
           ) : filteredOrgs.length === 0 ? (
             <div className="text-center py-16 text-xs text-neutral-400 dark:text-[#8696a0] font-semibold">
-              No organizations match the filter criteria.
+              No workspace matches that search.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-neutral-200/80 dark:border-neutral-800/80 text-neutral-400 dark:text-[#8696a0] font-bold">
-                    <th className="py-3 px-4">Organization Name</th>
-                    <th className="py-3 px-4">Slug Identifier</th>
-                    <th className="py-3 px-4">Feature Toggles</th>
+                    <th className="py-3 px-4">Workspace</th>
+                    <th className="py-3 px-4">Web address</th>
+                    <th className="py-3 px-4">Switched on</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -1301,23 +1207,23 @@ export default function SuperAdminAdvancedPage() {
                         <td className="py-4 px-4">
                           <div className="flex flex-wrap gap-1.5 select-none">
                             {org.enable_ai !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-purple-500 animate-pulse" /> AI
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 text-[#0E1B3D] dark:text-slate-200 font-semibold text-[10px]">
+                                <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> AI
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                             
                             {org.enable_email !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-blue-500" /> Email
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 text-[#0E1B3D] dark:text-slate-200 font-semibold text-[10px]">
+                                <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> Email
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
                             
                             {org.enable_messages !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef3fe] dark:bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] font-extrabold text-[10px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 text-[#0E1B3D] dark:text-slate-200 font-semibold text-[10px]">
                                 <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> Chat
                               </span>
                             ) : (
@@ -1325,16 +1231,16 @@ export default function SuperAdminAdvancedPage() {
                             )}
                             
                             {org.enable_phone_calls !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-amber-500" /> Phone
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 text-[#0E1B3D] dark:text-slate-200 font-semibold text-[10px]">
+                                <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> Phone
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
                             )}
 
                             {org.enable_sms !== false ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-extrabold text-[10px]">
-                                <span className="h-1 w-1 rounded-full bg-rose-500" /> SMS
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 text-[#0E1B3D] dark:text-slate-200 font-semibold text-[10px]">
+                                <span className="h-1 w-1 rounded-full bg-[#1D5BEA]" /> SMS
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-bold text-[10px]">Disabled</span>
@@ -1347,14 +1253,14 @@ export default function SuperAdminAdvancedPage() {
                               setEditingOrg(org)
                             }}
                             className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202d36] dark:hover:bg-[#2a3942] text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
-                            title="Rename Organization"
+                            title="Rename workspace"
                           >
                             <Edit2 size={12} />
                           </button>
                           <button
                             onClick={() => handleDeleteOrg(org.id, org.name)}
                             className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
-                            title="Delete Organization"
+                            title="Delete workspace"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -1383,7 +1289,7 @@ export default function SuperAdminAdvancedPage() {
             </button>
             <div className="h-6 w-px bg-neutral-200 dark:bg-[#202d36]" />
             <div>
-              <h2 className="text-base font-black text-neutral-800 dark:text-white flex items-center gap-2">
+              <h2 className="text-base font-bold text-neutral-800 dark:text-white flex items-center gap-2">
                 <span>{selectedOrgSettings.name} Settings</span>
                 <span className="font-mono text-[10px] text-neutral-400 dark:text-[#8696a0] bg-neutral-100 dark:bg-[#1f2c34] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                   {selectedOrgSettings.slug}
@@ -1399,7 +1305,7 @@ export default function SuperAdminAdvancedPage() {
           <div className="flex border-b border-neutral-200 dark:border-[#202d36] mb-6">
             <button
               onClick={() => setSettingsActiveTab('general')}
-              className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 ${
+              className={`px-4 py-2 text-xs font-semibold transition-all cursor-pointer border-b-2 ${
                 settingsActiveTab === 'general'
                   ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                   : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
@@ -1410,7 +1316,7 @@ export default function SuperAdminAdvancedPage() {
             {selectedOrgSettings.enable_ai !== false && (
               <button
                 onClick={() => setSettingsActiveTab('knowledge')}
-                className={`px-4 py-2 text-xs font-extrabold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                className={`px-4 py-2 text-xs font-semibold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
                   settingsActiveTab === 'knowledge'
                     ? 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#1D5BEA]'
                     : 'border-transparent text-[#667781] dark:text-[#8696a0] hover:text-neutral-800 dark:hover:text-white'
@@ -1430,7 +1336,7 @@ export default function SuperAdminAdvancedPage() {
                 
                 {/* Card: Organization Details & Contact Info */}
                 <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
                     <Building size={14} />
                     <span>Organization Info</span>
                   </h3>
@@ -1450,7 +1356,7 @@ export default function SuperAdminAdvancedPage() {
                     
                     <div className="space-y-1.5">
                       <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                        Slug Identifier
+                        Web address
                       </label>
                       <input
                         type="text"
@@ -1518,7 +1424,7 @@ export default function SuperAdminAdvancedPage() {
 
                 {/* Card: Feature Gateways */}
                 <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#1D5BEA] flex items-center gap-2 pb-2 border-b border-neutral-100 dark:border-neutral-800">
                     <Sliders size={14} />
                     <span>Global Features Configuration</span>
                   </h3>
@@ -1676,12 +1582,12 @@ export default function SuperAdminAdvancedPage() {
                 <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 select-none">
                   <div className="flex items-center gap-2">
                     <Key size={16} className="text-[#1D5BEA]" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">Credentials & Integrations</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-white">Credentials & Integrations</h3>
                   </div>
                   <button
                     onClick={handleSaveCredentials}
                     disabled={savingCredentials}
-                    className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-[#c5d5fa] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
                     <span>Save Configuration</span>
@@ -2137,7 +2043,7 @@ export default function SuperAdminAdvancedPage() {
                     <button
                       onClick={handleAddManual}
                       disabled={actionLoading || !manualTitle.trim() || !manualContent.trim()}
-                      className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      className="bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-[#c5d5fa] text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Plus size={13} />
                       <span>Add FAQ Item</span>
@@ -2166,7 +2072,7 @@ export default function SuperAdminAdvancedPage() {
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={importProgress !== null || loadingArticles}
-                      className="bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      className="bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-[#c5d5fa] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Upload size={12} />
                       <span>Import Excel</span>
@@ -2188,7 +2094,7 @@ export default function SuperAdminAdvancedPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-[#8696a0]">
+                        <tr className="border-b border-[#e9edef] dark:border-[#2a3942] bg-[#f0f2f5] dark:bg-[#1f2c34] text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-[#8696a0]">
                           <th className="px-6 py-3">Question</th>
                           <th className="px-6 py-3">Answer Preview</th>
                           <th className="px-6 py-3">Indexed Date</th>
@@ -2335,7 +2241,7 @@ export default function SuperAdminAdvancedPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${getRoleDisplay(user.role).bg} ${getRoleDisplay(user.role).color} ${getRoleDisplay(user.role).border}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${getRoleDisplay(user.role).bg} ${getRoleDisplay(user.role).color} ${getRoleDisplay(user.role).border}`}>
                           {getRoleDisplay(user.role).label}
                         </span>
                       </td>
@@ -2376,7 +2282,7 @@ export default function SuperAdminAdvancedPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-[#202d36] pb-3">
               <div>
-                <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
+                <h3 className="text-xs font-bold text-neutral-800 dark:text-white uppercase tracking-wider">
                   Create Organization
                 </h3>
                 <span className="text-[10px] text-neutral-400 dark:text-[#8696a0] font-bold mt-1 block">
@@ -2410,7 +2316,7 @@ export default function SuperAdminAdvancedPage() {
 
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider">
-                    Slug Identifier *
+                    Web address *
                   </label>
                   <input
                     type="text"
@@ -2484,7 +2390,7 @@ export default function SuperAdminAdvancedPage() {
                 <button
                   type="submit"
                   disabled={submittingOrg || !orgForm.name || !orgForm.slug}
-                  className="px-5 py-2.5 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-[#1D5BEA]/10 active:scale-[0.98]"
+                  className="px-5 py-2.5 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-[#1D5BEA]/10 active:scale-[0.98]"
                 >
                   {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                   <span>Save & Create Org</span>
@@ -2501,7 +2407,7 @@ export default function SuperAdminAdvancedPage() {
         <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
           <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-neutral-800 dark:text-white uppercase tracking-wider">
                 Edit Organization Details
               </h3>
               <button 
@@ -2542,7 +2448,7 @@ export default function SuperAdminAdvancedPage() {
               <button
                 type="submit"
                 disabled={submittingOrg}
-                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingOrg ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Save Changes</span>
@@ -2557,7 +2463,7 @@ export default function SuperAdminAdvancedPage() {
         <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
           <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-neutral-800 dark:text-white uppercase tracking-wider">
                 Add New Manager / User
               </h3>
               <button 
@@ -2656,7 +2562,7 @@ export default function SuperAdminAdvancedPage() {
               <button
                 type="submit"
                 disabled={submittingUser}
-                className="w-full mt-3 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-3 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Create User Profile</span>
@@ -2671,7 +2577,7 @@ export default function SuperAdminAdvancedPage() {
         <div className="fixed inset-0 bg-neutral-900/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 backdrop-blur-sm select-none">
           <div className="bg-[#f0f2f5] dark:bg-[#1f2c34] rounded-3xl max-w-md w-full border border-neutral-200 dark:border-[#2a3942] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-[#2a3942] pb-3">
-              <h3 className="text-xs font-black text-neutral-800 dark:text-white uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-neutral-800 dark:text-white uppercase tracking-wider">
                 Edit User Details
               </h3>
               <button 
@@ -2746,7 +2652,7 @@ export default function SuperAdminAdvancedPage() {
               <button
                 type="submit"
                 disabled={submittingUser}
-                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
+                className="w-full mt-2 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.98]"
               >
                 {submittingUser ? <Loader2 size={14} className="animate-spin text-neutral-400" /> : <Check size={14} />}
                 <span>Save Changes</span>

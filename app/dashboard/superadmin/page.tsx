@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { SUPERADMIN_TAB_EVENT, superAdminTab } from '@/lib/superadmin-nav'
 import {
   AlertTriangle, ArrowUpRight, Building2, CalendarPlus, Check, ChevronRight, CreditCard, IndianRupee, Loader2, Mail, Plus,
   RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Users, X,
@@ -154,9 +156,38 @@ const roleValue = (role: string) => {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function SuperAdminConsole() {
+// useSearchParams needs a Suspense boundary for the build
+export default function SuperAdminPage() {
+  return (
+    <Suspense fallback={null}>
+      <SuperAdminConsole />
+    </Suspense>
+  )
+}
+
+function SuperAdminConsole() {
   const confirm = useConfirm()
-  const [tab, setTab] = useState<Tab>('overview')
+  // The section lives in the address (?tab=), so the side menu can open each one
+  const [tab, setTabState] = useState<Tab>('overview')
+  const setTab = useCallback((next: Tab) => {
+    setTabState(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', next)
+    window.history.replaceState(window.history.state, '', url)
+    window.dispatchEvent(new Event(SUPERADMIN_TAB_EVENT))
+  }, [])
+  useEffect(() => {
+    const read = () => setTabState(superAdminTab(window.location.search))
+    read()
+    window.addEventListener('popstate', read)
+    window.addEventListener(SUPERADMIN_TAB_EVENT, read)
+    return () => { window.removeEventListener('popstate', read); window.removeEventListener(SUPERADMIN_TAB_EVENT, read) }
+  }, [])
+  const searchKey = useSearchParams().toString()
+  useEffect(() => {
+    setTabState(superAdminTab(window.location.search))
+    window.dispatchEvent(new Event(SUPERADMIN_TAB_EVENT))
+  }, [searchKey])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [billingReady, setBillingReady] = useState(true)
@@ -358,7 +389,7 @@ export default function SuperAdminConsole() {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#eef3fe] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <AlertTriangle size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>
@@ -378,7 +409,7 @@ export default function SuperAdminConsole() {
           </div>
         )}
 
-        <div className="flex gap-1 overflow-x-auto border-b border-[#e3e8f2] dark:border-slate-800">
+        <div className="flex md:hidden gap-1 overflow-x-auto border-b border-[#e3e8f2] dark:border-slate-800">
           {([['overview', 'Overview'], ['workspaces', `Workspaces (${workspaces.length})`], ['people', `People (${people.length})`], ['setup', 'Setup'], ['email', 'Platform email']] as [Tab, string][]).map(([id, label]) => (
             <button key={id} type="button" onClick={() => setTab(id)} className={`px-4 h-11 text-[14.5px] font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-[#1D5BEA] text-[#1D5BEA]' : 'border-transparent text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>{label}</button>
           ))}

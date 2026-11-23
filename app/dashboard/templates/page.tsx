@@ -25,7 +25,7 @@ const secondary = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 roun
 const select = 'h-9 px-3 text-[14px] rounded-lg bg-white dark:bg-slate-900 border border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-white focus:outline-none focus:border-[#0064e0]'
 
 const TONES: Record<string, string> = {
-  green: 'bg-[#e6f4ea] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
+  green: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
   yellow: 'bg-[#fef4d6] text-[#8a6100] dark:bg-amber-950/60 dark:text-amber-300',
   red: 'bg-[#fde8ea] text-[#c11231] dark:bg-rose-950/60 dark:text-rose-300',
   gray: 'bg-[#eceef1] text-[#4b4f56] dark:bg-slate-800 dark:text-slate-300',

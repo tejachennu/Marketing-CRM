@@ -15,6 +15,10 @@ import { BADGES_EVENT, CONNECTOR_APPS, connectorAppAt, connectorTabFromSearch, o
 import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modules'
 import { activeConnectors, FEATURE_NAMES, type PlanFeature, type PlanLimits } from '@/lib/plans'
 import type { ConnectorKey } from '@/lib/connectors'
+import { SUPERADMIN_TAB_EVENT, superAdminTab } from '@/lib/superadmin-nav'
+
+/** Where the last menu is kept, so the side menu shows at once on the next visit instead of loading empty */
+const MENU_CACHE_KEY = 'wama-menu'
 
 export default function DashboardLayout({
   children,
@@ -32,6 +36,14 @@ export default function DashboardLayout({
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(null)
   // Which modules the workspace has; Flow Builder, Commerce, Team and Billing wait until this is known
   const [workspaceModules, setWorkspaceModules] = useState<{ loaded: boolean; consular: boolean }>({ loaded: false, consular: false })
+  // The menu as it was last time (per signed-in person), shown at once while the real one loads
+  const [cachedMenu, setCachedMenu] = useState<string[] | null>(null)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(MENU_CACHE_KEY) || 'null')
+      if (saved && saved.user === authSessionManager.getUser()?.id && Array.isArray(saved.hrefs)) setCachedMenu(saved.hrefs)
+    } catch {}
+  }, [])
   const [userRole, setUserRole] = useState<string>('')
   const [features, setFeatures] = useState({
     enable_ai: true,
@@ -682,6 +694,7 @@ export default function DashboardLayout({
     } catch (e) {
       // Best-effort cleanup
     }
+    try { localStorage.removeItem(MENU_CACHE_KEY) } catch {}
     authSessionManager.clearSession()
     window.location.href = '/login'
   }
@@ -703,6 +716,19 @@ export default function DashboardLayout({
   const currentUser = { id: userId, role: userRole, see_all: userSeeAll, read_only: userReadOnly }
   const seeAll = canSeeAll(currentUser)
   const isPlatformAdmin = isSuperAdmin(currentUser)
+  // Which Super Admin section is open (the page says so through SUPERADMIN_TAB_EVENT, and the address keeps it)
+  const [openAdminTab, setOpenAdminTab] = useState('overview')
+  useEffect(() => {
+    const read = () => setOpenAdminTab(superAdminTab(window.location.search))
+    read()
+    window.addEventListener(SUPERADMIN_TAB_EVENT, read)
+    window.addEventListener('popstate', read)
+    return () => { window.removeEventListener(SUPERADMIN_TAB_EVENT, read); window.removeEventListener('popstate', read) }
+  }, [pathname])
+  const itemActive = (href: string) => {
+    if (href.includes('?tab=')) return pathname === '/dashboard/superadmin' && href.endsWith(`?tab=${openAdminTab}`)
+    return pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+  }
   const canManageBilling = can(currentUser, 'billing.manage')
 
   // Badges are small pills: cap the label so a busy inbox cannot overflow them
@@ -725,6 +751,15 @@ export default function DashboardLayout({
     { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },
     { href: '/dashboard/playground', label: 'AI Playground', icon: Sparkles },
     { href: '/dashboard/superadmin', label: 'Super Admin', icon: Shield },
+  ]
+  // WAMA's own staff: the Super Admin sections are the menu (the page keeps its section in ?tab=)
+  const superAdminItems = [
+    { href: '/dashboard/superadmin?tab=overview', label: 'Overview', icon: BarChart3 },
+    { href: '/dashboard/superadmin?tab=workspaces', label: 'Workspaces', icon: Briefcase },
+    { href: '/dashboard/superadmin?tab=people', label: 'People', icon: Users },
+    { href: '/dashboard/superadmin?tab=setup', label: 'Setup', icon: Settings },
+    { href: '/dashboard/superadmin?tab=email', label: 'Platform email', icon: Key },
+    { href: '/dashboard/superadmin/advanced', label: 'Workspace keys and AI', icon: Shield },
   ]
 
   // Flow Builder, Commerce, Team and Billing: every client workspace has them, except Consular
@@ -779,16 +814,39 @@ export default function DashboardLayout({
     return null
   }
 
+  // One connector at a time (lib/plans.ts): the menu lists only the one in use; the others are switched on in Connectors
+  const connectorMenu: [string, ConnectorKey][] = [['/dashboard/front-desk', 'salon'], ['/dashboard/salon', 'salon'], ['/dashboard/commerce', 'ecommerce'], ['/dashboard/leads', 'pipeline']]
+  const connectorsOn = ([['salon', features.enabled_connectors.includes('salon')], ['ecommerce', features.enable_commerce], ['pipeline', features.enable_pipeline]] as [ConnectorKey, boolean][]).filter(([, enabled]) => enabled).map(([key]) => key)
+  const connectorInUse: ConnectorKey | undefined = billing?.limits
+    ? activeConnectors(billing.limits, connectorsOn)[0]
+    : (['salon', 'ecommerce', 'pipeline'] as ConnectorKey[]).find((key) => connectorsOn.includes(key))
+  const connectorHidden = (href: string) => {
+    if (isPlatformAdmin || workspaceModules.consular) return false
+    const match = connectorMenu.find(([base]) => href === base || href.startsWith(`${base}/`))
+    return Boolean(match && match[1] !== connectorInUse)
+  }
+
+  // The menu is ready once the person and their workspace's settings are known; until then the last menu is shown
+  const menuReady = profileLoaded && (workspaceModules.loaded || !orgId || isPlatformAdmin)
   // Role rules live in lib/rbac.ts (canAccessPage); the same rules drive the menu and the page guard
-  const filteredNavItems = profileLoaded
+  const filteredNavItems = menuReady && isPlatformAdmin
+    ? superAdminItems
+    : menuReady
     ? navItems.filter(
         (item) =>
           canAccessPage(currentUser, item.href) &&
           // Billing is for workspace admins, and only where there is a plan to manage
           (item.href !== '/dashboard/billing' || (canManageBilling && !isPlatformAdmin && billing !== null && !billing.exempt)) &&
-          (isPlatformAdmin || isFeatureEnabled(item.href))
+          (isPlatformAdmin || isFeatureEnabled(item.href)) &&
+          !connectorHidden(item.href)
       )
-    : []
+    : [...navItems, ...superAdminItems].filter((item) => cachedMenu?.includes(item.href))
+  const menuKey = filteredNavItems.map((item) => item.href).join('|')
+  useEffect(() => {
+    if (!menuReady || !userId) return
+    try { localStorage.setItem(MENU_CACHE_KEY, JSON.stringify({ user: userId, hrefs: menuKey.split('|') })) } catch {}
+  }, [menuReady, userId, menuKey])
+  const menuLoading = !menuReady && !cachedMenu?.length
   const isNavVisible = (href: string) => filteredNavItems.some((item) => item.href === href)
 
   // Links the mobile bottom bar already shows; the drawer lists everything else (all of it inside a connector)
@@ -891,7 +949,7 @@ export default function DashboardLayout({
                     {orgName || 'Marketing CRM'}
                   </span>
                   <span className="text-[10px] text-slate-400 font-medium truncate">
-                    Omnichannel Hub
+                    {isPlatformAdmin ? 'Super Admin' : billing?.plan?.name ? `${billing.plan.name} plan` : 'Your workspace'}
                   </span>
                 </div>
               </Link>
@@ -932,10 +990,16 @@ export default function DashboardLayout({
               <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 select-none">
                 Menu
               </div>
-              <nav className="space-y-1">
+              <nav className="space-y-1" aria-busy={menuLoading || undefined}>
+                {menuLoading && Array.from({ length: 8 }, (_, i) => (
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2.5" aria-hidden>
+                    <span className="h-4 w-4 rounded-md bg-[#eef1f6] dark:bg-slate-800 animate-pulse" />
+                    <span className="h-3 rounded bg-[#eef1f6] dark:bg-slate-800 animate-pulse" style={{ width: `${48 + ((i * 37) % 40)}%` }} />
+                  </div>
+                ))}
                 {filteredNavItems.map((item) => {
                   const Icon = item.icon
-                  const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                  const isActive = itemActive(item.href)
 
                   return (
                     <Link
@@ -993,9 +1057,12 @@ export default function DashboardLayout({
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto py-3 px-2 flex flex-col items-center gap-1.5 scrollbar-thin">
+              {menuLoading && Array.from({ length: 8 }, (_, i) => (
+                <span key={i} className="h-10 w-10 rounded-xl bg-[#eef1f6] dark:bg-slate-800 animate-pulse" aria-hidden />
+              ))}
               {filteredNavItems.map((item) => {
                 const Icon = item.icon
-                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                const isActive = itemActive(item.href)
 
                 return (
                   <Link
@@ -1364,7 +1431,7 @@ export default function DashboardLayout({
               <nav className="flex-1 overflow-y-auto py-2">
                 {mobileDrawerItems.map((item) => {
                   const Icon = item.icon
-                  const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                  const isActive = itemActive(item.href)
                   return (
                     <Link
                       key={item.href}

@@ -1429,7 +1429,7 @@ export default function CampaignFullTabPage() {
                       onClick={() => setShowCampaignContext((prev) => !prev)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
                         showCampaignContext
-                          ? 'bg-[#e7f7f4] dark:bg-[#0E1B3D]/30 text-[#1D5BEA] dark:text-[#5f86ee] border-[#1D5BEA]/30'
+                          ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#1D5BEA] dark:text-[#5f86ee] border-[#1D5BEA]/30'
                           : 'bg-white dark:bg-[#111b21] text-[#54656f] dark:text-[#8696a0] hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] border-[#e9edef] dark:border-[#2a3942]'
                       }`}
                       title={showCampaignContext ? 'Hide campaign message' : 'View dispatched campaign message'}
@@ -2384,7 +2384,7 @@ export default function CampaignFullTabPage() {
                                   : (rec.dispatch_status || '').toUpperCase() === 'DELIVERED'
                                   ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/60'
                                   : (rec.dispatch_status || '').toUpperCase() === 'SENT'
-                                  ? 'bg-[#e7f7f4] text-[#1D5BEA] dark:bg-[#0E1B3D]/20 dark:text-[#9db5ef] border-[#1D5BEA]/20'
+                                  ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/20 dark:text-[#9db5ef] border-[#1D5BEA]/20'
                                   : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/60'
                               }`}
                             >

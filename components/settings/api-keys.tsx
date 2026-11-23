@@ -94,7 +94,7 @@ export function ApiKeysPanel({ orgId, cardClass }: { orgId: string; cardClass: s
         {notice && <p className="mt-4 rounded-xl bg-[#fff7e8] dark:bg-amber-950/30 text-[#92400e] dark:text-amber-200 px-4 py-3 text-[14px]">{notice}</p>}
 
         {created && (
-          <div className="mt-5 rounded-2xl border-2 border-[#1D5BEA] bg-[#e8f7f1]/60 dark:bg-[#0E1B3D]/20 p-4 space-y-3">
+          <div className="mt-5 rounded-2xl border-2 border-[#1D5BEA] bg-[#eef3fe]/60 dark:bg-[#0E1B3D]/20 p-4 space-y-3">
             <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Check size={18} className="text-[#1D5BEA]" /> “{created.name}” is ready. Copy the key now: it is not shown again.</p>
             <div className="flex flex-col sm:flex-row gap-2 min-w-0">
               <code className="flex-1 min-w-0 rounded-xl bg-[#0E1B3D] text-white px-3.5 py-3 text-[13.5px] font-semibold [overflow-wrap:anywhere] select-all">{created.key}</code>

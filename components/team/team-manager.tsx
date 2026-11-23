@@ -243,7 +243,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e8f7f1] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#eef3fe] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <X size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>

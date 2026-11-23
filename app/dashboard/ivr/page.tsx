@@ -461,7 +461,7 @@ export default function IVRWorkflowsPage() {
               )}
             </div>
 
-            <div className="bg-[#e7f7f4] border border-[#1D5BEA]/20 rounded-lg p-4 mb-4 select-none">
+            <div className="bg-[#eef3fe] border border-[#1D5BEA]/20 rounded-lg p-4 mb-4 select-none">
               <p className="text-xs text-[#1D5BEA] font-bold">
                 Voice Call Setup Instructions:
               </p>
@@ -543,7 +543,7 @@ export default function IVRWorkflowsPage() {
                                     setSelectedWorkflow(wf)
                                     setEditWorkflowSteps(wf.steps || [])
                                   }}
-                                  className="px-2.5 py-1 border border-[#e9edef] text-[#1D5BEA] hover:bg-[#e7f7f4] hover:border-[#1D5BEA] rounded text-[10px] font-bold transition-all cursor-pointer shrink-0"
+                                  className="px-2.5 py-1 border border-[#e9edef] text-[#1D5BEA] hover:bg-[#eef3fe] hover:border-[#1D5BEA] rounded text-[10px] font-bold transition-all cursor-pointer shrink-0"
                                 >
                                   Edit Flow
                                 </button>
@@ -640,7 +640,7 @@ export default function IVRWorkflowsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between px-1 select-none">
                       <span className="text-[10px] text-[#8696a0] font-black uppercase tracking-wider">Configure steps</span>
-                      <span className="text-[10px] text-[#1D5BEA] bg-[#e7f7f4] border border-[#1D5BEA]/15 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] text-[#1D5BEA] bg-[#eef3fe] border border-[#1D5BEA]/15 px-2 py-0.5 rounded-full font-bold">
                         Note: The call always starts at step with ID: <code className="font-mono text-rose-600 font-bold px-0.5">start</code>
                       </span>
                     </div>
@@ -679,7 +679,7 @@ export default function IVRWorkflowsPage() {
 
                             {/* Info text if it's the start step */}
                             {step.id === 'start' && (
-                              <span className="text-[10px] text-[#1D5BEA] font-bold bg-[#e7f7f4] border border-[#1D5BEA]/20 px-2 py-0.5 rounded-full select-none">
+                              <span className="text-[10px] text-[#1D5BEA] font-bold bg-[#eef3fe] border border-[#1D5BEA]/20 px-2 py-0.5 rounded-full select-none">
                                 Entry Point
                               </span>
                             )}
@@ -1001,7 +1001,7 @@ export default function IVRWorkflowsPage() {
         <div className="space-y-6 max-w-4xl animate-in fade-in duration-300">
           
           {/* Webhook Instruction Banner */}
-          <div className="bg-[#e7f7f4] border border-[#1D5BEA]/20 rounded-lg p-4 select-none">
+          <div className="bg-[#eef3fe] border border-[#1D5BEA]/20 rounded-lg p-4 select-none">
             <p className="text-xs text-[#1D5BEA] font-bold">
               AI Realtime Voice Assistant Integration Instructions:
             </p>
@@ -1126,7 +1126,7 @@ export default function IVRWorkflowsPage() {
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
                               {Object.entries(call.extracted_variables || {}).map(([key, val]) => (
-                                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#e7f7f4] text-[#1D5BEA] border border-[#1D5BEA]/15 font-bold text-[10px]">
+                                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#eef3fe] text-[#1D5BEA] border border-[#1D5BEA]/15 font-bold text-[10px]">
                                   <span className="opacity-60 mr-1">{key}:</span>{String(val)}
                                 </span>
                               ))}
