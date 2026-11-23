@@ -118,6 +118,20 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **New home page, side menu, Super Admin** (owner, 23 Nov 2026: "100% production ready ... side bar loading issue ...
+  super admin not good ... web front page total redesign ... lot of use cases"). Home page `app/page.tsx` (server) +
+  `components/landing/home-parts.tsx` (client: `UseCases` with 8 kinds of business, each with the problem, what changes,
+  the connector and a sample chat in `PhoneChat`; `DemoForm` → `/api/public/demo-request` with the honeypot and ad source;
+  `MobileMenu`, `DesktopNav`, `LightMode`): hero, numbers, use cases, connectors, 16 features, AI section, how it works,
+  pricing from `PLANS`, FAQ (`<details>`), demo, navy footer. Brand name and contact in **`lib/brand.ts`** (`BRAND`,
+  `whatsappUs`): rename there. Side menu (`app/dashboard/layout.tsx`): shows the last menu at once (`MENU_CACHE_KEY`
+  'wama-menu' in localStorage, per user, cleared on log out), placeholder rows on the first load, waits for the
+  workspace's settings (`menuReady`), and lists **only the connector in use** (`connectorHidden`); sidebar subtitle is the
+  plan name. Super Admin: its sections are the side menu (`superAdminItems`, `?tab=` kept in the address,
+  `lib/superadmin-nav.ts` `SUPERADMIN_TAB_EVENT` / `superAdminTab`; page tabs only on phones); the Advanced page is now
+  "Workspace keys and AI" (workspace list only, plain words, simple colours). App: every server call checked against the
+  routes (all exist, right methods, workspace id sent). **Most app "not working" reports come from production being on
+  the 20 Nov server** (v4 `40e522f`): the app's newer screens need a deploy.
 - **Simple colours on the whole dashboard; WhatsApp lock; sample lists** (owner, 22–23 Nov 2026: "do whatever changes
   you feel are needed"). Old emerald / teal / WhatsApp-green accents and every gradient on the dashboard pages, auth pages
   and shared components moved to navy / one blue / greys (44 files; the sidebar and phone bottom bar active item is now
