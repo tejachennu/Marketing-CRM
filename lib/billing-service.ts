@@ -7,6 +7,7 @@ import { billingLimits, billingState, getBilling, MAX_AI_TOPUP, MIN_AI_TOPUP, TR
 import { allowsMap, getPlan, isPlanId, limitsOf, planDirection, planIdOf, PLAN_CURRENCY, PLAN_INTERVAL, PLANS, upgradeDifferencePaise, type PlanId } from './plans'
 import { cancelSubscription, capturePayment, createSubscription, createTopupOrder, fetchOrder, fetchPayment, fetchSubscription, type OrderPurpose } from './razorpay'
 import { withPlansSchema } from './plans-schema'
+import { forgetWorkspace } from './billing-gate'
 import { creditMessages, LOW_MESSAGE_BALANCE, MAX_MESSAGE_TOPUP, messageHistory, messagePrices, MIN_MESSAGE_TOPUP } from './message-wallet'
 
 async function checked(query: any) {
@@ -70,6 +71,7 @@ function charged(subscription: any): boolean {
  * - Current one cancelled while a pending one waits: nothing changes; the pending one takes over.
  */
 export async function applySubscription(db: any, organizationId: string, subscription: any, options: { adopt?: boolean; cancel?: typeof cancelSubscription } = {}): Promise<void> {
+  forgetWorkspace(organizationId) // a paid or changed plan opens a paused workspace at once (lib/billing-gate.ts)
   const { data: current } = await db.from('organization_billing').select('*').eq('organization_id', organizationId).maybeSingle()
   const status = mapSubscriptionStatus(String(subscription?.status || ''))
   const now = new Date().toISOString()

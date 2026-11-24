@@ -51,6 +51,7 @@ import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
 import 'ui/theme.dart';
+import 'ui/plan_lock.dart';
 import 'ui/whatsapp_lock.dart';
 import 'screens/store/online_payments.dart';
 import 'screens/front_desk/website_settings_screen.dart';
@@ -70,7 +71,7 @@ Future<void> main() async {
 
   final Backend backend;
   if (AppConfig.demo) {
-    backend = DemoBackend();
+    backend = DemoBackend(billing: preview['billing'] ?? 'trial', staff: preview['staff'] == '1', whatsapp: preview['nowa'] != '1');
   } else {
     final config = await loadSignInConfig(store);
     if (config == null) {
@@ -289,7 +290,8 @@ class _Root extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    return app.signedIn ? const HomeShell() : const LoginScreen();
+    // Free trial or plan ended: only "Choose a plan" until it is paid (the server refuses the rest anyway)
+    return !app.signedIn ? const LoginScreen() : app.paused ? const PlanEndedScreen() : const HomeShell();
   }
 }
 
@@ -327,11 +329,16 @@ class _HomeShellState extends State<HomeShell> {
     final tab = _tab.clamp(0, pages.length - 1);
     return Scaffold(
       body: IndexedStack(index: tab, children: pages),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Brand.line)),
-        ),
-        child: NavigationBar(
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Last days of the free trial: a thin bar to choose a plan
+          const TrialBar(),
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Brand.line)),
+            ),
+            child: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (i) => setState(() => _tab = i),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
@@ -366,6 +373,8 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ],
         ),
+          ),
+        ],
       ),
     );
   }

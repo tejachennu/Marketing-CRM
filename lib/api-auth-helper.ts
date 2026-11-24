@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { endedMessage, openWhenEnded, workspacePaused } from './billing-gate'
 import { createClient } from '@supabase/supabase-js'
 import { can, canAccessAssigned, describeDenied, isSuperAdmin, type Permission } from './rbac'
 import { billingLimits, getBilling } from './billing'
@@ -163,7 +164,20 @@ export async function verifyOrgAccess(request: NextRequest, targetOrgId: string 
     return { authorized: false, error: 'Forbidden: You do not have access to this organization\'s data', status: 403, user }
   }
 
-  return denyByPermission(user, options.permission) || await denyByPlan(user, targetOrgId, options.feature) || { authorized: true, user }
+  return denyByPermission(user, options.permission) || await denyWhenPaused(request, user, targetOrgId) || await denyByPlan(user, targetOrgId, options.feature) || { authorized: true, user }
+}
+
+/**
+ * A 402 when the workspace's free trial or plan has ended (lib/billing-gate.ts): only Billing, sign-in and the app's
+ * profile stay open until it pays. Super admins are never refused.
+ */
+async function denyWhenPaused(request: NextRequest, user: any, organizationId: string): Promise<AccessResult | null> {
+  if (isSuperAdmin(user)) return null
+  let path = ''
+  try { path = request.nextUrl?.pathname || new URL(request.url).pathname } catch { return null }
+  if (openWhenEnded(path, request.method || 'GET')) return null
+  const { paused, onTrial } = await workspacePaused(getSupabaseAdminClient(), organizationId)
+  return paused ? { authorized: false, error: endedMessage(onTrial), status: 402, user } : null
 }
 
 export async function verifyRecordAccess(request: NextRequest, table: string, recordId: string | null, options: AccessOptions = {}): Promise<AccessResult> {

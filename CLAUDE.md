@@ -118,6 +118,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **14-day free trial, then pay: enforced on the server and in the app; release tests** (owner, 24 Nov 2026: "release the
+  apk to production ... with whatsapp integration and without ... 14 days free trail after they need to do payment").
+  Before this only the website's pages locked; the API kept answering, so the app worked after the trial. Now
+  `verifyOrgAccess` refuses a paused workspace with 402 (`denyWhenPaused` → `lib/billing-gate.ts`: `workspacePaused`
+  = `!billingState(...).hasAccess`, remembered 30 s per workspace, `forgetWorkspace` in `applySubscription` so paying opens
+  it at once; never refuses on a billing read error, exempt, no billing row or super admins). Still open while paused
+  (`openWhenEnded`): `/api/billing*`, `/api/auth*`, `/api/mobile/me|config|devices`, `GET /api/organization`,
+  `/api/superadmin*`. Webhooks (incoming WhatsApp, AI replies) are not gated. `/api/mobile/me` returns `billing`
+  {exempt, hasAccess, status, onTrial, trialDaysLeft, accessUntil, plan}. App: `AppState.paused` / `trialDaysLeft` /
+  `trialEnded`; any 402 reloads the profile (`_onPaused`); the outbox keeps changes waiting on 402 (sent after paying);
+  `refreshAll` stops after the profile while paused. `ui/plan_lock.dart`: `PlanEndedScreen` replaces the tabs (owner:
+  Choose a plan → Billing, "I have paid, check again"; staff: ask the owner; WhatsApp us; Sign out) and `TrialBar`
+  above the bottom bar for the last 3 days; More shows "Free trial · N days left". Demo: `?billing=trial|trial2|ended|paid`,
+  `&staff=1`, `&nowa=1` (WhatsApp not connected); the demo backend refuses like the server. Tests
+  `tests/billing-gate.test.cjs`, app `test/release_*_test.dart` (one workspace kind per file: the phone store opens
+  once per file; `reach` scrolls lazily-built lists).
 - **Home page = Magnetora AI as a digital marketing and AI solutions partner** (owner, 23 Nov 2026: "business ki
   strategies ... grow chestham, workflow automations, ads run chestam, video editing, images editing ... a digital
   marketing AI solutions partner"). `app/page.tsx` now leads with the company (`BRAND.company`): hero "We grow your

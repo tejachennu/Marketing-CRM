@@ -15,13 +15,40 @@ import 'format.dart';
 /// Sample data that answers like the real server, so every screen can be tried and shown
 /// without an account. Changes made in the demo stay until the app is closed.
 class DemoBackend implements Backend {
-  DemoBackend({this.offline = false}) {
+  DemoBackend({this.offline = false, this.billing = 'trial', this.staff = false, this.whatsapp = true}) {
     _seed();
     _seedMore();
   }
 
   /// Pretend there is no internet (to show the offline screens).
   bool offline;
+
+  /// The free trial in the demo: 'trial' (10 days left), 'trial2' (2 days left), 'ended', 'paid'.
+  String billing;
+
+  /// Signed in as staff (cannot pay) instead of the owner.
+  final bool staff;
+
+  /// The business's WhatsApp number is connected (false: chats, campaigns, templates and the booking flow lock).
+  final bool whatsapp;
+
+  /// Like the server (lib/billing-gate.ts): once the trial has ended only Billing, sign-in and the profile answer.
+  void _refuseWhenPaused(String method, String path) {
+    if (billing != 'ended') return;
+    final clean = path.split('?').first;
+    bool under(String p) => clean == p || clean.startsWith('$p/');
+    final open = under('/api/billing') || under('/api/auth') || under('/api/mobile/me') || under('/api/mobile/config') || under('/api/mobile/devices') || (under('/api/organization') && method == 'GET');
+    if (!open) throw ApiException(402, 'Your free trial has ended. Choose a plan in Billing to carry on: nothing has been deleted.');
+  }
+
+  Map<String, dynamic> _billingAnswer() {
+    final left = billing == 'trial2' ? 2 : 10;
+    return switch (billing) {
+      'ended' => {'exempt': false, 'hasAccess': false, 'status': 'expired', 'onTrial': true, 'trialDaysLeft': 0, 'accessUntil': null, 'plan': {'id': 'growth', 'name': 'Growth', 'price': 2500}},
+      'paid' => {'exempt': false, 'hasAccess': true, 'status': 'active', 'onTrial': false, 'trialDaysLeft': null, 'accessUntil': null, 'plan': {'id': 'growth', 'name': 'Growth', 'price': 2500}},
+      _ => {'exempt': false, 'hasAccess': true, 'status': 'trialing', 'onTrial': true, 'trialDaysLeft': left, 'accessUntil': null, 'plan': {'id': 'growth', 'name': 'Growth', 'price': 2500}},
+    };
+  }
   bool _signedIn = true;
   int _seq = 100;
 
@@ -620,6 +647,7 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
+    _refuseWhenPaused('GET', path);
     final desk = _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
@@ -632,9 +660,11 @@ class DemoBackend implements Backend {
         return {
           'user': {'id': 'u1', 'name': 'Teja', 'email': 'owner@glowsalon.in', 'role': 'Admin'},
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
-          'can': {'write': true, 'manage': true, 'campaigns': true, 'seeAll': true, 'billing': true, 'settings': true},
+          'can': {'write': true, 'manage': !staff, 'campaigns': !staff, 'seeAll': !staff, 'billing': !staff, 'settings': !staff},
           'connectors': {'frontDesk': _connectorOn == 'salon', 'ecommerce': _connectorOn == 'ecommerce', 'pipeline': _connectorOn == 'pipeline'},
           'instagram': {'connected': true, 'username': 'glowstore', 'replyHours': 24},
+          'billing': _billingAnswer(),
+          'whatsapp': {'connected': whatsapp, 'mode': 'own'},
         };
       case '/api/salon/setup':
         return {'success': true, ..._setup};
@@ -721,6 +751,9 @@ class DemoBackend implements Backend {
   @override
   Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
     await _wait();
+    _refuseWhenPaused(method, path);
+    // Paying in the demo opens the workspace again
+    if (path.startsWith('/api/billing/subscribe') || path.startsWith('/api/billing/change-plan')) billing = 'paid';
     if (path == '/api/connectors') {
       final key = '${body['key']}';
       final off = body['enabled'] == true && _connectorOn != null && _connectorOn != key ? [_connectorOn] : const [];

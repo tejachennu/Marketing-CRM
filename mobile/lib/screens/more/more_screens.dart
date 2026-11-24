@@ -80,6 +80,13 @@ class MoreScreen extends StatelessWidget {
                             text: connectorName(app) ?? 'No connector yet',
                             onTap: app.can('settings') ? () => open(const ConnectorsScreen()) : null,
                           ),
+                          // Free trial: how long is left (tap to choose a plan)
+                          if (app.trialDaysLeft != null)
+                            _Chip(
+                              icon: Icons.hourglass_top,
+                              text: app.trialDaysLeft! <= 0 ? 'Free trial ends today' : 'Free trial · ${app.trialDaysLeft} ${app.trialDaysLeft == 1 ? 'day' : 'days'} left',
+                              onTap: app.can('billing') ? () => open(const BillingScreen()) : null,
+                            ),
                         ],
                       ),
                     ],

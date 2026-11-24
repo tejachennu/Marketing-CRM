@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser, getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { CONNECTORS, isConnectorOn } from '@/lib/connectors'
-import { billingLimits, getBilling } from '@/lib/billing'
-import { activeConnectors } from '@/lib/plans'
+import { billingLimits, billingState, getBilling } from '@/lib/billing'
+import { activeConnectors, getPlan, planIdOf } from '@/lib/plans'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
-import { can, canSeeAll, getRoleDisplay, isReadOnly } from '@/lib/rbac'
+import { can, canSeeAll, getRoleDisplay, isReadOnly, isSuperAdmin } from '@/lib/rbac'
 import { accountFor } from '@/lib/instagram/store'
 import { igReplyHours } from '@/lib/instagram/rules'
 import { getOrganizationCredentials } from '@/lib/organization-access'
@@ -40,5 +40,23 @@ export async function GET(request: NextRequest) {
     instagram: { connected: Boolean(instagram), username: instagram?.username || null, replyHours: igReplyHours() },
     // WhatsApp sender connected (Meta or Twilio): until then the app locks chats, campaigns, templates and tickets
     whatsapp: { connected: getOrganizationCredentials(organization).messaging, mode: billing?.whatsapp_mode || 'own' },
+    // The free trial or plan: the app shows days left, and a "Choose a plan" page once it has ended (the server
+    // refuses everything but Billing then: lib/billing-gate.ts). No billing set up = never paused.
+    billing: billingFor(billing, isSuperAdmin(user)),
   })
+}
+
+function billingFor(row: Awaited<ReturnType<typeof getBilling>>, superAdmin: boolean) {
+  if (!row || superAdmin) return { exempt: true, hasAccess: true, status: 'active', onTrial: false, trialDaysLeft: null, accessUntil: null, plan: null }
+  const state = billingState(row)
+  const plan = state.exempt ? null : getPlan(planIdOf(row.plan))
+  return {
+    exempt: state.exempt,
+    hasAccess: state.hasAccess,
+    status: state.status,
+    onTrial: state.onTrial,
+    trialDaysLeft: state.trialDaysLeft,
+    accessUntil: state.accessUntil,
+    plan: plan ? { id: plan.id, name: plan.name, price: plan.amountPaise / 100 } : null,
+  }
 }

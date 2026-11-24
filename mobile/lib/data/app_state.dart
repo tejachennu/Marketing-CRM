@@ -168,6 +168,9 @@ class AppState extends ChangeNotifier {
     } on OfflineException {
       _markOffline();
       throw OfflineException('This needs the internet. Try again when you are online.');
+    } on ApiException catch (e) {
+      _onPaused(e);
+      rethrow;
     }
   }
 
@@ -206,6 +209,23 @@ class AppState extends ChangeNotifier {
 
   /// Starter sends bookings, bills and reminders through WAMA's own number (no own number needed for those).
   bool get sharedWhatsApp => me?['whatsapp']?['mode'] == 'shared';
+
+  // ── Free trial and plan ──
+
+  /// The free trial or plan has ended: the app shows "Choose a plan" (the server refuses everything but Billing
+  /// until then). An older server that does not say counts as open.
+  bool get paused => me?['billing']?['hasAccess'] == false;
+
+  /// On the free trial: the days left (0 = ends today). Null when paying, exempt or not said.
+  int? get trialDaysLeft => me?['billing']?['onTrial'] == true && me?['billing']?['hasAccess'] != false ? (me?['billing']?['trialDaysLeft'] as num?)?.toInt() : null;
+
+  /// The trial ended (rather than a paid plan): changes the words on the paused screen.
+  bool get trialEnded => paused && me?['billing']?['onTrial'] == true;
+
+  /// The server said the workspace is paused (402): read the profile again so the app shows the plan screen.
+  void _onPaused(ApiException e) {
+    if (e.status == 402 && !paused) unawaited(load('me', '/api/mobile/me', force: true));
+  }
 
   // ── Chats: WhatsApp and Instagram are two lists, never mixed (owner's rule) ──
 
@@ -262,6 +282,7 @@ class AppState extends ChangeNotifier {
       if (rethrowErrors) rethrow;
     } on ApiException catch (e) {
       lastError = e.message;
+      if (key != 'me') _onPaused(e);
       notifyListeners();
       if (rethrowErrors) rethrow;
     } finally {
@@ -286,7 +307,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       await load('me', '/api/mobile/me', force: true);
-      if (!online) return;
+      // Paused (trial or plan ended): nothing else would load until a plan is chosen
+      if (!online || paused) return;
       await Future.wait([
         if (frontDeskOn) ...[
           load('setup', '/api/salon/setup', force: true),
@@ -454,6 +476,15 @@ class AppState extends ChangeNotifier {
           _markOffline();
           break;
         } on ApiException catch (e) {
+          // Paused workspace: keep it waiting (it is sent once a plan is chosen), and show the plan screen
+          if (e.status == 402) {
+            item.state = OutboxState.waiting;
+            item.attempts--;
+            item.error = e.message;
+            await store.putOutbox(item);
+            _onPaused(e);
+            break;
+          }
           if (e.retryable && item.attempts < 6) {
             item.state = OutboxState.waiting;
             item.error = e.message;
