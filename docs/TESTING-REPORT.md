@@ -1,5 +1,35 @@
 # WAMA CRM — Testing report
 
+## App release check (24 Nov 2026): free trial, paying, with and without WhatsApp
+
+**Branch:** `ccr-7a545d5a-4kbhlw`. The owner asked for the app to be ready for release: it must work with WhatsApp
+connected and without it, with 14 days free and payment after that.
+
+| Check | Result |
+|---|---|
+| Web unit tests (`npm test`) | **817 / 817 passed** (6 new: `tests/billing-gate.test.cjs`) |
+| Web type check | **No errors** |
+| App code check (`flutter analyze lib`) | **No issues** |
+| App tests, all (`flutter test`) | **418 / 418 passed** |
+| New release tests (`test/release_*_test.dart`) | **10 / 10 passed** |
+
+**Bug found and fixed:** when the free trial ended, only the website's pages locked. The server kept answering, so the
+**app kept working without payment**. Now the server refuses a paused workspace (402) for everything except Billing,
+sign-in and the app's profile, and the app shows "Choose a plan".
+
+| Case tested | What happens |
+|---|---|
+| Trial, 10 days left, WhatsApp connected | App opens normally; chats open; More shows "Free trial · 10 days left" |
+| Trial, last 3 days | A bar above the tabs: "2 days left in your free trial", tap → Billing (320 px phone) |
+| Trial ended, owner | Only "Your 14-day free trial has ended" with Choose a plan → Billing, I have paid / check again, WhatsApp us, Sign out; no tabs (320 px, large text) |
+| Trial ended, staff | "Ask the owner…", no pay button |
+| Trial ends while the app is open | The next refused call shows the plan screen; a change made meanwhile waits on the phone and is sent after paying |
+| No WhatsApp connected | Front Desk and Bills work; Chats asks to connect, with WhatsApp us / Call us; More offers "Connect your WhatsApp" |
+| No WhatsApp and trial ended | The plan screen comes first |
+| Paying | The workspace opens at once (`forgetWorkspace` after a subscription is applied) |
+
+**Still needs a real try after deploying:** a real Razorpay payment from the app, and a real workspace whose trial ends.
+
 ## Launch check (21 Nov 2026): version 1 freeze
 
 **Branch:** `ccr-7a545d5a-4kbhlw`. The owner asked for a full bug, security and design pass before the first
