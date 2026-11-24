@@ -46,7 +46,7 @@ export const PLAN_INTERVAL = 'monthly'
 export const GST_PERCENT = 18
 
 const MESSAGING_FEATURES = [
-  'Your own WhatsApp number',
+  'Your own WhatsApp number (connect Meta)',
   'Team inbox with AI replies in English, Telugu and Hindi',
   'Campaigns with every Meta template type',
   'Tickets, flow builder and WhatsApp forms',
@@ -56,12 +56,13 @@ export const PLANS: Plan[] = [
   {
     id: 'starter',
     name: 'Starter',
-    tagline: 'Bookings and bills, with WhatsApp messages from our number',
+    tagline: 'Bills, GST invoices and reports, without connecting WhatsApp',
     amountPaise: 99_900,
     whatsapp: 'shared',
     limits: { messaging: false, connectors: 1, connectorKeys: ['salon'], team: 3, aiMonthly: 0, ads: false, videos: 0 },
     features: [
       'Front Desk: bookings, walk-ins and GST bills',
+      'Sales, staff and commission reports',
       'Your own booking page with a link and QR code',
       'Booking confirmations and reminders on WhatsApp from WAMA\'s number',
       'WhatsApp messages at Meta\'s price, no extra charge',

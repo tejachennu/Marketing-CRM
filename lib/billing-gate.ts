@@ -6,7 +6,7 @@
  * Still open after the end: Billing (to pay), sign-in and sign-out, the app's own profile and settings calls,
  * and reading the workspace's basic details (the website's menu needs them). Nothing is deleted.
  */
-import { billingState, getBilling } from './billing'
+import { billingState, getBilling, type BillingRow } from './billing'
 
 /** What may still be used once the workspace has paused: [path prefix, methods or 'any'] */
 const OPEN_WHEN_ENDED: [string, 'any' | string[]][] = [
@@ -35,19 +35,24 @@ export function endedMessage(onTrial: boolean) {
 }
 
 // A short memory per workspace, so every call does not read billing again (one Vercel instance, 30 seconds)
-const remembered = new Map<string, { at: number; paused: boolean; onTrial: boolean }>()
+const remembered = new Map<string, { at: number; row: BillingRow | null }>()
 const REMEMBER_MS = 30_000
+
+/** The workspace's billing row, read at most once per half minute. Throws on a read error. */
+export async function billingRowFor(db: any, organizationId: string, now = Date.now()): Promise<BillingRow | null> {
+  const hit = remembered.get(organizationId)
+  if (hit && now - hit.at < REMEMBER_MS) return hit.row
+  const row = await getBilling(db, organizationId)
+  remembered.set(organizationId, { at: now, row })
+  if (remembered.size > 5000) remembered.clear()
+  return row
+}
 
 /** Is this workspace paused right now? Never refuses on a read error (better to let a call through). */
 export async function workspacePaused(db: any, organizationId: string, now = Date.now()): Promise<{ paused: boolean; onTrial: boolean }> {
-  const hit = remembered.get(organizationId)
-  if (hit && now - hit.at < REMEMBER_MS) return hit
   try {
-    const state = billingState(await getBilling(db, organizationId), now)
-    const answer = { at: now, paused: !state.hasAccess, onTrial: state.onTrial }
-    remembered.set(organizationId, answer)
-    if (remembered.size > 5000) remembered.clear()
-    return answer
+    const state = billingState(await billingRowFor(db, organizationId, now), now)
+    return { paused: !state.hasAccess, onTrial: state.onTrial }
   } catch (error: any) {
     console.error('[billing-gate] Billing could not be read:', error?.message)
     return { paused: false, onTrial: false }

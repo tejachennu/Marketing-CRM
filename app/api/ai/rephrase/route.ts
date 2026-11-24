@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { getAuthenticatedUser, workspaceRules } from '@/lib/api-auth-helper'
 import { aiFetch, getAiAccess } from '@/lib/ai-access'
 
 function getSupabaseClient() {
@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    // Trial ended or not on this plan (Starter has no own-WhatsApp features): lib/plan-gate.ts
+    const ruled = await workspaceRules(request, user, user.organization_id)
+    if (ruled) return NextResponse.json({ error: ruled.error }, { status: ruled.status })
 
     const body = await request.json()
     const { text, tone } = body

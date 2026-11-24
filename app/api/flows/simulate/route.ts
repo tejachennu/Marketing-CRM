@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { getAuthenticatedUser, workspaceRules } from '@/lib/api-auth-helper'
 import type { WorkflowNode, WorkflowEdge } from '@/lib/flows/flow-types'
 import { getNextNode, getChoices, resolveReply, validateWorkflow, readNodeField, normalizeTags, interpolateVariables } from '@/lib/flows/flow-graph'
 import { runFlow, type FlowReply } from '@/lib/flows/flow-runner'
 
 export async function POST(request: NextRequest) {
-  if (!await getAuthenticatedUser(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getAuthenticatedUser(request)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ruled = await workspaceRules(request, user, user.organization_id)
+  if (ruled) return NextResponse.json({ error: ruled.error }, { status: ruled.status })
   try {
     const { nodes, edges, currentNodeId, userInput = '', buttonId, simulatedState = {}, flowSubmissionData } = await request.json()
     const errors = validateWorkflow(nodes, edges)

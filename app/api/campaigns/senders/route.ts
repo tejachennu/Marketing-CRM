@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
-import { getAuthenticatedUser } from '@/lib/api-auth-helper'
+import { getAuthenticatedUser, workspaceRules } from '@/lib/api-auth-helper'
 import { isSuperAdmin } from '@/lib/rbac'
 import { MASTER_ORG_ID } from '@/lib/constants'
 
@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized: No active session found' }, { status: 401 })
     }
+    // Trial ended or not on this plan (Starter has no own-WhatsApp features): lib/plan-gate.ts
+    const ruled = await workspaceRules(request, user, user.organization_id)
+    if (ruled) return NextResponse.json({ error: ruled.error }, { status: ruled.status })
 
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('organizationId') || user.organization_id

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { endedMessage, openWhenEnded, workspacePaused } from './billing-gate'
+import { billingRowFor, endedMessage, openWhenEnded, workspacePaused } from './billing-gate'
+import { connectorForPath, featureForPath, planRefusal } from './plan-gate'
 import { createClient } from '@supabase/supabase-js'
 import { can, canAccessAssigned, describeDenied, isSuperAdmin, type Permission } from './rbac'
 import { billingLimits, getBilling } from './billing'
@@ -164,13 +165,41 @@ export async function verifyOrgAccess(request: NextRequest, targetOrgId: string 
     return { authorized: false, error: 'Forbidden: You do not have access to this organization\'s data', status: 403, user }
   }
 
-  return denyByPermission(user, options.permission) || await denyWhenPaused(request, user, targetOrgId) || await denyByPlan(user, targetOrgId, options.feature) || { authorized: true, user }
+  return denyByPermission(user, options.permission) || await denyWhenPaused(request, user, targetOrgId) || await denyByPathPlan(request, user, targetOrgId) || await denyByPlan(user, targetOrgId, options.feature) || { authorized: true, user }
 }
 
 /**
  * A 402 when the workspace's free trial or plan has ended (lib/billing-gate.ts): only Billing, sign-in and the app's
  * profile stay open until it pays. Super admins are never refused.
  */
+/**
+ * A 402 when the address needs something the workspace's plan leaves out (lib/plan-gate.ts): Starter has no own
+ * WhatsApp features and only Front Desk. Exempt workspaces, no billing yet and super admins are never refused; a
+ * billing read error lets the call through.
+ */
+/**
+ * The workspace-wide rules every signed-in call obeys: a paused workspace (trial or plan ended) and what its plan
+ * leaves out. For routes that sign the person in without verifyOrgAccess / verifyRecordAccess.
+ */
+export async function workspaceRules(request: NextRequest, user: any, organizationId: string | null | undefined): Promise<AccessResult | null> {
+  if (!user || !organizationId) return null
+  return await denyWhenPaused(request, user, organizationId) || await denyByPathPlan(request, user, organizationId)
+}
+
+async function denyByPathPlan(request: NextRequest, user: any, organizationId: string): Promise<AccessResult | null> {
+  if (isSuperAdmin(user)) return null
+  let path = ''
+  try { path = request.nextUrl?.pathname || new URL(request.url).pathname } catch { return null }
+  if (!featureForPath(path) && !connectorForPath(path)) return null
+  try {
+    const refusal = planRefusal(billingLimits(await billingRowFor(getSupabaseAdminClient(), organizationId)), path)
+    return refusal ? { authorized: false, error: refusal, status: 402, user } : null
+  } catch (error: any) {
+    console.error('[api-auth] Plan check failed:', error?.message)
+    return null
+  }
+}
+
 async function denyWhenPaused(request: NextRequest, user: any, organizationId: string): Promise<AccessResult | null> {
   if (isSuperAdmin(user)) return null
   let path = ''
@@ -221,7 +250,7 @@ export async function verifyRecordAccess(request: NextRequest, table: string, re
       return { authorized: false, error: describeDenied('records.view_all'), status: 403, user }
     }
 
-    return await denyByPlan(user, record.organization_id, options.feature) || { authorized: true, user }
+    return await workspaceRules(request, user, record.organization_id) || await denyByPlan(user, record.organization_id, options.feature) || { authorized: true, user }
   } catch (err) {
     console.error('[api-auth] verifyRecordAccess error:', err)
     return { authorized: false, error: 'Internal server error during record validation', status: 500, user }

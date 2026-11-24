@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/app_state.dart';
+import '../screens/more/billing_screen.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -20,7 +21,9 @@ class WhatsAppLocked extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final text = Uri.encodeComponent('Hi, please connect WhatsApp for ${app.orgName} on WAMA CRM.');
+    // Starter (₹999) has no own WhatsApp: it needs Growth or Pro first, then we connect the number
+    final starter = app.sharedWhatsApp;
+    final text = Uri.encodeComponent(starter ? 'Hi, I want to move ${app.orgName} to Growth and connect our own WhatsApp.' : 'Hi, please connect WhatsApp for ${app.orgName} on WAMA CRM.');
     Future<void> open(String url) async {
       final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication).catchError((_) => false);
       if (!ok && context.mounted) toast(context, 'Could not open it. Message us on +91 83676 29608.');
@@ -52,10 +55,16 @@ class WhatsAppLocked extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        Text(feature == 'WhatsApp' ? 'Connect your WhatsApp' : 'Connect WhatsApp to use ${feature.toLowerCase()}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700)),
+        Text(
+          starter ? 'Your own WhatsApp comes with Growth' : feature == 'WhatsApp' ? 'Connect your WhatsApp' : 'Connect WhatsApp to use ${feature.toLowerCase()}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 8),
-        const Text(
-          'Your WhatsApp Business number is not connected yet. Our team connects it for you, usually the same day. Message or call us and we will set it up.',
+        Text(
+          starter
+              ? 'Your Starter plan covers bookings, bills, GST invoices and reports. To use ${feature == 'WhatsApp' ? 'chats, AI replies and campaigns' : feature.toLowerCase()} on your own WhatsApp number, move to Growth or Pro. We connect the number for you.'
+              : 'Your WhatsApp Business number is not connected yet. Our team connects it for you, usually the same day. Message or call us and we will set it up.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Brand.textSoft, height: 1.45, fontSize: 15),
         ),
@@ -76,11 +85,20 @@ class WhatsAppLocked extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        if (starter && app.can('billing')) ...[
+          FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillingScreen())),
+            icon: const Icon(Icons.workspace_premium_outlined),
+            label: const Text('See plans'),
+          ),
+          const SizedBox(height: 10),
+        ],
+        (starter && app.can('billing') ? OutlinedButton.icon : FilledButton.icon)(
+          style: (starter && app.can('billing') ? OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)) : FilledButton.styleFrom(minimumSize: const Size.fromHeight(52))),
           onPressed: () => open('https://wa.me/$supportWhatsApp?text=$text'),
           icon: const Icon(Icons.chat),
-          label: const Text('WhatsApp us to connect'),
+          label: Text(starter ? 'WhatsApp us' : 'WhatsApp us to connect'),
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(

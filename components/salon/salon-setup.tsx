@@ -238,7 +238,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
   const [staffForm, setStaffForm] = useState<Partial<StaffMember> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [settings, setSettings] = useState(setup.settings)
-  const [section, setSection] = useState<Section>(initialSection)
+  const [section, setSection] = useState<Section>(() => (setup.ownWhatsApp === false && (initialSection === 'booking' || initialSection === 'templates') ? 'services' : initialSection))
 
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
@@ -371,7 +371,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
 
       <div className="grid grid-cols-1 @4xl:grid-cols-[220px_minmax(0,1fr)] gap-4 @4xl:gap-6 items-start">
       <nav aria-label="Setup" className="@4xl:sticky @4xl:top-4 flex @4xl:flex-col gap-1.5 overflow-x-auto @4xl:overflow-visible -mx-3 px-3 min-[400px]:-mx-4 min-[400px]:px-4 @xl:mx-0 @xl:px-0 pb-1 @4xl:pb-0 [scrollbar-width:none]">
-        {SECTIONS.map(({ id, label, hint, icon: Icon }) => (
+        {SECTIONS.filter(({ id }) => setup.ownWhatsApp !== false || (id !== 'booking' && id !== 'templates')).map(({ id, label, hint, icon: Icon }) => (
           <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
             className={`shrink-0 @4xl:w-full inline-flex items-center gap-2.5 h-11 @4xl:h-auto px-3.5 @4xl:px-3 @4xl:py-2.5 rounded-xl @4xl:rounded-2xl border text-left text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${section === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-800 bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
             <Icon size={18} className="shrink-0" />

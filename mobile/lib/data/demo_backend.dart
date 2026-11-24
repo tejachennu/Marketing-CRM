@@ -15,7 +15,7 @@ import 'format.dart';
 /// Sample data that answers like the real server, so every screen can be tried and shown
 /// without an account. Changes made in the demo stay until the app is closed.
 class DemoBackend implements Backend {
-  DemoBackend({this.offline = false, this.billing = 'trial', this.staff = false, this.whatsapp = true}) {
+  DemoBackend({this.offline = false, this.billing = 'trial', this.staff = false, this.whatsapp = true, this.starter = false}) {
     _seed();
     _seedMore();
   }
@@ -31,6 +31,9 @@ class DemoBackend implements Backend {
 
   /// The business's WhatsApp number is connected (false: chats, campaigns, templates and the booking flow lock).
   final bool whatsapp;
+
+  /// On Starter (₹999): Front Desk only, messages from WAMA's number, no own WhatsApp.
+  final bool starter;
 
   /// Like the server (lib/billing-gate.ts): once the trial has ended only Billing, sign-in and the profile answer.
   void _refuseWhenPaused(String method, String path) {
@@ -664,7 +667,7 @@ class DemoBackend implements Backend {
           'connectors': {'frontDesk': _connectorOn == 'salon', 'ecommerce': _connectorOn == 'ecommerce', 'pipeline': _connectorOn == 'pipeline'},
           'instagram': {'connected': true, 'username': 'glowstore', 'replyHours': 24},
           'billing': _billingAnswer(),
-          'whatsapp': {'connected': whatsapp, 'mode': 'own'},
+          'whatsapp': {'connected': whatsapp && !starter, 'mode': starter ? 'shared' : 'own'},
         };
       case '/api/salon/setup':
         return {'success': true, ..._setup};

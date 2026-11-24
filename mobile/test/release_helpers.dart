@@ -17,7 +17,7 @@ class Release {
 }
 
 /// Makes the file's app once, before its tests: [billing] 'trial' (10 days left), 'trial2', 'ended', 'paid'.
-Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true}) {
+Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true, bool starter = false}) {
   final r = Release();
   setUpAll(() async {
     await loadFonts();
@@ -25,7 +25,7 @@ Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp 
     final store = LocalStore();
     await store.open(path: dir.path);
     await store.clear();
-    r.backend = DemoBackend(billing: billing, staff: staff, whatsapp: whatsapp);
+    r.backend = DemoBackend(billing: billing, staff: staff, whatsapp: whatsapp, starter: starter);
     r.app = AppState(backend: r.backend, store: store);
     await r.app.refreshAll();
   });

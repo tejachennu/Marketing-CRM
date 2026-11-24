@@ -118,6 +118,21 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **₹999 Starter = no own WhatsApp; Meta only on Growth / Pro, enforced on the server** (owner, 24 Nov 2026: "without
+  meta just for billing and invoice generate and analytics we can 999 ... if they connected meta our plans will come ...
+  be secure"). Before this only ~16 routes checked the plan; ~40 own-WhatsApp routes (conversations, messages, tickets,
+  templates, campaigns, flows, Instagram, knowledge, AI, catalog) answered a Starter workspace. `lib/plan-gate.ts`
+  (pure: `featureForPath`, `connectorForPath`, `planRefusal`, `connectsWhatsApp` / `SENDER_FIELDS`) runs for every
+  call through `verifyOrgAccess` (`denyByPathPlan`), `verifyRecordAccess` and the exported `workspaceRules` (used by the
+  sign-in-only routes: `/api/ai/*`, `/api/campaigns/senders`, `/api/flows/simulate`). Billing is read through
+  `billingRowFor` (lib/billing-gate.ts, remembered 30 s, shared with the trial check). Connectors are refused only when
+  the plan leaves them out entirely (Starter: Front Desk only). Exempt, no billing row and super admins: no limits.
+  Typing WhatsApp / Twilio keys in Settings (`PATCH /api/organization`) needs Growth+ like Meta's sign-up (402). Web:
+  Marketing Copilot and the tickets drawer hidden when the plan lacks them (`planHas`); Front Desk Setup hides Booking
+  flow and Templates when `/api/salon/setup` says `ownWhatsApp: false`. App: on Starter the WhatsApp lock says "Your own
+  WhatsApp comes with Growth" with See plans (Billing) and WhatsApp us; demo `?starter=1`. Plan words: Starter "Bills,
+  GST invoices and reports, without connecting WhatsApp" + reports line; paid plans "Your own WhatsApp number (connect
+  Meta)". Tests `tests/plan-gate.test.cjs`, app `test/release_starter_test.dart`.
 - **14-day free trial, then pay: enforced on the server and in the app; release tests** (owner, 24 Nov 2026: "release the
   apk to production ... with whatsapp integration and without ... 14 days free trail after they need to do payment").
   Before this only the website's pages locked; the API kept answering, so the app worked after the trial. Now

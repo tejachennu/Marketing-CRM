@@ -1,6 +1,7 @@
+import { connectsWhatsApp } from '@/lib/plan-gate'
 import { platformAiKey } from '@/lib/ai-access'
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
+import { denyByPlan, getSupabaseAdminClient, verifyOrgAccess } from '@/lib/api-auth-helper'
 import { planOrganizationUpdate, toSafeOrganization } from '@/lib/organization-access'
 import { can, describeDenied } from '@/lib/rbac'
 
@@ -64,6 +65,11 @@ export async function PATCH(request: NextRequest) {
     const plan = planOrganizationUpdate(auth.user, body?.updates)
     if (!plan.ok) {
       return NextResponse.json({ error: plan.error }, { status: plan.status })
+    }
+    // Connecting a WhatsApp number by hand (keys typed in Settings) needs Growth or Pro, like Meta's sign-up
+    if (connectsWhatsApp(plan.values)) {
+      const refused = await denyByPlan(auth.user, organizationId, 'inbox')
+      if (refused) return NextResponse.json({ error: 'Connecting your own WhatsApp comes with Growth or Pro. Choose a plan in Billing, then connect it.' }, { status: 402 })
     }
 
     const { data: organization, error } = await getSupabaseAdminClient()

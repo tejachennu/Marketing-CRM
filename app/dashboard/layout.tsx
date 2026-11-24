@@ -796,6 +796,11 @@ export default function DashboardLayout({
   const needsWhatsapp = Boolean(billing && !billing.exempt && billing.whatsappMode !== 'shared' && whatsappConnected === false && !isPlatformAdmin)
   const whatsappPage = (path: string) => path === '/dashboard' || ['/dashboard/campaigns', '/dashboard/templates', '/dashboard/flows', '/dashboard/tickets'].some((base) => path === base || path.startsWith(`${base}/`))
 
+  // Starter (₹999, no own WhatsApp): no Marketing Copilot and no tickets drawer (the server refuses them too)
+  const planHas = (feature: PlanFeature) => !billing || billing.exempt || isPlatformAdmin || !billing.allows || billing.allows[feature] !== false
+  const aiOnPlan = planHas('ai_replies')
+  const ticketsOnPlan = planHas('tickets')
+
   // What the plan leaves out (lib/plans.ts). The page stays in the menu with a lock, and opens an
   // "Upgrade" card, so people see what a bigger plan gives them.
   const planOff = (path: string): string | null => {
@@ -1131,7 +1136,7 @@ export default function DashboardLayout({
           {!isSidebarCollapsed ? (
             <div className="pt-2 px-2.5 border-t border-slate-100 dark:border-slate-800/70 space-y-2">
               {/* Marketing Assistant */}
-              {seeAll && (
+              {seeAll && aiOnPlan && (
                 <button
                   type="button"
                   onClick={() => setShowAssistant((prev) => !prev)}
@@ -1201,7 +1206,7 @@ export default function DashboardLayout({
             </div>
           ) : (
             <div className="pt-2 flex flex-col items-center gap-2.5 w-full border-t border-slate-100 dark:border-slate-800/70">
-              {seeAll && (
+              {seeAll && aiOnPlan && (
                 <button
                   type="button"
                   onClick={() => setShowAssistant((prev) => !prev)}
@@ -1451,7 +1456,7 @@ export default function DashboardLayout({
                 })}
 
                 {/* Assistant item */}
-                {seeAll && (
+                {seeAll && aiOnPlan && (
                   <button
                     onClick={() => {
                       setShowSideDrawer(false)
@@ -1724,7 +1729,7 @@ export default function DashboardLayout({
           )}
 
            {/* Global AI Assistant Drawer */}
-          {seeAll && (
+          {seeAll && aiOnPlan && (
             <Suspense fallback={null}>
               <AssistantDrawer
                 isOpen={showAssistant}
@@ -1735,12 +1740,14 @@ export default function DashboardLayout({
             </Suspense>
           )}
 
-          {/* Support Tickets Drawer */}
-          <TicketsDrawer
-            isOpen={showTickets}
-            onClose={() => setShowTickets(false)}
-            orgId={orgId}
-          />
+          {/* Support Tickets Drawer (not on Starter: tickets come with your own WhatsApp) */}
+          {ticketsOnPlan && (
+            <TicketsDrawer
+              isOpen={showTickets}
+              onClose={() => setShowTickets(false)}
+              orgId={orgId}
+            />
+          )}
 
           {/* Realtime Ticket Toast Notification */}
           {ticketToast && (
