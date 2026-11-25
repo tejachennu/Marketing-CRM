@@ -25,9 +25,10 @@ class Notice {
       : (open ?? '');
 }
 
-/// Notifications like WhatsApp: a banner at the top while the app is open, and a phone
-/// notification (with sound) when it is in the background. When the app is fully closed, the
-/// server's push messages do it (see push.dart).
+/// Notifications are always the phone's own pop-ups (with sound), also while the app is open; there
+/// are no banners inside the app (owner: "that is not a pop-up, it is in-app: remove it"). In the
+/// background, when the server's push messages work (see push.dart), those are the pop-ups and none
+/// is added here, so nothing shows twice.
 class Notifier {
   Notifier._();
   static final instance = Notifier._();
@@ -62,7 +63,7 @@ class Notifier {
     if (payload != null) scheduleMicrotask(() => _taps.add(payload));
   }
 
-  /// In-app banners (shown by the app shell).
+  /// Every notice the app raised (shown as a phone notification; tests listen here).
   Stream<Notice> get notices => _notices.stream;
 
   /// A phone notification was tapped: its payload (`chat:<id>` or `bookings`).
@@ -98,12 +99,18 @@ class Notifier {
   }
 
   Future<void> notify(Notice notice) async {
-    if (inForeground || !_ready) {
-      _notices.add(notice);
-      return;
-    }
-    if (pushOn) return;
-    final channel = notice.bookings ? ('bookings', 'Booking requests') : ('messages', 'WhatsApp messages');
+    _notices.add(notice);
+    if (!_ready) return;
+    // In the background the server's push pop-up is already on its way
+    if (pushOn && !inForeground) return;
+    final channel = switch (notice) {
+      Notice(bookings: true) => ('bookings', 'Booking requests'),
+      Notice(open: 'orders') => ('orders', 'Orders'),
+      Notice(open: 'tickets') => ('tickets', 'Tickets'),
+      Notice(open: 'deals') => ('deals', 'Sales Pipeline'),
+      Notice(open: 'reviews') => ('reviews', 'Reviews'),
+      _ => ('messages', 'WhatsApp messages'),
+    };
     try {
       await _plugin.show(
         id: _id++ % 100000,
@@ -112,11 +119,11 @@ class Notifier {
         payload: notice.payload,
         notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(channel.$1, channel.$2, importance: Importance.high, priority: Priority.high, color: const Color(0xFF008069)),
-          iOS: const DarwinNotificationDetails(presentAlert: true, presentSound: true),
+          iOS: const DarwinNotificationDetails(presentAlert: true, presentBanner: true, presentList: true, presentSound: true),
         ),
       );
     } catch (e) {
-      _notices.add(notice);
+      debugPrint('The notification could not be shown: $e');
     }
   }
 }

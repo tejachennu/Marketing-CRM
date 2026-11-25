@@ -12,7 +12,7 @@ import 'notifier.dart';
 /// Pop-up notifications when the app is closed or in the background (Firebase Cloud Messaging).
 ///
 /// The server sends them (a customer wrote, a booking request, an order, a ticket assigned); the
-/// phone shows them by itself. While the app is open, the banners at the top do the job, so nothing
+/// phone shows them by itself. While the app is open, the app shows them as its own pop-ups, so nothing
 /// is shown twice. The Firebase settings come from the server (`/api/mobile/config`), so none are
 /// built into the app. Until they are set there, the app works as before.
 class Push {
@@ -69,7 +69,7 @@ class Push {
         }
         // A notification was tapped: open what it is about
         _opened = FirebaseMessaging.onMessageOpenedApp.listen(_open);
-        // With the app open, Android shows nothing for a push: show it as the banner at the top.
+        // With the app open, Android shows nothing for a push: show it as the phone's own pop-up.
         // Chat messages already arrive through the live updates, so not those. Bookings show from here
         // (the app's own booking check stays quiet while pop-ups work, so nothing shows twice).
         _foreground = FirebaseMessaging.onMessage.listen((message) {
@@ -77,7 +77,7 @@ class Push {
           final open = '${message.data['open'] ?? ''}';
           final note = message.notification;
           if (note == null || (kind == 'message' && open.startsWith('chat:'))) return;
-          Notifier.instance.notify(Notice(title: note.title ?? 'WAMA CRM', body: note.body ?? '', open: open));
+          Notifier.instance.notify(Notice(title: note.title ?? 'WAMA CRM', body: note.body ?? '', bookings: open == 'bookings', open: open == 'bookings' ? null : open));
         });
         // The app was closed and a notification opened it (the tap waits until the screens are ready)
         final first = await messaging.getInitialMessage();
