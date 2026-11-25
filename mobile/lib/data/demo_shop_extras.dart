@@ -1,3 +1,5 @@
+import 'demo_auto_messages.dart';
+
 /// Demo answers for the shop's newer screens (reports, reviews, offers and points, returns, GST invoices,
 /// WhatsApp messages, delivery partners), shaped like the real /api/commerce/* replies.
 class DemoShopExtras {
@@ -20,7 +22,77 @@ class DemoShopExtras {
   final Map<String, dynamic> _invoice = {'gstin': '36ABCDE1234F1Z5', 'legalName': '', 'address': '', 'prefix': 'WEB', 'defaultRate': 5};
   final Map<String, dynamic> _loyalty = {'on': true, 'percent': 2, 'minUse': 50, 'maxPercent': 50};
   final Map<String, dynamic> _messages = {
-    for (final p in ['cart_reminder', 'cod_confirm', 'review_ask', 'back_in_stock', 'refund_update']) p: {'on': p != 'cart_reminder', 'template': '', 'language': 'en'},
+    for (final p in ['cart_reminder', 'cod_confirm', 'review_ask', 'back_in_stock', 'refund_update', 'order_update']) p: {'on': p != 'cart_reminder', 'template': '', 'language': 'en'},
+    // Approved, and in review: the demo shows both
+    'cod_confirm': {
+      'on': true,
+      'template': 'cod_order_check',
+      'language': 'en',
+      'fields': ['first_name', 'order_number', 'shop', 'amount'],
+    },
+    'review_ask': {
+      'on': true,
+      'template': 'order_review_request',
+      'language': 'en',
+      'fields': ['first_name', 'order_number', 'review_link'],
+    },
+  };
+
+  /// The shop's own templates on WhatsApp (for its messages' templates).
+  final List<Map<String, dynamic>> _shopTemplates = [
+    {
+      'id': 'st1',
+      'name': 'cod_order_check',
+      'status': 'APPROVED',
+      'category': 'UTILITY',
+      'language': 'en',
+      'components': [
+        {'type': 'BODY', 'text': 'Hi {{1}}, thank you for your order {{2}} at {{3}}. You will pay {{4}} in cash when it arrives. Please confirm so we can send it.'},
+        {
+          'type': 'BUTTONS',
+          'buttons': [
+            {'type': 'QUICK_REPLY', 'text': 'Yes, send it'},
+            {'type': 'QUICK_REPLY', 'text': 'Cancel order'},
+          ],
+        },
+      ],
+    },
+    {
+      'id': 'st2',
+      'name': 'order_review_request',
+      'status': 'PENDING',
+      'category': 'UTILITY',
+      'language': 'en',
+      'components': [
+        {'type': 'BODY', 'text': 'Hi {{1}}, your order {{2}} was delivered. Please tell us how it was at {{3}} so we can serve you better.'},
+      ],
+    },
+  ];
+  int _ids = 0;
+
+  Map<String, dynamic> _shopMessagesAnswer() => {
+    'messages': _messages,
+    'connected': true,
+    'ownWhatsApp': true,
+    'languages': autoLanguages,
+    'account': accountList(_shopTemplates),
+    'autoMessages': [
+      for (final def in shopAutoDefs)
+        {
+          ...autoView(def, {
+            'name': (_messages[def.purpose] as Map)['template'],
+            'language': (_messages[def.purpose] as Map)['language'],
+            'fields': (_messages[def.purpose] as Map)['fields'],
+            if ((_messages[def.purpose] as Map)['previous'] is Map)
+              'previous': {
+                'name': ((_messages[def.purpose] as Map)['previous'] as Map)['template'],
+                'language': ((_messages[def.purpose] as Map)['previous'] as Map)['language'],
+              },
+          }, _shopTemplates),
+          'on': (_messages[def.purpose] as Map)['on'] != false,
+          'switchable': def.purpose != 'order_update',
+        },
+    ],
   };
   final List<Map<String, dynamic>> _offers = [
     {'id': 'd1', 'title': '10% off', 'code': 'DIWALI10', 'kind': 'percent', 'value': 10, 'buy_qty': 0, 'get_qty': 0, 'min_order': 0, 'max_uses': null, 'uses': 14, 'once_per_phone': true, 'first_order_only': false, 'active': true, 'for_phone': null},
@@ -87,7 +159,7 @@ class DemoShopExtras {
         if (query?['orderId'] != null) return {'invoice': null, 'canIssue': true};
         return {'settings': _invoice};
       case '/api/commerce/shop-messages':
-        return {'messages': _messages};
+        return _shopMessagesAnswer();
       case '/api/commerce/shipping':
         return {'shiprocket': {'connected': true}, 'delhivery': {'connected': false}};
       case '/api/commerce/shipping/ship':
@@ -129,6 +201,32 @@ class DemoShopExtras {
       case '/api/commerce/loyalty':
         _loyalty.addAll(Map<String, dynamic>.from(body['settings'] as Map));
         return {'success': true, 'settings': _loyalty};
+      case '/api/commerce/shop-messages' when method == 'POST':
+        final def = shopAutoDefs.firstWhere((d) => d.purpose == body['purpose']);
+        final m = _messages[def.purpose] as Map;
+        final old = '${m['template'] ?? ''}'.isEmpty
+            ? null
+            : {
+                'name': m['template'],
+                'language': m['language'],
+                'fields': m['fields'],
+                if (m['previous'] is Map) 'previous': {'name': (m['previous'] as Map)['template'], 'language': (m['previous'] as Map)['language']},
+              };
+        final choice = submitAuto(def, body, old, _shopTemplates, () => 'st-new-${_ids++}');
+        final previous = choice['previous'] as Map?;
+        _messages[def.purpose] = {
+          'on': m['on'],
+          'template': choice['name'],
+          'language': choice['language'],
+          'fields': choice['fields'],
+          if (previous != null) 'previous': {'template': previous['name'], 'language': previous['language']},
+        };
+        return {'success': true, 'setting': _messages[def.purpose], 'status': 'PENDING'};
+      case '/api/commerce/shop-messages' when body.containsKey('pick'):
+        final m = _messages['${body['purpose']}'] as Map;
+        final pick = body['pick'] as Map?;
+        _messages['${body['purpose']}'] = pick == null ? {'on': m['on'], 'template': '', 'language': 'en'} : {'on': m['on'], 'template': pick['template'], 'language': pick['language'], 'fields': pick['fields']};
+        return {'success': true, 'messages': _messages};
       case '/api/commerce/shop-messages':
         _messages.addAll(Map<String, dynamic>.from(body['messages'] as Map));
         return {'success': true, 'messages': _messages};

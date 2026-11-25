@@ -24,6 +24,22 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   link: 'Link code (for a link button)',
 }
 
+/** Example values: the preview, and the examples Meta asks for when a template is sent for approval. */
+export const FIELD_SAMPLES: Record<FieldKey, string> = {
+  first_name: 'Priya',
+  customer_name: 'Priya Sharma',
+  business: 'Glow Studio',
+  bill_number: 'INV-0001',
+  amount: '₹1,200',
+  services: 'Haircut',
+  staff: 'Anitha',
+  visit: 'Haircut with Anitha',
+  date_time: 'Sat, 8 Nov at 5:00 pm',
+  date: 'Sat, 8 Nov',
+  time: '5:00 pm',
+  link: 'AbCdEf123456',
+}
+
 export interface PurposeInfo {
   title: string
   use: string
@@ -52,6 +68,8 @@ export interface MessageTemplateChoice {
   fields: FieldKey[]
   /** What goes at the end of the template's link button, if it has one */
   url_field?: FieldKey | null
+  /** The earlier approved template, used while a newer wording waits for Meta's approval */
+  previous?: Omit<MessageTemplateChoice, 'previous'> | null
 }
 export type MessageTemplates = Partial<Record<MessagePurpose, MessageTemplateChoice>>
 
@@ -77,9 +95,22 @@ export function parseMessageTemplates(raw: unknown): { value: MessageTemplates }
     if (bad) return { error: `Choose what fills each blank of the ${info.title.toLowerCase()} template.` }
     const urlField = choice?.url_field ? String(choice.url_field) : null
     if (urlField && !info.fields.includes(urlField as FieldKey)) return { error: `Choose what goes in the ${info.title.toLowerCase()} template's link.` }
-    value[purpose as MessagePurpose] = { name, language, fields: fields as FieldKey[], url_field: urlField as FieldKey | null }
+    const previous = readPrevious(choice?.previous, info)
+    value[purpose as MessagePurpose] = { name, language, fields: fields as FieldKey[], url_field: urlField as FieldKey | null, ...(previous ? { previous } : {}) }
   }
   return { value }
+}
+
+/** The earlier approved template kept while a newer one is in review; anything not right is dropped. */
+function readPrevious(raw: any, info: PurposeInfo): MessageTemplateChoice['previous'] {
+  if (!raw || typeof raw !== 'object') return null
+  const name = String(raw.name ?? '').trim()
+  const language = String(raw.language ?? '').trim()
+  const fields = Array.isArray(raw.fields) ? raw.fields.map(String) : []
+  const urlField = raw.url_field ? String(raw.url_field) : null
+  if (!NAME.test(name) || !LANGUAGE.test(language) || fields.length > 20 || fields.some((f: string) => !info.fields.includes(f as FieldKey))) return null
+  if (urlField && !info.fields.includes(urlField as FieldKey)) return null
+  return { name, language, fields: fields as FieldKey[], url_field: urlField as FieldKey | null }
 }
 
 /** Template values may not hold new lines, tabs or long runs of spaces, and may not be empty. */

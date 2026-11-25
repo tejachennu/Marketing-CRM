@@ -1,3 +1,4 @@
+import 'demo_auto_messages.dart';
 import 'format.dart';
 
 /// The demo's answers for the rest of the Front Desk (setup, reviews, team, templates, customers),
@@ -81,6 +82,18 @@ class DemoFrontDesk {
       'language': 'en',
       'fields': ['first_name', 'business', 'bill_number', 'amount'],
       'url_field': 'link',
+    },
+    // In review, and rejected by Meta: the demo shows every state
+    'feedback': {
+      'name': 'feedback_request',
+      'language': 'en',
+      'fields': ['first_name', 'business'],
+      'url_field': 'link',
+    },
+    'reminder': {
+      'name': 'appointment_reminder',
+      'language': 'en',
+      'fields': ['first_name', 'business', 'time'],
     },
   };
 
@@ -235,63 +248,34 @@ class DemoFrontDesk {
           'totals': {'revenue': 94850, 'services': 102, 'visits': 87, 'commission': 15712.5, 'ratings': 35, 'averageRating': 4.4},
         };
       case '/api/salon/templates':
-        int blanks(Map t) {
-          final body = (t['components'] as List).firstWhere((c) => c['type'] == 'BODY', orElse: () => {'text': ''})['text'] as String;
-          final n = RegExp(r'\{\{\s*(\d+)\s*\}\}').allMatches(body).map((m) => int.parse(m.group(1)!));
-          return n.isEmpty ? 0 : n.reduce((a, b) => a > b ? a : b);
-        }
+        final all = [...templates, ..._metaOnly];
         return {
           'success': true,
           'connected': true,
-          'account': [
-            for (final t in templates)
-              {
-                'name': t['name'],
-                'language': t['language'],
-                'status': t['status'],
-                'category': t['category'],
-                'body': (t['components'] as List).firstWhere((c) => c['type'] == 'BODY')['text'],
-                'blanks': blanks(t),
-                'urlButton': t['name'] == 'bill_ready',
-              },
-          ],
+          'ownWhatsApp': true,
+          'languages': autoLanguages,
+          'account': accountList(templates),
           'choices': choices,
-          'suggestions': {
-            for (final p in ['bill', 'booking', 'reminder', 'feedback'])
-              p: {
-                'draft': {
-                  'name':
-                      '${p}_${p == 'bill'
-                          ? 'ready'
-                          : p == 'booking'
-                          ? 'confirmed'
-                          : p}',
-                  'language': 'en',
-                  'category': 'UTILITY',
-                  'body': _suggested[p],
-                  'buttons': [],
-                },
-                'fields': _suggestedFields[p],
-                'urlField': p == 'bill' || p == 'feedback' ? 'link' : null,
-              },
-          },
+          'autoMessages': [for (final def in deskAutoDefs) autoView(def, choices[def.purpose] as Map?, all)],
         };
     }
     return null;
   }
 
-  static const _suggested = {
-    'bill': 'Hi {{1}}, thank you for visiting {{2}}! Your bill {{3}} is {{4}}. Tap below to view or download it.',
-    'booking': 'Hi {{1}}, your appointment at {{2}} is booked for {{3}}. See you soon!',
-    'reminder': 'Hi {{1}}, a reminder: your appointment at {{2}} is today at {{3}} ({{4}}).',
-    'feedback': 'Hi {{1}}, thank you for visiting {{2}}! How was your {{3}}? Tap below to rate us.',
-  };
-  static const _suggestedFields = {
-    'bill': ['first_name', 'business', 'bill_number', 'amount'],
-    'booking': ['first_name', 'business', 'date_time'],
-    'reminder': ['first_name', 'business', 'time', 'services'],
-    'feedback': ['first_name', 'business', 'services'],
-  };
+  /// A reminder wording Meta rejected (only here, so the Templates list stays as it was), to show that state.
+  final List<Map<String, dynamic>> _metaOnly = [
+    {
+      'id': 't-rem',
+      'name': 'appointment_reminder',
+      'status': 'REJECTED',
+      'rejected_reason': 'PROMOTIONAL',
+      'category': 'UTILITY',
+      'language': 'en',
+      'components': [
+        {'type': 'BODY', 'text': 'Hi {{1}}, your appointment at {{2}} is today at {{3}}. Book your next visit now and get 10% off!'},
+      ],
+    },
+  ];
 
   Map<String, dynamic>? send(String method, String path, Map<String, dynamic> body) {
     final uri = Uri.parse(path);
@@ -302,6 +286,11 @@ class DemoFrontDesk {
         final r = reviews.firstWhere((r) => r['id'] == body['id']);
         r['followed_up_at'] = DateTime.now().toUtc().toIso8601String();
         return {'success': true, 'feedback': r};
+      case '/api/salon/templates' when method == 'POST':
+        final def = deskAutoDefs.firstWhere((d) => d.purpose == body['purpose']);
+        final choice = submitAuto(def, body, choices[def.purpose] as Map?, templates, id, others: _metaOnly);
+        choices[def.purpose] = {...choice, 'url_field': def.buttons.isEmpty ? null : 'link'};
+        return {'success': true, 'choice': choices[def.purpose], 'status': 'PENDING'};
       case '/api/salon/templates':
         settings['message_templates'] = Map<String, dynamic>.from(body['choices'] as Map);
         return {'success': true, 'choices': choices};
