@@ -141,21 +141,19 @@ def welcome():
     scr = rect(126, 18, 108, 218, 0, CH)
     scr += rect(126, 18, 108, 38, 0, G)
     scr += circle(143, 39, 10, W) + shop_glyph(136.5, 32.5, 13, body=G, awning=B, window=W)
-    scr += text(158, 37, 'Your shop', 8, 700, W) + text(158, 47, 'online', 6.5, 400, '#CFEDE6')
-    # customer asks
-    scr += rect(132, 64, 84, 32, 8, W) + text(138, 77, 'Hi! Can I book a', 7.2, 400, N) + text(138, 88, 'haircut at 5 pm?', 7.2, 400, N)
-    scr += text(211, 92, '4:12', 5.2, 400, F, 'end')
-    # business answers
-    scr += rect(144, 102, 84, 40, 8, L) + text(150, 115, "You're booked!", 7.5, 700, N) + text(150, 126, 'Today · 5:00 pm', 7, 400, T2)
-    scr += text(214, 137, '4:12', 5.2, 400, F, 'end') + ticks(216, 132)
-    # booking card
-    scr += rect(132, 148, 96, 42, 8, W)
-    scr += calendar(142, 156, 16, top=G, body=L2, dots=G)
-    scr += text(164, 164, 'Haircut', 7.5, 700, N) + text(164, 175, '5:00 – 5:40 pm', 6.5, 400, M)
-    scr += rect(164, 179, 40, 6, 3, L2) + text(184, 184, 'Confirmed', 4.6, 700, G, 'middle')
-    # quick replies
-    scr += rect(132, 196, 46, 14, 7, W) + text(155, 205.5, 'Thank you', 5.6, 500, G, 'middle')
-    scr += rect(182, 196, 46, 14, 7, W) + text(205, 205.5, 'Directions', 5.6, 500, G, 'middle')
+    scr += text(158, 37, 'Your business', 8, 700, W) + text(158, 47, 'online', 6.5, 400, '#CFEDE6')
+    # The customer says hi; the business (its AI) answers with every service it offers, as a WhatsApp list
+    scr += rect(132, 62, 30, 15, 7, W) + text(139, 72.5, 'Hi', 7.2, 400, N)
+    scr += rect(144, 81, 84, 24, 8, L) + text(150, 91, 'Hi! How can we help?', 7.2, 700, N) + text(150, 100.5, 'Pick one, any time:', 6.2, 400, T2)
+    scr += rect(132, 109, 96, 104, 9, W)
+    services = [('cal', 'Book an appointment'), ('bag', 'Order products'), ('robot', 'Ask a question · AI'), ('receipt', 'Get my bill'), ('truck', 'Track my order'), ('person', 'Talk to our team')]
+    for i, (icon, label) in enumerate(services):
+        y = 113 + i * 16.6
+        scr += circle(143, y + 7, 6.2, L2) + glyph(icon, 143, y + 7, 7.4, G)
+        scr += text(153, y + 9.4, label, 6.6, 500, N)
+        scr += f'<path d="M{221} {y + 5} l2.4 2 l-2.4 2" fill="none" stroke="{F}" stroke-width="0.9" stroke-linecap="round"/>'
+        if i < len(services) - 1:
+            scr += rect(150, y + 15.6, 74, 0.6, 0, LN)
     # typing bar
     scr += rect(130, 216, 86, 16, 8, W) + text(138, 227, 'Message', 6.5, 400, F)
     scr += circle(223, 224, 8, G) + rect(221, 219.5, 4, 6.5, 2, W) + f'<path d="M219.5 224 a3.5 3.5 0 0 0 7 0" fill="none" stroke="{W}" stroke-width="1"/>'
@@ -377,6 +375,57 @@ def offline():
     b += circle(120, 84, 4.5, F)
     b += circle(150, 110, 13, W, 'filter="url(#sh2)"') + f'<path d="M145 105 l10 10 M155 105 l-10 10" stroke="#B91C1C" stroke-width="2.4" stroke-linecap="round"/>'
     return w, h, b
+
+
+
+# ───────────────────────── One picture per kind of business (welcome screen) ─────────────────────────
+def glyph(kind, cx, cy, s, c=W):
+    """A small flat icon centred at (cx, cy), about s wide."""
+    u = s / 10
+    if kind == 'cross':
+        return rect(cx - u * 1.3, cy - u * 4, u * 2.6, u * 8, u * 0.6, c) + rect(cx - u * 4, cy - u * 1.3, u * 8, u * 2.6, u * 0.6, c)
+    if kind == 'dumbbell':
+        return rect(cx - u * 4.6, cy - u * 2.6, u * 1.6, u * 5.2, u * 0.5, c) + rect(cx + u * 3, cy - u * 2.6, u * 1.6, u * 5.2, u * 0.5, c) + rect(cx - u * 3.4, cy - u * 0.7, u * 6.8, u * 1.4, u * 0.5, c)
+    if kind == 'bowl':
+        return f'<path d="M{cx - u * 4.5} {cy - u * 0.5} h{u * 9} a{u * 4.5} {u * 4} 0 0 1 {-u * 9} 0 Z" fill="{c}"/>' + rect(cx - u * 3, cy + u * 3.6, u * 6, u * 1.1, u * 0.5, c) + f'<path d="M{cx - u * 1.5} {cy - u * 1.6} q{u * 0.8} {-u * 1.4} 0 {-u * 2.8} M{cx + u * 1} {cy - u * 1.6} q{u * 0.8} {-u * 1.4} 0 {-u * 2.8}" stroke="{c}" stroke-width="{u * 0.8}" fill="none" stroke-linecap="round"/>'
+    if kind == 'shirt':
+        return f'<path d="M{cx - u * 4.5} {cy - u * 3} l{u * 2.5} -{u * 1.6} h{u * 4} l{u * 2.5} {u * 1.6} l-{u * 1.4} {u * 2.4} l-{u * 1.2} -{u * 0.6} v{u * 5.4} h-{u * 4.8} v-{u * 5.4} l-{u * 1.2} {u * 0.6} Z" fill="{c}"/>'
+    if kind == 'basket':
+        return f'<path d="M{cx - u * 4.8} {cy - u * 1} h{u * 9.6} l-{u * 1.2} {u * 5.2} h-{u * 7.2} Z" fill="{c}"/>' + f'<path d="M{cx - u * 3} {cy - u * 1} l{u * 1.8} -{u * 3.4} M{cx + u * 3} {cy - u * 1} l-{u * 1.8} -{u * 3.4}" stroke="{c}" stroke-width="{u * 0.9}" stroke-linecap="round"/>'
+    if kind == 'cap':
+        return f'<path d="M{cx} {cy - u * 4} l{u * 5} {u * 2.4} l-{u * 5} {u * 2.4} l-{u * 5} -{u * 2.4} Z" fill="{c}"/>' + f'<path d="M{cx - u * 3} {cy - u * 0.2} v{u * 2.6} q{u * 3} {u * 1.8} {u * 6} 0 v-{u * 2.6}" fill="{c}"/>'
+    if kind == 'wrench':
+        return f'<path d="M{cx + u * 2.6} {cy - u * 4.2} a{u * 2.4} {u * 2.4} 0 1 0 {u * 1.6} {u * 3.4} l-{u * 5.6} {u * 5.6} a{u * 1} {u * 1} 0 0 1 -{u * 1.6} -{u * 1.6} l{u * 5.6} -{u * 5.6} Z" fill="{c}"/>'
+    if kind == 'house':
+        return f'<path d="M{cx} {cy - u * 4.6} l{u * 5} {u * 4} h-{u * 1.2} v{u * 4.6} h-{u * 7.6} v-{u * 4.6} h-{u * 1.2} Z" fill="{c}"/>'
+    if kind == 'robot':
+        return rect(cx - u * 4, cy - u * 2.6, u * 8, u * 6.4, u * 1.6, c) + circle(cx - u * 1.7, cy + u * 0.4, u * 0.9, G) + circle(cx + u * 1.7, cy + u * 0.4, u * 0.9, G) + rect(cx - u * 0.4, cy - u * 4.6, u * 0.8, u * 2, 0, c) + circle(cx, cy - u * 4.8, u * 0.8, c)
+    if kind == 'shop':
+        return shop_glyph(cx - s * 0.5, cy - s * 0.55, s, body=G, awning=B, window=W)
+    if kind == 'receipt':
+        return f'<path d="M{cx - u * 3} {cy - u * 4} h{u * 6} v{u * 8} l-{u} -{u * 0.7} l-{u} {u * 0.7} l-{u} -{u * 0.7} l-{u} {u * 0.7} l-{u} -{u * 0.7} l-{u} {u * 0.7} Z" fill="{c}"/>' + line(cx - u * 1.6, cy - u * 1.8, u * 3.2, u * 0.9, W if c != W else G) + line(cx - u * 1.6, cy + u * 0.2, u * 3.2, u * 0.9, W if c != W else G)
+    if kind == 'bag':
+        return bag(cx - s / 2, cy - s / 2, s, c, c)
+    if kind == 'truck':
+        return rect(cx - u * 5, cy - u * 3, u * 6, u * 4.6, u * 0.6, c) + f'<path d="M{cx + u * 1.4} {cy - u * 1.4} h{u * 2} l{u * 1.6} {u * 2} v{u * 1} h-{u * 3.6} Z" fill="{c}"/>' + circle(cx - u * 2.6, cy + u * 2.4, u * 1.1, c) + circle(cx + u * 2.6, cy + u * 2.4, u * 1.1, c)
+    if kind == 'bell':
+        return bell(cx, cy, s, c)
+    if kind == 'chat':
+        return f'<path d="M{cx - u * 4.5} {cy - u * 3.5} h{u * 9} v{u * 6} h-{u * 5} l-{u * 2.5} {u * 2} v-{u * 2} h-{u * 1.5} Z" fill="{c}"/>'
+    if kind == 'book':
+        return f'<path d="M{cx - u * 4.6} {cy - u * 3.6} q{u * 2.4} -{u * 0.8} {u * 4.4} {u * 0.4} v{u * 7.2} q-{u * 2} -{u * 1.2} -{u * 4.4} -{u * 0.4} Z M{cx + u * 4.6} {cy - u * 3.6} q-{u * 2.4} -{u * 0.8} -{u * 4.4} {u * 0.4} v{u * 7.2} q{u * 2} -{u * 1.2} {u * 4.4} -{u * 0.4} Z" fill="{c}"/>'
+    if kind == 'pill':
+        return f'<g transform="rotate(-35 {cx} {cy})">' + rect(cx - u * 4.4, cy - u * 1.8, u * 8.8, u * 3.6, u * 1.8, c) + rect(cx, cy - u * 1.8, u * 4.4, u * 3.6, u * 1.8, B) + rect(cx, cy - u * 1.8, u * 1.2, u * 3.6, 0, B) + '</g>'
+    if kind == 'check':
+        return check(cx - u * 3.4, cy - u * 3.4, u * 6.8, c, u * 1.4)
+    if kind == 'chart':
+        return rect(cx - u * 4, cy, u * 2, u * 3.6, u * 0.4, c) + rect(cx - u * 1, cy - u * 2, u * 2, u * 5.6, u * 0.4, c) + rect(cx + u * 2, cy - u * 4, u * 2, u * 7.6, u * 0.4, c)
+    if kind == 'person':
+        return circle(cx, cy - u * 2, u * 2.2, c) + f'<path d="M{cx - u * 4} {cy + u * 4} a{u * 4} {u * 3.6} 0 0 1 {u * 8} 0 Z" fill="{c}"/>'
+    if kind == 'translate':
+        return text(cx - u * 2.4, cy + u * 0.6, 'A', s * 0.55, 700, c, 'middle') + text(cx + u * 2.2, cy + u * 3.4, 'अ', s * 0.5, 700, c, 'middle')
+    return calendar(cx - s / 2, cy - s / 2, s, top=G, body=L2, dots=G)
+
 
 
 ART = {'welcome': welcome, 'desk': desk, 'shop': shop, 'nowa': nowa, 'team': team, 'signup': signup, 'code': code, 'offline': offline}

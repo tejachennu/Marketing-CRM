@@ -202,7 +202,13 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         _brandRow(),
         const SizedBox(height: 10),
-        AuthPicture('welcome', aspect: 360 / 250, maxHeight: (height * (height < 700 ? 0.28 : 0.34)).clamp(130.0, 300.0), semantic: 'A WhatsApp chat with a booking, a paid bill, a new order and a review'),
+        // One picture: the chat offers every service (book, order, ask the AI, bill, track, talk to the team)
+        AuthPicture(
+          'welcome',
+          aspect: 360 / 250,
+          maxHeight: (height * (height < 700 ? 0.28 : 0.34)).clamp(130.0, 300.0),
+          semantic: 'A WhatsApp chat offering bookings, orders, AI answers, bills, order tracking and the team',
+        ),
         const SizedBox(height: 14),
         const Text(
           'Your business on WhatsApp, in one app',
