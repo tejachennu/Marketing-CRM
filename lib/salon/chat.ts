@@ -12,6 +12,7 @@
  */
 
 import { BUSINESS_TYPES, businessType } from './business'
+import { assistantBookingRule, noBookingsReply, takesAppointments } from './appointments-switch'
 import { sendPush } from '../push'
 import { groupByCategory } from './categories'
 import { aiFetch, type AiAccess } from '../ai-access'
@@ -52,7 +53,7 @@ export interface SalonChatInput {
   collect?: string[]
 }
 
-export type SalonChatResult = { handled: true; action: 'replied' | 'offered_times' | 'requested' | 'booked' | 'expired' | 'taken' } | { handled: false; reason: string }
+export type SalonChatResult = { handled: true; action: 'replied' | 'offered_times' | 'requested' | 'booked' | 'expired' | 'taken' | 'not_taking' } | { handled: false; reason: string }
 
 /** Whether the salon can talk on this workspace's WhatsApp: connector on, Meta Cloud API connected. */
 export function salonChatReady(organization: any): boolean {
@@ -199,6 +200,8 @@ export function chatSystemPrompt(setup: ChatSetup, organization: any, customerNa
   const groups = groupByCategory(s.service_categories, setup.services).filter(([, list]) => list.length > 0)
   const menu = groups.map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
   const gst = s.gstin ? (s.prices_include_tax ? 'Prices include GST.' : 'GST (usually 18%) is added to these prices.') : ''
+  // Shops that only bill walk-ins switch appointments off: the assistant then answers questions and never offers times
+  const takes = takesAppointments(s)
   return `You are the WhatsApp assistant of ${business}, ${BUSINESS_TYPES[businessType(s.business_type)].describe} in India.${customerName ? ` The customer's name is ${customerName}.` : ''}
 
 About the business:
@@ -214,10 +217,10 @@ Today is ${week.split(', ')[0]} (India, ${istTime(now)}). The next days: ${week}
 What you do:
 - Answer questions about the services, prices, how long they take, timings and the address, from the list above only. Never invent a service, price, discount, offer or time.
 - If they ask for something not on the list, say it is not on the menu and suggest the closest service.
-- Booking: when the customer wants an appointment, find out the services and the day, then call offer_times. It sends the free times as a list to tap; do not list times yourself. "today" / "ivala" / "aaj" = ${today}; "tomorrow" / "repu" / "kal" = ${addDays(today, 1)}. If they did not say a day, ask. If a service is unclear (for example "haircut" when there are two), ask which one.
+${assistantBookingRule(takes, today, addDays(today, 1))}
 - Cancelling or changing an existing booking, complaints, or a request for a person: call not_for_salon.
 - Anything not about the business (products, orders, payments): call not_for_salon.
-- Always finish by calling reply_to_customer, offer_times or not_for_salon.
+- Always finish by calling ${takes ? 'reply_to_customer, offer_times or not_for_salon' : 'reply_to_customer or not_for_salon'}.
 
 ${LANGUAGE_RULES}`
 }
@@ -331,6 +334,8 @@ export async function runSalonAssistant(input: SalonChatInput, setupIn?: ChatSet
   if (setup.settings.chat_assistant === false) return { handled: false, reason: 'switched_off' }
   if (!setup.services.length) return { handled: false, reason: 'no_services' }
   const fetcher = input.fetcher || fetch
+  const takes = takesAppointments(setup.settings)
+  const tools = takes ? TOOLS : TOOLS.filter((tool) => tool.function.name !== 'offer_times')
   const name = [input.contact.first_name].filter(Boolean).join(' ').trim()
   const messages: any[] = [
     { role: 'system', content: chatSystemPrompt(setup, input.organization, name, input.now) },
@@ -341,7 +346,7 @@ export async function runSalonAssistant(input: SalonChatInput, setupIn?: ChatSet
     const res = await aiFetch(input.supabase, access, 'salon_chat', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, tool_choice: 'required', temperature: 0.2, max_tokens: 400 }),
+      body: JSON.stringify({ model: MODEL, messages, tools, tool_choice: 'required', temperature: 0.2, max_tokens: 400 }),
     }, fetcher)
     if (!res.ok) return { handled: false, reason: `openai_${res.status}` }
     const data = await res.json()
@@ -362,6 +367,11 @@ export async function runSalonAssistant(input: SalonChatInput, setupIn?: ChatSet
         return { handled: true, action: 'replied' }
       }
       let result: unknown
+      if (tool === 'offer_times' && !takes) {
+        // Appointments are off: there is no booking, whatever the model tried
+        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify({ note: 'This business does not take appointments. Tell the customer to walk in during opening hours, with reply_to_customer.' }) })
+        continue
+      }
       if (tool === 'offer_times' && input.collect) {
         input.collect.push('(Here WhatsApp shows the free times for what they asked.)')
         return { handled: true, action: 'offered_times' }
@@ -392,11 +402,17 @@ export async function handleSlotPick(input: SalonChatInput & { buttonId: string 
   const now = input.now ?? Date.now()
   const { data: offer } = await withSalonSchema(() => db.from('salon_chat_offers').select('*').eq('id', parsed.offerId).eq('organization_id', input.organization.id).maybeSingle())
   const language: ChatLanguage = (offer?.language || 'en') as ChatLanguage
+  const setup = await loadChatSetup(db, input.organization.id)
+  // Appointments switched off since the times were sent: no booking, a kind word instead (not "send the day again")
+  if (!takesAppointments(setup.settings)) {
+    if (offer) await db.from('salon_chat_offers').delete().eq('id', offer.id).eq('organization_id', input.organization.id)
+    await sendText(input, noBookingsReply(language, setup.settings.business_name || input.organization.name || '', setup.settings.phone))
+    return { handled: true, action: 'not_taking' }
+  }
   if (!offer || phoneKey(offer.customer_phone) !== phoneKey(input.customerPhone) || now - Date.parse(offer.created_at) > 3 * 24 * 3600_000) {
     await sendText(input, expiredText(language))
     return { handled: true, action: 'expired' }
   }
-  const setup = await loadChatSetup(db, input.organization.id)
   const services = setup.services.filter((s) => (offer.service_ids || []).includes(s.id))
   if (services.length !== (offer.service_ids || []).length || !services.length) {
     await sendText(input, expiredText(language))

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, CalendarCheck2, Check, Clock3, Dumbbell, FolderPlus, History, Package, Pencil, ReceiptText, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench, QrCode } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarCheck2, CalendarClock, Check, Clock3, Dumbbell, FolderPlus, History, Package, Pencil, ReceiptText, Tags, FileText, ImagePlus, Loader2, MessageCircle, Plus, Scissors, Sparkles, Stethoscope, Store, Trash2, Upload, Users, Wrench, QrCode } from 'lucide-react'
 import { BookingPageLinks } from './booking-page-links'
 import { SalonWebsite } from './salon-website'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
@@ -17,23 +17,31 @@ import { BookingFlowSettingsSection } from './salon-booking-flow'
 import { SalonTemplates } from './salon-templates'
 import { CatalogPicker, ChangeHistory, ItemThumb } from './salon-catalog'
 import { sampleMatches } from '@/lib/salon/sample'
+import { takesAppointments } from '@/lib/salon/appointments-switch'
+import { AppointmentsSwitch } from './salon-appointments-switch'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
 const TYPE_ICONS: Record<BusinessType, typeof Scissors> = { salon: Scissors, clinic: Stethoscope, fitness: Dumbbell, repair: Wrench, other: Store }
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-export type Section = 'services' | 'team' | 'business' | 'page' | 'whatsapp' | 'booking' | 'templates' | 'history'
+export type Section = 'services' | 'team' | 'business' | 'appointments' | 'page' | 'whatsapp' | 'booking' | 'templates' | 'history'
 const SECTIONS: { id: Section; label: string; hint: string; icon: typeof Scissors }[] = [
   { id: 'services', label: 'Services', hint: 'Menu and prices', icon: Scissors },
   { id: 'team', label: 'Team', hint: 'Staff and commission', icon: Users },
   { id: 'business', label: 'Business', hint: 'Invoice details and logo', icon: Store },
+  { id: 'appointments', label: 'Appointments', hint: 'Bookings, or walk-ins only', icon: CalendarClock },
   { id: 'page', label: 'Website and booking', hint: 'Your website, links, QR codes', icon: QrCode },
   { id: 'whatsapp', label: 'WhatsApp', hint: 'Chat, bookings, feedback', icon: MessageCircle },
   { id: 'booking', label: 'Booking flow', hint: 'Book on WhatsApp in taps', icon: CalendarCheck2 },
   { id: 'templates', label: 'Templates', hint: 'Messages for Meta', icon: FileText },
   { id: 'history', label: 'History', hint: 'Who changed what', icon: History },
 ]
+/** Without appointments (Setup → Appointments): no booking flow, and the website section is about the website only */
+const WALK_IN_WORDS: Partial<Record<Section, { label: string; hint: string }>> = {
+  page: { label: 'Website', hint: 'Your website and its buttons' },
+  whatsapp: { label: 'WhatsApp', hint: 'Answers and feedback' },
+}
 
 /** Shrink a picture to at most `max` pixels on its longest side, keeping transparency for PNGs. */
 async function shrinkImage(file: File, max = 512): Promise<Blob> {
@@ -232,13 +240,16 @@ function SectionHead({ icon, tone, title, subtitle, action }: { icon: React.Reac
   )
 }
 
-export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 'services' }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash; initialSection?: Section }) {
+export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 'services', canSwitchAppointments = false }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash; initialSection?: Section; canSwitchAppointments?: boolean }) {
   const confirm = useConfirm()
   const [serviceForm, setServiceForm] = useState<Partial<Service> | null>(null)
   const [staffForm, setStaffForm] = useState<Partial<StaffMember> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [settings, setSettings] = useState(setup.settings)
-  const [section, setSection] = useState<Section>(() => (setup.ownWhatsApp === false && (initialSection === 'booking' || initialSection === 'templates') ? 'services' : initialSection))
+  const takes = takesAppointments(setup.settings)
+  const [picked, setSection] = useState<Section>(() => (setup.ownWhatsApp === false && (initialSection === 'booking' || initialSection === 'templates') ? 'services' : initialSection))
+  // The booking flow is hidden while appointments are off
+  const section: Section = !takes && picked === 'booking' ? 'services' : picked
 
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
@@ -371,7 +382,8 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
 
       <div className="grid grid-cols-1 @4xl:grid-cols-[220px_minmax(0,1fr)] gap-4 @4xl:gap-6 items-start">
       <nav aria-label="Setup" className="@4xl:sticky @4xl:top-4 flex @4xl:flex-col gap-1.5 overflow-x-auto @4xl:overflow-visible -mx-3 px-3 min-[400px]:-mx-4 min-[400px]:px-4 @xl:mx-0 @xl:px-0 pb-1 @4xl:pb-0 [scrollbar-width:none]">
-        {SECTIONS.filter(({ id }) => setup.ownWhatsApp !== false || (id !== 'booking' && id !== 'templates')).map(({ id, label, hint, icon: Icon }) => (
+        {SECTIONS.filter(({ id }) => (setup.ownWhatsApp !== false || (id !== 'booking' && id !== 'templates')) && (takes || id !== 'booking'))
+          .map((item) => ({ ...item, ...(takes ? {} : WALK_IN_WORDS[item.id]) })).map(({ id, label, hint, icon: Icon }) => (
           <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
             className={`shrink-0 @4xl:w-full inline-flex items-center gap-2.5 h-11 @4xl:h-auto px-3.5 @4xl:px-3 @4xl:py-2.5 rounded-xl @4xl:rounded-2xl border text-left text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${section === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-800 bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
             <Icon size={18} className="shrink-0" />
@@ -523,13 +535,14 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
         </div>
       </section>}
 
+      {section === 'appointments' && <AppointmentsSwitch orgId={orgId} setup={setup} onChange={onChange} flash={flash} canChange={canSwitchAppointments} />}
       {section === 'whatsapp' && <WhatsAppSettings orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'booking' && <BookingFlowSettingsSection orgId={orgId} setup={setup} onChange={onChange} flash={flash} />}
       {section === 'history' && <ChangeHistory orgId={orgId} />}
       {section === 'page' && (
         <div className="space-y-4">
           <SalonWebsite orgId={orgId} canEdit canManageDomain flash={flash} />
-          <BookingPageLinks orgId={orgId} setup={setup} flash={(message) => flash('success', message)} />
+          {takes && <BookingPageLinks orgId={orgId} setup={setup} flash={(message) => flash('success', message)} />}
         </div>
       )}
       {section === 'templates' && <SalonTemplates orgId={orgId} flash={flash} onSaved={(message_templates) => onChange({ ...setup, settings: { ...setup.settings, message_templates } })} />}

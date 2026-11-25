@@ -20,6 +20,8 @@ export const OPEN_TAB_EVENT = 'connector:open-tab'
 export const TAB_SHOWN_EVENT = 'connector:tab-shown'
 /** A connector page says what needs attention, per tab: { app, badges: { tab: count } } */
 export const BADGES_EVENT = 'connector:badges'
+/** A connector page says which of its tabs it does not use (Front Desk without appointments: no Calendar): { app, tabs } */
+export const HIDDEN_TABS_EVENT = 'connector:hidden-tabs'
 
 /** The connector whose page this is, if any. */
 export function connectorAppAt(pathname: string): ConnectorApp | null {
@@ -46,13 +48,31 @@ function emit(name: string, detail: unknown) {
 export const openConnectorTab = (app: ConnectorApp, tab: string) => emit(OPEN_TAB_EVENT, { app, tab })
 export const announceConnectorTab = (app: ConnectorApp, tab: string) => emit(TAB_SHOWN_EVENT, { app, tab })
 export const announceConnectorBadges = (app: ConnectorApp, badges: Record<string, number>) => emit(BADGES_EVENT, { app, badges })
+export const announceConnectorHiddenTabs = (app: ConnectorApp, tabs: string[]) => {
+  rememberHiddenTabs(app, tabs)
+  emit(HIDDEN_TABS_EVENT, { app, tabs })
+}
+
+/** The tabs a connector hid last time, kept on this device so the bottom bar is right before the page loads. */
+const hiddenKey = (app: ConnectorApp) => `wama-hidden-tabs:${app}`
+export function rememberedHiddenTabs(app: ConnectorApp): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(hiddenKey(app)) || '[]')
+    return Array.isArray(saved) ? saved.filter((tab) => isConnectorTab(app, tab)) : []
+  } catch {
+    return []
+  }
+}
+function rememberHiddenTabs(app: ConnectorApp, tabs: string[]) {
+  try { localStorage.setItem(hiddenKey(app), JSON.stringify(tabs)) } catch {}
+}
 
 /** Listen for one connector's events; returns the function that stops listening. */
-export function onConnectorEvent<T = string>(name: typeof OPEN_TAB_EVENT | typeof TAB_SHOWN_EVENT | typeof BADGES_EVENT, app: ConnectorApp, handler: (value: T) => void): () => void {
+export function onConnectorEvent<T = string>(name: typeof OPEN_TAB_EVENT | typeof TAB_SHOWN_EVENT | typeof BADGES_EVENT | typeof HIDDEN_TABS_EVENT, app: ConnectorApp, handler: (value: T) => void): () => void {
   const listener = (event: Event) => {
     const detail = (event as CustomEvent).detail
     if (!detail || detail.app !== app) return
-    handler((name === BADGES_EVENT ? detail.badges : detail.tab) as T)
+    handler((name === BADGES_EVENT ? detail.badges : name === HIDDEN_TABS_EVENT ? detail.tabs : detail.tab) as T)
   }
   window.addEventListener(name, listener)
   return () => window.removeEventListener(name, listener)

@@ -24,6 +24,8 @@ export interface SalonSettings {
   service_categories?: string[]
   booking_flow?: Record<string, unknown>
   message_templates?: Record<string, { name: string; language: string; fields: string[]; url_field?: string | null } | undefined>
+  /** "We take appointments" (Setup → Appointments): false for shops that only bill walk-ins */
+  takes_appointments?: boolean
 }
 
 export interface Service {

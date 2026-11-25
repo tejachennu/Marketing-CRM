@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { badRequest, salonAccess } from '@/lib/salon/server'
+import { badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
+import { takesAppointments } from '@/lib/salon/appointments-switch'
 import { readSite } from '@/lib/salon/website'
 import { loadSiteSettings, saveSiteSettings, siteChatProblem } from '@/lib/salon/website-store'
 import { readStorefront } from '@/lib/commerce/storefront'
@@ -10,9 +11,10 @@ export const runtime = 'nodejs'
 
 /** The workspace's slug and whether its online store is on (the domain may open either). */
 async function about(db: any, organizationId: string) {
-  const [{ data: org }, ig] = await Promise.all([
+  const [{ data: org }, ig, settings] = await Promise.all([
     db.from('organizations').select('*').eq('id', organizationId).maybeSingle(),
     accountFor(db, organizationId).catch(() => null),
+    loadSalonSettings(db, organizationId).catch(() => null),
   ])
   return {
     slug: org?.slug || '', storeOn: org?.enable_commerce !== false && readStorefront(org?.storefront).enabled, domain: org?.store_domain || null,
@@ -20,6 +22,10 @@ async function about(db: any, organizationId: string) {
     instagram: ig ? { connected: true, username: String(ig.username || '') } : { connected: false, username: '' },
     // Why the AI chat would not show on the website right now (null when it works)
     chatProblem: await siteChatProblem(db, org),
+    // What the website's buttons need (Buttons on your website): appointments on, a phone number, an address
+    takesAppointments: takesAppointments(settings),
+    hasPhone: String(settings?.phone || '').replace(/\D/g, '').length >= 10,
+    hasAddress: Boolean(String(settings?.address || '').trim()),
   }
 }
 

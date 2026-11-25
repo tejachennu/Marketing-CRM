@@ -15,6 +15,7 @@ class DemoLaunch {
     'enabled': true, 'tagline': 'Hair, skin and bridal studio in Banjara Hills', 'about': 'Trained stylists, clean tools and products you can trust.', 'cover': '', 'gallery': <String>[],
     'colour': '#7A2E4D', 'show': {'prices': true, 'team': true, 'memberships': true, 'reviews': true}, 'instagram': 'glowstudio', 'instagramLive': true, 'chat': true,
     'bookingPay': {'mode': 'choice', 'advance': 20}, 'domainShows': 'website',
+    'buttons': {'call': true, 'whatsapp': true, 'book': true, 'shop': true, 'directions': true},
   };
   Map<String, dynamic> _payments = {
     'connected': true, 'keyId': 'rzp_live_Ab12Cd34Ef', 'live': true, 'webhook': true, 'webhookUrl': 'https://wamacrm.magnetora.in/api/public/store/glow/razorpay-webhook',

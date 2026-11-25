@@ -1,6 +1,6 @@
 'use client'
 
-/** The services on the website: category tabs, a search when the menu is long, and Book on each one. */
+/** The services on the website: category tabs, a search when the menu is long, and Book on each one (when booking is on). */
 
 import { useMemo, useState } from 'react'
 import { Clock, Search } from 'lucide-react'
@@ -9,7 +9,7 @@ import { BookButton } from './book-button'
 
 interface Item { id: string; name: string; category: string; price: number; minutes: number }
 
-export function ServicesMenu({ services, showPrices, money }: { services: Item[]; showPrices: boolean; money: 'INR' }) {
+export function ServicesMenu({ services, showPrices, money, bookable = true }: { services: Item[]; showPrices: boolean; money: 'INR'; bookable?: boolean }) {
   const categories = useMemo(() => [...new Set(services.map((s) => s.category))], [services])
   const [tab, setTab] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -50,7 +50,7 @@ export function ServicesMenu({ services, showPrices, money }: { services: Item[]
                       {showPrices && s.price > 0 && <span className="font-bold text-[#0E1B3D] text-[14px]">{rupees(s.price)}</span>}
                     </p>
                   </div>
-                  <BookButton service={s.id} className="shrink-0 h-9 px-4 leading-9 rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[13.5px] font-bold hover:bg-[var(--c)] hover:text-white transition-colors">Book</BookButton>
+                  {bookable && <BookButton service={s.id} className="shrink-0 h-9 px-4 leading-9 rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[13.5px] font-bold hover:bg-[var(--c)] hover:text-white transition-colors">Book</BookButton>}
                 </li>
               ))}
             </ul>

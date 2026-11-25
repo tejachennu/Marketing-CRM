@@ -176,6 +176,8 @@ class MoreScreen extends StatelessWidget {
                     subtitle: 'Services, team, business details, WhatsApp, templates',
                     onTap: () => open(const SetupScreen()),
                   ),
+                  // The booking flow is for appointments: hidden while the business takes none
+                  if (app.takesAppointments)
                   _Row(
                     icon: app.whatsappOn ? Icons.event_available_outlined : Icons.lock_outline,
                     title: 'Booking flow on WhatsApp',

@@ -3,11 +3,15 @@
  * business's own domain. A real business site: cover photo, Open now, services and prices with Book, offers and
  * memberships, team, photos, reviews, about, how to find us with a map and the week's hours, and a phone bar with
  * Call / WhatsApp / Book. The business's own colour (--c); no gradients. Server-rendered (fast, found by Google).
+ *
+ * Each call-to-action (Call, WhatsApp, Book now, Shop online, Directions and map) shows only when the business has
+ * it switched on (Setup → Website and booking → Buttons on your website) and it is possible: Book now also needs
+ * appointments on, Shop online the store on, Call / WhatsApp a phone number, Directions an address (siteButtons).
  */
 
 import { AtSign, CalendarCheck, Clock, CreditCard, IdCard, MapPin, MessageCircle, Navigation, Phone, ShoppingBag, Star } from 'lucide-react'
 import { planBenefits } from '@/lib/salon/membership-rules'
-import { openStatus, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
+import { openStatus, phoneBar, siteButtons, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
 import { ServicesMenu } from './services-menu'
 import { BookButton } from './book-button'
 import { SiteChat } from '@/components/site-chat/site-chat'
@@ -63,12 +67,17 @@ function SectionHead({ id, kicker, title, children }: { id?: string; kicker: str
 
 export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, days, startService = null, startPerson = null, instagramPosts = [], chat = false, now = Date.now() }: BusinessSiteProps) {
   const phoneDigits = String(view.phone || '').replace(/\D/g, '')
-  const callHref = phoneDigits.length >= 10 ? `tel:+${phoneDigits}` : null
-  const waHref = phoneDigits.length >= 10 ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Hi ${view.business}`)}` : null
+  // The buttons the business switched on, that can work (Book now also needs appointments on)
+  const cta = siteButtons(site, { bookings: view.bookings !== false, store: Boolean(storeLink), phone: phoneDigits.length >= 10, address: Boolean(view.address) })
+  const bar = phoneBar(cta)
+  const showBar = bar.small.length > 0 || bar.main !== null
+  const callHref = cta.call ? `tel:+${phoneDigits}` : null
+  const waHref = cta.whatsapp ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Hi ${view.business}`)}` : null
+  const shopHref = cta.shop ? storeLink : null
   const status = openStatus(hours, now)
   const week = weekRows(hours, now)
   const mapQuery = view.address ? encodeURIComponent(`${view.business}, ${view.address.replace(/\n/g, ', ')}`) : ''
-  const directions = view.address ? `https://www.google.com/maps/search/?api=1&query=${mapQuery}` : null
+  const directions = cta.directions ? `https://www.google.com/maps/search/?api=1&query=${mapQuery}` : null
   const showTeam = site.show.team && view.staff.length > 0
   const showPlans = site.show.memberships && plans.length > 0
   const showReviews = site.show.reviews && count > 0
@@ -86,9 +95,10 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
     : view.pay.mode === 'online' ? `Pay ${view.pay.advance === 100 ? '' : `a ${view.pay.advance}% advance `}online to book (${view.pay.methods}).`
     : `Pay online now (${view.pay.methods}) or at the shop.`
   const solid = 'inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-[15px] font-bold'
+  const barCols = ['', 'grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][bar.small.length + (bar.main ? 2 : 0)]
 
   return (
-    <div style={{ ['--c' as any]: site.colour }} className="min-h-screen bg-[#f7f8fb] text-[#0E1B3D] pb-16 md:pb-0">
+    <div style={{ ['--c' as any]: site.colour }} className={`min-h-screen bg-[#f7f8fb] text-[#0E1B3D] ${showBar ? 'pb-16 md:pb-0' : ''}`}>
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#e3e8f2]">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center gap-4">
@@ -106,7 +116,9 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           </nav>
           <div className="ml-auto lg:ml-2 flex items-center gap-2 shrink-0">
             {callHref && <a href={callHref} aria-label="Call" className="hidden sm:flex h-11 w-11 rounded-full border border-[#d5ddeb] items-center justify-center hover:border-[var(--c)]"><Phone size={18} /></a>}
-            <a href="#book" className="h-11 px-5 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2"><CalendarCheck size={17} /> Book now</a>
+            {cta.book
+              ? <a href="#book" className="h-11 px-5 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2 whitespace-nowrap"><CalendarCheck size={17} /> Book now</a>
+              : shopHref && <a href={shopHref} className="h-11 px-5 rounded-full bg-[var(--c)] text-white font-bold text-[14.5px] inline-flex items-center gap-2 whitespace-nowrap"><ShoppingBag size={17} /> Shop online</a>}
           </div>
         </div>
       </header>
@@ -125,16 +137,20 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
               <span className={`h-2 w-2 rounded-full ${status.open ? 'bg-[var(--c)]' : 'bg-white/70'}`} aria-hidden /> {status.text}
             </p>
             <h1 className="mt-4 text-[34px] sm:text-[54px] font-extrabold leading-[1.05] tracking-tight break-words">{view.business}</h1>
-            <p className="mt-3 text-[17px] sm:text-[20px] text-white/85 leading-snug">{site.tagline || 'Book your visit online in a minute: pick a service, a person and a free time.'}</p>
+            <p className="mt-3 text-[17px] sm:text-[20px] text-white/85 leading-snug">{site.tagline || (cta.book ? 'Book your visit online in a minute: pick a service, a person and a free time.' : 'Our services and prices, opening hours and how to find us.')}</p>
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[14.5px] text-white/90">
               {count > 0 && <span className="inline-flex items-center gap-1.5"><Star size={16} className="fill-[#f5a524] text-[#f5a524]" /> <b>{average}</b> from {count} review{count === 1 ? '' : 's'}</span>}
               {startPrice > 0 && site.show.prices && <span>Services from <b>{rupees(startPrice)}</b></span>}
               {view.address && <span className="inline-flex items-center gap-1.5 min-w-0"><MapPin size={16} className="shrink-0" /> <span className="truncate max-w-[18rem]">{view.address.split('\n')[0]}</span></span>}
             </div>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href="#book" className={`${solid} bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book an appointment</a>
-              {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={`${solid} border-2 border-white/50 text-white hover:bg-white/10`}><MessageCircle size={18} /> WhatsApp us</a>}
-            </div>
+            {(cta.book || waHref || shopHref) && (
+              <div className="mt-8 flex flex-wrap gap-3">
+                {cta.book && <a href="#book" className={`${solid} bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book an appointment</a>}
+                {/* Without booking, the online store takes the first place */}
+                {!cta.book && shopHref && <a href={shopHref} className={`${solid} bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`}><ShoppingBag size={18} className="text-[var(--c)]" /> Shop online</a>}
+                {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={`${solid} border-2 border-white/50 text-white hover:bg-white/10`}><MessageCircle size={18} /> WhatsApp us</a>}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -143,8 +159,10 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
       <div className="max-w-6xl mx-auto px-4 -mt-6 sm:-mt-8 relative z-10">
         <div className="bg-white rounded-2xl border border-[#e3e8f2] shadow-[0_8px_30px_rgba(14,27,61,0.08)] grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#eef1f6]">
           <div className="p-4 flex gap-3 items-center min-w-0"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Clock size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Today</span><span className="block text-[14.5px] font-bold truncate">{week.find((d) => d.today)?.time || '—'}</span></span></div>
-          {view.address ? (
-            <a href={directions!} target="_blank" rel="noreferrer" className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb]"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Navigation size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Find us</span><span className="block text-[14.5px] font-bold truncate">{view.address.split('\n')[0]}</span></span></a>
+          {view.address && directions ? (
+            <a href={directions} target="_blank" rel="noreferrer" className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb]"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Navigation size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Find us</span><span className="block text-[14.5px] font-bold truncate">{view.address.split('\n')[0]}</span></span></a>
+          ) : view.address ? (
+            <div className="p-4 flex gap-3 items-center min-w-0"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><MapPin size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Find us</span><span className="block text-[14.5px] font-bold truncate">{view.address.split('\n')[0]}</span></span></div>
           ) : <div className="hidden sm:block" />}
           {callHref ? (
             <a href={callHref} className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb]"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Phone size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Call us</span><span className="block text-[14.5px] font-bold truncate">+{phoneDigits.replace(/^(\d{2})(\d{5})(\d+)$/, '$1 $2 $3')}</span></span></a>
@@ -156,13 +174,13 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         {/* Services */}
         <section aria-labelledby="services-title">
           <SectionHead id="services" kicker="What we do" title="Services and prices">
-            <a href="#book" className="h-10 px-4 rounded-full bg-[var(--c)] text-white text-[14px] font-bold inline-flex items-center gap-2"><CalendarCheck size={16} /> Book a visit</a>
+            {cta.book && <a href="#book" className="h-10 px-4 rounded-full bg-[var(--c)] text-white text-[14px] font-bold inline-flex items-center gap-2"><CalendarCheck size={16} /> Book a visit</a>}
           </SectionHead>
-          <ServicesMenu services={view.services} showPrices={site.show.prices} money="INR" />
+          <ServicesMenu services={view.services} showPrices={site.show.prices} money="INR" bookable={cta.book} />
         </section>
 
         {/* Book online, right here: live free times, and pay online or at the shop */}
-        <section aria-labelledby="book-title">
+        {cta.book && <section aria-labelledby="book-title">
           <SectionHead id="book" kicker="Book online" title="Book your visit" />
           <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
             <div className="min-w-0 max-w-2xl">
@@ -187,7 +205,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
               <a href={bookHref} className="block text-[13px] font-semibold text-[var(--c)] hover:underline">Open the booking page on its own</a>
             </aside>
           </div>
-        </section>
+        </section>}
 
         {showPlans && (
           <section>
@@ -216,7 +234,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                 <div key={m.id} className="bg-white rounded-2xl border border-[#e3e8f2] p-5 text-center">
                   <span className="mx-auto h-20 w-20 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center text-[24px] font-extrabold">{initials(m.name)}</span>
                   <p className="mt-3 text-[16px] font-bold break-words">{m.name}</p>
-                  <BookButton person={m.id} className="mt-3 inline-flex h-9 px-4 rounded-full border border-[#d5ddeb] text-[13px] font-bold items-center hover:border-[var(--c)] hover:text-[var(--c)]">Book with {m.name.split(' ')[0]}</BookButton>
+                  {cta.book && <BookButton person={m.id} className="mt-3 inline-flex h-9 px-4 rounded-full border border-[#d5ddeb] text-[13px] font-bold items-center hover:border-[var(--c)] hover:text-[var(--c)]">Book with {m.name.split(' ')[0]}</BookButton>}
                 </div>
               ))}
             </div>
@@ -295,20 +313,23 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         {/* Visit us */}
         <section>
           <SectionHead id="visit" kicker="Find us" title="Visit us" />
-          <div className="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
-            <div className="rounded-2xl overflow-hidden border border-[#e3e8f2] bg-[#eef1f6] min-h-[280px]">
-              {view.address ? (
-                <iframe title={`Map to ${view.business}`} src={`https://maps.google.com/maps?q=${mapQuery}&output=embed`} loading="lazy" className="w-full h-full min-h-[280px] lg:min-h-[380px] border-0" referrerPolicy="no-referrer-when-downgrade" />
-              ) : (
-                <div className="h-full min-h-[280px] flex items-center justify-center text-[#8a94a8]"><MapPin size={36} /></div>
-              )}
-            </div>
+          {/* The map goes with "Directions and map": switched off, the hours and contact card stands alone */}
+          <div className={`grid gap-4 ${site.buttons.directions ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
+            {site.buttons.directions && (
+              <div className="rounded-2xl overflow-hidden border border-[#e3e8f2] bg-[#eef1f6] min-h-[280px]">
+                {view.address ? (
+                  <iframe title={`Map to ${view.business}`} src={`https://maps.google.com/maps?q=${mapQuery}&output=embed`} loading="lazy" className="w-full h-full min-h-[280px] lg:min-h-[380px] border-0" referrerPolicy="no-referrer-when-downgrade" />
+                ) : (
+                  <div className="h-full min-h-[280px] flex items-center justify-center text-[#8a94a8]"><MapPin size={36} /></div>
+                )}
+              </div>
+            )}
             <div className="bg-white rounded-2xl border border-[#e3e8f2] p-5 sm:p-6 space-y-5">
               {view.address && (
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Address</p>
                   <p className="mt-1 text-[15px] whitespace-pre-line">{view.address}</p>
-                  <a href={directions!} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-[14px] font-bold text-[var(--c)]"><Navigation size={15} /> Get directions</a>
+                  {directions && <a href={directions} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-[14px] font-bold text-[var(--c)]"><Navigation size={15} /> Get directions</a>}
                 </div>
               )}
               <div>
@@ -321,22 +342,36 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                   ))}
                 </ul>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {callHref && <a href={callHref} className="h-10 px-4 rounded-full border border-[#d5ddeb] text-[14px] font-bold inline-flex items-center gap-2"><Phone size={16} /> Call</a>}
-                {waHref && <a href={waHref} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full bg-[#25D366] text-white text-[14px] font-bold inline-flex items-center gap-2"><MessageCircle size={16} /> WhatsApp</a>}
-              </div>
+              {(callHref || waHref) && (
+                <div className="flex flex-wrap gap-2">
+                  {callHref && <a href={callHref} className="h-10 px-4 rounded-full border border-[#d5ddeb] text-[14px] font-bold inline-flex items-center gap-2"><Phone size={16} /> Call</a>}
+                  {waHref && <a href={waHref} target="_blank" rel="noreferrer" className="h-10 px-4 rounded-full bg-[#25D366] text-white text-[14px] font-bold inline-flex items-center gap-2"><MessageCircle size={16} /> WhatsApp</a>}
+                </div>
+              )}
             </div>
           </div>
         </section>
 
-        {/* Last call to book */}
-        <section className="rounded-2xl bg-[var(--c)] text-white p-8 sm:p-12 flex flex-col sm:flex-row sm:items-center gap-5">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[26px] sm:text-[32px] font-extrabold leading-tight">Ready for your visit?</h2>
-            <p className="mt-1 text-[16px] text-white/85">Pick a service and a free time. It takes a minute.</p>
-          </div>
-          <a href="#book" className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book now</a>
-        </section>
+        {/* Last call to book; without booking, to come in or message (only buttons that are on) */}
+        {cta.book ? (
+          <section className="rounded-2xl bg-[var(--c)] text-white p-8 sm:p-12 flex flex-col sm:flex-row sm:items-center gap-5">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[26px] sm:text-[32px] font-extrabold leading-tight">Ready for your visit?</h2>
+              <p className="mt-1 text-[16px] text-white/85">Pick a service and a free time. It takes a minute.</p>
+            </div>
+            <a href="#book" className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><CalendarCheck size={18} className="text-[var(--c)]" /> Book now</a>
+          </section>
+        ) : (waHref || callHref || shopHref) ? (
+          <section className="rounded-2xl bg-[var(--c)] text-white p-8 sm:p-12 flex flex-col sm:flex-row sm:items-center gap-5">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[26px] sm:text-[32px] font-extrabold leading-tight">Come and see us</h2>
+              <p className="mt-1 text-[16px] text-white/85">{status.text}. {waHref ? 'Questions? Message us on WhatsApp.' : callHref ? 'Questions? Give us a call.' : 'Or order online.'}</p>
+            </div>
+            {waHref ? <a href={waHref} target="_blank" rel="noreferrer" className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><MessageCircle size={18} className="text-[var(--c)]" /> WhatsApp us</a>
+              : callHref ? <a href={callHref} className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><Phone size={18} className="text-[var(--c)]" /> Call us</a>
+              : shopHref && <a href={shopHref} className={`${solid} bg-white text-[#0E1B3D] shrink-0`}><ShoppingBag size={18} className="text-[var(--c)]" /> Shop online</a>}
+          </section>
+        ) : null}
       </main>
 
       <footer className="bg-[#0E1B3D] text-white/85">
@@ -349,19 +384,22 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           <div>
             <p className="text-[12px] font-bold uppercase tracking-wide text-white/55">Visit</p>
             <ul className="mt-3 space-y-2">
-              <li><a href="#book" className="hover:underline">Book an appointment</a></li>
+              {cta.book && <li><a href="#book" className="hover:underline">Book an appointment</a></li>}
               <li><a href="#services" className="hover:underline">Services and prices</a></li>
-              {storeLink && <li><a href={storeLink} className="hover:underline inline-flex items-center gap-1.5"><ShoppingBag size={14} /> Shop online</a></li>}
+              {!cta.book && <li><a href="#visit" className="hover:underline">Opening hours</a></li>}
+              {shopHref && <li><a href={shopHref} className="hover:underline inline-flex items-center gap-1.5"><ShoppingBag size={14} /> Shop online</a></li>}
             </ul>
           </div>
-          <div>
-            <p className="text-[12px] font-bold uppercase tracking-wide text-white/55">Contact</p>
-            <ul className="mt-3 space-y-2">
-              {callHref && <li><a href={callHref} className="hover:underline">Call us</a></li>}
-              {waHref && <li><a href={waHref} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a></li>}
-              {site.instagram && <li><a href={`https://www.instagram.com/${site.instagram}/`} target="_blank" rel="noreferrer" className="hover:underline">Instagram</a></li>}
-            </ul>
-          </div>
+          {(callHref || waHref || site.instagram) && (
+            <div>
+              <p className="text-[12px] font-bold uppercase tracking-wide text-white/55">Contact</p>
+              <ul className="mt-3 space-y-2">
+                {callHref && <li><a href={callHref} className="hover:underline">Call us</a></li>}
+                {waHref && <li><a href={waHref} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a></li>}
+                {site.instagram && <li><a href={`https://www.instagram.com/${site.instagram}/`} target="_blank" rel="noreferrer" className="hover:underline">Instagram</a></li>}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="border-t border-white/10">
           <p className="max-w-6xl mx-auto px-4 py-4 text-[12.5px] text-white/50 flex flex-wrap justify-between gap-2">
@@ -370,13 +408,16 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         </div>
       </footer>
 
-      {/* Phones: Call · WhatsApp · Book now */}
-      {chat && <SiteChat kind="desk" endpoint={`/api/public/booking/${view.slug}/chat`} storageKey={`site-chat:${view.slug}`} name={view.business} logo={view.logo} whatsapp={phoneDigits.length >= 10 ? phoneDigits : null} phone={view.phone} raised />}
-      <nav aria-label="Quick actions" className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white border-t border-[#e3e8f2] grid grid-cols-4 shadow-[0_-2px_10px_rgba(14,27,61,0.08)]">
-        {callHref ? <a href={callHref} className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><Phone size={20} /> Call</a> : <span />}
-        {waHref ? <a href={waHref} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><MessageCircle size={20} /> WhatsApp</a> : <span />}
-        <a href="#book" className="col-span-2 m-2 rounded-xl bg-[var(--c)] text-white flex items-center justify-center gap-2 text-[15px] font-extrabold"><CalendarCheck size={18} /> Book now</a>
-      </nav>
+      {chat && <SiteChat kind="desk" endpoint={`/api/public/booking/${view.slug}/chat`} storageKey={`site-chat:${view.slug}`} name={view.business} logo={view.logo} whatsapp={waHref ? phoneDigits : null} phone={callHref ? view.phone : null} bookable={cta.book} raised={showBar} flat={!showBar} />}
+      {/* Phones: Call · WhatsApp · Book now (or Shop online); no bar at all when every one is off */}
+      {showBar && (
+        <nav aria-label="Quick actions" className={`md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white border-t border-[#e3e8f2] grid ${barCols} shadow-[0_-2px_10px_rgba(14,27,61,0.08)]`}>
+          {callHref && <a href={callHref} className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><Phone size={20} /> Call</a>}
+          {waHref && <a href={waHref} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center gap-0.5 text-[11.5px] font-bold"><MessageCircle size={20} /> WhatsApp</a>}
+          {bar.main === 'book' && <a href="#book" className="col-span-2 m-2 rounded-xl bg-[var(--c)] text-white flex items-center justify-center gap-2 text-[15px] font-extrabold whitespace-nowrap"><CalendarCheck size={18} /> Book now</a>}
+          {bar.main === 'shop' && shopHref && <a href={shopHref} className="col-span-2 m-2 rounded-xl bg-[var(--c)] text-white flex items-center justify-center gap-2 text-[15px] font-extrabold whitespace-nowrap"><ShoppingBag size={18} /> Shop online</a>}
+        </nav>
+      )}
     </div>
   )
 }

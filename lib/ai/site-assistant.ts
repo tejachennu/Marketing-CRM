@@ -163,6 +163,10 @@ export interface DeskFactsInput {
   about?: string
   rating?: { average: number; count: number }
   showPrices?: boolean
+  /** The business takes appointments (Front Desk → Setup → Appointments); false: walk-in only, no booking */
+  bookings?: boolean
+  /** The website shows its Book buttons and booking form (false: bookings by WhatsApp or phone only) */
+  bookOnSite?: boolean
 }
 
 function planLine(p: NonNullable<DeskFactsInput['plans']>[number]): string {
@@ -180,6 +184,7 @@ export function deskFacts(d: DeskFactsInput): string {
   const menu = [...byCategory.entries()].map(([cat, list]) => `  ${cat}: ${list.slice(0, 60).map((s) => `${s.name} (${showPrices && s.price > 0 ? `${rupees(s.price)}, ` : ''}${duration(s.minutes)})`).join('; ')}`)
   const serviceName = new Map(d.services.map((s) => [s.id, s.name]))
   const pay = d.pay
+  const bookings = d.bookings !== false
   const lines = [
     `- Business: ${d.business}.`,
     `- Opening hours: ${d.hours}.`,
@@ -190,12 +195,16 @@ export function deskFacts(d: DeskFactsInput): string {
     `- Services${showPrices ? ' and prices' : ''} (the full list; nothing else is offered):\n${menu.join('\n')}`,
     showPrices ? '' : '- Prices are not shown online: say the shop will tell the price, or the customer can call.',
     d.staff.length ? `- Team: ${d.staff.map((m) => `${m.name}${m.service_ids.length ? ` (does ${m.service_ids.map((id) => serviceName.get(id)).filter(Boolean).slice(0, 6).join(', ')})` : ' (does every service)'}`).join('; ')}.` : '',
-    `- Booking: customers book on this website (tap Book, pick services, a person or anyone, a day and a free time). ${d.approval ? 'The business confirms each booking on WhatsApp.' : 'Bookings are confirmed at once on WhatsApp.'} Free times change all the time: never promise a time; ask them to tap Book to see free times.`,
-    pay ? `- Paying for a booking: ${!pay.online ? 'at the shop after the visit (cash, UPI or card).' : pay.mode === 'online' ? `online when booking (${pay.advance >= 100 ? 'the full amount' : `a ${pay.advance}% advance, the rest at the shop`}; ${pay.methods}).` : `online when booking (${pay.advance >= 100 ? 'full amount' : `${pay.advance}% advance`}, ${pay.methods}) or at the shop, the customer chooses.`}` : '',
+    bookings && d.bookOnSite === false
+      ? `- Booking: not on this website. Customers book by ${d.phone ? 'calling or messaging the business on WhatsApp' : 'messaging the business'}. Never promise a time.`
+      : bookings
+      ? `- Booking: customers book on this website (tap Book, pick services, a person or anyone, a day and a free time). ${d.approval ? 'The business confirms each booking on WhatsApp.' : 'Bookings are confirmed at once on WhatsApp.'} Free times change all the time: never promise a time; ask them to tap Book to see free times.`
+      : `- No appointments: this business does not take bookings. Customers just walk in during the opening hours${d.phone ? ' or call' : ''}. Never offer to book a time.`,
+    pay && bookings && d.bookOnSite !== false ? `- Paying for a booking: ${!pay.online ? 'at the shop after the visit (cash, UPI or card).' : pay.mode === 'online' ? `online when booking (${pay.advance >= 100 ? 'the full amount' : `a ${pay.advance}% advance, the rest at the shop`}; ${pay.methods}).` : `online when booking (${pay.advance >= 100 ? 'full amount' : `${pay.advance}% advance`}, ${pay.methods}) or at the shop, the customer chooses.`}` : '',
     d.plans?.length ? `- Memberships (bought at the shop): ${d.plans.slice(0, 8).map(planLine).join('; ')}.` : '',
     d.rating && d.rating.count > 0 ? `- Customers rate it ${d.rating.average} out of 5 (${d.rating.count} reviews).` : '',
     d.about ? `- About: ${oneLine(d.about, 600)}` : '',
-    '- To check their own booking, customers can give the phone number and first name they booked with.',
+    bookings ? '- To check their own booking, customers can give the phone number and first name they booked with.' : '',
   ]
   return lines.filter(Boolean).join('\n')
 }
@@ -205,7 +214,7 @@ export function deskFacts(d: DeskFactsInput): string {
 const wordsOf = (t: string) => String(t || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 1)
 
 /** The services matching a text, best first, as knowledge items (kind 'service'). */
-export function serviceHits(services: DeskService[], text: string, max = 4, showPrices = true): KnowledgeHit[] {
+export function serviceHits(services: DeskService[], text: string, max = 4, showPrices = true, bookable = true): KnowledgeHit[] {
   const typed = [...new Set(wordsOf(text))]
   if (!typed.length) return []
   const scored = services.map((s, i) => {
@@ -221,7 +230,7 @@ export function serviceHits(services: DeskService[], text: string, max = 4, show
   }).filter((x) => x.score >= 2)
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, max).map(({ s }) => ({
     id: s.id, title: s.name, kind: 'service' as const, score: 1, similarity: null, wordScore: null,
-    content: [`Service in the ${s.category} menu`, showPrices && s.price > 0 ? `Price: ${rupees(s.price)}` : 'Price: ask the shop', `Takes about ${duration(s.minutes)}`, 'Book it on this website (Book button).'].join('\n'),
+    content: [`Service in the ${s.category} menu`, showPrices && s.price > 0 ? `Price: ${rupees(s.price)}` : 'Price: ask the shop', `Takes about ${duration(s.minutes)}`, bookable ? 'Book it on this website (Book button).' : 'No booking needed: walk in during opening hours.'].join('\n'),
   }))
 }
 

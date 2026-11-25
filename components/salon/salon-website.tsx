@@ -2,17 +2,19 @@
 
 /**
  * Front Desk → Setup → Website and booking: the business's own website. On/off, the address (our free one, or the
- * business's own domain, shared with the online store), the cover photo, a gallery, a line and a few words about
- * the business, a colour, which parts to show, and what the domain opens when the store is on too.
+ * the business's own domain, shared with the online store), the cover photo, a gallery, a line and a few words about
+ * the business, a colour, which parts to show, which call-to-action buttons show (Call, WhatsApp, Book now, Shop
+ * online, Directions and map), and what the domain opens when the store is on too. Without appointments (Setup →
+ * Appointments) there is no booking: Book now is unavailable and the booking payment settings are hidden.
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, ExternalLink, ImagePlus, Loader2, Trash2 } from 'lucide-react'
-import { DEFAULT_SITE, MAX_GALLERY, SITE_COLOURS, readSite, type SiteSettings } from '@/lib/salon/website'
+import { DEFAULT_SITE, MAX_GALLERY, SITE_BUTTONS, SITE_COLOURS, buttonBlocker, readSite, type SiteSettings } from '@/lib/salon/website'
 import { StoreAddress } from '@/components/commerce/storefront-settings'
 import { OnlinePayments } from '@/components/payments/online-payments'
 import { ADVANCE_CHOICES } from '@/lib/salon/booking-pay'
-import { api, card, input, primaryButton, secondaryButton } from './ui'
+import { api, card, input, primaryButton, secondaryButton, Toggle } from './ui'
 
 async function uploadPhoto(file: File): Promise<string> {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Use a JPG, PNG or WebP photo.')
@@ -28,7 +30,7 @@ async function uploadPhoto(file: File): Promise<string> {
 export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId: string; canEdit: boolean; canManageDomain: boolean; flash: (kind: 'success' | 'error', message: string) => void }) {
   const [site, setSite] = useState<SiteSettings>(DEFAULT_SITE)
   const [saved, setSaved] = useState('')
-  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null; instagram: { connected: boolean; username: string }; chatProblem: string | null } | null>(null)
+  const [meta, setMeta] = useState<{ slug: string; storeOn: boolean; domain: string | null; instagram: { connected: boolean; username: string }; chatProblem: string | null; takesAppointments: boolean; hasPhone: boolean; hasAddress: boolean } | null>(null)
   const [gatewayOn, setGatewayOn] = useState(false)
   const [busy, setBusy] = useState<'' | 'save' | 'cover' | 'gallery'>('')
   const coverRef = useRef<HTMLInputElement>(null)
@@ -39,7 +41,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
       const s = readSite(data.site)
       setSite(s)
       setSaved(JSON.stringify(s))
-      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain, instagram: data.instagram || { connected: false, username: '' }, chatProblem: data.chatProblem || null })
+      setMeta({ slug: data.slug, storeOn: data.storeOn, domain: data.domain, instagram: data.instagram || { connected: false, username: '' }, chatProblem: data.chatProblem || null, takesAppointments: data.takesAppointments !== false, hasPhone: data.hasPhone !== false, hasAddress: data.hasAddress !== false })
     }).catch((err) => flash('error', err.message))
     // Loaded once per workspace (flash may be a new function on every render)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,6 +49,9 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
 
   if (!meta) return <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
   const set = (patch: Partial<SiteSettings>) => setSite((s) => ({ ...s, ...patch }))
+  const bookings = meta.takesAppointments
+  const reach = { bookings, store: meta.storeOn, phone: meta.hasPhone, address: meta.hasAddress }
+  // Shop online is offered only when the online store is on
   const dirty = JSON.stringify(site) !== saved
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://wamacrm.magnetora.in'
   const link = meta.domain && (!meta.storeOn || site.domainShows === 'website') ? `https://${meta.domain}` : `${origin}/v/${meta.slug}`
@@ -103,7 +108,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Your website</h2>
-            <p className="text-[14px] text-[#4a5672] dark:text-slate-400 mt-1">A full website for your business: services and prices with Book, your team, photos, reviews, hours and a map. Share it on Google Maps, Instagram and WhatsApp.</p>
+            <p className="text-[14px] text-[#4a5672] dark:text-slate-400 mt-1">A full website for your business: services and prices{bookings ? ' with Book' : ''}, your team, photos, reviews, hours and a map. Share it on Google Maps, Instagram and WhatsApp.</p>
           </div>
           <label className="inline-flex items-center gap-2 text-[14px] font-bold cursor-pointer shrink-0">
             <input type="checkbox" checked={site.enabled} disabled={!canEdit} onChange={(e) => set({ enabled: e.target.checked })} className="h-5 w-5 accent-[#1D5BEA]" /> {site.enabled ? 'On' : 'Off'}
@@ -183,7 +188,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
         <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">What to show</h3>
         <div className="grid sm:grid-cols-2 gap-2.5">
           {check('prices', 'Prices of services')}
-          {check('team', 'Your team, with Book with each person')}
+          {check('team', bookings ? 'Your team, with Book with each person' : 'Your team')}
           {check('memberships', 'Memberships')}
           {check('reviews', 'Customer reviews (4 and 5 stars with words)')}
         </div>
@@ -191,7 +196,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           <input type="checkbox" checked={site.chat} disabled={!canEdit} onChange={(e) => set({ chat: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
           <span className="min-w-0 text-[13.5px]">
             <span className="block font-bold text-[#0E1B3D] dark:text-white">AI chat on your website</span>
-            <span className="block text-[#6B7894]">An "Ask us" button that answers visitors from your services and prices, timings, team, memberships and Knowledge Base, shows services with Book, and checks a customer's booking. Each answer uses a little of your AI credit.</span>
+            <span className="block text-[#6B7894]">An "Ask us" button that answers visitors from your services and prices, timings, team, memberships and Knowledge Base{bookings ? ', shows services with Book, and checks a customer\'s booking' : ''}. Each answer uses a little of your AI credit.</span>
             {site.chat && meta.chatProblem && (
               <span role="alert" className="mt-2 block rounded-lg bg-[#fdf0f0] p-2 text-[12.5px] font-semibold text-[#b91c1c]">
                 The chat is hidden on your website: {meta.chatProblem}{/credit/i.test(meta.chatProblem) && <a href="/dashboard/billing" className="ml-1 underline">Open Billing</a>}
@@ -205,7 +210,35 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
         </div>
       </section>
 
-      <section className={`${card} p-5 space-y-4`}>
+      <section className={`${card} p-5 space-y-3`} aria-labelledby="site-buttons-title">
+        <div>
+          <h3 id="site-buttons-title" className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Buttons on your website</h3>
+          <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 mt-1">Switch off any button you do not want customers to see. It goes from every place on the page: the top, the phone bar and the bottom.</p>
+        </div>
+        <ul className="rounded-xl border border-[#e3e8f2] dark:border-slate-700 divide-y divide-[#eef1f6] dark:divide-slate-800">
+          {SITE_BUTTONS.filter(({ key }) => key !== 'shop' || meta.storeOn).map(({ key, label, hint }) => {
+            const blocker = buttonBlocker(key, reach)
+            // Book now cannot show without appointments: shown switched off, with the reason
+            const unavailable = key === 'book' && !bookings
+            const on = site.buttons[key] && !unavailable
+            return (
+              <li key={key} className="flex items-center gap-3 px-3.5 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[14.5px] font-bold ${unavailable ? 'text-[#8a94a8]' : 'text-[#0E1B3D] dark:text-white'}`}>{label}</span>
+                  <span className="block text-[13px] text-[#6B7894] dark:text-slate-400">{hint}</span>
+                  {blocker && site.buttons[key] && <span className="block mt-0.5 text-[12.5px] font-semibold text-[#4a5672] dark:text-slate-300">{blocker}</span>}
+                </span>
+                <Toggle checked={on} disabled={!canEdit || unavailable} onChange={(value) => set({ buttons: { ...site.buttons, [key]: value } })} label={`${label} button`} />
+              </li>
+            )
+          })}
+        </ul>
+        {Object.entries(site.buttons).every(([key, value]) => !value || buttonBlocker(key as keyof SiteSettings['buttons'], reach)) && (
+          <p className="text-[12.5px] text-[#6B7894]">With every button off, the phone bar at the bottom of your website is not shown.</p>
+        )}
+      </section>
+
+      {bookings && <section className={`${card} p-5 space-y-4`}>
         <div>
           <h3 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white">Payment when booking</h3>
           <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400 mt-1">On your website and booking page. An online payment keeps the time for 30 minutes; once paid, the booking is confirmed on WhatsApp and the amount is taken off the bill.</p>
@@ -237,7 +270,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
             <OnlinePayments orgId={orgId} canManage={canManageDomain} showToast={flash} onChange={(state) => setGatewayOn(Boolean(state.use))} />
           </>
         )}
-      </section>
+      </section>}
 
       <StoreAddress orgId={orgId} canManage={canManageDomain} showToast={(kind, text) => flash(kind, text)} kind="website" ourLink={`${origin}/v/${meta.slug}`} />
       {meta.storeOn && (

@@ -16,7 +16,8 @@ import 'range_bar.dart';
 import 'setup_screen.dart';
 
 /// Front Desk: two tabs as in WhatsApp — Bookings (the day's visits) and Requests (WhatsApp bookings
-/// waiting for a yes). Today first; the calendar opens any other day. Works offline.
+/// waiting for a yes). Today first; the calendar opens any other day. Works offline. A business that does not take
+/// appointments (Setup → Appointments off) sees today's walk-in bills instead: no tabs, no Book, just New bill.
 class FrontDeskScreen extends StatefulWidget {
   const FrontDeskScreen({super.key, this.initialTab = 0});
 
@@ -27,7 +28,15 @@ class FrontDeskScreen extends StatefulWidget {
 }
 
 class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProviderStateMixin {
-  late final _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1))..addListener(() => setState(() {}));
+  // Made when the screen opens (not on first use): without appointments the tabs are never shown, and making the
+  // controller only at dispose would ask for a ticker from a screen that is going away
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1))..addListener(() => setState(() {}));
+  }
 
   /// The day picked with the calendar; null = today, so the screen moves on to the new day after midnight.
   String? _picked;
@@ -71,31 +80,57 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
       );
     }
     final requests = desk.requests.length;
-    return Scaffold(
-      appBar: AppBar(
-        // Like WhatsApp's own name at the top of its home screen, in its green
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Front Desk',
+          style: TextStyle(color: Color(0xFF1DAA61), fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4),
+        ),
+        Text(
+          desk.businessName,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted),
+        ),
+      ],
+    );
+    final setupButton = IconButton(
+      tooltip: 'Setup',
+      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
+      icon: const Icon(Icons.tune),
+    );
+    // No appointments: today's walk-in bills, and New bill
+    if (!desk.takesAppointments) {
+      return Scaffold(
+        appBar: AppBar(title: title, actions: [if (manage) setupButton]),
+        body: Column(
           children: [
-            const Text(
-              'Front Desk',
-              style: TextStyle(color: Color(0xFF1DAA61), fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4),
-            ),
-            Text(
-              desk.businessName,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Brand.muted),
+            SyncBanner(cacheKey: desk.invoicesKey),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                child: app.isLoading(desk.invoicesKey) || app.isLoading('setup') ? const SkeletonCards() : _WalkIn(desk: FrontDesk(app)),
+              ),
             ),
           ],
         ),
+        floatingActionButton: app.can('write')
+            ? FloatingActionButton.extended(
+                heroTag: 'fab-bill',
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewBillScreen())),
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('New bill'),
+              )
+            : null,
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        // Like WhatsApp's own name at the top of its home screen, in its green
+        title: title,
         actions: [
           IconButton(tooltip: 'Pick a day', onPressed: _pickDay, icon: const Icon(Icons.calendar_month_outlined)),
-          if (manage)
-            IconButton(
-              tooltip: 'Setup',
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
-              icon: const Icon(Icons.tune),
-            ),
+          if (manage) setupButton,
         ],
         // Two clear tabs, as WhatsApp's tabs: a green line under the open one
         bottom: TabBar(
@@ -188,6 +223,74 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
               ],
             )
           : null,
+    );
+  }
+}
+
+/// Front Desk without appointments: today at a glance (bills, money in, still to collect), any visits booked before
+/// appointments were switched off (still billable), and today's bills.
+class _WalkIn extends StatelessWidget {
+  const _WalkIn({required this.desk});
+  final FrontDesk desk;
+
+  @override
+  Widget build(BuildContext context) {
+    final bills = desk.billsToday;
+    final live = bills.where((i) => i['status'] != 'void').toList();
+    num total(Map i) => num.tryParse('${i['total']}') ?? 0;
+    final collected = live.where((i) => i['status'] == 'paid').fold<num>(0, (s, i) => s + total(i));
+    final unpaid = live.where((i) => i['status'] == 'unpaid').length;
+    final earlier = desk.appointments.where((a) => ['booked', 'arrived', 'in_service'].contains(a['status'])).toList();
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted)),
+    );
+    // A Material (not a plain coloured box), so the bill rows' taps show
+    return Material(
+      color: Colors.white,
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 150),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(
+                    text: 'Today',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Brand.navy),
+                  ),
+                  TextSpan(
+                    text: '  ${DateFormat('d MMM').format(DateTime.parse(istToday()))}',
+                    style: const TextStyle(fontSize: 15, color: Brand.muted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              children: [
+                _Mini(value: '${live.length}', label: 'Bills today'),
+                _Mini(value: shortRupees(collected), label: 'Collected'),
+                _Mini(value: '$unpaid', label: 'Not paid yet'),
+              ],
+            ),
+          ),
+          if (earlier.isNotEmpty) ...[
+            heading('Booked earlier · ${earlier.length}'),
+            for (var i = 0; i < earlier.length; i++) ...[if (i > 0) const Divider(indent: 78), _AppointmentRow(appointment: earlier[i], desk: desk)],
+          ],
+          heading('Bills · ${bills.length}'),
+          if (bills.isEmpty)
+            const EmptyState(icon: Icons.receipt_long_outlined, title: 'No bills yet today', text: 'Tap New bill when a customer comes in. Bills are saved even offline.')
+          else
+            for (var i = 0; i < bills.length; i++) ...[if (i > 0) const Divider(indent: 16), _BillRow(invoice: bills[i], invoicesKey: desk.invoicesKey)],
+        ],
+      ),
     );
   }
 }

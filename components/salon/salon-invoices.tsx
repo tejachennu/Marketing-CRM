@@ -18,7 +18,7 @@ const menuItem = 'w-full flex items-center gap-2.5 text-left px-3 py-2.5 rounded
 
 interface Summary { collected: number; billed: number; bills: number; paidCount: number; unpaidCount: number; unpaidAmount: number; voidCount: number }
 
-export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeChange }: { orgId: string; canWrite: boolean; canVoid: boolean; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void }) {
+export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeChange, reloadKey = 0 }: { orgId: string; canWrite: boolean; canVoid: boolean; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void; /** Changed: read the bills again (a bill was just made) */ reloadKey?: number }) {
   const confirm = useConfirm()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -51,6 +51,10 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
     load().catch((err) => flash('error', err.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load])
+  useEffect(() => {
+    if (reloadKey) load().catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey])
 
   useEffect(() => {
     if (!menuFor) return

@@ -57,6 +57,8 @@ export const DEFAULT_SALON_SETTINGS = {
   feedback_enabled: true,
   feedback_delay_minutes: 120,
   review_link: null as string | null,
+  /** "We take appointments" (appointments-switch.ts): off for shops that only bill walk-ins */
+  takes_appointments: true,
 }
 
 export async function loadSalonSettings(db: any, organizationId: string) {

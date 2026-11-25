@@ -3,7 +3,7 @@
  * with Front Desk's tab names. Browser-only helpers.
  */
 
-import { announceConnectorBadges, announceConnectorTab, connectorTabFromSearch, isConnectorTab, onTabRequest, openConnectorTab } from './connector-nav'
+import { announceConnectorBadges, announceConnectorHiddenTabs, announceConnectorTab, connectorTabFromSearch, isConnectorTab, onTabRequest, openConnectorTab } from './connector-nav'
 
 export type FrontDeskTab = 'counter' | 'appointments' | 'invoices' | 'members' | 'reviews' | 'team' | 'setup'
 export const FRONT_DESK_TABS: FrontDeskTab[] = ['counter', 'appointments', 'invoices', 'members', 'reviews', 'team', 'setup']
@@ -24,5 +24,7 @@ export function tabFromSearch(search: string): FrontDeskTab | null {
 export const openFrontDeskTab = (tab: FrontDeskTab) => openConnectorTab('front-desk', tab)
 export const announceFrontDeskTab = (tab: FrontDeskTab) => announceConnectorTab('front-desk', tab)
 export const announceFrontDeskBadges = (badges: FrontDeskBadges) => announceConnectorBadges('front-desk', badges as Record<string, number>)
+/** The tabs Front Desk does not use right now (no Calendar while appointments are off), for the phone bottom bar. */
+export const announceFrontDeskHiddenTabs = (tabs: FrontDeskTab[]) => announceConnectorHiddenTabs('front-desk', tabs)
 /** Front Desk opens the tabs the bottom bar asks for; returns the function that stops listening. */
 export const onFrontDeskTabRequest = (handler: (tab: FrontDeskTab) => void) => onTabRequest('front-desk', (tab) => handler(tab as FrontDeskTab))

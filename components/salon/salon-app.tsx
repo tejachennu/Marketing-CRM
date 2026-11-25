@@ -6,7 +6,8 @@ import { FrontDeskIcon } from './front-desk-icon'
 import { can } from '@/lib/rbac'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { resolveRange, type DateRange } from '@/lib/salon/ranges'
-import { announceFrontDeskTab, MANAGER_TABS, onFrontDeskTabRequest, tabFromSearch, type FrontDeskTab } from '@/lib/front-desk-nav'
+import { announceFrontDeskHiddenTabs, announceFrontDeskTab, FRONT_DESK_TABS, MANAGER_TABS, onFrontDeskTabRequest, tabFromSearch, type FrontDeskTab } from '@/lib/front-desk-nav'
+import { APPOINTMENT_PURPOSES, APPOINTMENT_TABS, frontDeskTabsFor, takesAppointments } from '@/lib/salon/appointments-switch'
 import { api, card, secondaryButton, Toast, useToast, useWorkspace } from './ui'
 import { SalonSetupTab, type Section } from './salon-setup'
 import { SalonCounter } from './salon-counter'
@@ -15,11 +16,16 @@ import { SalonReviews } from './salon-reviews'
 import { SalonTeam } from './salon-team'
 import { SalonMembers } from './salon-members'
 import { SalonAppointments } from './salon-appointments'
+import { WalkInCounter } from './walk-in-counter'
 import type { SalonSetup } from './types'
 
 type Tab = FrontDeskTab
 
-/** Front Desk: the counter, invoices, reviews, team and setup, for any business that takes appointments. */
+/**
+ * Front Desk: the counter, invoices, reviews, team and setup, for any business that takes appointments, or (with
+ * appointments switched off in Setup) only bills walk-ins: then the counter is the day's bills and there is no
+ * Appointments tab (nor Calendar in the phone bottom bar).
+ */
 export function SalonApp() {
   const { workspace, error: workspaceError } = useWorkspace()
   const { toast, flash } = useToast()
@@ -38,7 +44,9 @@ export function SalonApp() {
   }, [])
 
   const canManage = can(workspace?.me, 'automation.manage')
-  const allowed = useCallback((value: Tab) => canManage || !MANAGER_TABS.includes(value), [canManage])
+  // Appointments switched off (Setup → Appointments): no Appointments tab; read from the setup once it is here
+  const takes = setup ? takesAppointments(setup.settings) : true
+  const allowed = useCallback((value: Tab) => (canManage || !MANAGER_TABS.includes(value)) && (takes || !(APPOINTMENT_TABS as readonly string[]).includes(value)), [canManage, takes])
 
   useEffect(() => {
     if (!workspace) return
@@ -46,7 +54,8 @@ export function SalonApp() {
       .then((data) => {
         // The tab in the address (?tab=…), else Setup while there is nothing to sell yet
         const asked = tabFromSearch(window.location.search)
-        if (asked && (can(workspace.me, 'automation.manage') || !MANAGER_TABS.includes(asked))) setTab(asked)
+        const usable = asked && (takesAppointments(data.settings) || !(APPOINTMENT_TABS as readonly string[]).includes(asked))
+        if (asked && usable && (can(workspace.me, 'automation.manage') || !MANAGER_TABS.includes(asked))) setTab(asked)
         else if (!data.services?.length && can(workspace.me, 'automation.manage')) setTab('setup')
       })
       .catch((err) => setError(err.message))
@@ -80,9 +89,15 @@ export function SalonApp() {
 
   // Tell the bottom bar which tab is showing
   useEffect(() => { announceFrontDeskTab(tab) }, [tab])
+  // ...and which tabs it should leave out (no Calendar while appointments are off); back to the counter if needed
+  useEffect(() => {
+    if (!setup) return
+    announceFrontDeskHiddenTabs(FRONT_DESK_TABS.filter((id) => !frontDeskTabsFor(FRONT_DESK_TABS, takes).includes(id)))
+    if (!takes && (APPOINTMENT_TABS as readonly string[]).includes(shown.current)) { shown.current = 'counter'; setTab('counter') }
+  }, [setup, takes])
   const tabs: { id: Tab; label: string; icon: typeof FrontDeskIcon }[] = [
     { id: 'counter', label: 'Front Desk', icon: FrontDeskIcon },
-    { id: 'appointments', label: 'Appointments', icon: CalendarDays },
+    ...(takes ? [{ id: 'appointments' as const, label: 'Appointments', icon: CalendarDays }] : []),
     { id: 'invoices', label: 'Invoices', icon: ReceiptText },
     { id: 'members', label: 'Members', icon: IdCard },
     ...(canManage ? [{ id: 'reviews' as const, label: 'Reviews', icon: Star }, { id: 'team' as const, label: 'Team', icon: Users }, { id: 'setup' as const, label: 'Setup', icon: Settings2 }] : []),
@@ -95,7 +110,9 @@ export function SalonApp() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={30} /></div>
   }
 
-  const templatesSetUp = Object.values(setup.settings.message_templates || {}).filter(Boolean).length
+  // Without appointments, only the bill and feedback messages need a template
+  const templatesNeeded = takes ? 4 : 4 - APPOINTMENT_PURPOSES.length
+  const templatesSetUp = Object.entries(setup.settings.message_templates || {}).filter(([purpose, choice]) => choice && (takes || !(APPOINTMENT_PURPOSES as readonly string[]).includes(purpose))).length
   const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })
 
   return (
@@ -141,13 +158,13 @@ export function SalonApp() {
           </div>
         )}
 
-        {tab === 'setup' && canManage && <SalonSetupTab key={setupSection} orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} initialSection={setupSection} />}
+        {tab === 'setup' && canManage && <SalonSetupTab key={setupSection} orgId={workspace.orgId} setup={setup} onChange={setSetup} flash={flash} initialSection={setupSection} canSwitchAppointments={can(workspace.me, 'settings.manage')} />}
         {/* Nothing is sent from a template until the business sets its templates up */}
-        {tab === 'counter' && canManage && setup.services.length > 0 && templatesSetUp < 4 && (
+        {tab === 'counter' && canManage && setup.services.length > 0 && templatesSetUp < templatesNeeded && (
           <div className={`${card} px-4 @xl:px-5 py-3.5 flex flex-col @xl:flex-row @xl:items-center gap-3`}>
             <div className="flex items-start gap-3 min-w-0 flex-1">
               <span className="h-9 w-9 shrink-0 rounded-xl bg-[#f4f6fa] dark:bg-slate-800 text-[#0E1B3D] dark:text-white flex items-center justify-center"><FileText size={18} /></span>
-              <p className="text-[14px] text-[#4a5672] dark:text-slate-300"><span className="font-bold text-[#0E1B3D] dark:text-white">WhatsApp templates: {templatesSetUp} of 4 set up.</span> Bills, reminders and feedback reach customers who haven&apos;t messaged you in 24 hours only once their template is set up.</p>
+              <p className="text-[14px] text-[#4a5672] dark:text-slate-300"><span className="font-bold text-[#0E1B3D] dark:text-white">WhatsApp templates: {templatesSetUp} of {templatesNeeded} set up.</span> {takes ? 'Bills, reminders and feedback' : 'Bills and feedback'} reach customers who haven&apos;t messaged you in 24 hours only once their template is set up.</p>
             </div>
             <button type="button" onClick={() => { setSetupSection('templates'); go('setup') }} className={`${secondaryButton} shrink-0`}>Set up templates</button>
           </div>
@@ -161,10 +178,12 @@ export function SalonApp() {
               {canManage && <button type="button" onClick={() => go('setup')} className="mt-5 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0E1B3D] dark:bg-white text-white dark:text-[#0E1B3D] text-[15px] font-bold cursor-pointer"><Settings2 size={17} /> Go to Setup</button>}
             </div>
           )
-          : <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />)}
+          : takes
+            ? <SalonCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />
+            : <WalkInCounter orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} />)}
         {tab === 'team' && canManage && <SalonTeam orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} onOpenReviews={() => go('reviews')} />}
         {tab === 'reviews' && canManage && <SalonReviews orgId={workspace.orgId} flash={flash} range={range} onRangeChange={setRange} />}
-        {tab === 'appointments' && <SalonAppointments orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />}
+        {tab === 'appointments' && takes && <SalonAppointments orgId={workspace.orgId} setup={setup} canWrite={can(workspace.me, 'records.write')} flash={flash} />}
         {tab === 'members' && <SalonMembers orgId={workspace.orgId} setup={setup} canManage={canManage} canWrite={can(workspace.me, 'records.write')} flash={flash} range={range} onRangeChange={setRange} />}
         {tab === 'invoices' && <SalonInvoices orgId={workspace.orgId} canWrite={can(workspace.me, 'records.write')} canVoid={canManage} flash={flash} range={range} onRangeChange={setRange} />}
       </div>

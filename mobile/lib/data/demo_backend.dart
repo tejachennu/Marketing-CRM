@@ -17,9 +17,24 @@ import 'format.dart';
 /// Sample data that answers like the real server, so every screen can be tried and shown
 /// without an account. Changes made in the demo stay until the app is closed.
 class DemoBackend implements Backend {
-  DemoBackend({this.offline = false, this.billing = 'trial', this.staff = false, this.whatsapp = true, this.starter = false}) {
+  DemoBackend({this.offline = false, this.billing = 'trial', this.staff = false, this.whatsapp = true, this.starter = false, this.appointments = true}) {
     _seed();
     _seedMore();
+    // Settings take any value (a saved switch, a cleared field), as the server's row does
+    _setup['settings'] = Map<String, dynamic>.from(_setup['settings'] as Map);
+    if (!appointments) _walkInOnly();
+  }
+
+  /// The business takes appointments (Front Desk → Setup → Appointments); false: a shop that only bills walk-ins.
+  final bool appointments;
+
+  /// A walk-in-only shop: appointments switched off, today's bills, no requests, and one visit booked before the
+  /// switch (still billable, as on the server).
+  void _walkInOnly() {
+    (_setup['settings'] as Map)['takes_appointments'] = false;
+    final booked = _appointments.where((a) => a['status'] == 'booked').take(1).toList();
+    _appointments = [..._appointments.where((a) => a['status'] == 'completed'), ...booked];
+    _requests = [];
   }
 
   /// Pretend there is no internet (to show the offline screens).
@@ -659,6 +674,11 @@ class DemoBackend implements Backend {
     await _wait();
     _refuseWhenPaused('GET', path);
     final desk = _attendance.get(path, query) ?? _money.get(path, query) ?? _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
+    // The website settings also say what its buttons need (as the server's GET /api/salon/website)
+    if (desk != null && path == '/api/salon/website') {
+      final settings = _setup['settings'] as Map;
+      return {...desk, 'takesAppointments': settings['takes_appointments'] != false, 'hasPhone': '${settings['phone'] ?? ''}'.replaceAll(RegExp(r'\D'), '').length >= 10, 'hasAddress': '${settings['address'] ?? ''}'.trim().isNotEmpty};
+    }
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': [], 'attendance': _attendance.notices(query['date']!)};
@@ -674,6 +694,7 @@ class DemoBackend implements Backend {
           'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
           'can': {'write': true, 'manage': !staff, 'campaigns': !staff, 'seeAll': !staff, 'billing': !staff, 'settings': !staff},
           'connectors': {'frontDesk': _connectorOn == 'salon', 'ecommerce': _connectorOn == 'ecommerce', 'pipeline': _connectorOn == 'pipeline'},
+          'frontDesk': {'appointments': (_setup['settings'] as Map)['takes_appointments'] != false},
           'instagram': {'connected': true, 'username': 'glowstore', 'replyHours': 24},
           'billing': _billingAnswer(),
           'whatsapp': {'connected': whatsapp && !starter, 'mode': starter ? 'shared' : 'own'},

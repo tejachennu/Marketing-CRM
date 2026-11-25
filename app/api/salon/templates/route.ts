@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMetaCredentials } from '@/lib/flows/meta-client'
-import { appOrigin, badRequest, salonAccess } from '@/lib/salon/server'
+import { appOrigin, badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
+import { messagePurposesFor, takesAppointments } from '@/lib/salon/appointments-switch'
 import { FRONT_DESK_MESSAGES, suggestionFor } from '@/lib/salon/templates'
 import { listTemplates, type MetaTemplate } from '@/lib/whatsapp-templates/meta-templates'
 import { MESSAGE_PURPOSES, parseMessageTemplates, templateBlanks, type MessagePurpose, type MessageTemplateChoice, type MessageTemplates } from '@/lib/salon/message-templates'
@@ -58,14 +59,16 @@ async function businessName(db: any, organizationId: string, fallback: string | 
 
 // GET ?organizationId: each message with its suggested text and the template set up for it (where it stands with
 // Meta), the workspace's own templates to pick from (managers and up). Nothing is set up until the business does it.
+// Without appointments (Setup → Appointments) the booking and reminder messages are left out: they are never sent.
 export async function GET(request: NextRequest) {
   const access = await salonAccess(request, new URL(request.url).searchParams.get('organizationId'), 'automation.manage')
   if (!access.ok) return access.response
   const { db, organizationId, organization } = access.ctx
   let choices = await savedChoices(db, organizationId).catch(() => ({} as MessageTemplates))
   const suggestions = Object.fromEntries(MESSAGE_PURPOSES.map((purpose) => [purpose, suggestionFor(purpose, appOrigin(request))]))
-  const [own, business] = await Promise.all([ownWhatsApp(db, organizationId), businessName(db, organizationId, organization?.name).catch(() => organization?.name || null)])
-  const views = (account: MetaTemplate[], checked: boolean) => MESSAGE_PURPOSES.map((purpose) => autoView(FRONT_DESK_MESSAGES[purpose], choices[purpose], account, { checked, business }))
+  const [own, business, settings] = await Promise.all([ownWhatsApp(db, organizationId), businessName(db, organizationId, organization?.name).catch(() => organization?.name || null), loadSalonSettings(db, organizationId).catch(() => null)])
+  const purposes = messagePurposesFor(MESSAGE_PURPOSES, takesAppointments(settings))
+  const views = (account: MetaTemplate[], checked: boolean) => purposes.map((purpose) => autoView(FRONT_DESK_MESSAGES[purpose], choices[purpose], account, { checked, business }))
   const base = { success: true, ownWhatsApp: own, languages: AUTO_LANGUAGES, suggestions }
   const { credentials, error } = await credentialsFor(db, organizationId)
   if (!credentials) return NextResponse.json({ ...base, connected: false, message: error, account: [], choices, autoMessages: views([], false) })

@@ -1,13 +1,14 @@
 /**
  * What Front Desk sends on its own, a while after something happens:
  * - feedback: a rating question some time after the bill (the time is set in Setup);
- * - reminders: a message about 2 hours before a booking.
+ * - reminders: a message about 2 hours before a booking (not while appointments are switched off).
  *
  * runSalonJobs runs whenever the counter is open (every couple of minutes) and from the optional
  * scheduled job (/api/cron/salon). Each message is claimed before it is sent, so two counters
  * open at once never send it twice.
  */
 
+import { takesAppointments } from './appointments-switch'
 import { feedbackLink } from './feedback'
 import { saveFeedback } from './feedback-store'
 import { withSalonSchema } from './schema'
@@ -92,7 +93,8 @@ export async function runSalonJobs(db: any, organizationId: string, options: { n
     }
   }
 
-  if (settings.reminders_enabled !== false) {
+  // Reminders are for bookings: none while the business has switched appointments off
+  if (settings.reminders_enabled !== false && takesAppointments(settings)) {
     const { data: soon } = await withSalonSchema(() => db.from('salon_appointments').select('*').eq('organization_id', organizationId).eq('status', 'booked')
       .is('reminder_sent_at', null).gte('starts_at', new Date(now + 60 * 60_000).toISOString()).lte('starts_at', new Date(now + 150 * 60_000).toISOString()).limit(20))
     for (const appointment of soon || []) {

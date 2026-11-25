@@ -1,9 +1,13 @@
 'use client'
 
-/** Setup → WhatsApp: the chat assistant, chat bookings, opening hours, reminders and feedback. */
+/**
+ * Setup → WhatsApp: the chat assistant, chat bookings, opening hours, reminders and feedback. Without appointments
+ * (Setup → Appointments) the booking parts (confirm free slots, reminders) are hidden and the assistant only answers.
+ */
 
 import { useState } from 'react'
 import { Clock3, Loader2, MessageCircle, Star } from 'lucide-react'
+import { takesAppointments } from '@/lib/salon/appointments-switch'
 import { api, card, Chip, Field, input, primaryButton, Toggle } from './ui'
 import type { SalonSetup } from './types'
 
@@ -28,6 +32,7 @@ function Row({ title, help, children }: { title: string; help: string; children:
 
 export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { orgId: string; setup: SalonSetup; onChange: (setup: SalonSetup) => void; flash: Flash; children?: React.ReactNode }) {
   const s = setup.settings
+  const takes = takesAppointments(s)
   const [form, setForm] = useState({
     chat_assistant: s.chat_assistant !== false,
     auto_approve_bookings: s.auto_approve_bookings === true,
@@ -61,20 +66,24 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
         <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100 flex items-center justify-center"><MessageCircle size={21} /></span>
         <div className="min-w-0">
           <h2 className="text-[18px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">WhatsApp</h2>
-          <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400">Answers, bookings, reminders and feedback on your WhatsApp number</p>
+          <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400">{takes ? 'Answers, bookings, reminders and feedback on your WhatsApp number' : 'Answers and feedback on your WhatsApp number'}</p>
         </div>
       </div>
       <div className="p-4 @xl:p-5 space-y-5">
         <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
-          <Row title="Answer questions and take bookings" help="Customers ask about services, prices and timings, and book a time, in English, Telugu or Hindi. Uses AI credit.">
-            <Toggle checked={form.chat_assistant} onChange={(value) => set({ chat_assistant: value })} label="Answer questions and take bookings" />
+          <Row title={takes ? 'Answer questions and take bookings' : 'Answer questions'} help={takes ? 'Customers ask about services, prices and timings, and book a time, in English, Telugu or Hindi. Uses AI credit.' : 'Customers ask about services, prices and timings, in English, Telugu or Hindi. Uses AI credit.'}>
+            <Toggle checked={form.chat_assistant} onChange={(value) => set({ chat_assistant: value })} label={takes ? 'Answer questions and take bookings' : 'Answer questions'} />
           </Row>
-          <Row title="Confirm free slots automatically" help={form.auto_approve_bookings ? 'On: a free time is booked straight away and the customer gets the confirmation.' : 'Off: chat bookings wait on the Counter until you tap Approve.'}>
-            <Toggle checked={form.auto_approve_bookings} onChange={(value) => set({ auto_approve_bookings: value })} label="Confirm free slots automatically" />
-          </Row>
-          <Row title="Appointment reminders" help="A WhatsApp reminder about 2 hours before each booking.">
-            <Toggle checked={form.reminders_enabled} onChange={(value) => set({ reminders_enabled: value })} label="Appointment reminders" />
-          </Row>
+          {takes && (
+            <Row title="Confirm free slots automatically" help={form.auto_approve_bookings ? 'On: a free time is booked straight away and the customer gets the confirmation.' : 'Off: chat bookings wait on the Counter until you tap Approve.'}>
+              <Toggle checked={form.auto_approve_bookings} onChange={(value) => set({ auto_approve_bookings: value })} label="Confirm free slots automatically" />
+            </Row>
+          )}
+          {takes && (
+            <Row title="Appointment reminders" help="A WhatsApp reminder about 2 hours before each booking.">
+              <Toggle checked={form.reminders_enabled} onChange={(value) => set({ reminders_enabled: value })} label="Appointment reminders" />
+            </Row>
+          )}
           <Row title="Ask for feedback after the visit" help="A short rating message after the bill. Ratings show in Team, next to each person.">
             <Toggle checked={form.feedback_enabled} onChange={(value) => set({ feedback_enabled: value })} label="Ask for feedback" />
           </Row>
@@ -88,7 +97,7 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
             <select className={input} value={form.closes_at} onChange={(e) => set({ closes_at: e.target.value })}>{TIMES.map((t) => <option key={t} value={t}>{timeLabel(t)}</option>)}</select>
           </Field>
         </div>
-        <Field group label="Closed on" hint="Chat bookings are not offered on these days.">
+        <Field group label="Closed on" hint={takes ? 'Chat bookings are not offered on these days.' : 'Shown on your website and told to customers who ask.'}>
           <div className="flex flex-wrap gap-2">
             {DAYS.map((day, index) => {
               const closed = form.closed_weekdays.includes(index)

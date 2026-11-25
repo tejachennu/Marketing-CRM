@@ -13,8 +13,10 @@ import '../store/online_payments.dart';
 import 'setup_screen.dart';
 
 /// Front Desk → Setup → Website and booking, as on the web: the business website on/off and its link, words,
-/// colour, photos, what it shows, Instagram posts, the AI chat, and paying when booking (at the shop, online, or
-/// the customer's choice; full or an advance). Saved with PUT /api/salon/website.
+/// colour, photos, what it shows, Instagram posts, the AI chat, the buttons it shows (Call, WhatsApp, Book now, Shop
+/// online, Directions and map) and paying when booking (at the shop, online, or the customer's choice; full or an
+/// advance). Saved with PUT /api/salon/website. Without appointments there is no booking: Book now shows as not
+/// available and the booking payment card is hidden.
 class WebsiteSettingsScreen extends StatefulWidget {
   const WebsiteSettingsScreen({super.key});
   @override
@@ -23,6 +25,24 @@ class WebsiteSettingsScreen extends StatefulWidget {
 
 const siteColours = ['#1D5BEA', '#0E1B3D', '#7A2E4D', '#0F6E6E', '#8A4B2A', '#111827'];
 const advanceChoices = [10, 20, 25, 30, 50, 100];
+
+/// The website's call-to-action buttons (lib/salon/website.ts SITE_BUTTONS): key, name, what it covers.
+const siteButtonChoices = [
+  ('call', 'Call', 'Call buttons and your phone number'),
+  ('whatsapp', 'WhatsApp', '"WhatsApp us" buttons'),
+  ('book', 'Book now', 'Book buttons and the booking form'),
+  ('shop', 'Shop online', 'The link to your online store'),
+  ('directions', 'Directions and map', '"Get directions" and the map'),
+];
+
+/// Why a button cannot show even when it is switched on (as buttonBlocker on the web); null when it can.
+String? siteButtonBlocker(String key, {required bool bookings, required bool store, required bool phone, required bool address}) {
+  if (key == 'book' && !bookings) return 'Appointments are off (Setup → Appointments), so there is nothing to book.';
+  if (key == 'shop' && !store) return 'Your online store is off.';
+  if ((key == 'call' || key == 'whatsapp') && !phone) return 'Add a phone number in Business details first.';
+  if (key == 'directions' && !address) return 'Add an address in Business details first.';
+  return null;
+}
 
 Color _hex(String hex) => Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
 
@@ -75,6 +95,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   void _set(String key, Object? value) => setState(() => _site = {..._site!, key: value});
   Map<String, dynamic> get _show => Map<String, dynamic>.from(_site?['show'] as Map? ?? const {});
   Map<String, dynamic> get _pay => Map<String, dynamic>.from(_site?['bookingPay'] as Map? ?? const {'mode': 'shop', 'advance': 100});
+  Map<String, dynamic> get _buttons => Map<String, dynamic>.from(_site?['buttons'] as Map? ?? const {});
 
   String get _link {
     final domain = '${_meta['domain'] ?? ''}';
@@ -127,10 +148,13 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final canEdit = app.can('manage');
+    // Appointments off: no booking on the website (the server's answer, else the phone's setting)
+    final bookings = _meta['takesAppointments'] is bool ? _meta['takesAppointments'] == true : app.takesAppointments;
+    final screenTitle = bookings ? 'Website and booking' : 'Website';
     final s = _site;
     if (s == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Website and booking')),
+        appBar: AppBar(title: Text(screenTitle)),
         body: _error.isNotEmpty
             ? EmptyState(
                 icon: Icons.cloud_off,
@@ -161,7 +185,7 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       changed: canEdit && dirty && !_saving,
       child: Scaffold(
         backgroundColor: Brand.page,
-        appBar: AppBar(title: const Text('Website and booking')),
+        appBar: AppBar(title: Text(screenTitle)),
         bottomNavigationBar: canEdit
             ? SafeArea(
                 child: Padding(
@@ -175,7 +199,10 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
           children: [
             card([
               Row(children: [const Expanded(child: Text('Your website', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))), Switch(value: s['enabled'] != false, onChanged: canEdit ? (v) => _set('enabled', v) : null)]),
-              const Text('Services and prices with Book, your team, photos, reviews, hours and a map. Customers book and pay right there.', style: TextStyle(color: Brand.textSoft, fontSize: 13.5)),
+              Text(
+                bookings ? 'Services and prices with Book, your team, photos, reviews, hours and a map. Customers book and pay right there.' : 'Services and prices, your team, photos, reviews, hours and a map.',
+                style: const TextStyle(color: Brand.textSoft, fontSize: 13.5),
+              ),
               const SizedBox(height: 10),
               Text(_link.replaceFirst(RegExp(r'^https?://'), ''), style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
@@ -272,11 +299,11 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
             ]),
             card([
               title('What to show'),
-              for (final (key, label) in const [('prices', 'Prices of services'), ('team', 'Your team, with Book with each person'), ('memberships', 'Memberships'), ('reviews', 'Customer reviews')])
+              for (final (key, label) in [('prices', 'Prices of services'), ('team', bookings ? 'Your team, with Book with each person' : 'Your team'), ('memberships', 'Memberships'), ('reviews', 'Customer reviews')])
                 toggle(label, _show[key] != false, (v) => _set('show', {..._show, key: v})),
               TextField(controller: _instagram, enabled: canEdit, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Instagram (optional)', hintText: '@yourstudio')),
               const SizedBox(height: 6),
-              toggle('AI chat on your website', s['chat'] != false, (v) => _set('chat', v), sub: 'Answers visitors from your services, prices, timings and Knowledge Base; checks a customer\'s booking.'),
+              toggle('AI chat on your website', s['chat'] != false, (v) => _set('chat', v), sub: bookings ? 'Answers visitors from your services, prices, timings and Knowledge Base; checks a customer\'s booking.' : 'Answers visitors from your services, prices, timings and Knowledge Base.'),
               if (s['chat'] != false && chatProblem.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.all(10),
@@ -284,6 +311,30 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
                   child: Text('The chat is hidden on your website: $chatProblem', style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600, fontSize: 13)),
                 ),
             ]),
+            card([
+              title('Buttons on your website'),
+              const Text('Switch off any button you do not want customers to see. It goes from every place on the page.', style: TextStyle(color: Brand.textSoft, fontSize: 13.5)),
+              const SizedBox(height: 4),
+              for (final (key, label, hint) in siteButtonChoices)
+                // Shop online only when the online store is on
+                if (key != 'shop' || _meta['storeOn'] == true)
+                  Builder(
+                    builder: (context) {
+                      final unavailable = key == 'book' && !bookings;
+                      final blocker = siteButtonBlocker(key, bookings: bookings, store: _meta['storeOn'] == true, phone: _meta['hasPhone'] != false, address: _meta['hasAddress'] != false);
+                      final on = _buttons[key] != false;
+                      return SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: on && !unavailable,
+                        onChanged: canEdit && !unavailable ? (v) => _set('buttons', {..._buttons, key: v}) : null,
+                        title: Text(label, style: TextStyle(color: unavailable ? Brand.faint : null)),
+                        subtitle: Text(blocker != null && on ? '$hint\n$blocker' : hint),
+                        isThreeLine: blocker != null && on,
+                      );
+                    },
+                  ),
+            ]),
+            if (bookings)
             card([
               title('Payment when booking'),
               const Text('An online payment keeps the time for 30 minutes; once paid, the booking is confirmed on WhatsApp and the amount is taken off the bill.', style: TextStyle(color: Brand.textSoft, fontSize: 13.5)),
