@@ -118,6 +118,30 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Expenses and profit, with a monthly AI review of sales** (owner, 25 Nov 2026: "expenditure ... salaries, expenditure and all
+  types ... expenditure sale graphs ... monthly one time AI insight about the sales ... improvements and sales strategies").
+  - `lib/expenses/rules.ts` (pure, browser-safe): `EXPENSE_CATEGORIES` (salaries, rent, bills, stock, marketing, transport,
+    repairs, tax, loan, other), `PAY_METHODS`, `cleanExpense` (amount > 0 up to ₹10 crore, date up to 62 days ahead, IST
+    today by default), India-time months (`readMonth` never a future month, `monthBounds`, `monthsUpTo`), `monthTotals`
+    (sales, received, expenses, profit per month), `byCategory`, `salesByWeekday`, `topItems`, `repeatsDue` (monthly
+    ones copied once, same day, 31st → month end), the AI review: `insightKindFor` ('so_far' while the month runs,
+    'full' after), `insightFactsText` / `insightPrompt` (only real numbers), `parseInsight` {summary, good, improve, ideas,
+    focus}, `insightBlocker`.
+  - `lib/expenses/store.ts` (lock **724519038**, migration `20261212_expenses.sql`): `business_expenses` (repeat_key =
+    the first one's id; unique (org, repeat_key, spent_on)) and `business_insights` (one per org + month + kind; a row
+    with `insight` null holds the month while it is written, `claimInsight` / `dropClaim`, taken over after 3 min).
+    Sales = Front Desk bills not void + shop orders not cancelled / waiting for payment (`salesBetween`, paged 1,000 at a
+    time). `loadExpensesOverview`, `copyRepeats`, `insightFacts` (customers and how many bought in the year before).
+  - APIs (admins only, `settings.manage`: salaries are private): `GET/POST/PUT/DELETE /api/expenses` (POST `action:
+    'copy_repeats'`), `POST /api/expenses/insight` (AI wallet feature `sales_insight`; a saved review is returned as it is).
+  - Web: menu **Expenses** (`/dashboard/expenses`, `components/expenses/expenses-page.tsx`; hidden for Consular Helpdesk;
+    `canAccessPage` admins only): month switcher, tiles (Sales, Expenses, Profit / Loss in red, Money received), "N monthly
+    expenses not added yet → Add them", AI review card, 6-month bars (sales blue, expenses slate, legend, tap/hover numbers,
+    "See as a table"), Where the money went, list with kind filters, add / change / remove form. App: More → **Expenses and
+    profit** (`screens/more/expenses_screen.dart`, owners/admins), same API, demo answers `data/demo_expenses.dart`, shared
+    rules `data/expenses_logic.dart`, test `test/release_expenses_test.dart`. Tests `tests/expenses.test.cjs`.
+  - **Not tried against the real database or AI yet** (needs a deploy). Next free lock: **724519039**.
+
 - **App: explainer videos on the welcome pages, in English, Telugu and Hindi; release check of the whole app**
   (owner, 25 Nov 2026: "video presentations ... how they will benefit ... multi language ... ads, chats, auto replies,
   automation ... on the onboarding itself").
@@ -300,7 +324,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   ticks, WhatsApp text marks, swipe to reply), new screens `front_desk/members_screen.dart`,
   `front_desk/website_settings_screen.dart`, `store/online_payments.dart`, `ai/ai_tools.dart` (unanswered questions,
   sources, reply style), demo answers `data/demo_launch.dart`, `Backend.uploadToStorage` (signed upload URL).
-  Next free lock: **724519038**.
+  Next free lock was 724519038 (now used by Expenses).
 - **Website AI assistants answer from the business's own data; order / booking checks; new chat design** (owner, 21 Nov
   2026: "answer from the data it have, services products ... where is my order ... 100% accurate ... design
   improvements"). `lib/ai/site-assistant.ts` (pure): `storeFacts` (delivery charge / free-from / minimum, pick up, paying

@@ -18,6 +18,7 @@ import 'package:wama_mobile/screens/more/delete_account_screen.dart';
 import 'package:wama_mobile/screens/onboarding/onboarding_screen.dart';
 import 'package:wama_mobile/screens/explainers/explainer_content.dart';
 import 'package:wama_mobile/screens/explainers/explainer_player.dart';
+import 'package:wama_mobile/screens/more/expenses_screen.dart';
 import 'package:wama_mobile/ui/theme.dart';
 
 
@@ -69,6 +70,8 @@ void main() {
     'onb_pick': () => const OnboardingScreen(startPage: 4),
     'onb_whatsapp': () => const OnboardingScreen(startPage: 5),
     'delete_account': () => const DeleteAccountScreen(),
+    'expenses': () => const ExpensesScreen(),
+    'expense_new': () => const ExpenseFormScreen(month: '2026-11'),
     'onb_videos': () => const OnboardingScreen(),
     // Every scene of every video, held at 85 %, in each language: video_<id>_<scene>_<lang>
     for (final ex in explainers)

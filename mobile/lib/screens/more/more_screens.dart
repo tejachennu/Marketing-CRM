@@ -25,6 +25,7 @@ import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
 import 'connectors_screen.dart';
 import 'delete_account_screen.dart';
+import 'expenses_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -135,6 +136,9 @@ class MoreScreen extends StatelessWidget {
                 ),
                 const _Gap(),
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
+                // Salaries and profit are private: owners and admins only (the server checks too)
+                if (app.can('settings'))
+                  _Row(icon: Icons.account_balance_wallet_outlined, title: 'Expenses and profit', subtitle: 'Salaries, rent, stock · sales vs expenses · AI review', onTap: () => open(const ExpensesScreen())),
                 if (app.can('campaigns'))
                   _Row(
                     icon: app.whatsappOn ? Icons.campaign_outlined : Icons.lock_outline,

@@ -1,5 +1,6 @@
 import 'demo_billing.dart';
 import 'demo_commerce.dart';
+import 'demo_expenses.dart';
 import 'demo_launch.dart';
 import 'demo_shop_extras.dart';
 import 'demo_templates.dart';
@@ -645,13 +646,14 @@ class DemoBackend implements Backend {
   final DemoCommerce _store = DemoCommerce();
   final DemoShopExtras _shopMore = DemoShopExtras();
   final DemoLaunch _launch = DemoLaunch();
+  final DemoExpenses _money = DemoExpenses();
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
     _refuseWhenPaused('GET', path);
-    final desk = _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
+    final desk = _money.get(path, query) ?? _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
@@ -765,7 +767,7 @@ class DemoBackend implements Backend {
       _connectorOn = body['enabled'] == true ? key : (_connectorOn == key ? null : _connectorOn);
       return {'success': true, 'switchedOff': off, ..._connectorsAnswer()};
     }
-    final desk = _launch.send(method, path, body) ?? _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
+    final desk = _money.send(method, path, body) ?? _launch.send(method, path, body) ?? _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

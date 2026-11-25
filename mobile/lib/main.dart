@@ -50,6 +50,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/auth_parts.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/more/delete_account_screen.dart';
+import 'screens/more/expenses_screen.dart';
 import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
@@ -198,6 +199,8 @@ class WamaApp extends StatelessWidget {
       'login' => const LoginScreen(),
       'login_signin' => const LoginScreen(startOnSignIn: true),
       'delete_account' => const DeleteAccountScreen(),
+      'expenses' => const ExpensesScreen(),
+      'expense_new' => const ExpenseFormScreen(month: '2026-11'),
       'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),

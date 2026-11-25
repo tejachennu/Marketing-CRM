@@ -239,6 +239,8 @@ export function canAccessPage(user: RoleSubject, pathname: string): boolean {
   // The team page: admins manage everyone, managers set what agents can see and do
   if (under('/dashboard/team')) return can(user, 'team.grant_access')
   if (under('/dashboard/billing')) return can(user, 'billing.manage')
+  // Expenses show salaries and profit: admins only
+  if (under('/dashboard/expenses')) return can(user, 'settings.manage')
   // Admins switch connectors on; managers can see what is available
   if (under('/dashboard/connectors')) return isManager(user)
   if (under('/dashboard/flows')) return can(user, 'automation.manage')

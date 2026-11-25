@@ -7,6 +7,8 @@ void main() {
       'login',
       'login_signin',
       'delete_account',
+      'expenses',
+      'expense_new',
       'signup',
       'signup_code',
       'desk',
