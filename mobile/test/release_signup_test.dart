@@ -47,7 +47,7 @@ void main() {
       }
       expect(r.app.signedIn, isTrue, reason: 'the right code makes the account and signs in');
       expect(r.app.needsOnboarding, isTrue);
-      expect(find.text('Front Desk'), findsWidgets, reason: 'the welcome slides follow sign-up');
+      expect(find.text('Welcome! Your free trial has started'), findsOneWidget, reason: 'the welcome pages (videos first) follow sign-up');
     });
   });
 }
