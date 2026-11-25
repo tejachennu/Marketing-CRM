@@ -11,8 +11,31 @@ import 'explainer_scenes.dart';
 /// left for the one before, tap the middle to pause), with the words under the picture in English, Telugu or Hindi.
 /// The language and what was watched are kept on the phone ('videos').
 
-/// The language the videos play in: the one picked before, else the phone's (Telugu / Hindi), else English.
+/// Telugu and Hindi are shown only in India (owner: "if the app opened outside of India don't show Hindi and
+/// Telugu"). Signed in: the workspace's currency says where the business is. Before that: the phone's country or
+/// language, or India's time zone (+5:30; many Indian phones are set to "English (United States)").
+bool indianLanguagesOn(AppState app) {
+  final currency = '${(app.me?['organization'] as Map?)?['currency'] ?? ''}'.toUpperCase();
+  if (currency.isNotEmpty) return currency == 'INR';
+  final phone = PlatformDispatcher.instance.locale;
+  if (phone.countryCode == 'IN' || phone.languageCode == 'te' || phone.languageCode == 'hi') return true;
+  return DateTime.now().timeZoneOffset == const Duration(hours: 5, minutes: 30);
+}
+
+/// The scenes of [ex] for this phone: outside India, the scene showing Telugu and Hinglish replies is left out.
+List<Scene> scenesFor(Explainer ex, bool india) => india
+    ? ex.scenes
+    : [
+        for (final s in ex.scenes)
+          if (s.kind != SceneKind.languages) s,
+      ];
+
+int secondsFor(Explainer ex, bool india) => (scenesFor(ex, india).fold<int>(0, (sum, s) => sum + s.ms) / 1000).round();
+
+/// The language the videos play in: English outside India; in India the one picked before, else the phone's
+/// (Telugu / Hindi), else English.
 String videoLanguage(AppState app) {
+  if (!indianLanguagesOn(app)) return 'en';
   final saved = '${app.store.read('videos')?['lang'] ?? ''}';
   if (videoLanguages.any((l) => l.$1 == saved)) return saved;
   final phone = PlatformDispatcher.instance.locale.languageCode;
@@ -58,13 +81,16 @@ class ExplainerScreen extends StatefulWidget {
 
 class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late int _video = explainers.indexWhere((e) => e.id == widget.startId).clamp(0, explainers.length - 1);
-  late int _scene = widget.startScene.clamp(0, explainers[_video].scenes.length - 1);
+  // In India or not: outside it there is no Telugu / Hindi, and the scene showing them is left out
+  late final bool _india = indianLanguagesOn(AppScope.read(context));
+  late int _scene = widget.startScene.clamp(0, scenesFor(explainers[_video], _india).length - 1);
   bool _paused = false;
   bool _ended = false;
   late String? _lang = widget.lang;
   late final AnimationController _clock = AnimationController(vsync: this)..addStatusListener(_onStatus);
 
   Explainer get _ex => explainers[_video];
+  List<Scene> get _scenes => scenesFor(_ex, _india);
 
   @override
   void initState() {
@@ -91,14 +117,14 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   }
 
   void _startScene() {
-    _clock.duration = Duration(milliseconds: _ex.scenes[_scene].ms);
+    _clock.duration = Duration(milliseconds: _scenes[_scene].ms);
     _clock.value = widget.holdAt ?? 0;
     if (widget.autoplay && widget.holdAt == null && !_paused) _clock.forward();
   }
 
   void _onStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
-    if (_scene < _ex.scenes.length - 1) {
+    if (_scene < _scenes.length - 1) {
       setState(() => _scene++);
       _startScene();
     } else {
@@ -120,7 +146,7 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
       if (!_paused) _clock.forward();
       return;
     }
-    if (next >= _ex.scenes.length) return _finish();
+    if (next >= _scenes.length) return _finish();
     setState(() => _scene = next);
     _startScene();
   }
@@ -155,7 +181,7 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     final app = AppScope.of(context);
     final lang = _lang ?? videoLanguage(app);
     final still = MediaQuery.disableAnimationsOf(context);
-    final scene = _ex.scenes[_scene];
+    final scene = _scenes[_scene];
     return Scaffold(
       backgroundColor: const Color(0xFF0B141A),
       // Large phone text up to 1.3×: beyond that the words would push the controls off a small screen
@@ -168,13 +194,13 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                 child: Semantics(
-                  label: '${_scene + 1} / ${_ex.scenes.length}',
+                  label: '${_scene + 1} / ${_scenes.length}',
                   child: ExcludeSemantics(
                     child: AnimatedBuilder(
                       animation: _clock,
                       builder: (context, _) => Row(
                         children: [
-                          for (var i = 0; i < _ex.scenes.length; i++) ...[
+                          for (var i = 0; i < _scenes.length; i++) ...[
                             if (i > 0) const SizedBox(width: 4),
                             Expanded(
                               child: ClipRRect(
@@ -221,10 +247,13 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: LanguagePicker(lang: lang, onPick: _setLang, dark: true),
-              ),
+              if (_india)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: LanguagePicker(lang: lang, onPick: _setLang, dark: true),
+                )
+              else
+                const SizedBox(height: 8),
               Expanded(
                 child: _ended
                     ? _endView(lang)
@@ -354,13 +383,13 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
         ),
         const SizedBox(height: 16),
         Text(
-          _ex.scenes.last.title.of(lang),
+          _scenes.last.title.of(lang),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700, height: 1.25),
         ),
         const SizedBox(height: 8),
         Text(
-          _ex.scenes.last.line.of(lang),
+          _scenes.last.line.of(lang),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4),
         ),
@@ -502,23 +531,27 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
     final lang = _lang ?? videoLanguage(app);
     final seen = watchedVideos(app);
     final first = explainers.first;
+    final india = indianLanguagesOn(app);
     return ListView(
       padding: widget.padding,
       children: [
         ?widget.header,
-        Text(
-          VideoWords.pickLanguage.of(lang),
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text),
-        ),
-        const SizedBox(height: 8),
-        LanguagePicker(
-          lang: lang,
-          onPick: (l) async {
-            setState(() => _lang = l);
-            await _saveVideos(app, lang: l);
-          },
-        ),
-        const SizedBox(height: 14),
+        // The language choice only in India (outside it the videos are in English)
+        if (india) ...[
+          Text(
+            VideoWords.pickLanguage.of(lang),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text),
+          ),
+          const SizedBox(height: 8),
+          LanguagePicker(
+            lang: lang,
+            onPick: (l) async {
+              setState(() => _lang = l);
+              await _saveVideos(app, lang: l);
+            },
+          ),
+          const SizedBox(height: 14),
+        ],
         // The big first video, playing quietly
         Semantics(
           button: true,
@@ -582,7 +615,7 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                           ),
                         ),
                         const SizedBox(width: 10),
-                        _Length(seconds: first.seconds, lang: lang, seen: seen.contains(first.id), dark: true),
+                        _Length(seconds: secondsFor(first, india), lang: lang, seen: seen.contains(first.id), dark: true),
                       ],
                     ),
                   ),
@@ -646,7 +679,7 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _Length(seconds: ex.seconds, lang: lang, seen: seen.contains(ex.id)),
+                    _Length(seconds: secondsFor(ex, india), lang: lang, seen: seen.contains(ex.id)),
                   ],
                 ),
               ),

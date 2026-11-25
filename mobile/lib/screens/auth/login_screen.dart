@@ -4,6 +4,7 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
+import '../explainers/explainer_player.dart' show indianLanguagesOn;
 import 'auth_parts.dart';
 import 'signup_screen.dart';
 
@@ -220,7 +221,11 @@ class _LoginScreenState extends State<LoginScreen> {
             const SoftPill(icon: Icons.card_giftcard_outlined, label: '14 days free'),
             const SoftPill(icon: Icons.credit_card_off_outlined, label: 'No card needed'),
             // Short phones: two pills, so the buttons stay in sight
-            if (height >= 700) const SoftPill(icon: Icons.translate, label: 'English · తెలుగు · हिंदी'),
+            // Indian languages only in India (elsewhere: any language the customer writes in)
+            if (height >= 700)
+              indianLanguagesOn(AppScope.of(context))
+                  ? const SoftPill(icon: Icons.translate, label: 'English · తెలుగు · हिंदी')
+                  : const SoftPill(icon: Icons.translate, label: 'Replies in any language'),
           ],
         ),
         const SizedBox(height: 20),

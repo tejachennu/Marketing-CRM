@@ -405,10 +405,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         title: 'With my own WhatsApp',
         price: 'Growth plan · ₹2,500 a month',
         text: 'Customers chat with your own business number, and your team answers them from one inbox in this app.',
-        included: const [
+        included: [
           'Your own WhatsApp number. We help you connect it',
           'Confirmations, bills and reminders sent from your number',
-          'Team inbox with AI replies in English, Telugu and Hindi',
+          indianLanguagesOn(AppScope.of(context)) ? 'Team inbox with AI replies in English, Telugu and Hindi' : "Team inbox with AI replies in your customers' languages",
           'Campaigns and message templates',
           '₹300 of AI credit every month, and ads help from our team',
           'Up to 5 team members',
@@ -654,7 +654,7 @@ class _WatchButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('${ex.seconds} ${VideoWords.seconds.of(lang)}', style: const TextStyle(color: Color(0xBFFFFFFF), fontSize: 12, fontWeight: FontWeight.w600)),
+              Text('${secondsFor(ex, indianLanguagesOn(app))} ${VideoWords.seconds.of(lang)}', style: const TextStyle(color: Color(0xBFFFFFFF), fontSize: 12, fontWeight: FontWeight.w600)),
             ],
           ),
         ),

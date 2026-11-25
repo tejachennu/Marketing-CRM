@@ -130,7 +130,7 @@ class MoreScreen extends StatelessWidget {
                   icon: Icons.play_circle_outline,
                   iconColor: Brand.blue,
                   title: 'How we help your business',
-                  subtitle: 'Short videos in English, తెలుగు, हिंदी',
+                  subtitle: indianLanguagesOn(app) ? 'Short videos in English, తెలుగు, हिंदी' : 'Short videos: ads, chats, auto replies',
                   onTap: () => open(const ExplainerLibraryScreen()),
                 ),
                 const _Gap(),
