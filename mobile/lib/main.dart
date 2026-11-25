@@ -412,7 +412,7 @@ class _HomeShellState extends State<HomeShell> {
                 label: 'Instagram',
               ),
             NavigationDestination(
-              icon: Badge(isLabelVisible: app.waitingCount > 0, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.more_horiz)),
+              icon: Badge(isLabelVisible: app.syncWorthShowing, label: Text('${app.waitingCount}'), backgroundColor: app.failedCount > 0 ? Brand.red : Brand.navy, child: const Icon(Icons.more_horiz)),
               label: 'More',
             ),
           ],

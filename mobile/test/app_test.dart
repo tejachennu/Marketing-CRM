@@ -169,6 +169,24 @@ void main() {
     expect(parts.fill({'1': 'Priya'}), 'Hi Priya, your bill {{2}} is ready. Thanks Priya!');
   });
 
+  test('Online: a fresh change waiting to go out is not shown (no "Syncing…" after every tap)', () async {
+    final (app, backend) = await makeApp();
+    backend.offline = true;
+    await app.counterAction(
+      kind: 'bill',
+      label: 'Bill for Ravi',
+      localId: AppState.newLocalId(),
+      action: {'type': 'walk_in_bill', 'customer': {'name': 'Ravi'}, 'service_ids': ['s-menscut'], 'payment_method': 'cash'},
+      preview: {'customer_name': 'Ravi', 'total': 300, 'status': 'paid', 'payment_method': 'cash', 'issued_at': DateTime.now().toUtc().toIso8601String()},
+    );
+    await app.flush();
+    expect(app.syncWorthShowing, isTrue);
+    // Back online, with the change still in the outbox for a moment: nothing to show
+    app.online = true;
+    expect(app.waitingCount, 1);
+    expect(app.syncWorthShowing, isFalse);
+  });
+
   test('Offline: a bill waits on the phone, shows in the list, and syncs once online', () async {
     final (app, backend) = await makeApp();
     final before = FrontDesk(app).invoices.length;
@@ -189,6 +207,7 @@ void main() {
     await app.flush();
     expect(app.online, isFalse);
     expect(app.waitingCount, 1);
+    expect(app.syncWorthShowing, isTrue, reason: 'offline with a change waiting: the strip and the badge say so');
     expect(FrontDesk(app).invoices.first['customer_name'], 'Ravi');
     expect(FrontDesk(app).invoices.first['_outbox'], isNotNull);
 

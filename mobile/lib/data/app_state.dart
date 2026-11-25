@@ -503,6 +503,11 @@ class AppState extends ChangeNotifier {
   int get waitingCount => outbox.length;
   int get failedCount => outbox.where((i) => i.state == OutboxState.failed).length;
 
+  /// Whether the waiting changes are worth showing (the strip under the title, the badge on More): offline, one the
+  /// server refused, or one waiting over a minute. Online they go out within moments, so nothing flashes after a tap.
+  bool get syncWorthShowing =>
+      waitingCount > 0 && (!online || failedCount > 0 || outbox.any((i) => DateTime.now().difference(i.createdAt) > const Duration(minutes: 1)));
+
   static String newLocalId() => 'local_${_uuid.v4().replaceAll('-', '')}';
 
   /// Queue a change and try to send it now.

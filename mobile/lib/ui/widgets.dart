@@ -18,8 +18,8 @@ class SyncBanner extends StatelessWidget {
     final waiting = app.waitingCount;
     final failed = app.failedCount;
     if (app.online && waiting == 0) return const SizedBox.shrink();
-    // Online: say nothing while changes go out as usual; only one waiting over a minute is worth a word
-    if (app.online && failed == 0 && !app.outbox.any((i) => DateTime.now().difference(i.createdAt) > const Duration(minutes: 1))) return const SizedBox.shrink();
+    // Online: say nothing while changes go out as usual; only a refused one or one waiting over a minute is worth a word
+    if (app.online && !app.syncWorthShowing) return const SizedBox.shrink();
     final saved = cacheKey == null ? null : app.savedAt(cacheKey!);
     late final IconData icon;
     late final String text;
