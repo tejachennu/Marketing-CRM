@@ -22,7 +22,7 @@ class Tx {
 }
 
 /// How a scene moves (see explainer_scenes.dart).
-enum SceneKind { picture, flow, chat, languages, inbox, alerts, ad, growth, end }
+enum SceneKind { picture, flow, chat, languages, inbox, alerts, ad, growth, website, sources, end }
 
 /// A chat bubble in a chat scene: from the customer, from the business (or its AI), or a card (booking, order).
 class Bubble {
@@ -56,7 +56,7 @@ class Scene {
   final Tx line;
   final int ms;
 
-  /// The drawing in assets/images for picture scenes, e.g. "desk"
+  /// The drawing in assets/images for picture scenes, e.g. "desk"; for website scenes "store" or "desk"
   final String? picture;
   final List<Bubble> chat;
   final List<Item> items;
@@ -145,6 +145,87 @@ const explainers = <Explainer>[
     ],
   ),
 
+  // ── Your own website (owner, 25 Nov 2026: "we are also giving a website for e-commerce and front desk ... customers
+  // from all sides ... so the product sells") ──
+  Explainer(
+    id: 'website',
+    icon: Icons.language,
+    title: Tx('Your own website', 'మీ సొంత వెబ్‌సైట్', 'आपकी अपनी वेबसाइट'),
+    summary: Tx(
+      'An online store or a booking site that brings customers from every side.',
+      'అన్ని వైపుల నుంచి కస్టమర్లను తెచ్చే ఆన్‌లైన్ స్టోర్ లేదా బుకింగ్ సైట్.',
+      'हर तरफ़ से ग्राहक लाने वाला ऑनलाइन स्टोर या बुकिंग साइट।',
+    ),
+    scenes: [
+      Scene(
+        SceneKind.website,
+        picture: 'store',
+        ms: 6400,
+        title: Tx('Your own online store', 'మీ సొంత ఆన్‌లైన్ స్టోర్', 'आपका अपना ऑनलाइन स्टोर'),
+        line: Tx(
+          'Products, prices, cart and payment. On our address or your own domain.',
+          'ప్రొడక్ట్స్, ధరలు, కార్ట్, పేమెంట్. మా అడ్రస్‌లో లేదా మీ సొంత డొమైన్‌లో.',
+          'प्रोडक्ट, दाम, कार्ट और पेमेंट। हमारे पते पर या आपके अपने डोमेन पर।',
+        ),
+        items: [
+          Item(Icons.checkroom, Tx('Kurta', 'కుర్తా', 'कुर्ता')),
+          Item(Icons.watch_outlined, Tx('Watch', 'వాచ్', 'घड़ी')),
+          Item(Icons.headphones_outlined, Tx('Headphones', 'హెడ్‌ఫోన్స్', 'हेडफ़ोन')),
+          Item(Icons.spa_outlined, Tx('Face cream', 'ఫేస్ క్రీమ్', 'फ़ेस क्रीम')),
+        ],
+      ),
+      Scene(
+        SceneKind.website,
+        picture: 'desk',
+        ms: 6400,
+        title: Tx('A booking website for your services', 'మీ సర్వీసులకు బుకింగ్ వెబ్‌సైట్', 'आपकी सर्विस के लिए बुकिंग वेबसाइट'),
+        line: Tx(
+          'Customers see your services and team, and book a time themselves.',
+          'కస్టమర్లు మీ సర్వీసులు, టీమ్ చూసి, వాళ్ళే టైమ్ బుక్ చేసుకుంటారు.',
+          'ग्राहक आपकी सर्विस और टीम देखकर खुद समय बुक करते हैं।',
+        ),
+        items: [
+          Item(Icons.content_cut, Tx('Haircut', 'హెయిర్ కట్', 'हेयर कट')),
+          Item(Icons.spa_outlined, Tx('Facial', 'ఫేషియల్', 'फ़ेशियल')),
+          Item(Icons.medical_services_outlined, Tx('Check-up', 'చెకప్', 'चेकअप')),
+        ],
+      ),
+      Scene(
+        SceneKind.sources,
+        ms: 6200,
+        title: Tx('Customers from every side', 'అన్ని వైపుల నుంచి కస్టమర్లు', 'हर तरफ़ से ग्राहक'),
+        line: Tx(
+          'Google, Instagram, WhatsApp and ads all bring people to your website.',
+          'Google, Instagram, WhatsApp, యాడ్స్ అన్నీ మీ వెబ్‌సైట్‌కి జనాన్ని తెస్తాయి.',
+          'Google, Instagram, WhatsApp और ऐड, सब लोगों को आपकी वेबसाइट तक लाते हैं।',
+        ),
+        items: [
+          Item(Icons.search, Tx('Google', 'Google', 'Google')),
+          Item(Icons.camera_alt_outlined, Tx('Instagram', 'Instagram', 'Instagram')),
+          Item(Icons.chat_outlined, Tx('WhatsApp', 'WhatsApp', 'WhatsApp')),
+          Item(Icons.campaign_outlined, Tx('Ads', 'యాడ్స్', 'ऐड')),
+          Item(Icons.shopping_bag_outlined, Tx('Orders', 'ఆర్డర్లు', 'ऑर्डर')),
+          Item(Icons.event_available_outlined, Tx('Bookings', 'బుకింగ్‌లు', 'बुकिंग')),
+        ],
+      ),
+      Scene(
+        SceneKind.growth,
+        ms: 5600,
+        title: Tx('Ready in minutes', 'కొన్ని నిమిషాల్లో రెడీ', 'कुछ ही मिनटों में तैयार'),
+        line: Tx(
+          'It fills itself from your products and services. Our team can help you set it up.',
+          'మీ ప్రొడక్ట్స్, సర్వీసుల నుంచి అదే నిండిపోతుంది. సెటప్‌కి మా టీమ్ సాయం చేస్తుంది.',
+          'आपके प्रोडक्ट और सर्विस से यह खुद भर जाती है। सेट करने में हमारी टीम मदद करती है।',
+        ),
+        items: [
+          Item(Icons.auto_awesome, Tx('Fills itself', 'అదే నిండుతుంది', 'खुद भरती है')),
+          Item(Icons.support_agent, Tx('Our team helps', 'మా టీమ్ సాయం', 'हमारी टीम मदद')),
+          Item(Icons.forum_outlined, Tx('Visitors and orders', 'విజిటర్లు, ఆర్డర్లు', 'विज़िटर और ऑर्डर')),
+        ],
+      ),
+      Scene(SceneKind.end, ms: 4200, title: Tx('Get found, get orders', 'కస్టమర్లు మిమ్మల్ని కనుగొంటారు, ఆర్డర్లు వస్తాయి', 'ग्राहक आपको ढूँढेंगे, ऑर्डर आएँगे'), line: _endLine),
+    ],
+  ),
   // ── 2. Auto replies ──
   Explainer(
     id: 'replies',
@@ -382,4 +463,31 @@ class VideoWords {
   static const back = Tx('Back', 'వెనక్కి', 'पीछे');
   static const forward = Tx('Next', 'ముందుకు', 'आगे');
   static const close = Tx('Close', 'మూసేయండి', 'बंद करें');
+  static const soundOn = Tx('Sound on', 'సౌండ్ ఆన్', 'आवाज़ चालू');
+  // The website scenes
+  static const add = Tx('Add', 'జోడించు', 'जोड़ें');
+  static const book = Tx('Book', 'బుక్', 'बुक');
+  static const offer = Tx('Festival offer', 'పండగ ఆఫర్', 'त्योहार ऑफ़र');
+  static const openNow = Tx('Open now', 'ఇప్పుడు ఓపెన్', 'अभी खुला है');
+  static const orderPlaced = Tx('Order placed', 'ఆర్డర్ వచ్చింది', 'ऑर्डर आया');
+  static const bookingDone = Tx('Booking confirmed', 'బుకింగ్ కన్ఫర్మ్ అయింది', 'बुकिंग पक्की हुई');
+  static const ownDomain = Tx('On your own domain', 'మీ సొంత డొమైన్‌లో', 'आपके अपने डोमेन पर');
+  static const yourWebsite = Tx('Your website', 'మీ వెబ్‌సైట్', 'आपकी वेबसाइट');
+  // The screen after a video
+  static const videoDone = Tx('Video done', 'వీడియో పూర్తయింది', 'वीडियो पूरा हुआ');
+  static const upNext = Tx('Up next', 'తర్వాత', 'अगला');
+  static const allVideos = Tx('All videos', 'అన్ని వీడియోలు', 'सभी वीडियो');
+  static const everySide = Tx('Customers from every side', 'అన్ని వైపుల నుంచి కస్టమర్లు', 'हर तरफ़ से ग्राहक');
+  static const everySideLine = Tx(
+    'We also give you your own website: an online store or a booking site. People find you on Google, Instagram, WhatsApp and ads, then order or book.',
+    'మీ సొంత వెబ్‌సైట్ కూడా ఇస్తాం: ఆన్‌లైన్ స్టోర్ లేదా బుకింగ్ సైట్. Google, Instagram, WhatsApp, యాడ్స్‌లో జనం మిమ్మల్ని చూసి, ఆర్డర్ చేస్తారు లేదా బుక్ చేస్తారు.',
+    'हम आपको आपकी अपनी वेबसाइट भी देते हैं: ऑनलाइन स्टोर या बुकिंग साइट। लोग आपको Google, Instagram, WhatsApp और ऐड पर देखकर ऑर्डर या बुकिंग करते हैं।',
+  );
+  static const moreSales = Tx('More sales', 'ఎక్కువ సేల్స్', 'ज़्यादा बिक्री');
+  static const soundOff = Tx('Sound off', 'సౌండ్ ఆఫ్', 'आवाज़ बंद');
+  static const noVoice = Tx(
+    'This phone has no English voice yet. Add one in the phone\'s Settings → Text-to-speech.',
+    'ఈ ఫోన్‌లో ఇంకా తెలుగు వాయిస్ లేదు. ఫోన్ సెట్టింగ్స్ → Text-to-speech లో జోడించండి.',
+    'इस फ़ोन में अभी हिंदी आवाज़ नहीं है। फ़ोन की सेटिंग्स → Text-to-speech में जोड़ें।',
+  );
 }

@@ -73,6 +73,12 @@ void main() {
     'expenses': () => const ExpensesScreen(),
     'expense_new': () => const ExpenseFormScreen(month: '2026-11'),
     'onb_videos': () => const OnboardingScreen(),
+    'video_end': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true),
+    'video_end_te': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true, lang: 'te'),
+    'web_store': () => const ExplainerScreen(startId: 'website', autoplay: false, startScene: 0, holdAt: 0.8),
+    'web_desk': () => const ExplainerScreen(startId: 'website', autoplay: false, startScene: 1, holdAt: 0.8, lang: 'te'),
+    'web_sources': () => const ExplainerScreen(startId: 'website', autoplay: false, startScene: 2, holdAt: 0.8),
+    'web_sources_hi': () => const ExplainerScreen(startId: 'website', autoplay: false, startScene: 2, holdAt: 0.8, lang: 'hi'),
     // Every scene of every video, held at 85 %, in each language: video_<id>_<scene>_<lang>
     for (final ex in explainers)
       for (var i = 0; i < ex.scenes.length; i++)

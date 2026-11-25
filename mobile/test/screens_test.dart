@@ -69,6 +69,9 @@ void main() {
       'onboarding_whatsapp',
       'video',
       'video_ads',
+      'video_website',
+      'video_sources',
+      'video_end',
       'videos',
     ],
     flows: [

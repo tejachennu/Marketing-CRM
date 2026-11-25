@@ -6,6 +6,7 @@ import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import 'explainer_content.dart';
 import 'explainer_scenes.dart';
+import 'narrator.dart';
 
 /// The explainer videos: a player that feels like a story (bars on top, tap the right side for the next scene, the
 /// left for the one before, tap the middle to pause), with the words under the picture in English, Telugu or Hindi.
@@ -42,12 +43,15 @@ String videoLanguage(AppState app) {
   return videoLanguages.any((l) => l.$1 == phone) ? phone : 'en';
 }
 
-Future<void> _saveVideos(AppState app, {String? lang, String? watched}) async {
+/// The voice reads the scenes unless it was switched off (kept on the phone).
+bool videoSound(AppState app) => app.store.read('videos')?['sound'] != false;
+
+Future<void> _saveVideos(AppState app, {String? lang, String? watched, bool? sound}) async {
   final old = app.store.read('videos') ?? const {};
   final seen = {...((old['watched'] as List?) ?? const []).map((e) => '$e')};
   if (watched != null) seen.add(watched);
   // No language picked yet: keep none, so the phone's language still counts (videoLanguage)
-  await app.store.write('videos', {'lang': lang ?? old['lang'], 'watched': seen.toList()});
+  await app.store.write('videos', {'lang': lang ?? old['lang'], 'watched': seen.toList(), 'sound': sound ?? old['sound'] ?? true});
   // Watch buttons on the welcome pages follow the new language
   if (lang != null) app.changed();
 }
@@ -65,7 +69,7 @@ Future<void> openExplainer(BuildContext context, String start) => Navigator.of(c
 );
 
 class ExplainerScreen extends StatefulWidget {
-  const ExplainerScreen({super.key, required this.startId, this.autoplay = true, this.startScene = 0, this.holdAt, this.lang});
+  const ExplainerScreen({super.key, required this.startId, this.autoplay = true, this.startScene = 0, this.holdAt, this.lang, this.showEnd = false});
   final String startId;
 
   /// Tests and screenshots: hold still on the first scene.
@@ -75,6 +79,9 @@ class ExplainerScreen extends StatefulWidget {
   final int startScene;
   final double? holdAt;
   final String? lang;
+
+  /// Screenshots and layout checks: open on the screen shown after the video.
+  final bool showEnd;
   @override
   State<ExplainerScreen> createState() => _ExplainerScreenState();
 }
@@ -85,9 +92,17 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   late final bool _india = indianLanguagesOn(AppScope.read(context));
   late int _scene = widget.startScene.clamp(0, scenesFor(explainers[_video], _india).length - 1);
   bool _paused = false;
-  bool _ended = false;
+  late bool _ended = widget.showEnd;
   late String? _lang = widget.lang;
   late final AnimationController _clock = AnimationController(vsync: this)..addStatusListener(_onStatus);
+
+  // The voice (narrator.dart): a scene moves on when its picture has played and its words have been read
+  late bool _sound = videoSound(AppScope.read(context));
+  int _voiceTurn = 0;
+  bool _voiceDone = true;
+  bool _waitingForVoice = false;
+  // The language this phone has no voice for (a note says how to add one)
+  String? _noVoice;
 
   Explainer get _ex => explainers[_video];
   List<Scene> get _scenes => scenesFor(_ex, _india);
@@ -106,8 +121,61 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _hush();
     _clock.dispose();
     super.dispose();
+  }
+
+  String get _speakingLang => _lang ?? videoLanguage(AppScope.read(context));
+
+  /// Stops the voice; a reading still under way is forgotten.
+  void _hush() {
+    _voiceTurn++;
+    _voiceDone = true;
+    narrator.stop();
+  }
+
+  /// Reads the current scene's words from the start (when the sound is on and the video is playing).
+  Future<void> _speakScene() async {
+    final turn = ++_voiceTurn;
+    await narrator.stop();
+    if (!mounted || turn != _voiceTurn) return;
+    if (!_sound || _paused || _ended || !widget.autoplay || widget.holdAt != null) {
+      _voiceDone = true;
+      if (_waitingForVoice && !_paused) _advance();
+      return;
+    }
+    final lang = _speakingLang;
+    _voiceDone = false;
+    final can = await narrator.canSpeak(lang);
+    if (!mounted || turn != _voiceTurn) return;
+    if (!can) {
+      setState(() => _noVoice = lang);
+      _voiceDone = true;
+      if (_waitingForVoice && !_paused) _advance();
+      return;
+    }
+    if (_noVoice != null) setState(() => _noVoice = null);
+    await narrator.say(spokenWords(_scenes[_scene], lang), lang);
+    if (!mounted || turn != _voiceTurn) return;
+    _voiceDone = true;
+    // A short breath after the words before the next scene
+    if (_waitingForVoice) await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (mounted && turn == _voiceTurn && _waitingForVoice && !_paused) _advance();
+  }
+
+  Future<void> _toggleSound() async {
+    final app = AppScope.read(context);
+    setState(() => _sound = !_sound);
+    // The voice stops (or starts) at once; the choice is saved after
+    if (_sound) {
+      _speakScene();
+    } else {
+      _hush();
+      setState(() => _noVoice = null);
+      if (_waitingForVoice && !_paused) _advance();
+    }
+    await _saveVideos(app, sound: _sound);
   }
 
   /// Leaving the app pauses the video (otherwise the time away would count and skip scenes)
@@ -117,13 +185,26 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   }
 
   void _startScene() {
+    _waitingForVoice = false;
     _clock.duration = Duration(milliseconds: _scenes[_scene].ms);
     _clock.value = widget.holdAt ?? 0;
     if (widget.autoplay && widget.holdAt == null && !_paused) _clock.forward();
+    _speakScene();
   }
 
   void _onStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
+    // The picture is done; the words may still be being read
+    if (!_voiceDone) {
+      _waitingForVoice = true;
+      return;
+    }
+    _advance();
+  }
+
+  void _advance() {
+    _waitingForVoice = false;
+    if (_ended) return;
     if (_scene < _scenes.length - 1) {
       setState(() => _scene++);
       _startScene();
@@ -133,6 +214,7 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   }
 
   void _finish() {
+    _hush();
     final app = AppScope.read(context);
     _saveVideos(app, watched: _ex.id);
     setState(() => _ended = true);
@@ -142,8 +224,8 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     if (_ended) return;
     final next = _scene + delta;
     if (next < 0) {
-      _clock.value = 0;
-      if (!_paused) _clock.forward();
+      // Back on the first scene: play it (and read it) again from the start
+      _startScene();
       return;
     }
     if (next >= _scenes.length) return _finish();
@@ -156,8 +238,11 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     setState(() => _paused = !_paused);
     if (_paused) {
       _clock.stop();
+      _hush();
     } else {
       _clock.forward();
+      // The words start again from the top of the scene
+      _speakScene();
     }
   }
 
@@ -172,8 +257,13 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   }
 
   Future<void> _setLang(String lang) async {
-    setState(() => _lang = lang);
+    setState(() {
+      _lang = lang;
+      _noVoice = null;
+    });
     await _saveVideos(AppScope.read(context), lang: lang);
+    // Read this scene again in the new language
+    if (mounted && !_ended) _speakScene();
   }
 
   @override
@@ -238,6 +328,11 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25),
                       ),
+                    ),
+                    IconButton(
+                      onPressed: _toggleSound,
+                      tooltip: _sound ? VideoWords.soundOff.of(lang) : VideoWords.soundOn.of(lang),
+                      icon: Icon(_sound ? Icons.volume_up_rounded : Icons.volume_off_rounded, color: Colors.white),
                     ),
                     IconButton(
                       onPressed: () => Navigator.maybePop(context),
@@ -333,6 +428,17 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
                     ),
                   ),
                 ),
+              if (!_ended && _sound && _noVoice == lang)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 2, 20, 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(padding: EdgeInsets.only(top: 1, right: 8), child: Icon(Icons.volume_off_rounded, color: Color(0xB3FFFFFF), size: 17)),
+                      Expanded(child: Text(VideoWords.noVoice.of(lang), style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12.5, height: 1.35))),
+                    ],
+                  ),
+                ),
               if (!_ended)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
@@ -367,65 +473,285 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     );
   }
 
-  /// After the last scene: watch again, the next video, or done.
+  /// After the last scene: what was said, the next video with a moving preview, the website card ("customers from
+  /// every side"), and every video with a tick for the watched ones.
   Widget _endView(String lang) {
+    final app = AppScope.of(context);
     final next = _video + 1 < explainers.length ? _video + 1 : null;
+    final website = explainers.indexWhere((e) => e.id == 'website');
+    final watched = {...watchedVideos(app), _ex.id};
+    const card = Color(0xFF1F2C34);
+    const soft = Color(0xB3FFFFFF);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        Center(
-          child: Container(
-            width: 76,
-            height: 76,
-            decoration: const BoxDecoration(color: Brand.green, shape: BoxShape.circle),
-            child: const Icon(Icons.check_rounded, color: Colors.white, size: 46),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _scenes.last.title.of(lang),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700, height: 1.25),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _scenes.last.line.of(lang),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4),
-        ),
-        const SizedBox(height: 28),
-        if (next != null) ...[
-          FilledButton.icon(
-            onPressed: () => _playVideo(next),
-            style: FilledButton.styleFrom(
-              backgroundColor: Brand.green,
-              foregroundColor: const Color(0xFF0B141A),
-              minimumSize: const Size.fromHeight(54),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        // What this video said
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(color: Brand.green, shape: BoxShape.circle),
+              child: const Icon(Icons.check_rounded, color: Colors.white, size: 28),
             ),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text('${VideoWords.next.of(lang)}: ${explainers[next].title.of(lang)}', maxLines: 2, textAlign: TextAlign.center),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    VideoWords.videoDone.of(lang).toUpperCase(),
+                    style: const TextStyle(color: Brand.green, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 0.6),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _scenes.last.title.of(lang),
+                    style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w700, height: 1.25),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(_scenes.last.line.of(lang), style: const TextStyle(color: soft, fontSize: 14.5, height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        // Up next, with its picture moving
+        if (next != null) ...[
+          Material(
+            color: card,
+            borderRadius: BorderRadius.circular(18),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _playVideo(next),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 92,
+                        height: 108,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ExcludeSemantics(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                child: SceneView(scene: scenesFor(explainers[next], _india).first, t: 0.85, lang: lang),
+                              ),
+                            ),
+                            const ColoredBox(color: Color(0x33000000)),
+                            const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 38)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            VideoWords.upNext.of(lang).toUpperCase(),
+                            style: const TextStyle(color: Brand.green, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.6),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            explainers[next].title.of(lang),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700, height: 1.25),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${secondsFor(explainers[next], _india)} ${VideoWords.seconds.of(lang)}',
+                            style: const TextStyle(color: soft, fontSize: 12.5),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: () => _playVideo(next),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Brand.green,
+                              foregroundColor: const Color(0xFF0B141A),
+                              minimumSize: const Size(0, 40),
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                            label: Text(VideoWords.next.of(lang), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
         ],
-        OutlinedButton.icon(
-          onPressed: () => _playVideo(_video),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: const BorderSide(color: Color(0x66FFFFFF)),
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _playVideo(_video),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0x66FFFFFF)),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.replay, size: 20),
+                label: Text(VideoWords.again.of(lang), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.maybePop(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0x66FFFFFF)),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(VideoWords.done.of(lang), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        // We also give the business its own website: customers from every side
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0x3325D366))),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.language, color: Colors.white, size: 21),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      VideoWords.everySide.of(lang),
+                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700, height: 1.25),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(VideoWords.everySideLine.of(lang), style: const TextStyle(color: soft, fontSize: 14, height: 1.45)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final (icon, label) in [
+                    (Icons.search, 'Google'),
+                    (Icons.camera_alt_outlined, 'Instagram'),
+                    (Icons.chat_outlined, 'WhatsApp'),
+                    (Icons.campaign_outlined, _adsWord.of(lang)),
+                  ])
+                    _Pill(icon: icon, label: label),
+                  const Icon(Icons.arrow_forward_rounded, color: soft, size: 18),
+                  _Pill(icon: Icons.language, label: VideoWords.yourWebsite.of(lang), colour: Brand.blue),
+                  const Icon(Icons.arrow_forward_rounded, color: soft, size: 18),
+                  _Pill(icon: Icons.trending_up, label: VideoWords.moreSales.of(lang), colour: Brand.green, dark: true),
+                ],
+              ),
+              if (website >= 0 && website != _video) ...[
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => _playVideo(website),
+                  style: TextButton.styleFrom(foregroundColor: Brand.green, padding: EdgeInsets.zero, minimumSize: const Size(0, 40)),
+                  icon: const Icon(Icons.play_circle_outline_rounded, size: 20),
+                  label: Text('${VideoWords.watch.of(lang)}: ${explainers[website].title.of(lang)}'),
+                ),
+              ],
+            ],
           ),
-          icon: const Icon(Icons.replay),
-          label: Text(VideoWords.again.of(lang)),
         ),
-        const SizedBox(height: 10),
-        TextButton(
-          onPressed: () => Navigator.maybePop(context),
-          style: TextButton.styleFrom(foregroundColor: Colors.white, minimumSize: const Size.fromHeight(48)),
-          child: Text(VideoWords.done.of(lang)),
-        ),
+        const SizedBox(height: 22),
+        Text(VideoWords.allVideos.of(lang), style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        for (final (i, ex) in explainers.indexed)
+          InkWell(
+            onTap: () => _playVideo(i),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: i == _video ? Brand.green : card, borderRadius: BorderRadius.circular(11)),
+                    child: Icon(ex.icon, color: i == _video ? const Color(0xFF0B141A) : Colors.white, size: 21),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ex.title.of(lang),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w600, height: 1.25),
+                        ),
+                        Text('${secondsFor(ex, _india)} ${VideoWords.seconds.of(lang)}', style: const TextStyle(color: soft, fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                  if (watched.contains(ex.id))
+                    Tooltip(
+                      message: VideoWords.watched.of(lang),
+                      child: const Icon(Icons.check_circle_rounded, color: Brand.green, size: 22),
+                    )
+                  else
+                    const Icon(Icons.play_circle_outline_rounded, color: soft, size: 22),
+                ],
+              ),
+            ),
+          ),
       ],
+    );
+  }
+}
+
+const _adsWord = Tx('Ads', 'యాడ్స్', 'ऐड');
+
+/// A small rounded label with an icon (the website card on the screen after a video).
+class _Pill extends StatelessWidget {
+  const _Pill({required this.icon, required this.label, this.colour = const Color(0xFF2A3942), this.dark = false});
+  final IconData icon;
+  final String label;
+  final Color colour;
+  final bool dark;
+  @override
+  Widget build(BuildContext context) {
+    final ink = dark ? const Color(0xFF0B141A) : Colors.white;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: colour, borderRadius: BorderRadius.circular(99)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: ink, size: 15),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: ink, fontSize: 12.5, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }

@@ -63,7 +63,7 @@ const _slides = [
   ),
   _Slide(
     picture: 'shop',
-    video: 'ads',
+    video: 'website',
     pictureLabel: 'An online store with products, an order paid by UPI and a parcel on the way',
     tagIcon: Icons.chat_outlined,
     tag: 'Connector 2 · with your own WhatsApp',

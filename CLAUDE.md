@@ -118,6 +118,30 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Videos: a voice in English / Telugu / Hindi, a website video, a new screen after each video** (owner, 25 Nov 2026:
+  "for the videos audio is not coming"; "ee screen baledu ... we are also giving a website for ecommerce and frontdesk ...
+  all sides nunchi customer attraction ... product sale").
+  - Voice: `mobile/lib/screens/explainers/narrator.dart` (`Narrator`; `PhoneNarrator` = the phone's text-to-speech via
+    `flutter_tts` (en-IN → en-US/GB, te-IN, hi-IN; rate 0.45 = a little slower than normal; `speak` waits for the end);
+    `SilentNarrator` for tests/desktop; `spokenWords` = title + line, "×" said as by / బై / बाय). The player
+    (`explainer_player.dart`) reads each scene; a scene moves on when its picture has played **and** its words are read
+    (`_voiceDone`, `_waitingForVoice`, turn counter so a stopped reading is ignored); pause / leaving the app / closing
+    stop the voice, play reads the scene again, a new language reads it again. Sound button next to Close (saved in the
+    phone store `videos.sound`, on by default); a phone without a voice for the language shows `VideoWords.noVoice`
+    (how to add one in Settings → Text-to-speech) and the video plays silently. Screen readers still start paused.
+    AndroidManifest `<queries>` has `android.intent.action.TTS_SERVICE` (needed on Android 11+). No sound files, no
+    music. Test `test/explainer_voice_test.dart` (a pretend narrator; everything that saves a setting is in one widget
+    test because a save started in one test can hold up the phone store in the next).
+  - New video **Your own website** (`id: 'website'`, 2nd in the list): scene kinds `website` (a phone with the business's
+    site: `picture: 'store'` products + Add + cart badge + "Order placed", or `'desk'` services + Book + times +
+    "Booking confirmed"; "On your own domain" chip) and `sources` (Google, Instagram, WhatsApp, Ads → Your website, dotted
+    roads with people moving, then Orders / Bookings). The E-commerce welcome slide's Watch button opens it.
+  - Screen after a video (`_endView`): "Video done" + the last scene's words, an **Up next** card with a moving preview
+    and Next video, Watch again | Done, the **Customers from every side** card (we also give you your own website:
+    store or booking site; Google / Instagram / WhatsApp / Ads → Your website → More sales; Watch: Your own website),
+    and All videos with ticks for watched ones. Previews `video_website`, `video_sources`, `video_end`.
+  - New Telugu / Hindi words (website video, sound, end screen) were written here, not yet checked by a native speaker.
+
 - **Expenses and profit, with a monthly AI review of sales** (owner, 25 Nov 2026: "expenditure ... salaries, expenditure and all
   types ... expenditure sale graphs ... monthly one time AI insight about the sales ... improvements and sales strategies").
   - `lib/expenses/rules.ts` (pure, browser-safe): `EXPENSE_CATEGORIES` (salaries, rent, bills, stock, marketing, transport,

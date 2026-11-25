@@ -44,6 +44,8 @@ class SceneView extends StatelessWidget {
       SceneKind.alerts => _AlertsScene(scene: scene, t: t, lang: lang),
       SceneKind.ad => _AdScene(scene: scene, t: t, lang: lang),
       SceneKind.growth => _GrowthScene(scene: scene, t: t, lang: lang),
+      SceneKind.website => _WebsiteScene(scene: scene, t: t, lang: lang),
+      SceneKind.sources => _SourcesScene(scene: scene, t: t, lang: lang),
       SceneKind.end => _EndScene(t: t),
     };
     // A scene is a picture scaled to the screen as a whole: the phone's text size must not grow the words inside it
@@ -1079,6 +1081,492 @@ class _GrowthScene extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The business's own website in a phone: an online store (products, Add, the cart fills, "Order placed") or a booking
+/// site (services, a time, "Booking confirmed"), with "On your own domain" beside it.
+class _WebsiteScene extends StatelessWidget {
+  const _WebsiteScene({required this.scene, required this.t, required this.lang});
+  final Scene scene;
+  final double t;
+  final String lang;
+
+  bool get _store => scene.picture != 'desk';
+
+  @override
+  Widget build(BuildContext context) {
+    final tap = phase(t, 0.5, 0.56);
+    final done = phase(t, 0.62, 0.74);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(color: _soft, borderRadius: BorderRadius.circular(28)),
+          ),
+        ),
+        Positioned(
+          left: (sceneSize.width - _Phone.width) / 2,
+          top: 8,
+          child: rise(
+            phase(t, 0, 0.14),
+            _Phone(
+              screen: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // The browser's address bar
+                  Container(
+                    color: const Color(0xFFF0F2F5),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                    child: Container(
+                      height: 24,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(99)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock, size: 11, color: Brand.blue),
+                          const SizedBox(width: 5),
+                          Text(_store ? 'yourshop.in' : 'yourstudio.in', style: const TextStyle(fontSize: 11, color: Brand.textSoft, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // The site's own header
+                  Container(
+                    color: Brand.blue,
+                    padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+                          child: Icon(_store ? Icons.storefront : Icons.spa, size: 14, color: Brand.blue),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            VideoWords.yourShop.of(lang),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (_store)
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 20),
+                              Positioned(
+                                right: -6,
+                                top: -6,
+                                child: pop(
+                                  tap,
+                                  Container(
+                                    width: 16,
+                                    height: 16,
+                                    alignment: Alignment.center,
+                                    decoration: const BoxDecoration(color: Brand.green, shape: BoxShape.circle),
+                                    child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(99)),
+                            child: Text(VideoWords.book.of(lang), style: const TextStyle(color: Brand.blue, fontSize: 11, fontWeight: FontWeight.w700)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // A banner
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: _store ? const Color(0xFFFFF4D6) : Brand.bubble, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        Icon(_store ? Icons.local_offer_outlined : Icons.schedule, size: 20, color: _store ? const Color(0xFF9A6700) : Brand.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            (_store ? VideoWords.offer : VideoWords.openNow).of(lang),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.text),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(child: _store ? _products(tap) : _services(tap)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // "Order placed" / "Booking confirmed"
+        Positioned(
+          left: (sceneSize.width - _Phone.width) / 2 + 14,
+          right: (sceneSize.width - _Phone.width) / 2 + 14,
+          bottom: 26,
+          child: rise(
+            done,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: _dark, borderRadius: BorderRadius.circular(14)),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Brand.green, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      (_store ? VideoWords.orderPlaced : VideoWords.bookingDone).of(lang),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // On your own domain (over the empty end of the address bar)
+        Positioned(
+          right: 14,
+          top: 12,
+          child: pop(
+            phase(t, 0.22, 0.36),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(99),
+                boxShadow: const [BoxShadow(color: Color(0x1F0B141A), blurRadius: 10, offset: Offset(0, 4))],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.language, size: 14, color: Brand.blue),
+                  const SizedBox(width: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 104),
+                    child: Text(
+                      VideoWords.ownDomain.of(lang),
+                      maxLines: 2,
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Brand.blue, height: 1.2),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Two by two product cards; the first one's Add is tapped
+  Widget _products(double tap) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    child: GridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 0.92,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      children: [
+        for (var i = 0; i < math.min(4, scene.items.length); i++)
+          rise(
+            phase(t, 0.12 + i * 0.06, 0.28 + i * 0.06),
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE9EDEF))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(color: _soft, borderRadius: BorderRadius.circular(9)),
+                      child: Icon(scene.items[i].icon, color: Brand.blue, size: 26),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    scene.items[i].label.of(lang),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.text),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    height: 20,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: i == 0 && tap > 0.5 ? Brand.green : Brand.blue,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: i == 0 && tap > 0.5
+                        ? const Icon(Icons.check, color: Colors.white, size: 13)
+                        : Text(VideoWords.add.of(lang), style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  /// Services with Book, then times; one time is picked
+  Widget _services(double tap) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    child: Column(
+      children: [
+        for (var i = 0; i < math.min(3, scene.items.length); i++)
+          rise(
+            phase(t, 0.12 + i * 0.07, 0.28 + i * 0.07),
+            Container(
+              margin: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+              decoration: BoxDecoration(
+                color: i == 0 && tap > 0.5 ? _soft : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: i == 0 && tap > 0.5 ? Brand.blue : const Color(0xFFE9EDEF)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(color: _soft, borderRadius: BorderRadius.circular(8)),
+                    child: Icon(scene.items[i].icon, size: 16, color: Brand.blue),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      scene.items[i].label.of(lang),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Brand.text),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(99)),
+                    child: Text(VideoWords.book.of(lang), style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 2),
+        rise(
+          phase(t, 0.34, 0.46),
+          Row(
+            children: [
+              for (final (i, time) in ['10:00', '11:30', '4:00'].indexed) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: Container(
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: i == 1 && tap > 0.5 ? Brand.blue : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: i == 1 && tap > 0.5 ? Brand.blue : const Color(0xFFD1D7DB)),
+                    ),
+                    child: Text(
+                      time,
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i == 1 && tap > 0.5 ? Colors.white : Brand.text),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Customers from every side: Google, Instagram, WhatsApp and ads at the corners, people travelling from each to the
+/// business's website in the middle, then orders and bookings.
+class _SourcesScene extends StatelessWidget {
+  const _SourcesScene({required this.scene, required this.t, required this.lang});
+  final Scene scene;
+  final double t;
+  final String lang;
+
+  static const _centre = Offset(180, 176);
+  static const _spots = [Offset(62, 54), Offset(298, 54), Offset(62, 298), Offset(298, 298)];
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = math.min(4, scene.items.length);
+    final travel = phase(t, 0.2, 0.95, Curves.linear);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(color: _soft, borderRadius: BorderRadius.circular(28)),
+          ),
+        ),
+        // Dotted roads from each side to the middle, and people moving along them
+        Positioned.fill(
+          child: CustomPaint(painter: _RoadsPainter(from: _spots.take(sources).toList(), to: _centre, grow: phase(t, 0.08, 0.3), travel: travel)),
+        ),
+        // The website in the middle
+        Positioned(
+          left: _centre.dx - 62,
+          top: _centre.dy - 56,
+          child: pop(
+            phase(t, 0, 0.16),
+            Container(
+              width: 124,
+              height: 112,
+              decoration: _card(22),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(color: Brand.blue, shape: BoxShape.circle),
+                    child: const Icon(Icons.language, color: Colors.white, size: 26),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      VideoWords.yourWebsite.of(lang),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.text, height: 1.15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // The four sides
+        for (var i = 0; i < sources; i++)
+          Positioned(
+            left: _spots[i].dx - 50,
+            top: _spots[i].dy - 30,
+            width: 100,
+            child: pop(
+              phase(t, 0.06 + i * 0.06, 0.2 + i * 0.06),
+              Column(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Brand.blue, width: 2),
+                      boxShadow: const [BoxShadow(color: Color(0x1A0B141A), blurRadius: 8, offset: Offset(0, 3))],
+                    ),
+                    child: Icon(scene.items[i].icon, color: Brand.blue, size: 21),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    scene.items[i].label.of(lang),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Brand.text),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // What comes of it: orders and bookings
+        Positioned(
+          left: 24,
+          right: 24,
+          bottom: 14,
+          child: Row(
+            children: [
+              for (var i = 4; i < math.min(6, scene.items.length); i++) ...[
+                if (i > 4) const SizedBox(width: 10),
+                Expanded(
+                  child: pop(
+                    phase(t, 0.58 + (i - 4) * 0.1, 0.72 + (i - 4) * 0.1),
+                    Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(99)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(scene.items[i].icon, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              scene.items[i].label.of(lang),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RoadsPainter extends CustomPainter {
+  _RoadsPainter({required this.from, required this.to, required this.grow, required this.travel});
+  final List<Offset> from;
+  final Offset to;
+  final double grow;
+  final double travel;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final road = Paint()
+      ..color = Brand.blue.withValues(alpha: 0.35)
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    final person = Paint()..color = Brand.blue;
+    for (final (i, start) in from.indexed) {
+      final end = Offset.lerp(start, to, grow)!;
+      // Dotted road
+      const dots = 14;
+      for (var d = 0; d < dots; d++) {
+        final a = d / dots;
+        final b = (d + 0.5) / dots;
+        if (a > grow) break;
+        canvas.drawLine(Offset.lerp(start, to, a)!, Offset.lerp(start, to, math.min(b, grow))!, road);
+      }
+      if (grow < 1 || travel <= 0) continue;
+      // Three people on each road, one after another, each a little later on each road
+      for (var k = 0; k < 3; k++) {
+        final p = (travel * 2.2 + k / 3 + i * 0.13) % 1;
+        canvas.drawCircle(Offset.lerp(start, end, 0.12 + p * 0.68)!, 5, person);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RoadsPainter old) => old.grow != grow || old.travel != travel;
 }
 
 /// The last scene: the app's mark, with a tick.
